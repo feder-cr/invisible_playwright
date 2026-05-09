@@ -1,0 +1,650 @@
+{
+  "_source": "browserforge fingerprint-network.zip, FF/Windows slice, 3 userAgent leaves merged",
+  "_ff_win_uas": [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:145.0) Gecko/20100101 Firefox/145.0",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:147.0) Gecko/20100101 Firefox/147.0"
+  ],
+  "_note": "Per-node weighted distributions. Marginal over the 3 Firefox/Windows UAs present in browserforge data.",
+  "distributions": {
+    "appCodeName": [
+      [
+        "Mozilla",
+        1.0
+      ]
+    ],
+    "appVersion": [
+      [
+        "5.0 (Windows)",
+        1.0
+      ]
+    ],
+    "doNotTrack": [
+      [
+        "1",
+        1.0
+      ]
+    ],
+    "extraProperties": [
+      [
+        {
+          "vendorFlavors": [],
+          "globalPrivacyControl": true,
+          "pdfViewerEnabled": true,
+          "installedApps": []
+        },
+        0.6111111111111112
+      ],
+      [
+        {
+          "vendorFlavors": [],
+          "globalPrivacyControl": null,
+          "pdfViewerEnabled": null,
+          "installedApps": []
+        },
+        0.3888888888888889
+      ]
+    ],
+    "maxTouchPoints": [
+      [
+        0,
+        0.5777777777777778
+      ],
+      [
+        1,
+        0.3666666666666667
+      ],
+      [
+        10,
+        0.05555555555555555
+      ]
+    ],
+    "oscpu": [
+      [
+        "Windows NT 10.0; Win64; x64",
+        1.0
+      ]
+    ],
+    "webdriver": [
+      [
+        false,
+        1.0
+      ]
+    ],
+    "productSub": [
+      [
+        "20100101",
+        1.0
+      ]
+    ],
+    "hardwareConcurrency": [
+      [
+        12,
+        0.3333333333333333
+      ],
+      [
+        16,
+        0.2777777777777778
+      ],
+      [
+        8,
+        0.13333333333333333
+      ],
+      [
+        24,
+        0.13333333333333333
+      ],
+      [
+        32,
+        0.06666666666666667
+      ],
+      [
+        6,
+        0.05555555555555555
+      ]
+    ],
+    "platform": [
+      [
+        "Win32",
+        1.0
+      ]
+    ],
+    "screen": [
+      [
+        {
+          "availTop": 0,
+          "availLeft": 0,
+          "pageXOffset": 0,
+          "pageYOffset": 0,
+          "screenX": 772,
+          "hasHDR": false,
+          "width": 1536,
+          "height": 960,
+          "availWidth": 1536,
+          "availHeight": 960,
+          "clientWidth": 0,
+          "clientHeight": 21,
+          "innerWidth": 0,
+          "innerHeight": 0,
+          "outerWidth": 751,
+          "outerHeight": 886,
+          "colorDepth": 24,
+          "pixelDepth": 24,
+          "devicePixelRatio": 1.25
+        },
+        0.3333333333333333
+      ],
+      [
+        {
+          "availTop": 0,
+          "availLeft": 2176,
+          "pageXOffset": 0,
+          "pageYOffset": 0,
+          "screenX": 2169,
+          "hasHDR": false,
+          "width": 2176,
+          "height": 1224,
+          "availWidth": 2176,
+          "availHeight": 1176,
+          "clientWidth": 0,
+          "clientHeight": 19,
+          "innerWidth": 0,
+          "innerHeight": 0,
+          "outerWidth": 2190,
+          "outerHeight": 1190,
+          "colorDepth": 24,
+          "pixelDepth": 24,
+          "devicePixelRatio": 1.7647058823529411
+        },
+        0.13333333333333333
+      ],
+      [
+        {
+          "availTop": 0,
+          "availLeft": 0,
+          "pageXOffset": 0,
+          "pageYOffset": 0,
+          "screenX": 318,
+          "hasHDR": false,
+          "width": 2560,
+          "height": 1440,
+          "availWidth": 2560,
+          "availHeight": 1440,
+          "clientWidth": 0,
+          "clientHeight": 18,
+          "innerWidth": 0,
+          "innerHeight": 0,
+          "outerWidth": 2121,
+          "outerHeight": 1191,
+          "colorDepth": 24,
+          "pixelDepth": 24,
+          "devicePixelRatio": 1
+        },
+        0.1111111111111111
+      ],
+      [
+        {
+          "availTop": 0,
+          "availLeft": 0,
+          "pageXOffset": 0,
+          "pageYOffset": 0,
+          "screenX": 652,
+          "hasHDR": false,
+          "width": 2752,
+          "height": 1152,
+          "availWidth": 2752,
+          "availHeight": 1104,
+          "clientWidth": 0,
+          "clientHeight": 19,
+          "innerWidth": 0,
+          "innerHeight": 0,
+          "outerWidth": 1806,
+          "outerHeight": 1104,
+          "colorDepth": 24,
+          "pixelDepth": 24,
+          "devicePixelRatio": 1.25
+        },
+        0.06666666666666667
+      ],
+      [
+        {
+          "availTop": 0,
+          "availLeft": 0,
+          "pageXOffset": 0,
+          "pageYOffset": 0,
+          "screenX": 1912,
+          "hasHDR": false,
+          "width": 1920,
+          "height": 1080,
+          "availWidth": 1920,
+          "availHeight": 1032,
+          "clientWidth": 0,
+          "clientHeight": 18,
+          "innerWidth": 0,
+          "innerHeight": 0,
+          "outerWidth": 1936,
+          "outerHeight": 1048,
+          "colorDepth": 24,
+          "pixelDepth": 24,
+          "devicePixelRatio": 1
+        },
+        0.06666666666666667
+      ],
+      [
+        {
+          "availTop": 29,
+          "availLeft": 21,
+          "pageXOffset": 0,
+          "pageYOffset": 0,
+          "screenX": 15,
+          "hasHDR": false,
+          "width": 1376,
+          "height": 774,
+          "availWidth": 1355,
+          "availHeight": 745,
+          "clientWidth": 0,
+          "clientHeight": 21,
+          "innerWidth": 0,
+          "innerHeight": 0,
+          "outerWidth": 1352,
+          "outerHeight": 749,
+          "colorDepth": 24,
+          "pixelDepth": 24,
+          "devicePixelRatio": 1
+        },
+        0.05555555555555555
+      ],
+      [
+        {
+          "availTop": 0,
+          "availLeft": 0,
+          "pageXOffset": 0,
+          "pageYOffset": 0,
+          "screenX": 58,
+          "hasHDR": false,
+          "width": 1707,
+          "height": 960,
+          "availWidth": 1707,
+          "availHeight": 928,
+          "clientWidth": 0,
+          "clientHeight": 19,
+          "innerWidth": 0,
+          "innerHeight": 0,
+          "outerWidth": 1564,
+          "outerHeight": 793,
+          "colorDepth": 24,
+          "pixelDepth": 24,
+          "devicePixelRatio": 1
+        },
+        0.05555555555555555
+      ],
+      [
+        {
+          "availTop": 0,
+          "availLeft": 0,
+          "pageXOffset": 0,
+          "pageYOffset": 0,
+          "screenX": 34,
+          "hasHDR": false,
+          "width": 5120,
+          "height": 1440,
+          "availWidth": 5120,
+          "availHeight": 1392,
+          "clientWidth": 0,
+          "clientHeight": 18,
+          "innerWidth": 0,
+          "innerHeight": 0,
+          "outerWidth": 2462,
+          "outerHeight": 1399,
+          "colorDepth": 24,
+          "pixelDepth": 24,
+          "devicePixelRatio": 1
+        },
+        0.05555555555555555
+      ],
+      [
+        {
+          "availTop": 0,
+          "availLeft": 1920,
+          "pageXOffset": 0,
+          "pageYOffset": 0,
+          "screenX": 1912,
+          "hasHDR": false,
+          "width": 1920,
+          "height": 1080,
+          "availWidth": 1920,
+          "availHeight": 1032,
+          "clientWidth": 0,
+          "clientHeight": 18,
+          "innerWidth": 0,
+          "innerHeight": 0,
+          "outerWidth": 1936,
+          "outerHeight": 1048,
+          "colorDepth": 24,
+          "pixelDepth": 24,
+          "devicePixelRatio": 1
+        },
+        0.05555555555555555
+      ],
+      [
+        {
+          "availTop": 0,
+          "availLeft": 0,
+          "pageXOffset": 0,
+          "pageYOffset": 0,
+          "screenX": 95,
+          "hasHDR": false,
+          "width": 1366,
+          "height": 768,
+          "availWidth": 1366,
+          "availHeight": 768,
+          "clientWidth": 0,
+          "clientHeight": 18,
+          "innerWidth": 0,
+          "innerHeight": 0,
+          "outerWidth": 1294,
+          "outerHeight": 1280,
+          "colorDepth": 24,
+          "pixelDepth": 24,
+          "devicePixelRatio": 1
+        },
+        0.03333333333333333
+      ],
+      [
+        {
+          "availTop": 0,
+          "availLeft": 0,
+          "pageXOffset": 0,
+          "pageYOffset": 0,
+          "screenX": 1273,
+          "hasHDR": false,
+          "width": 2560,
+          "height": 1440,
+          "availWidth": 2560,
+          "availHeight": 1400,
+          "clientWidth": 0,
+          "clientHeight": 18,
+          "innerWidth": 0,
+          "innerHeight": 0,
+          "outerWidth": 1294,
+          "outerHeight": 1407,
+          "colorDepth": 24,
+          "pixelDepth": 24,
+          "devicePixelRatio": 1
+        },
+        0.03333333333333333
+      ]
+    ],
+    "pluginsData": [
+      [
+        {
+          "plugins": [
+            {
+              "name": "PDF Viewer",
+              "description": "Portable Document Format",
+              "filename": "internal-pdf-viewer",
+              "mimeTypes": [
+                {
+                  "type": "application/pdf",
+                  "suffixes": "pdf",
+                  "description": "Portable Document Format",
+                  "enabledPlugin": "PDF Viewer"
+                },
+                {
+                  "type": "text/pdf",
+                  "suffixes": "pdf",
+                  "description": "Portable Document Format",
+                  "enabledPlugin": "PDF Viewer"
+                }
+              ]
+            },
+            {
+              "name": "Chrome PDF Viewer",
+              "description": "Portable Document Format",
+              "filename": "internal-pdf-viewer",
+              "mimeTypes": [
+                {
+                  "type": "application/pdf",
+                  "suffixes": "pdf",
+                  "description": "Portable Document Format",
+                  "enabledPlugin": "PDF Viewer"
+                },
+                {
+                  "type": "text/pdf",
+                  "suffixes": "pdf",
+                  "description": "Portable Document Format",
+                  "enabledPlugin": "PDF Viewer"
+                }
+              ]
+            },
+            {
+              "name": "Chromium PDF Viewer",
+              "description": "Portable Document Format",
+              "filename": "internal-pdf-viewer",
+              "mimeTypes": [
+                {
+                  "type": "application/pdf",
+                  "suffixes": "pdf",
+                  "description": "Portable Document Format",
+                  "enabledPlugin": "PDF Viewer"
+                },
+                {
+                  "type": "text/pdf",
+                  "suffixes": "pdf",
+                  "description": "Portable Document Format",
+                  "enabledPlugin": "PDF Viewer"
+                }
+              ]
+            },
+            {
+              "name": "Microsoft Edge PDF Viewer",
+              "description": "Portable Document Format",
+              "filename": "internal-pdf-viewer",
+              "mimeTypes": [
+                {
+                  "type": "application/pdf",
+                  "suffixes": "pdf",
+                  "description": "Portable Document Format",
+                  "enabledPlugin": "PDF Viewer"
+                },
+                {
+                  "type": "text/pdf",
+                  "suffixes": "pdf",
+                  "description": "Portable Document Format",
+                  "enabledPlugin": "PDF Viewer"
+                }
+              ]
+            },
+            {
+              "name": "WebKit built-in PDF",
+              "description": "Portable Document Format",
+              "filename": "internal-pdf-viewer",
+              "mimeTypes": [
+                {
+                  "type": "application/pdf",
+                  "suffixes": "pdf",
+                  "description": "Portable Document Format",
+                  "enabledPlugin": "PDF Viewer"
+                },
+                {
+                  "type": "text/pdf",
+                  "suffixes": "pdf",
+                  "description": "Portable Document Format",
+                  "enabledPlugin": "PDF Viewer"
+                }
+              ]
+            }
+          ],
+          "mimeTypes": [
+            "Portable Document Format~~application/pdf~~pdf",
+            "Portable Document Format~~text/pdf~~pdf"
+          ]
+        },
+        0.6111111111111112
+      ],
+      [
+        {
+          "plugins": [],
+          "mimeTypes": []
+        },
+        0.3888888888888889
+      ]
+    ],
+    "audioCodecs": [
+      [
+        {
+          "ogg": "probably",
+          "mp3": "maybe",
+          "wav": "probably",
+          "m4a": "maybe",
+          "aac": "maybe"
+        },
+        1.0
+      ]
+    ],
+    "videoCodecs": [
+      [
+        {
+          "ogg": "",
+          "h264": "probably",
+          "webm": "probably"
+        },
+        1.0
+      ]
+    ],
+    "videoCard": [
+      [
+        {
+          "renderer": "ANGLE (NVIDIA, NVIDIA GeForce GTX 980 Direct3D11 vs_5_0 ps_5_0), or similar",
+          "vendor": "Google Inc. (NVIDIA)"
+        },
+        0.8444444444444444
+      ],
+      [
+        {
+          "renderer": "ANGLE (AMD, Radeon R9 200 Series Direct3D11 vs_5_0 ps_5_0), or similar",
+          "vendor": "Google Inc. (AMD)"
+        },
+        0.08888888888888889
+      ],
+      [
+        {
+          "renderer": "ANGLE (Intel, Intel(R) HD Graphics 400 Direct3D11 vs_5_0 ps_5_0), or similar",
+          "vendor": "Google Inc. (Intel)"
+        },
+        0.06666666666666667
+      ]
+    ],
+    "multimediaDevices": [
+      [
+        {
+          "speakers": [],
+          "micros": [],
+          "webcams": []
+        },
+        1.0
+      ]
+    ],
+    "fonts": [
+      [
+        [],
+        0.3888888888888889
+      ],
+      [
+        [
+          "Calibri",
+          "HELV",
+          "MS UI Gothic",
+          "Marlett",
+          "Segoe UI Light",
+          "Small Fonts"
+        ],
+        0.3222222222222222
+      ],
+      [
+        [
+          "Agency FB",
+          "Calibri",
+          "Century",
+          "Century Gothic",
+          "Franklin Gothic",
+          "HELV",
+          "Haettenschweiler",
+          "Leelawadee",
+          "Lucida Bright",
+          "Lucida Sans",
+          "MS Outlook",
+          "MS Reference Specialty",
+          "MS UI Gothic",
+          "MT Extra",
+          "Marlett",
+          "Microsoft Uighur",
+          "Monotype Corsiva",
+          "Pristina",
+          "Segoe UI Light",
+          "Small Fonts"
+        ],
+        0.13333333333333333
+      ],
+      [
+        [
+          "AvantGarde Bk BT",
+          "Calibri",
+          "Clarendon",
+          "Franklin Gothic",
+          "Futura Bk BT",
+          "Futura Md BT",
+          "GOTHAM",
+          "HELV",
+          "Humanst521 BT",
+          "MS UI Gothic",
+          "MYRIAD PRO",
+          "Marlett",
+          "Minion Pro",
+          "Segoe UI Light",
+          "Small Fonts",
+          "TRAJAN PRO"
+        ],
+        0.06666666666666667
+      ],
+      [
+        [
+          "Calibri",
+          "MS UI Gothic",
+          "Marlett",
+          "Segoe UI Light"
+        ],
+        0.05555555555555555
+      ],
+      [
+        [
+          "Agency FB",
+          "Calibri",
+          "Century",
+          "Century Gothic",
+          "Franklin Gothic",
+          "Futura Bk BT",
+          "Futura Md BT",
+          "GOTHAM",
+          "HELV",
+          "Haettenschweiler",
+          "Humanst521 BT",
+          "Lucida Bright",
+          "Lucida Sans",
+          "MS Outlook",
+          "MS Reference Specialty",
+          "MS UI Gothic",
+          "MT Extra",
+          "MYRIAD PRO",
+          "Marlett",
+          "Minion Pro",
+          "Monotype Corsiva",
+          "Pristina",
+          "Segoe UI Light",
+          "Small Fonts"
+        ],
+        0.03333333333333333
+      ]
+    ]
+  }
+}

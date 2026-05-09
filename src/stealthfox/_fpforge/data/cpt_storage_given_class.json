@@ -1,0 +1,60 @@
+{
+  "_meta": {
+    "name": "storage_quota_mb | gpu_class",
+    "parents": ["gpu_class"],
+    "child": "storage_quota_mb",
+    "value_shape": "int megabytes (reported as navigator.storage.estimate().quota / (1024*1024))",
+    "description": "Storage quota override returned by navigator.storage.estimate(). Real Firefox computes quota from disk space, which is a fingerprinting signal (stable per host). We replace it with a realistic per-session value conditioned on gpu_class — modern/high-end users tend to have larger SSDs, integrated_old older/smaller disks.",
+    "source": "Typical Windows 11 disk sizes 2024-2026 per segment: budget laptops 256-512GB SSD, mainstream 512GB-1TB SSD, gaming/workstation 1-4TB SSD. Firefox default storage quota is ~50% of available disk (capped). We simulate that computation per-tier.",
+    "rationale": "Values are pre-quota-limit MB as Firefox would return to navigator.storage.estimate().quota. Probabilities cover realistic ranges centered on the segment median. A single session returns one value; fingerprinters that hash the exact quota get per-session variance, matching cross-user diversity."
+  },
+  "table": {
+    "integrated_old": [
+      {"value": 61440,   "prob": 0.30},
+      {"value": 102400,  "prob": 0.25},
+      {"value": 122880,  "prob": 0.20},
+      {"value": 204800,  "prob": 0.15},
+      {"value": 40960,   "prob": 0.10}
+    ],
+    "integrated_modern": [
+      {"value": 204800,  "prob": 0.30},
+      {"value": 307200,  "prob": 0.25},
+      {"value": 122880,  "prob": 0.15},
+      {"value": 409600,  "prob": 0.15},
+      {"value": 102400,  "prob": 0.10},
+      {"value": 512000,  "prob": 0.05}
+    ],
+    "low_end": [
+      {"value": 122880,  "prob": 0.30},
+      {"value": 204800,  "prob": 0.25},
+      {"value": 102400,  "prob": 0.20},
+      {"value": 61440,   "prob": 0.15},
+      {"value": 307200,  "prob": 0.10}
+    ],
+    "mid_range": [
+      {"value": 307200,  "prob": 0.30},
+      {"value": 409600,  "prob": 0.25},
+      {"value": 204800,  "prob": 0.20},
+      {"value": 512000,  "prob": 0.15},
+      {"value": 716800,  "prob": 0.05},
+      {"value": 122880,  "prob": 0.05}
+    ],
+    "high_end": [
+      {"value": 512000,  "prob": 0.25},
+      {"value": 716800,  "prob": 0.25},
+      {"value": 409600,  "prob": 0.20},
+      {"value": 1024000, "prob": 0.15},
+      {"value": 307200,  "prob": 0.10},
+      {"value": 1536000, "prob": 0.05}
+    ],
+    "workstation": [
+      {"value": 1024000, "prob": 0.25},
+      {"value": 1536000, "prob": 0.20},
+      {"value": 716800,  "prob": 0.20},
+      {"value": 2048000, "prob": 0.15},
+      {"value": 512000,  "prob": 0.10},
+      {"value": 3072000, "prob": 0.05},
+      {"value": 409600,  "prob": 0.05}
+    ]
+  }
+}

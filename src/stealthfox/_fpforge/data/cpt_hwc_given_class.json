@@ -1,0 +1,50 @@
+{
+  "_meta": {
+    "name": "hw_concurrency | gpu_class",
+    "parents": ["gpu_class"],
+    "child": "hw_concurrency",
+    "source": "Curated from realistic CPU/GPU pairings (Steam HW Survey + DIY build norms + laptop SKU patterns)"
+  },
+  "table": {
+    "integrated_old": [
+      {"value": 2, "prob": 0.20},
+      {"value": 4, "prob": 0.60},
+      {"value": 8, "prob": 0.20}
+    ],
+    "integrated_modern": [
+      {"value": 4, "prob": 0.20},
+      {"value": 6, "prob": 0.15},
+      {"value": 8, "prob": 0.35},
+      {"value": 12, "prob": 0.20},
+      {"value": 16, "prob": 0.10}
+    ],
+    "low_end": [
+      {"value": 4, "prob": 0.25},
+      {"value": 6, "prob": 0.25},
+      {"value": 8, "prob": 0.35},
+      {"value": 12, "prob": 0.15}
+    ],
+    "mid_range": [
+      {"value": 6, "prob": 0.15},
+      {"value": 8, "prob": 0.30},
+      {"value": 12, "prob": 0.30},
+      {"value": 16, "prob": 0.20},
+      {"value": 24, "prob": 0.05}
+    ],
+    "high_end": [
+      {"value": 8, "prob": 0.10},
+      {"value": 12, "prob": 0.25},
+      {"value": 16, "prob": 0.35},
+      {"value": 20, "prob": 0.05},
+      {"value": 24, "prob": 0.20},
+      {"value": 32, "prob": 0.05}
+    ],
+    "workstation": [
+      {"value": 8, "prob": 0.15},
+      {"value": 12, "prob": 0.20},
+      {"value": 16, "prob": 0.30},
+      {"value": 24, "prob": 0.20},
+      {"value": 32, "prob": 0.15}
+    ]
+  }
+}

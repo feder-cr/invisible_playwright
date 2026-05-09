@@ -1,0 +1,147 @@
+{
+  "_meta": "codec given gpu_class",
+  "table": {
+    "integrated_old": [
+      {
+        "value": {
+          "av1_enabled": false,
+          "webm_encoder_enabled": false,
+          "mediasource_webm": true,
+          "mediasource_mp4": true,
+          "webspeech_synth": true
+        },
+        "prob": 1.0
+      }
+    ],
+    "integrated_modern": [
+      {
+        "value": {
+          "av1_enabled": true,
+          "webm_encoder_enabled": true,
+          "mediasource_webm": true,
+          "mediasource_mp4": true,
+          "webspeech_synth": true
+        },
+        "prob": 0.55
+      },
+      {
+        "value": {
+          "av1_enabled": false,
+          "webm_encoder_enabled": true,
+          "mediasource_webm": true,
+          "mediasource_mp4": true,
+          "webspeech_synth": true
+        },
+        "prob": 0.35
+      },
+      {
+        "value": {
+          "av1_enabled": true,
+          "webm_encoder_enabled": true,
+          "mediasource_webm": true,
+          "mediasource_mp4": true,
+          "webspeech_synth": false
+        },
+        "prob": 0.1
+      }
+    ],
+    "low_end": [
+      {
+        "value": {
+          "av1_enabled": false,
+          "webm_encoder_enabled": true,
+          "mediasource_webm": true,
+          "mediasource_mp4": true,
+          "webspeech_synth": true
+        },
+        "prob": 0.85
+      },
+      {
+        "value": {
+          "av1_enabled": false,
+          "webm_encoder_enabled": true,
+          "mediasource_webm": true,
+          "mediasource_mp4": true,
+          "webspeech_synth": false
+        },
+        "prob": 0.15
+      }
+    ],
+    "mid_range": [
+      {
+        "value": {
+          "av1_enabled": true,
+          "webm_encoder_enabled": true,
+          "mediasource_webm": true,
+          "mediasource_mp4": true,
+          "webspeech_synth": true
+        },
+        "prob": 0.55
+      },
+      {
+        "value": {
+          "av1_enabled": false,
+          "webm_encoder_enabled": true,
+          "mediasource_webm": true,
+          "mediasource_mp4": true,
+          "webspeech_synth": true
+        },
+        "prob": 0.35
+      },
+      {
+        "value": {
+          "av1_enabled": true,
+          "webm_encoder_enabled": true,
+          "mediasource_webm": true,
+          "mediasource_mp4": true,
+          "webspeech_synth": false
+        },
+        "prob": 0.1
+      }
+    ],
+    "high_end": [
+      {
+        "value": {
+          "av1_enabled": true,
+          "webm_encoder_enabled": true,
+          "mediasource_webm": true,
+          "mediasource_mp4": true,
+          "webspeech_synth": true
+        },
+        "prob": 0.85
+      },
+      {
+        "value": {
+          "av1_enabled": true,
+          "webm_encoder_enabled": true,
+          "mediasource_webm": true,
+          "mediasource_mp4": true,
+          "webspeech_synth": false
+        },
+        "prob": 0.15
+      }
+    ],
+    "workstation": [
+      {
+        "value": {
+          "av1_enabled": true,
+          "webm_encoder_enabled": true,
+          "mediasource_webm": true,
+          "mediasource_mp4": true,
+          "webspeech_synth": true
+        },
+        "prob": 0.7
+      },
+      {
+        "value": {
+          "av1_enabled": true,
+          "webm_encoder_enabled": true,
+          "mediasource_webm": true,
+          "mediasource_mp4": true,
+          "webspeech_synth": false
+        },
+        "prob": 0.3
+      }
+    ]
+  }
+}

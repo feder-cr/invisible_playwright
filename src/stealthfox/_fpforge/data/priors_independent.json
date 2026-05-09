@@ -1,0 +1,14 @@
+{
+  "_meta": {
+    "name": "Independent marginal priors (no parents)",
+    "source": "StatCounter GlobalStats + Firefox defaults + community data 2025-2026",
+    "note": "Codec prefs (av1_enabled, webm_encoder_enabled, hw_video_decoding, wmf_enabled, ffvpx_enabled) moved to cpt_codec_given_class.json — they correlate with GPU class via Firefox version / user-tier distribution."
+  },
+  "dark_theme": {
+    "_note": "0=light, 1=dark. StatCounter ~40% users report dark theme preference on desktop.",
+    "table": [
+      {"value": 0, "prob": 0.60},
+      {"value": 1, "prob": 0.40}
+    ]
+  }
+}

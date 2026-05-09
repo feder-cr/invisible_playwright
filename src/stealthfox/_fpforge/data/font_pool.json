@@ -1,0 +1,670 @@
+{
+  "core": [
+    {
+      "name": "arial",
+      "factor": 0.978
+    },
+    {
+      "name": "arial black",
+      "factor": 1.168
+    },
+    {
+      "name": "arial narrow",
+      "factor": 0.854
+    },
+    {
+      "name": "bahnschrift",
+      "factor": 0.951
+    },
+    {
+      "name": "bahnschrift condensed",
+      "factor": 1.179
+    },
+    {
+      "name": "bahnschrift light",
+      "factor": 0.908
+    },
+    {
+      "name": "bahnschrift light condensed",
+      "factor": 1.053
+    },
+    {
+      "name": "bahnschrift light semicondensed",
+      "factor": 1.063
+    },
+    {
+      "name": "bahnschrift semibold",
+      "factor": 0.926
+    },
+    {
+      "name": "bahnschrift semibold condensed",
+      "factor": 1.131
+    },
+    {
+      "name": "bahnschrift semibold semicondensed",
+      "factor": 1.043
+    },
+    {
+      "name": "bahnschrift semicondensed",
+      "factor": 1.098
+    },
+    {
+      "name": "bahnschrift semilight",
+      "factor": 0.873
+    },
+    {
+      "name": "bahnschrift semilight condensed",
+      "factor": 0.905
+    },
+    {
+      "name": "bahnschrift semilight semicondensed",
+      "factor": 1.135
+    },
+    {
+      "name": "calibri light",
+      "factor": 0.901
+    },
+    {
+      "name": "cambria",
+      "factor": 1.063
+    },
+    {
+      "name": "cambria math",
+      "factor": 1.041
+    },
+    {
+      "name": "candara",
+      "factor": 0.927
+    },
+    {
+      "name": "candara light",
+      "factor": 0.892
+    },
+    {
+      "name": "cascadia code",
+      "factor": 1.139
+    },
+    {
+      "name": "cascadia mono",
+      "factor": 0.95
+    },
+    {
+      "name": "comic sans ms",
+      "factor": 1.087
+    },
+    {
+      "name": "consolas",
+      "factor": 1.158
+    },
+    {
+      "name": "constantia",
+      "factor": 1.052
+    },
+    {
+      "name": "corbel",
+      "factor": 0.895
+    },
+    {
+      "name": "corbel light",
+      "factor": 0.876
+    },
+    {
+      "name": "courier new",
+      "factor": 1.187
+    },
+    {
+      "name": "ebrima",
+      "factor": 0.962
+    },
+    {
+      "name": "franklin gothic medium",
+      "factor": 1.031
+    },
+    {
+      "name": "gabriola",
+      "factor": 1.077
+    },
+    {
+      "name": "georgia",
+      "factor": 1.094
+    },
+    {
+      "name": "hololens mdl2 assets",
+      "factor": 1.145
+    },
+    {
+      "name": "impact",
+      "factor": 0.862
+    },
+    {
+      "name": "ink free",
+      "factor": 1.048
+    },
+    {
+      "name": "leelawadee ui semilight",
+      "factor": 1.061
+    },
+    {
+      "name": "lucida console",
+      "factor": 1.131
+    },
+    {
+      "name": "lucida sans unicode",
+      "factor": 1.014
+    },
+    {
+      "name": "malgun gothic",
+      "factor": 1.128
+    },
+    {
+      "name": "malgun gothic semilight",
+      "factor": 1.051
+    },
+    {
+      "name": "marlett",
+      "factor": 0.855
+    },
+    {
+      "name": "microsoft himalaya",
+      "factor": 1.022
+    },
+    {
+      "name": "microsoft jhenghei",
+      "factor": 1.061
+    },
+    {
+      "name": "microsoft jhenghei light",
+      "factor": 0.94
+    },
+    {
+      "name": "microsoft jhenghei ui",
+      "factor": 1.136
+    },
+    {
+      "name": "microsoft jhenghei ui light",
+      "factor": 0.826
+    },
+    {
+      "name": "microsoft new tai lue",
+      "factor": 0.953
+    },
+    {
+      "name": "microsoft phagspa",
+      "factor": 0.988
+    },
+    {
+      "name": "microsoft sans serif",
+      "factor": 0.941
+    },
+    {
+      "name": "microsoft tai le",
+      "factor": 0.957
+    },
+    {
+      "name": "microsoft yahei",
+      "factor": 1.076
+    },
+    {
+      "name": "microsoft yahei light",
+      "factor": 1.043
+    },
+    {
+      "name": "microsoft yahei ui",
+      "factor": 1.076
+    },
+    {
+      "name": "microsoft yahei ui light",
+      "factor": 1.094
+    },
+    {
+      "name": "microsoft yi baiti",
+      "factor": 1.008
+    },
+    {
+      "name": "mingliu-extb",
+      "factor": 1.173
+    },
+    {
+      "name": "mingliu_hkscs-extb",
+      "factor": 1.101
+    },
+    {
+      "name": "mongolian baiti",
+      "factor": 1.056
+    },
+    {
+      "name": "ms gothic",
+      "factor": 1.119
+    },
+    {
+      "name": "ms pgothic",
+      "factor": 1.074
+    },
+    {
+      "name": "mv boli",
+      "factor": 0.932
+    },
+    {
+      "name": "nirmala ui",
+      "factor": 0.916
+    },
+    {
+      "name": "nirmala ui semilight",
+      "factor": 1.15
+    },
+    {
+      "name": "nsimsun",
+      "factor": 1.119
+    },
+    {
+      "name": "palatino linotype",
+      "factor": 1.067
+    },
+    {
+      "name": "pmingliu-extb",
+      "factor": 1.16
+    },
+    {
+      "name": "sans serif collection",
+      "factor": 0.854
+    },
+    {
+      "name": "segoe mdl2 assets",
+      "factor": 0.858
+    },
+    {
+      "name": "segoe print",
+      "factor": 1.033
+    },
+    {
+      "name": "segoe script",
+      "factor": 1.058
+    },
+    {
+      "name": "segoe ui",
+      "factor": 0.948
+    },
+    {
+      "name": "segoe ui black",
+      "factor": 1.148
+    },
+    {
+      "name": "segoe ui emoji",
+      "factor": 0.924
+    },
+    {
+      "name": "segoe ui historic",
+      "factor": 0.969
+    },
+    {
+      "name": "segoe ui semibold",
+      "factor": 0.965
+    },
+    {
+      "name": "segoe ui semilight",
+      "factor": 1.055
+    },
+    {
+      "name": "segoe ui symbol",
+      "factor": 0.972
+    },
+    {
+      "name": "segoe ui variable",
+      "factor": 0.907
+    },
+    {
+      "name": "simsun",
+      "factor": 1.113
+    },
+    {
+      "name": "simsun-extb",
+      "factor": 1.095
+    },
+    {
+      "name": "sitka banner",
+      "factor": 1.078
+    },
+    {
+      "name": "sitka display",
+      "factor": 0.838
+    },
+    {
+      "name": "sitka heading",
+      "factor": 0.843
+    },
+    {
+      "name": "sitka small",
+      "factor": 1.131
+    },
+    {
+      "name": "sitka subheading",
+      "factor": 0.942
+    },
+    {
+      "name": "sitka text",
+      "factor": 1.044
+    },
+    {
+      "name": "sylfaen",
+      "factor": 0.971
+    },
+    {
+      "name": "symbol",
+      "factor": 0.866
+    },
+    {
+      "name": "tahoma",
+      "factor": 0.962
+    },
+    {
+      "name": "times new roman",
+      "factor": 0.926
+    },
+    {
+      "name": "trebuchet ms",
+      "factor": 0.912
+    },
+    {
+      "name": "verdana",
+      "factor": 1.128
+    },
+    {
+      "name": "webdings",
+      "factor": 0.849
+    },
+    {
+      "name": "wingdings",
+      "factor": 0.864
+    },
+    {
+      "name": "wingdings 2",
+      "factor": 1.093
+    },
+    {
+      "name": "wingdings 3",
+      "factor": 0.861
+    },
+    {
+      "name": "yu gothic",
+      "factor": 1.069
+    },
+    {
+      "name": "yu gothic light",
+      "factor": 1.038
+    },
+    {
+      "name": "yu gothic medium",
+      "factor": 1.161
+    },
+    {
+      "name": "yu gothic ui",
+      "factor": 0.886
+    },
+    {
+      "name": "yu gothic ui light",
+      "factor": 1.093
+    },
+    {
+      "name": "yu gothic ui semibold",
+      "factor": 0.942
+    },
+    {
+      "name": "yu gothic ui semilight",
+      "factor": 0.923
+    }
+  ],
+  "optional": [
+    {
+      "name": "aparajita",
+      "factor": 0.94
+    },
+    {
+      "name": "arabic typesetting",
+      "factor": 1.093
+    },
+    {
+      "name": "arial unicode ms",
+      "factor": 1.047
+    },
+    {
+      "name": "batang",
+      "factor": 0.911
+    },
+    {
+      "name": "calibri",
+      "factor": 0.934
+    },
+    {
+      "name": "century",
+      "factor": 1.078
+    },
+    {
+      "name": "century gothic",
+      "factor": 0.886
+    },
+    {
+      "name": "dengxian",
+      "factor": 0.846
+    },
+    {
+      "name": "dfkai-sb",
+      "factor": 0.946
+    },
+    {
+      "name": "dokchampa",
+      "factor": 1.162
+    },
+    {
+      "name": "estrangelo edessa",
+      "factor": 1.095
+    },
+    {
+      "name": "euphemia",
+      "factor": 1.117
+    },
+    {
+      "name": "fangsong",
+      "factor": 0.942
+    },
+    {
+      "name": "franklin gothic",
+      "factor": 0.942
+    },
+    {
+      "name": "gadugi",
+      "factor": 0.945
+    },
+    {
+      "name": "gautami",
+      "factor": 1.134
+    },
+    {
+      "name": "haettenschweiler",
+      "factor": 0.874
+    },
+    {
+      "name": "helv",
+      "factor": 0.923
+    },
+    {
+      "name": "iskoola pota",
+      "factor": 0.857
+    },
+    {
+      "name": "javanese text",
+      "factor": 1.083
+    },
+    {
+      "name": "kaiti",
+      "factor": 1.145
+    },
+    {
+      "name": "kalinga",
+      "factor": 0.953
+    },
+    {
+      "name": "kartika",
+      "factor": 0.882
+    },
+    {
+      "name": "khmer ui",
+      "factor": 1.137
+    },
+    {
+      "name": "kokila",
+      "factor": 0.919
+    },
+    {
+      "name": "lao ui",
+      "factor": 0.904
+    },
+    {
+      "name": "latha",
+      "factor": 0.839
+    },
+    {
+      "name": "leelawadee",
+      "factor": 0.982
+    },
+    {
+      "name": "leelawadee ui",
+      "factor": 0.992
+    },
+    {
+      "name": "levenim mt",
+      "factor": 1.054
+    },
+    {
+      "name": "mangal",
+      "factor": 1.154
+    },
+    {
+      "name": "meiryo",
+      "factor": 1.165
+    },
+    {
+      "name": "meiryo ui",
+      "factor": 1.081
+    },
+    {
+      "name": "microsoft uighur",
+      "factor": 0.969
+    },
+    {
+      "name": "monotype corsiva",
+      "factor": 0.939
+    },
+    {
+      "name": "ms mincho",
+      "factor": 1.112
+    },
+    {
+      "name": "ms outlook",
+      "factor": 0.921
+    },
+    {
+      "name": "ms pmincho",
+      "factor": 0.925
+    },
+    {
+      "name": "ms reference sans serif",
+      "factor": 0.858
+    },
+    {
+      "name": "ms reference specialty",
+      "factor": 0.958
+    },
+    {
+      "name": "ms ui gothic",
+      "factor": 1.097
+    },
+    {
+      "name": "mt extra",
+      "factor": 0.905
+    },
+    {
+      "name": "myanmar text",
+      "factor": 0.961
+    },
+    {
+      "name": "nyala",
+      "factor": 1.108
+    },
+    {
+      "name": "plantagenet cherokee",
+      "factor": 1.115
+    },
+    {
+      "name": "pmingliu",
+      "factor": 1.125
+    },
+    {
+      "name": "pristina",
+      "factor": 1.023
+    },
+    {
+      "name": "raavi",
+      "factor": 0.826
+    },
+    {
+      "name": "segoe fluent icons",
+      "factor": 1.049
+    },
+    {
+      "name": "segoe ui light",
+      "factor": 0.918
+    },
+    {
+      "name": "shonar bangla",
+      "factor": 1.141
+    },
+    {
+      "name": "shruti",
+      "factor": 1.172
+    },
+    {
+      "name": "simhei",
+      "factor": 1.141
+    },
+    {
+      "name": "simkai",
+      "factor": 1.1
+    },
+    {
+      "name": "small fonts",
+      "factor": 0.849
+    },
+    {
+      "name": "traditional arabic",
+      "factor": 0.893
+    },
+    {
+      "name": "tunga",
+      "factor": 0.825
+    },
+    {
+      "name": "urdu typesetting",
+      "factor": 0.869
+    },
+    {
+      "name": "utsaah",
+      "factor": 1.144
+    },
+    {
+      "name": "vani",
+      "factor": 1.078
+    },
+    {
+      "name": "vijaya",
+      "factor": 0.917
+    },
+    {
+      "name": "vrinda",
+      "factor": 0.985
+    },
+    {
+      "name": "yu mincho",
+      "factor": 0.867
+    }
+  ]
+}

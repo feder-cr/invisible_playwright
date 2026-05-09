@@ -1,0 +1,17 @@
+{
+  "_meta": {
+    "name": "intra_tier | gpu_class",
+    "parents": ["gpu_class"],
+    "child": "intra_tier",
+    "value_type": "str (budget|standard|premium)",
+    "rationale": "Hidden variable catching 'intra-class premium-ness'. Within a gpu_class, users vary in how premium their OTHER components are (RAM, SSD, cores). A mid_range GPU paired with 32 cores + 2TB SSD is a 'premium' mid_range user. Without this var, hwc/screen/storage would be statistically independent given gpu_class — unrealistic (real users pick coherent bundles). Tier distribution biased: integrated_old mostly budget/standard, workstation mostly premium."
+  },
+  "table": {
+    "integrated_old":    [{"value": "budget", "prob": 0.65}, {"value": "standard", "prob": 0.30}, {"value": "premium", "prob": 0.05}],
+    "integrated_modern": [{"value": "budget", "prob": 0.30}, {"value": "standard", "prob": 0.55}, {"value": "premium", "prob": 0.15}],
+    "low_end":           [{"value": "budget", "prob": 0.50}, {"value": "standard", "prob": 0.40}, {"value": "premium", "prob": 0.10}],
+    "mid_range":         [{"value": "budget", "prob": 0.25}, {"value": "standard", "prob": 0.50}, {"value": "premium", "prob": 0.25}],
+    "high_end":          [{"value": "budget", "prob": 0.15}, {"value": "standard", "prob": 0.50}, {"value": "premium", "prob": 0.35}],
+    "workstation":       [{"value": "budget", "prob": 0.10}, {"value": "standard", "prob": 0.40}, {"value": "premium", "prob": 0.50}]
+  }
+}

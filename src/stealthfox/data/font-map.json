@@ -1,0 +1,1846 @@
+{
+  "win11": {
+    "core": [
+      "Arial",
+      "Bahnschrift",
+      "Calibri",
+      "Cambria",
+      "Cambria Math",
+      "Candara",
+      "Comic Sans MS",
+      "Consolas",
+      "Constantia",
+      "Corbel",
+      "Courier New",
+      "Ebrima",
+      "Franklin Gothic Medium",
+      "Gabriola",
+      "Gadugi",
+      "Georgia",
+      "Impact",
+      "Ink Free",
+      "Javanese Text",
+      "Leelawadee UI",
+      "MS UI Gothic",
+      "MV Boli",
+      "Marlett",
+      "Microsoft Himalaya",
+      "Microsoft JhengHei UI",
+      "Microsoft New Tai Lue",
+      "Microsoft PhagsPa",
+      "Microsoft Sans Serif",
+      "Microsoft Tai Le",
+      "Microsoft YaHei UI",
+      "Microsoft Yi Baiti",
+      "Mongolian Baiti",
+      "Myanmar Text",
+      "Palatino Linotype",
+      "Segoe Fluent Icons",
+      "Segoe MDL2 Assets",
+      "Segoe Print",
+      "Segoe Script",
+      "Segoe UI",
+      "Segoe UI Emoji",
+      "Segoe UI Historic",
+      "Segoe UI Symbol",
+      "Segoe UI Variable",
+      "SimSun-ExtB",
+      "Sitka",
+      "Sylfaen",
+      "Symbol",
+      "Tahoma",
+      "Times New Roman",
+      "Trebuchet MS",
+      "Verdana",
+      "Webdings",
+      "Wingdings",
+      "Yu Gothic UI",
+      "宋体",
+      "微軟正黑體",
+      "微软雅黑",
+      "新宋体",
+      "新細明體-ExtB",
+      "游ゴシック",
+      "細明體-ExtB",
+      "細明體_HKSCS-ExtB",
+      "細明體_MSCS-ExtB",
+      "맑은 고딕",
+      "ＭＳ ゴシック",
+      "ＭＳ Ｐゴシック"
+    ],
+    "am": [
+      "Nyala"
+    ],
+    "am-ET": [
+      "Nyala"
+    ],
+    "ar": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "ar-AE": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "ar-BH": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "ar-DJ": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "ar-DZ": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "ar-EG": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "ar-ER": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "ar-IL": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "ar-IQ": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "ar-JO": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "ar-KM": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "ar-KW": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "ar-LB": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "ar-LY": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "ar-MA": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "ar-MR": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "ar-OM": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "ar-PS": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "ar-QA": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "ar-SA": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "ar-SD": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "ar-SO": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "ar-SS": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "ar-SY": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "ar-TD": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "ar-TN": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "ar-YE": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "arc-Syrc": [
+      "Estrangelo Edessa"
+    ],
+    "arz-Arab": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "as": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "as-IN": [
+      "Shonar Bangla",
+      "Vrinda"
+    ],
+    "bh-Deva": [
+      "Aparajita",
+      "Kokila",
+      "Mangal",
+      "Sanskrit Text",
+      "Utsaah"
+    ],
+    "bn": [
+      "Shonar Bangla",
+      "Vrinda"
+    ],
+    "bn-BD": [
+      "Shonar Bangla",
+      "Vrinda"
+    ],
+    "bn-IN": [
+      "Shonar Bangla",
+      "Vrinda"
+    ],
+    "bpy-Beng": [
+      "Shonar Bangla",
+      "Vrinda"
+    ],
+    "brx": [
+      "Aparajita",
+      "Kokila",
+      "Mangal",
+      "Sanskrit Text",
+      "Utsaah"
+    ],
+    "brx-Deva": [
+      "Aparajita",
+      "Kokila",
+      "Mangal",
+      "Sanskrit Text",
+      "Utsaah"
+    ],
+    "brx-IN": [
+      "Aparajita",
+      "Kokila",
+      "Mangal",
+      "Sanskrit Text",
+      "Utsaah"
+    ],
+    "byn": [
+      "Nyala"
+    ],
+    "byn-ER": [
+      "Nyala"
+    ],
+    "byn-Ethi": [
+      "Nyala"
+    ],
+    "chr-Cher": [
+      "Plantagenet Cherokee"
+    ],
+    "chr-Cher-US": [
+      "Plantagenet Cherokee"
+    ],
+    "ckb-Arab": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "cmn-Hans": [
+      "仿宋",
+      "楷体",
+      "等线",
+      "黑体"
+    ],
+    "cmn-Hant": [
+      "DFKai-SB",
+      "新細明體",
+      "細明體",
+      "細明體_HKSCS",
+      "細明體_MSCS"
+    ],
+    "eu": [
+      "Arial Nova",
+      "Georgia Pro",
+      "Gill Sans Nova",
+      "Neue Haas Grotesk Text Pro",
+      "Rockwell Nova",
+      "Verdana Pro"
+    ],
+    "fa": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "fa-AF": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "fa-IR": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "gan-Hans": [
+      "仿宋",
+      "楷体",
+      "等线",
+      "黑体"
+    ],
+    "glk-Arab": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "gu": [
+      "Shruti"
+    ],
+    "gu-IN": [
+      "Shruti"
+    ],
+    "ha-Arab": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "hak-Hans": [
+      "仿宋",
+      "楷体",
+      "等线",
+      "黑体"
+    ],
+    "hak-Hant": [
+      "DFKai-SB",
+      "新細明體",
+      "細明體",
+      "細明體_HKSCS",
+      "細明體_MSCS"
+    ],
+    "he": [
+      "Aharoni",
+      "David",
+      "FrankRuehl",
+      "Gisha",
+      "Levenim MT",
+      "Miriam",
+      "Miriam Fixed",
+      "Narkisim",
+      "Rod"
+    ],
+    "he-IL": [
+      "Aharoni",
+      "David",
+      "FrankRuehl",
+      "Gisha",
+      "Levenim MT",
+      "Miriam",
+      "Miriam Fixed",
+      "Narkisim",
+      "Rod"
+    ],
+    "hi": [
+      "Aparajita",
+      "Kokila",
+      "Mangal",
+      "Sanskrit Text",
+      "Utsaah"
+    ],
+    "hi-IN": [
+      "Aparajita",
+      "Kokila",
+      "Mangal",
+      "Sanskrit Text",
+      "Utsaah"
+    ],
+    "iu-Cans": [
+      "Euphemia"
+    ],
+    "iu-Cans-CA": [
+      "Euphemia"
+    ],
+    "ja": [
+      "BIZ UDPゴシック",
+      "BIZ UDP明朝",
+      "BIZ UDゴシック",
+      "BIZ UD明朝",
+      "Meiryo UI",
+      "UD デジタル 教科書体 N",
+      "UD デジタル 教科書体 NK",
+      "UD デジタル 教科書体 NP",
+      "メイリオ",
+      "游明朝",
+      "ＭＳ 明朝",
+      "ＭＳ Ｐ明朝"
+    ],
+    "ja-JP": [
+      "BIZ UDPゴシック",
+      "BIZ UDP明朝",
+      "BIZ UDゴシック",
+      "BIZ UD明朝",
+      "Meiryo UI",
+      "UD デジタル 教科書体 N",
+      "UD デジタル 教科書体 NK",
+      "UD デジタル 教科書体 NP",
+      "メイリオ",
+      "游明朝",
+      "ＭＳ 明朝",
+      "ＭＳ Ｐ明朝"
+    ],
+    "km": [
+      "DaunPenh",
+      "Khmer UI",
+      "MoolBoran"
+    ],
+    "km-KH": [
+      "DaunPenh",
+      "Khmer UI",
+      "MoolBoran"
+    ],
+    "kn": [
+      "Tunga"
+    ],
+    "kn-IN": [
+      "Tunga"
+    ],
+    "ko": [
+      "굴림",
+      "굴림체",
+      "궁서",
+      "궁서체",
+      "돋움",
+      "돋움체",
+      "바탕",
+      "바탕체"
+    ],
+    "ko-KR": [
+      "굴림",
+      "굴림체",
+      "궁서",
+      "궁서체",
+      "돋움",
+      "돋움체",
+      "바탕",
+      "바탕체"
+    ],
+    "ks-Arab": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "ks-Arab-IN": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "ks-Deva": [
+      "Aparajita",
+      "Kokila",
+      "Mangal",
+      "Sanskrit Text",
+      "Utsaah"
+    ],
+    "ku-Arab": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "ku-Arab-IQ": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "lo": [
+      "DokChampa",
+      "Lao UI"
+    ],
+    "lo-LA": [
+      "DokChampa",
+      "Lao UI"
+    ],
+    "lzh-Hant": [
+      "DFKai-SB",
+      "新細明體",
+      "細明體",
+      "細明體_HKSCS",
+      "細明體_MSCS"
+    ],
+    "mai": [
+      "Aparajita",
+      "Kokila",
+      "Mangal",
+      "Sanskrit Text",
+      "Utsaah"
+    ],
+    "ml": [
+      "Kartika"
+    ],
+    "ml-IN": [
+      "Kartika"
+    ],
+    "mr": [
+      "Aparajita",
+      "Kokila",
+      "Mangal",
+      "Sanskrit Text",
+      "Utsaah"
+    ],
+    "mr-IN": [
+      "Aparajita",
+      "Kokila",
+      "Mangal",
+      "Sanskrit Text",
+      "Utsaah"
+    ],
+    "mzn-Arab": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "ne": [
+      "Aparajita",
+      "Kokila",
+      "Mangal",
+      "Sanskrit Text",
+      "Utsaah"
+    ],
+    "ne-IN": [
+      "Aparajita",
+      "Kokila",
+      "Mangal",
+      "Sanskrit Text",
+      "Utsaah"
+    ],
+    "ne-NP": [
+      "Aparajita",
+      "Kokila",
+      "Mangal",
+      "Sanskrit Text",
+      "Utsaah"
+    ],
+    "new-Deva": [
+      "Aparajita",
+      "Kokila",
+      "Mangal",
+      "Sanskrit Text",
+      "Utsaah"
+    ],
+    "or": [
+      "Kalinga"
+    ],
+    "or-IN": [
+      "Kalinga"
+    ],
+    "pa": [
+      "Raavi"
+    ],
+    "pa-Arab": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "pa-Arab-PK": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "pa-Guru": [
+      "Raavi"
+    ],
+    "pa-IN": [
+      "Raavi"
+    ],
+    "pi-Deva": [
+      "Aparajita",
+      "Kokila",
+      "Mangal",
+      "Sanskrit Text",
+      "Utsaah"
+    ],
+    "pnb-Arab": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "prs": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "prs-AF": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "prs-Arab": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "ps": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "ps-AF": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "sa": [
+      "Aparajita",
+      "Kokila",
+      "Mangal",
+      "Sanskrit Text",
+      "Utsaah"
+    ],
+    "sa-Deva": [
+      "Aparajita",
+      "Kokila",
+      "Mangal",
+      "Sanskrit Text",
+      "Utsaah"
+    ],
+    "sa-IN": [
+      "Aparajita",
+      "Kokila",
+      "Mangal",
+      "Sanskrit Text",
+      "Utsaah"
+    ],
+    "sd-Arab": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "sd-Arab-PK": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "si": [
+      "Iskoola Pota"
+    ],
+    "si-LK": [
+      "Iskoola Pota"
+    ],
+    "syr": [
+      "Estrangelo Edessa"
+    ],
+    "syr-SY": [
+      "Estrangelo Edessa"
+    ],
+    "syr-Syrc": [
+      "Estrangelo Edessa"
+    ],
+    "ta": [
+      "Latha",
+      "Vijaya"
+    ],
+    "ta-IN": [
+      "Latha",
+      "Vijaya"
+    ],
+    "ta-LK": [
+      "Latha",
+      "Vijaya"
+    ],
+    "ta-MY": [
+      "Latha",
+      "Vijaya"
+    ],
+    "ta-SG": [
+      "Latha",
+      "Vijaya"
+    ],
+    "te": [
+      "Gautami",
+      "Vani"
+    ],
+    "te-IN": [
+      "Gautami",
+      "Vani"
+    ],
+    "th": [
+      "Angsana New",
+      "AngsanaUPC",
+      "Browallia New",
+      "BrowalliaUPC",
+      "Cordia New",
+      "CordiaUPC",
+      "DilleniaUPC",
+      "EucrosiaUPC",
+      "FreesiaUPC",
+      "IrisUPC",
+      "JasmineUPC",
+      "KodchiangUPC",
+      "Leelawadee",
+      "LilyUPC"
+    ],
+    "th-TH": [
+      "Angsana New",
+      "AngsanaUPC",
+      "Browallia New",
+      "BrowalliaUPC",
+      "Cordia New",
+      "CordiaUPC",
+      "DilleniaUPC",
+      "EucrosiaUPC",
+      "FreesiaUPC",
+      "IrisUPC",
+      "JasmineUPC",
+      "KodchiangUPC",
+      "Leelawadee",
+      "LilyUPC"
+    ],
+    "ti": [
+      "Nyala"
+    ],
+    "ti-ER": [
+      "Nyala"
+    ],
+    "ti-ET": [
+      "Nyala"
+    ],
+    "tig": [
+      "Nyala"
+    ],
+    "tig-ER": [
+      "Nyala"
+    ],
+    "tig-Ethi": [
+      "Nyala"
+    ],
+    "tk-Arab": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "ug": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "ug-Arab": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "ug-CN": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "ur": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "ur-IN": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "ur-PK": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "uz-Arab": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "uz-Arab-AF": [
+      "Aldhabi",
+      "Andalus",
+      "Arabic Typesetting",
+      "Microsoft Uighur",
+      "Sakkal Majalla",
+      "Simplified Arabic",
+      "Simplified Arabic Fixed",
+      "Traditional Arabic",
+      "Urdu Typesetting"
+    ],
+    "ve-Ethi": [
+      "Nyala"
+    ],
+    "wal": [
+      "Nyala"
+    ],
+    "wal-ET": [
+      "Nyala"
+    ],
+    "wal-Ethi": [
+      "Nyala"
+    ],
+    "wuu-Hans": [
+      "仿宋",
+      "楷体",
+      "等线",
+      "黑体"
+    ],
+    "yi": [
+      "Aharoni",
+      "David",
+      "FrankRuehl",
+      "Gisha",
+      "Levenim MT",
+      "Miriam",
+      "Miriam Fixed",
+      "Narkisim",
+      "Rod"
+    ],
+    "yue-Hans": [
+      "仿宋",
+      "楷体",
+      "等线",
+      "黑体"
+    ],
+    "zh-CN": [
+      "仿宋",
+      "楷体",
+      "等线",
+      "黑体"
+    ],
+    "zh-HK": [
+      "DFKai-SB",
+      "新細明體",
+      "細明體",
+      "細明體_HKSCS",
+      "細明體_MSCS"
+    ],
+    "zh-Hans": [
+      "仿宋",
+      "楷体",
+      "等线",
+      "黑体"
+    ],
+    "zh-Hant": [
+      "DFKai-SB",
+      "新細明體",
+      "細明體",
+      "細明體_HKSCS",
+      "細明體_MSCS"
+    ],
+    "zh-MO": [
+      "DFKai-SB",
+      "新細明體",
+      "細明體",
+      "細明體_HKSCS",
+      "細明體_MSCS"
+    ],
+    "zh-SG": [
+      "仿宋",
+      "楷体",
+      "等线",
+      "黑体"
+    ],
+    "zh-TW": [
+      "DFKai-SB",
+      "新細明體",
+      "細明體",
+      "細明體_HKSCS",
+      "細明體_MSCS"
+    ],
+    "zh-gan-Hans": [
+      "仿宋",
+      "楷体",
+      "等线",
+      "黑体"
+    ],
+    "zh-hak-Hans": [
+      "仿宋",
+      "楷体",
+      "等线",
+      "黑体"
+    ],
+    "zh-hak-Hant": [
+      "DFKai-SB",
+      "新細明體",
+      "細明體",
+      "細明體_HKSCS",
+      "細明體_MSCS"
+    ],
+    "zh-lzh-Hant": [
+      "DFKai-SB",
+      "新細明體",
+      "細明體",
+      "細明體_HKSCS",
+      "細明體_MSCS"
+    ],
+    "zh-wuu-Hans": [
+      "仿宋",
+      "楷体",
+      "等线",
+      "黑体"
+    ],
+    "zh-yue-Hans": [
+      "仿宋",
+      "楷体",
+      "等线",
+      "黑体"
+    ],
+    "zh-yue-Hant": [
+      "DFKai-SB",
+      "新細明體",
+      "細明體",
+      "細明體_HKSCS",
+      "細明體_MSCS"
+    ]
+  },
+  "ubuntu": {
+    "core": [
+      "C059",
+      "D050000L",
+      "DejaVu Sans",
+      "DejaVu Sans Mono",
+      "DejaVu Serif",
+      "Droid Sans Fallback",
+      "FreeMono",
+      "FreeSans",
+      "FreeSerif",
+      "Liberation Mono",
+      "Liberation Sans",
+      "Liberation Sans Narrow",
+      "Liberation Serif",
+      "Nimbus Mono PS",
+      "Nimbus Roman",
+      "Nimbus Sans",
+      "Nimbus Sans Narrow",
+      "Noto Color Emoji",
+      "Noto Kufi Arabic",
+      "Noto Looped Lao",
+      "Noto Looped Thai",
+      "Noto Mono",
+      "Noto Music",
+      "Noto Naskh Arabic",
+      "Noto Nastaliq Urdu",
+      "Noto Rashi Hebrew",
+      "Noto Sans",
+      "Noto Sans Adlam",
+      "Noto Sans Adlam Unjoined",
+      "Noto Sans Anatolian Hieroglyphs",
+      "Noto Sans Arabic",
+      "Noto Sans Armenian",
+      "Noto Sans Avestan",
+      "Noto Sans Balinese",
+      "Noto Sans Bamum",
+      "Noto Sans Bassa Vah",
+      "Noto Sans Batak",
+      "Noto Sans Bengali",
+      "Noto Sans Bhaiksuki",
+      "Noto Sans Brahmi",
+      "Noto Sans Buginese",
+      "Noto Sans Buhid",
+      "Noto Sans CJK HK",
+      "Noto Sans CJK JP",
+      "Noto Sans CJK KR",
+      "Noto Sans CJK SC",
+      "Noto Sans CJK TC",
+      "Noto Sans Canadian Aboriginal",
+      "Noto Sans Carian",
+      "Noto Sans Caucasian Albanian",
+      "Noto Sans Chakma",
+      "Noto Sans Cham",
+      "Noto Sans Cherokee",
+      "Noto Sans Coptic",
+      "Noto Sans Cuneiform",
+      "Noto Sans Cypriot",
+      "Noto Sans Deseret",
+      "Noto Sans Devanagari",
+      "Noto Sans Display",
+      "Noto Sans Duployan",
+      "Noto Sans Egyptian Hieroglyphs",
+      "Noto Sans Elbasan",
+      "Noto Sans Elymaic",
+      "Noto Sans Ethiopic",
+      "Noto Sans Georgian",
+      "Noto Sans Glagolitic",
+      "Noto Sans Gothic",
+      "Noto Sans Grantha",
+      "Noto Sans Gujarati",
+      "Noto Sans Gunjala Gondi",
+      "Noto Sans Gurmukhi",
+      "Noto Sans Hanifi Rohingya",
+      "Noto Sans Hanunoo",
+      "Noto Sans Hatran",
+      "Noto Sans Hebrew",
+      "Noto Sans Imperial Aramaic",
+      "Noto Sans Indic Siyaq Numbers",
+      "Noto Sans Inscriptional Pahlavi",
+      "Noto Sans Inscriptional Parthian",
+      "Noto Sans Javanese",
+      "Noto Sans Kaithi",
+      "Noto Sans Kannada",
+      "Noto Sans Kayah Li",
+      "Noto Sans Kharoshthi",
+      "Noto Sans Khmer",
+      "Noto Sans Khojki",
+      "Noto Sans Khudawadi",
+      "Noto Sans Lao",
+      "Noto Sans Lepcha",
+      "Noto Sans Limbu",
+      "Noto Sans Linear A",
+      "Noto Sans Linear B",
+      "Noto Sans Lisu",
+      "Noto Sans Lycian",
+      "Noto Sans Lydian",
+      "Noto Sans Mahajani",
+      "Noto Sans Malayalam",
+      "Noto Sans Mandaic",
+      "Noto Sans Manichaean",
+      "Noto Sans Marchen",
+      "Noto Sans Masaram Gondi",
+      "Noto Sans Math",
+      "Noto Sans Mayan Numerals",
+      "Noto Sans Medefaidrin",
+      "Noto Sans Meetei Mayek",
+      "Noto Sans Mende Kikakui",
+      "Noto Sans Meroitic",
+      "Noto Sans Miao",
+      "Noto Sans Modi",
+      "Noto Sans Mongolian",
+      "Noto Sans Mono",
+      "Noto Sans Mono CJK HK",
+      "Noto Sans Mono CJK JP",
+      "Noto Sans Mono CJK KR",
+      "Noto Sans Mono CJK SC",
+      "Noto Sans Mono CJK TC",
+      "Noto Sans Mro",
+      "Noto Sans Multani",
+      "Noto Sans Myanmar",
+      "Noto Sans NKo",
+      "Noto Sans Nabataean",
+      "Noto Sans New Tai Lue",
+      "Noto Sans Newa",
+      "Noto Sans Nushu",
+      "Noto Sans Ogham",
+      "Noto Sans Ol Chiki",
+      "Noto Sans Old Hungarian",
+      "Noto Sans Old Italic",
+      "Noto Sans Old North Arabian",
+      "Noto Sans Old Permic",
+      "Noto Sans Old Persian",
+      "Noto Sans Old Sogdian",
+      "Noto Sans Old South Arabian",
+      "Noto Sans Old Turkic",
+      "Noto Sans Oriya",
+      "Noto Sans Osage",
+      "Noto Sans Osmanya",
+      "Noto Sans Pahawh Hmong",
+      "Noto Sans Palmyrene",
+      "Noto Sans Pau Cin Hau",
+      "Noto Sans PhagsPa",
+      "Noto Sans Phoenician",
+      "Noto Sans Psalter Pahlavi",
+      "Noto Sans Rejang",
+      "Noto Sans Runic",
+      "Noto Sans Samaritan",
+      "Noto Sans Saurashtra",
+      "Noto Sans Sharada",
+      "Noto Sans Shavian",
+      "Noto Sans Siddham",
+      "Noto Sans SignWriting",
+      "Noto Sans Sinhala",
+      "Noto Sans Sogdian",
+      "Noto Sans Sora Sompeng",
+      "Noto Sans Soyombo",
+      "Noto Sans Sundanese",
+      "Noto Sans Syloti Nagri",
+      "Noto Sans Symbols",
+      "Noto Sans Symbols2",
+      "Noto Sans Syriac",
+      "Noto Sans Tagalog",
+      "Noto Sans Tagbanwa",
+      "Noto Sans Tai Le",
+      "Noto Sans Tai Tham",
+      "Noto Sans Tai Viet",
+      "Noto Sans Takri",
+      "Noto Sans Tamil",
+      "Noto Sans Tamil Supplement",
+      "Noto Sans Telugu",
+      "Noto Sans Thaana",
+      "Noto Sans Thai",
+      "Noto Sans Tifinagh",
+      "Noto Sans Tifinagh APT",
+      "Noto Sans Tifinagh Adrar",
+      "Noto Sans Tifinagh Agraw Imazighen",
+      "Noto Sans Tifinagh Ahaggar",
+      "Noto Sans Tifinagh Air",
+      "Noto Sans Tifinagh Azawagh",
+      "Noto Sans Tifinagh Ghat",
+      "Noto Sans Tifinagh Hawad",
+      "Noto Sans Tifinagh Rhissa Ixa",
+      "Noto Sans Tifinagh SIL",
+      "Noto Sans Tifinagh Tawellemmet",
+      "Noto Sans Tirhuta",
+      "Noto Sans Ugaritic",
+      "Noto Sans Vai",
+      "Noto Sans Wancho",
+      "Noto Sans Warang Citi",
+      "Noto Sans Yi",
+      "Noto Sans Zanabazar Square",
+      "Noto Serif",
+      "Noto Serif Ahom",
+      "Noto Serif Armenian",
+      "Noto Serif Balinese",
+      "Noto Serif Bengali",
+      "Noto Serif CJK HK",
+      "Noto Serif CJK JP",
+      "Noto Serif CJK KR",
+      "Noto Serif CJK SC",
+      "Noto Serif CJK TC",
+      "Noto Serif Devanagari",
+      "Noto Serif Display",
+      "Noto Serif Dogra",
+      "Noto Serif Ethiopic",
+      "Noto Serif Georgian",
+      "Noto Serif Grantha",
+      "Noto Serif Gujarati",
+      "Noto Serif Gurmukhi",
+      "Noto Serif Hebrew",
+      "Noto Serif Hmong Nyiakeng",
+      "Noto Serif Kannada",
+      "Noto Serif Khmer",
+      "Noto Serif Khojki",
+      "Noto Serif Lao",
+      "Noto Serif Malayalam",
+      "Noto Serif Myanmar",
+      "Noto Serif Sinhala",
+      "Noto Serif Tamil",
+      "Noto Serif Tamil Slanted",
+      "Noto Serif Tangut",
+      "Noto Serif Telugu",
+      "Noto Serif Thai",
+      "Noto Serif Tibetan",
+      "Noto Serif Yezidi",
+      "Noto Traditional Nushu",
+      "OpenSymbol",
+      "P052",
+      "Standard Symbols PS",
+      "URW Bookman",
+      "URW Gothic",
+      "Ubuntu",
+      "Ubuntu Mono",
+      "Ubuntu Sans",
+      "Ubuntu Sans Mono",
+      "Z003"
+    ],
+    "am": [
+      "Abyssinica SIL"
+    ],
+    "ar": [
+      "KacstArt",
+      "KacstBook",
+      "KacstDecorative",
+      "KacstDigital",
+      "KacstFarsi",
+      "KacstLetter",
+      "KacstNaskh",
+      "KacstOffice",
+      "KacstOne",
+      "KacstPen",
+      "KacstPoster",
+      "KacstQurn",
+      "KacstScreen",
+      "KacstTitle",
+      "KacstTitleL",
+      "mry_KacstQurn"
+    ],
+    "as": [
+      "Lohit Assamese"
+    ],
+    "bn": [
+      "Jamrul",
+      "Likhan",
+      "Lohit Bengali",
+      "Mitra ",
+      "Mukti",
+      "অনি"
+    ],
+    "gu": [
+      "Kalapi",
+      "Lohit Gujarati",
+      "Rasa",
+      "Rekha",
+      "Samyak Gujarati",
+      "Samyak Malayalam",
+      "Samyak Tamil",
+      "Yrsa",
+      "aakar",
+      "padmmaa"
+    ],
+    "hi": [
+      "Annapurna SIL",
+      "Chandas",
+      "Lohit Devanagari",
+      "Nakula",
+      "Pagul",
+      "Sahadeva",
+      "Samanata",
+      "Samyak Devanagari",
+      "Sarai",
+      "गार्गी",
+      "नालिमाटी"
+    ],
+    "km": [
+      "Khmer OS",
+      "Khmer OS Battambang",
+      "Khmer OS Bokor",
+      "Khmer OS Content",
+      "Khmer OS Fasthand",
+      "Khmer OS Freehand",
+      "Khmer OS Metal Chrieng",
+      "Khmer OS Muol",
+      "Khmer OS Muol Light",
+      "Khmer OS Muol Pali",
+      "Khmer OS Siemreap",
+      "Khmer OS System"
+    ],
+    "kn": [
+      "Gubbi",
+      "Lohit Kannada",
+      "Navilu"
+    ],
+    "lo": [
+      "Phetsarath OT"
+    ],
+    "ml": [
+      "AnjaliOldLipi",
+      "Chilanka",
+      "Dyuthi",
+      "Gayathri",
+      "Karumbi",
+      "Keraleeyam",
+      "Lohit Malayalam",
+      "Manjari",
+      "Meera",
+      "Rachana",
+      "RaghuMalayalamSans",
+      "Samyak Gujarati",
+      "Samyak Malayalam",
+      "Samyak Tamil",
+      "Suruma",
+      "Uroob"
+    ],
+    "my": [
+      "Padauk",
+      "Padauk Book"
+    ],
+    "ne": [
+      "Annapurna SIL"
+    ],
+    "or": [
+      "Lohit Odia",
+      "ori1Uni"
+    ],
+    "pa": [
+      "Lohit Gurmukhi",
+      "Saab"
+    ],
+    "si": [
+      "LKLUG"
+    ],
+    "ta": [
+      "Lohit Tamil",
+      "Lohit Tamil Classical",
+      "Samyak Gujarati",
+      "Samyak Malayalam",
+      "Samyak Tamil"
+    ],
+    "te": [
+      "Dhurjati",
+      "Gidugu",
+      "Gurajada",
+      "LakkiReddy",
+      "Lohit Telugu",
+      "Mallanna",
+      "Mandali",
+      "NATS",
+      "NTR",
+      "Peddana",
+      "Ponnala",
+      "Pothana2000",
+      "Potti Sreeramulu",
+      "Ramabhadra",
+      "Ramaraja",
+      "RaviPrakash",
+      "Sree Krushnadevaraya",
+      "Suranna",
+      "Suravaram",
+      "Syamala Ramana",
+      "TenaliRamakrishna",
+      "Timmana",
+      "Vemana2000"
+    ],
+    "th": [
+      "Garuda",
+      "Kinnari",
+      "Laksaman",
+      "Loma",
+      "Norasi",
+      "Purisa",
+      "Sawasdee",
+      "Tlwg Mono",
+      "Tlwg Typewriter",
+      "Tlwg Typist",
+      "Tlwg Typo",
+      "Umpush",
+      "Waree"
+    ]
+  },
+  "extras": {
+    "core": [
+      "Abadi MT Condensed Light",
+      "Adobe Caslon Pro",
+      "Adobe Garamond Pro",
+      "Agency FB",
+      "Aharoni",
+      "Algerian",
+      "Angsana New",
+      "AngsanaUPC",
+      "Arial MT",
+      "Baskerville Old Face",
+      "Bauhaus 93",
+      "Bell MT",
+      "Berlin Sans FB",
+      "Bernard MT Condensed",
+      "Bitstream Charter",
+      "Bitstream Vera Sans Mono",
+      "Blackadder ITC",
+      "Bodoni MT",
+      "Bodoni MT Poster Compressed",
+      "Book Antiqua",
+      "Bookman Old Style",
+      "Bookshelf Symbol 7",
+      "Bradley Hand ITC",
+      "Britannic Bold",
+      "Broadway",
+      "Browallia New",
+      "BrowalliaUPC",
+      "Californian FB",
+      "Calisto MT",
+      "Castellar",
+      "Centaur",
+      "Century",
+      "Century Gothic",
+      "Century Schoolbook",
+      "Chiller",
+      "Cochin",
+      "Colonna MT",
+      "Cooper Black",
+      "Copperplate",
+      "Copperplate Gothic",
+      "Copperplate Gothic Bold",
+      "Copperplate Gothic Light",
+      "Cordia New",
+      "CordiaUPC",
+      "Courier",
+      "Curlz MT",
+      "David",
+      "Edwardian Script ITC",
+      "Elephant",
+      "Engravers MT",
+      "EngraversGothic BT",
+      "Eras Bold ITC",
+      "Eras Demi ITC",
+      "Eras Light ITC",
+      "Eras Medium ITC",
+      "EucrosiaUPC",
+      "Eurostile",
+      "Felix Titling",
+      "Footlight MT Light",
+      "Forte",
+      "Forum",
+      "Franklin Gothic",
+      "FreesiaUPC",
+      "Freestyle Script",
+      "French Script MT",
+      "Futura",
+      "Futura Condensed",
+      "Geo",
+      "Gigi",
+      "Gill Sans",
+      "Gill Sans MT",
+      "Gill Sans MT Condensed",
+      "Gill Sans MT Ext Condensed Bold",
+      "Gill Sans Ultra",
+      "Gill Sans Ultra Bold",
+      "Gill Sans Ultra Bold Condensed",
+      "Gloucester MT Extra Condensed",
+      "Goudy Old Style",
+      "Goudy Stout",
+      "Graduate",
+      "Haettenschweiler",
+      "Harlow Solid Italic",
+      "Harrington",
+      "Helvetica",
+      "Helvetica Light",
+      "High Tower Text",
+      "Hoefler Text",
+      "Imprint MT Shadow",
+      "Informal Roman",
+      "IrisUPC",
+      "Japan",
+      "JasmineUPC",
+      "Jokerman",
+      "Juice ITC",
+      "Kaufmann BT",
+      "KodchiangUPC",
+      "Kristen ITC",
+      "Kunstler Script",
+      "Levenim MT",
+      "LilyUPC",
+      "Lucida Bright",
+      "Lucida Console",
+      "Lucida Fax",
+      "Lucida Sans",
+      "Lucida Sans Typewriter",
+      "Lucida Sans Unicode",
+      "MS Outlook",
+      "MS Reference Sans Serif",
+      "MS Reference Specialty",
+      "MT Extra",
+      "Maiandra GD",
+      "Matura MT Script Capitals",
+      "Metal",
+      "Minion Pro",
+      "Mistral",
+      "Modern No. 20",
+      "Monotype Corsiva",
+      "Myriad Pro",
+      "Niagara Engraved",
+      "Niagara Solid",
+      "OCR A Extended",
+      "Old English Text MT",
+      "Onyx",
+      "Optima",
+      "Palace Script MT",
+      "Parchment",
+      "Perpetua",
+      "Playbill",
+      "Poor Richard",
+      "Pristina",
+      "Rage Italic",
+      "Ravie",
+      "Rockwell Condensed",
+      "Rockwell Extra",
+      "Rockwell Extra Bold",
+      "Script MT",
+      "Script MT Bold",
+      "Segoe Script",
+      "Segoe UI",
+      "Showcard Gothic",
+      "Simplified Arabic",
+      "Sindbad",
+      "Skia",
+      "Snap ITC",
+      "Stencil",
+      "Tempus Sans ITC",
+      "Times",
+      "Times New Roman",
+      "Traditional Arabic",
+      "Trajan Pro",
+      "Tw Cen MT",
+      "Tw Cen MT Condensed",
+      "Tw Cen MT Condensed Extra Bold",
+      "TypoUpright BT",
+      "Viner Hand ITC",
+      "Vladimir Script",
+      "Wide Latin"
+    ]
+  }
+}

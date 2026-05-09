@@ -1,0 +1,17 @@
+{
+  "_meta": {
+    "name": "audio (joint: sample_rate, output_latency_ms, max_channel_count)",
+    "parents": [],
+    "child": "audio",
+    "source": "Curated from common Windows WASAPI/DirectSound configs on FF desktop"
+  },
+  "table": [
+    {"value": {"rate": 44100, "latency": 40, "channels": 2}, "prob": 0.20},
+    {"value": {"rate": 48000, "latency": 30, "channels": 2}, "prob": 0.25},
+    {"value": {"rate": 48000, "latency": 20, "channels": 2}, "prob": 0.15},
+    {"value": {"rate": 48000, "latency": 40, "channels": 6}, "prob": 0.08},
+    {"value": {"rate": 48000, "latency": 60, "channels": 2}, "prob": 0.12},
+    {"value": {"rate": 44100, "latency": 50, "channels": 2}, "prob": 0.10},
+    {"value": {"rate": 48000, "latency": 25, "channels": 2}, "prob": 0.10}
+  ]
+}

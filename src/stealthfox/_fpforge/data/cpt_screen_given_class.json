@@ -1,0 +1,54 @@
+{
+  "_meta": {
+    "name": "screen | gpu_class",
+    "parents": ["gpu_class"],
+    "child": "screen",
+    "value_shape": {"w": "int css px", "h": "int css px", "dpr": "float", "aw": "availWidth", "ah": "availHeight"},
+    "source": "Curated Windows desktop/laptop resolutions. Restricted to width >= 1920 to avoid FP Pro's server-side screen_resolution normalization (FP Pro sorts non-standard landscape resolutions like 1536x864 into [smaller, larger] order in raw_device_attributes.screen_resolution, appearing flipped vs our spoof). All retained resolutions are common and NOT normalized by FP Pro."
+  },
+  "table": {
+    "integrated_old": [
+      {"value": {"w": 1920, "h": 1080, "dpr": 1.0, "aw": 1920, "ah": 1040}, "prob": 0.90},
+      {"value": {"w": 1920, "h": 1200, "dpr": 1.0, "aw": 1920, "ah": 1160}, "prob": 0.10}
+    ],
+    "integrated_modern": [
+      {"value": {"w": 1920, "h": 1080, "dpr": 1.0, "aw": 1920, "ah": 1040}, "prob": 0.60},
+      {"value": {"w": 1920, "h": 1080, "dpr": 1.25, "aw": 1920, "ah": 1040}, "prob": 0.18},
+      {"value": {"w": 2560, "h": 1440, "dpr": 1.0, "aw": 2560, "ah": 1400}, "prob": 0.10},
+      {"value": {"w": 1920, "h": 1200, "dpr": 1.0, "aw": 1920, "ah": 1160}, "prob": 0.08},
+      {"value": {"w": 2560, "h": 1600, "dpr": 1.25, "aw": 2560, "ah": 1560}, "prob": 0.04}
+    ],
+    "low_end": [
+      {"value": {"w": 1920, "h": 1080, "dpr": 1.0, "aw": 1920, "ah": 1040}, "prob": 0.70},
+      {"value": {"w": 2560, "h": 1440, "dpr": 1.0, "aw": 2560, "ah": 1400}, "prob": 0.20},
+      {"value": {"w": 1920, "h": 1200, "dpr": 1.0, "aw": 1920, "ah": 1160}, "prob": 0.10}
+    ],
+    "mid_range": [
+      {"value": {"w": 1920, "h": 1080, "dpr": 1.0, "aw": 1920, "ah": 1040}, "prob": 0.50},
+      {"value": {"w": 2560, "h": 1440, "dpr": 1.0, "aw": 2560, "ah": 1400}, "prob": 0.25},
+      {"value": {"w": 1920, "h": 1080, "dpr": 1.25, "aw": 1920, "ah": 1040}, "prob": 0.08},
+      {"value": {"w": 2560, "h": 1440, "dpr": 1.25, "aw": 2560, "ah": 1400}, "prob": 0.05},
+      {"value": {"w": 3840, "h": 2160, "dpr": 1.0, "aw": 3840, "ah": 2120}, "prob": 0.04},
+      {"value": {"w": 3840, "h": 2160, "dpr": 1.5, "aw": 3840, "ah": 2120}, "prob": 0.04},
+      {"value": {"w": 2560, "h": 1080, "dpr": 1.0, "aw": 2560, "ah": 1040}, "prob": 0.04}
+    ],
+    "high_end": [
+      {"value": {"w": 1920, "h": 1080, "dpr": 1.0, "aw": 1920, "ah": 1040}, "prob": 0.25},
+      {"value": {"w": 2560, "h": 1440, "dpr": 1.0, "aw": 2560, "ah": 1400}, "prob": 0.30},
+      {"value": {"w": 3840, "h": 2160, "dpr": 1.0, "aw": 3840, "ah": 2120}, "prob": 0.15},
+      {"value": {"w": 3840, "h": 2160, "dpr": 1.5, "aw": 3840, "ah": 2120}, "prob": 0.10},
+      {"value": {"w": 3440, "h": 1440, "dpr": 1.0, "aw": 3440, "ah": 1400}, "prob": 0.08},
+      {"value": {"w": 2560, "h": 1440, "dpr": 1.25, "aw": 2560, "ah": 1400}, "prob": 0.05},
+      {"value": {"w": 5120, "h": 1440, "dpr": 1.0, "aw": 5120, "ah": 1400}, "prob": 0.04},
+      {"value": {"w": 3840, "h": 2160, "dpr": 2.0, "aw": 3840, "ah": 2120}, "prob": 0.03}
+    ],
+    "workstation": [
+      {"value": {"w": 1920, "h": 1080, "dpr": 1.0, "aw": 1920, "ah": 1040}, "prob": 0.25},
+      {"value": {"w": 2560, "h": 1440, "dpr": 1.0, "aw": 2560, "ah": 1400}, "prob": 0.25},
+      {"value": {"w": 3840, "h": 2160, "dpr": 1.0, "aw": 3840, "ah": 2120}, "prob": 0.25},
+      {"value": {"w": 3840, "h": 2160, "dpr": 1.5, "aw": 3840, "ah": 2120}, "prob": 0.15},
+      {"value": {"w": 5120, "h": 2880, "dpr": 1.0, "aw": 5120, "ah": 2840}, "prob": 0.05},
+      {"value": {"w": 3840, "h": 2400, "dpr": 1.5, "aw": 3840, "ah": 2360}, "prob": 0.05}
+    ]
+  }
+}

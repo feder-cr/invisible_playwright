@@ -1,0 +1,305 @@
+{
+  "_meta": "msaa_samples given (gpu_class, screen_tier)",
+  "table": {
+    "[\"integrated_old\", \"1080p\"]": [
+      {
+        "value": 2,
+        "prob": 0.75
+      },
+      {
+        "value": 4,
+        "prob": 0.2
+      },
+      {
+        "value": 8,
+        "prob": 0.05
+      }
+    ],
+    "[\"integrated_old\", \"1440p\"]": [
+      {
+        "value": 2,
+        "prob": 0.85
+      },
+      {
+        "value": 4,
+        "prob": 0.15
+      }
+    ],
+    "[\"integrated_old\", \"2160p\"]": [
+      {
+        "value": 2,
+        "prob": 1.0
+      }
+    ],
+    "[\"integrated_old\", \"ultrawide\"]": [
+      {
+        "value": 2,
+        "prob": 1.0
+      }
+    ],
+    "[\"integrated_modern\", \"1080p\"]": [
+      {
+        "value": 2,
+        "prob": 0.5
+      },
+      {
+        "value": 4,
+        "prob": 0.4
+      },
+      {
+        "value": 8,
+        "prob": 0.1
+      }
+    ],
+    "[\"integrated_modern\", \"1440p\"]": [
+      {
+        "value": 2,
+        "prob": 0.6
+      },
+      {
+        "value": 4,
+        "prob": 0.35
+      },
+      {
+        "value": 8,
+        "prob": 0.05
+      }
+    ],
+    "[\"integrated_modern\", \"2160p\"]": [
+      {
+        "value": 2,
+        "prob": 0.85
+      },
+      {
+        "value": 4,
+        "prob": 0.15
+      }
+    ],
+    "[\"integrated_modern\", \"ultrawide\"]": [
+      {
+        "value": 2,
+        "prob": 0.8
+      },
+      {
+        "value": 4,
+        "prob": 0.2
+      }
+    ],
+    "[\"low_end\", \"1080p\"]": [
+      {
+        "value": 2,
+        "prob": 0.4
+      },
+      {
+        "value": 4,
+        "prob": 0.45
+      },
+      {
+        "value": 8,
+        "prob": 0.15
+      }
+    ],
+    "[\"low_end\", \"1440p\"]": [
+      {
+        "value": 2,
+        "prob": 0.55
+      },
+      {
+        "value": 4,
+        "prob": 0.4
+      },
+      {
+        "value": 8,
+        "prob": 0.05
+      }
+    ],
+    "[\"low_end\", \"2160p\"]": [
+      {
+        "value": 2,
+        "prob": 0.85
+      },
+      {
+        "value": 4,
+        "prob": 0.15
+      }
+    ],
+    "[\"low_end\", \"ultrawide\"]": [
+      {
+        "value": 2,
+        "prob": 0.7
+      },
+      {
+        "value": 4,
+        "prob": 0.3
+      }
+    ],
+    "[\"mid_range\", \"1080p\"]": [
+      {
+        "value": 2,
+        "prob": 0.3
+      },
+      {
+        "value": 4,
+        "prob": 0.5
+      },
+      {
+        "value": 8,
+        "prob": 0.2
+      }
+    ],
+    "[\"mid_range\", \"1440p\"]": [
+      {
+        "value": 2,
+        "prob": 0.4
+      },
+      {
+        "value": 4,
+        "prob": 0.45
+      },
+      {
+        "value": 8,
+        "prob": 0.15
+      }
+    ],
+    "[\"mid_range\", \"2160p\"]": [
+      {
+        "value": 2,
+        "prob": 0.65
+      },
+      {
+        "value": 4,
+        "prob": 0.3
+      },
+      {
+        "value": 8,
+        "prob": 0.05
+      }
+    ],
+    "[\"mid_range\", \"ultrawide\"]": [
+      {
+        "value": 2,
+        "prob": 0.55
+      },
+      {
+        "value": 4,
+        "prob": 0.4
+      },
+      {
+        "value": 8,
+        "prob": 0.05
+      }
+    ],
+    "[\"high_end\", \"1080p\"]": [
+      {
+        "value": 2,
+        "prob": 0.2
+      },
+      {
+        "value": 4,
+        "prob": 0.45
+      },
+      {
+        "value": 8,
+        "prob": 0.35
+      }
+    ],
+    "[\"high_end\", \"1440p\"]": [
+      {
+        "value": 2,
+        "prob": 0.25
+      },
+      {
+        "value": 4,
+        "prob": 0.5
+      },
+      {
+        "value": 8,
+        "prob": 0.25
+      }
+    ],
+    "[\"high_end\", \"2160p\"]": [
+      {
+        "value": 2,
+        "prob": 0.4
+      },
+      {
+        "value": 4,
+        "prob": 0.45
+      },
+      {
+        "value": 8,
+        "prob": 0.15
+      }
+    ],
+    "[\"high_end\", \"ultrawide\"]": [
+      {
+        "value": 2,
+        "prob": 0.3
+      },
+      {
+        "value": 4,
+        "prob": 0.5
+      },
+      {
+        "value": 8,
+        "prob": 0.2
+      }
+    ],
+    "[\"workstation\", \"1080p\"]": [
+      {
+        "value": 2,
+        "prob": 0.15
+      },
+      {
+        "value": 4,
+        "prob": 0.5
+      },
+      {
+        "value": 8,
+        "prob": 0.35
+      }
+    ],
+    "[\"workstation\", \"1440p\"]": [
+      {
+        "value": 2,
+        "prob": 0.15
+      },
+      {
+        "value": 4,
+        "prob": 0.55
+      },
+      {
+        "value": 8,
+        "prob": 0.3
+      }
+    ],
+    "[\"workstation\", \"2160p\"]": [
+      {
+        "value": 2,
+        "prob": 0.25
+      },
+      {
+        "value": 4,
+        "prob": 0.55
+      },
+      {
+        "value": 8,
+        "prob": 0.2
+      }
+    ],
+    "[\"workstation\", \"ultrawide\"]": [
+      {
+        "value": 2,
+        "prob": 0.2
+      },
+      {
+        "value": 4,
+        "prob": 0.55
+      },
+      {
+        "value": 8,
+        "prob": 0.25
+      }
+    ]
+  }
+}

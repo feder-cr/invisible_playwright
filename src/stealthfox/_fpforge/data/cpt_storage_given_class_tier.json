@@ -1,0 +1,305 @@
+{
+  "_meta": "storage_quota_mb given (gpu_class, intra_tier)",
+  "table": {
+    "[\"integrated_old\", \"budget\"]": [
+      {
+        "value": 32000,
+        "prob": 0.3
+      },
+      {
+        "value": 64000,
+        "prob": 0.4
+      },
+      {
+        "value": 128000,
+        "prob": 0.25
+      },
+      {
+        "value": 256000,
+        "prob": 0.05
+      }
+    ],
+    "[\"integrated_old\", \"standard\"]": [
+      {
+        "value": 64000,
+        "prob": 0.2
+      },
+      {
+        "value": 128000,
+        "prob": 0.45
+      },
+      {
+        "value": 256000,
+        "prob": 0.25
+      },
+      {
+        "value": 500000,
+        "prob": 0.1
+      }
+    ],
+    "[\"integrated_old\", \"premium\"]": [
+      {
+        "value": 128000,
+        "prob": 0.2
+      },
+      {
+        "value": 256000,
+        "prob": 0.45
+      },
+      {
+        "value": 500000,
+        "prob": 0.3
+      },
+      {
+        "value": 1000000,
+        "prob": 0.05
+      }
+    ],
+    "[\"integrated_modern\", \"budget\"]": [
+      {
+        "value": 64000,
+        "prob": 0.2
+      },
+      {
+        "value": 128000,
+        "prob": 0.3
+      },
+      {
+        "value": 256000,
+        "prob": 0.3
+      },
+      {
+        "value": 500000,
+        "prob": 0.2
+      }
+    ],
+    "[\"integrated_modern\", \"standard\"]": [
+      {
+        "value": 256000,
+        "prob": 0.25
+      },
+      {
+        "value": 500000,
+        "prob": 0.45
+      },
+      {
+        "value": 1000000,
+        "prob": 0.25
+      },
+      {
+        "value": 2000000,
+        "prob": 0.05
+      }
+    ],
+    "[\"integrated_modern\", \"premium\"]": [
+      {
+        "value": 500000,
+        "prob": 0.25
+      },
+      {
+        "value": 1000000,
+        "prob": 0.5
+      },
+      {
+        "value": 2000000,
+        "prob": 0.2
+      },
+      {
+        "value": 4000000,
+        "prob": 0.05
+      }
+    ],
+    "[\"low_end\", \"budget\"]": [
+      {
+        "value": 128000,
+        "prob": 0.2
+      },
+      {
+        "value": 256000,
+        "prob": 0.5
+      },
+      {
+        "value": 500000,
+        "prob": 0.25
+      },
+      {
+        "value": 1000000,
+        "prob": 0.05
+      }
+    ],
+    "[\"low_end\", \"standard\"]": [
+      {
+        "value": 256000,
+        "prob": 0.2
+      },
+      {
+        "value": 500000,
+        "prob": 0.5
+      },
+      {
+        "value": 1000000,
+        "prob": 0.25
+      },
+      {
+        "value": 2000000,
+        "prob": 0.05
+      }
+    ],
+    "[\"low_end\", \"premium\"]": [
+      {
+        "value": 500000,
+        "prob": 0.2
+      },
+      {
+        "value": 1000000,
+        "prob": 0.5
+      },
+      {
+        "value": 2000000,
+        "prob": 0.25
+      },
+      {
+        "value": 4000000,
+        "prob": 0.05
+      }
+    ],
+    "[\"mid_range\", \"budget\"]": [
+      {
+        "value": 256000,
+        "prob": 0.15
+      },
+      {
+        "value": 500000,
+        "prob": 0.5
+      },
+      {
+        "value": 1000000,
+        "prob": 0.3
+      },
+      {
+        "value": 2000000,
+        "prob": 0.05
+      }
+    ],
+    "[\"mid_range\", \"standard\"]": [
+      {
+        "value": 500000,
+        "prob": 0.2
+      },
+      {
+        "value": 1000000,
+        "prob": 0.55
+      },
+      {
+        "value": 2000000,
+        "prob": 0.2
+      },
+      {
+        "value": 4000000,
+        "prob": 0.05
+      }
+    ],
+    "[\"mid_range\", \"premium\"]": [
+      {
+        "value": 1000000,
+        "prob": 0.4
+      },
+      {
+        "value": 2000000,
+        "prob": 0.45
+      },
+      {
+        "value": 4000000,
+        "prob": 0.15
+      }
+    ],
+    "[\"high_end\", \"budget\"]": [
+      {
+        "value": 500000,
+        "prob": 0.15
+      },
+      {
+        "value": 1000000,
+        "prob": 0.5
+      },
+      {
+        "value": 2000000,
+        "prob": 0.3
+      },
+      {
+        "value": 4000000,
+        "prob": 0.05
+      }
+    ],
+    "[\"high_end\", \"standard\"]": [
+      {
+        "value": 1000000,
+        "prob": 0.3
+      },
+      {
+        "value": 2000000,
+        "prob": 0.5
+      },
+      {
+        "value": 4000000,
+        "prob": 0.2
+      }
+    ],
+    "[\"high_end\", \"premium\"]": [
+      {
+        "value": 2000000,
+        "prob": 0.4
+      },
+      {
+        "value": 4000000,
+        "prob": 0.45
+      },
+      {
+        "value": 8000000,
+        "prob": 0.15
+      }
+    ],
+    "[\"workstation\", \"budget\"]": [
+      {
+        "value": 1000000,
+        "prob": 0.3
+      },
+      {
+        "value": 2000000,
+        "prob": 0.5
+      },
+      {
+        "value": 4000000,
+        "prob": 0.2
+      }
+    ],
+    "[\"workstation\", \"standard\"]": [
+      {
+        "value": 2000000,
+        "prob": 0.3
+      },
+      {
+        "value": 4000000,
+        "prob": 0.5
+      },
+      {
+        "value": 8000000,
+        "prob": 0.2
+      }
+    ],
+    "[\"workstation\", \"premium\"]": [
+      {
+        "value": 4000000,
+        "prob": 0.35
+      },
+      {
+        "value": 8000000,
+        "prob": 0.45
+      },
+      {
+        "value": 16000000,
+        "prob": 0.2
+      }
+    ]
+  }
+}

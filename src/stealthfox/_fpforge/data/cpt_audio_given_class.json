@@ -1,0 +1,193 @@
+{
+  "_meta": "audio (rate/latency/channels) given gpu_class",
+  "table": {
+    "integrated_old": [
+      {
+        "value": {
+          "rate": 44100,
+          "latency": 50,
+          "channels": 2
+        },
+        "prob": 0.7
+      },
+      {
+        "value": {
+          "rate": 48000,
+          "latency": 50,
+          "channels": 2
+        },
+        "prob": 0.3
+      }
+    ],
+    "integrated_modern": [
+      {
+        "value": {
+          "rate": 48000,
+          "latency": 30,
+          "channels": 2
+        },
+        "prob": 0.6
+      },
+      {
+        "value": {
+          "rate": 44100,
+          "latency": 40,
+          "channels": 2
+        },
+        "prob": 0.25
+      },
+      {
+        "value": {
+          "rate": 48000,
+          "latency": 25,
+          "channels": 6
+        },
+        "prob": 0.15
+      }
+    ],
+    "low_end": [
+      {
+        "value": {
+          "rate": 48000,
+          "latency": 40,
+          "channels": 2
+        },
+        "prob": 0.55
+      },
+      {
+        "value": {
+          "rate": 44100,
+          "latency": 50,
+          "channels": 2
+        },
+        "prob": 0.3
+      },
+      {
+        "value": {
+          "rate": 48000,
+          "latency": 30,
+          "channels": 6
+        },
+        "prob": 0.15
+      }
+    ],
+    "mid_range": [
+      {
+        "value": {
+          "rate": 48000,
+          "latency": 25,
+          "channels": 2
+        },
+        "prob": 0.45
+      },
+      {
+        "value": {
+          "rate": 48000,
+          "latency": 20,
+          "channels": 6
+        },
+        "prob": 0.3
+      },
+      {
+        "value": {
+          "rate": 48000,
+          "latency": 20,
+          "channels": 8
+        },
+        "prob": 0.15
+      },
+      {
+        "value": {
+          "rate": 44100,
+          "latency": 30,
+          "channels": 2
+        },
+        "prob": 0.1
+      }
+    ],
+    "high_end": [
+      {
+        "value": {
+          "rate": 48000,
+          "latency": 15,
+          "channels": 6
+        },
+        "prob": 0.3
+      },
+      {
+        "value": {
+          "rate": 48000,
+          "latency": 15,
+          "channels": 8
+        },
+        "prob": 0.3
+      },
+      {
+        "value": {
+          "rate": 48000,
+          "latency": 15,
+          "channels": 2
+        },
+        "prob": 0.2
+      },
+      {
+        "value": {
+          "rate": 96000,
+          "latency": 15,
+          "channels": 6
+        },
+        "prob": 0.1
+      },
+      {
+        "value": {
+          "rate": 96000,
+          "latency": 15,
+          "channels": 8
+        },
+        "prob": 0.1
+      }
+    ],
+    "workstation": [
+      {
+        "value": {
+          "rate": 48000,
+          "latency": 10,
+          "channels": 8
+        },
+        "prob": 0.25
+      },
+      {
+        "value": {
+          "rate": 96000,
+          "latency": 10,
+          "channels": 8
+        },
+        "prob": 0.3
+      },
+      {
+        "value": {
+          "rate": 96000,
+          "latency": 10,
+          "channels": 6
+        },
+        "prob": 0.2
+      },
+      {
+        "value": {
+          "rate": 192000,
+          "latency": 10,
+          "channels": 8
+        },
+        "prob": 0.15
+      },
+      {
+        "value": {
+          "rate": 48000,
+          "latency": 15,
+          "channels": 6
+        },
+        "prob": 0.1
+      }
+    ]
+  }
+}
