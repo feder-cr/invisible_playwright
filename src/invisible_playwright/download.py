@@ -96,7 +96,9 @@ def _parse_checksums(text: str) -> dict[str, str]:
             continue
         parts = line.split()
         if len(parts) >= 2:
-            out[parts[-1]] = parts[0]
+            # sha256sum uses ' *' or '  ' prefix for binary vs text mode
+            key = parts[-1].lstrip("*")
+            out[key] = parts[0]
     return out
 
 
