@@ -15,8 +15,10 @@ Quickstart:
         page = browser.new_page()
         page.click("#submit")   # expanded into a Bezier trajectory
 """
-from .launcher import InvisiblePlaywright
+from .config import get_default_args, get_default_stealth_prefs
 from .constants import BINARY_VERSION, FIREFOX_UPSTREAM_VERSION
+from .download import ensure_binary
+from .launcher import InvisiblePlaywright
 
 from importlib.metadata import PackageNotFoundError, version as _pkg_version
 
@@ -27,4 +29,12 @@ except PackageNotFoundError:
     # marker rather than risk shipping a stale hardcoded string.
     __version__ = "0.0.0+unknown"
 
-__all__ = ["InvisiblePlaywright", "BINARY_VERSION", "FIREFOX_UPSTREAM_VERSION", "__version__"]
+__all__ = [
+    "InvisiblePlaywright",
+    "ensure_binary",
+    "get_default_stealth_prefs",
+    "get_default_args",
+    "BINARY_VERSION",
+    "FIREFOX_UPSTREAM_VERSION",
+    "__version__",
+]

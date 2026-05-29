@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-05-28
+
+### Added
+- Public config helpers in `invisible_playwright.config`: `get_default_stealth_prefs(seed, *, pin, locale, timezone, extra_prefs, humanize, virtual_display)` returns a complete `firefox_user_prefs` dict; `get_default_args()` returns the baseline CLI args list (currently empty). Both also re-exported at the package root.
+- `invisible_playwright.ensure_binary` re-exported at the package root for parity with the `cloakbrowser.download.ensure_binary` integration pattern that downstream projects (Skyvern, Crawlee, agno) already expect.
+- These helpers let third-party fetchers (changedetection.io plugins, Crawlee `BrowserPool` subclasses, agno toolkits) drive `playwright.firefox.launch(executable_path=..., firefox_user_prefs=...)` themselves without depending on the `InvisiblePlaywright` context manager owning the lifecycle.
+- `tests/unit/test_config_public.py`: 14 unit tests covering deterministic seed, locale / timezone / pin / extra_prefs / humanize variations, and round-trip via the public namespace.
+
+### Unchanged
+- `InvisiblePlaywright` context manager surface is identical (backwards compatible).
+- `BINARY_VERSION` stays at `firefox-7`. Python-only release; no new Firefox build.
+
 ## [0.1.8] - 2026-05-23
 
 ### Fixed

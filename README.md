@@ -172,6 +172,25 @@ invisible_playwright version        # wrapper and binary versions
 invisible_playwright clear-cache    # remove all cached binaries
 ```
 
+## Public API for downstream integrations
+
+When you're building a third-party fetcher (a Crawlee `BrowserPool` subclass, a changedetection.io plugin, an agno toolkit, a Skyvern backend) and need to own the browser lifecycle yourself, use the public helpers instead of `InvisiblePlaywright`:
+
+```python
+from playwright.async_api import async_playwright
+from invisible_playwright import ensure_binary, get_default_stealth_prefs
+
+async with async_playwright() as p:
+    browser = await p.firefox.launch(
+        executable_path=str(ensure_binary()),
+        firefox_user_prefs=get_default_stealth_prefs(seed=42),
+    )
+```
+
+`get_default_stealth_prefs(seed, *, pin, locale, timezone, extra_prefs, humanize, virtual_display)` returns the same dict that `InvisiblePlaywright(seed=..., locale=..., ...)` would inject. Same deterministic seed semantics, same humanize toggle, same `extra_prefs` overlay. `ensure_binary()` downloads the patched Firefox on first call and returns its absolute path.
+
+For everyday Python usage the `InvisiblePlaywright` context manager is still the recommended entry point.
+
 ## Related projects
 
 invisible_playwright takes a different angle than the major Firefox-hardening projects but stands on their shoulders:
