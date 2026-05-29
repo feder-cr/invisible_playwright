@@ -189,6 +189,8 @@ async with async_playwright() as p:
 
 `get_default_stealth_prefs(seed, *, pin, locale, timezone, extra_prefs, humanize, virtual_display)` returns the same dict that `InvisiblePlaywright(seed=..., locale=..., ...)` would inject. Same deterministic seed semantics, same humanize toggle, same `extra_prefs` overlay. `ensure_binary()` downloads the patched Firefox on first call and returns its absolute path.
 
+> Important: pass `headless=False` to `firefox.launch()` and manage display hiding yourself (Xvfb on Linux, hidden desktop on Windows). Passing `headless=True` directly puts Firefox in true headless mode and skips the real rendering pipeline, which breaks canvas / audio / WebGL fingerprint coherence. The `InvisiblePlaywright` context manager does this translation automatically; the public helpers leave it to the caller.
+
 For everyday Python usage the `InvisiblePlaywright` context manager is still the recommended entry point.
 
 ## Related projects
