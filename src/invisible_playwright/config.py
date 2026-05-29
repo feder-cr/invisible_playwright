@@ -22,6 +22,15 @@ blocks::
 For everyday Python usage the ``InvisiblePlaywright`` context manager is
 still the recommended entry point; these helpers expose the same internals
 without the lifecycle ownership.
+
+.. note::
+   When calling ``firefox.launch()`` yourself, pass ``headless=False`` and
+   manage the display hiding (Xvfb on Linux, hidden desktop on Windows)
+   externally. Passing ``headless=True`` directly to Playwright puts
+   Firefox in true headless mode, which skips the real rendering pipeline
+   and breaks canvas / audio / WebGL fingerprint coherence. The
+   ``InvisiblePlaywright`` context manager does this translation
+   automatically; the public helpers leave it to the caller.
 """
 from __future__ import annotations
 
