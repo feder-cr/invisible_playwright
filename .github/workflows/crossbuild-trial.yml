@@ -1,0 +1,124 @@
+# TRIAL ONLY — feasibility de-risk for the all-in-CI firefox-N pipeline.
+# Goal: prove our patched tree (feder-cr/invisible_firefox#stealth/150) builds
+# in FREE GitHub-hosted runners, for (1) linux-arm64 natively [issue #6] and
+# (2) macos-arm64 cross-compiled from Linux [R1].
+# It does NOT upload, sign, or touch any release. Throwaway branch.
+name: crossbuild-trial
+
+on:
+  push:
+    branches: [ci-crossbuild-trial]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  trial:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 350      # under the 6h job cap
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-arm64-native
+            runner: ubuntu-24.04-arm     # FREE arm64 Linux runner (public repos)
+            cross: "false"
+            target: ""
+            rust_target: ""
+          - name: macos-arm64-cross
+            runner: ubuntu-latest
+            cross: "true"
+            target: aarch64-apple-darwin
+            rust_target: aarch64-apple-darwin
+    steps:
+      - name: Report runner + free disk
+        run: |
+          echo "runner=${{ matrix.runner }}  arch=$(uname -m)"
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+            /usr/local/share/boost "${AGENT_TOOLSDIRECTORY:-/opt/hostedtoolcache}" 2>/dev/null || true
+          sudo apt-get clean 2>/dev/null || true
+          echo "--- after cleanup ---"; df -h /
+
+      - name: Checkout patched Firefox source (shallow)
+        uses: actions/checkout@v4
+        with:
+          repository: feder-cr/invisible_firefox
+          ref: stealth/150
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Set up sccache
+        uses: mozilla-actions/sccache-action@v0.0.5
+
+      # macOS cross only: rust target + a community macOS SDK (TRIAL ONLY; the
+      # production path extracts the SDK from Apple's CLTools pkg, Tor-style).
+      - name: (mac) rust target + community macOS SDK
+        if: ${{ matrix.cross == 'true' }}
+        continue-on-error: true
+        run: |
+          rustup target add ${{ matrix.rust_target }} || true
+          mkdir -p "$HOME/sdks" && cd "$HOME/sdks"
+          # best-effort: a community-hosted MacOSX SDK just to test if OUR tree cross-compiles
+          for V in 14.5 14.0 13.3; do
+            URL="https://github.com/joseluisq/macosx-sdks/releases/download/${V}/MacOSX${V}.sdk.tar.xz"
+            echo "trying $URL"; curl -fsSL "$URL" -o sdk.tar.xz && tar -xf sdk.tar.xz && break || true
+          done
+          ls -d MacOSX*.sdk 2>/dev/null && echo "SDK_DIR=$(ls -d $HOME/sdks/MacOSX*.sdk | head -1)" >> "$GITHUB_ENV" || echo "NO SDK FETCHED"
+
+      - name: Write mozconfig
+        run: |
+          if [ "${{ matrix.cross }}" = "true" ]; then
+            cat > mozconfig <<EOF
+          ac_add_options --enable-application=browser
+          ac_add_options --disable-tests
+          ac_add_options --disable-debug
+          ac_add_options --enable-bootstrap
+          ac_add_options --target=${{ matrix.target }}
+          ac_add_options --with-macos-sdk=${SDK_DIR}
+          mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/obj-trial
+          export CFLAGS="-mcpu=apple-m1"
+          export CXXFLAGS="-mcpu=apple-m1"
+          EOF
+          else
+            cat > mozconfig <<'EOF'
+          ac_add_options --enable-application=browser
+          ac_add_options --disable-tests
+          ac_add_options --disable-debug
+          ac_add_options --enable-optimize
+          ac_add_options --enable-bootstrap
+          mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/obj-trial
+          EOF
+          fi
+          echo "----- mozconfig -----"; cat mozconfig
+
+      - name: Bootstrap build deps (best-effort)
+        continue-on-error: true
+        run: ./mach --no-interactive bootstrap --application-choice=browser || true
+
+      - name: BUILD (capture how far it gets)
+        id: build
+        continue-on-error: true
+        env:
+          SCCACHE_GHA_ENABLED: "true"
+          RUSTC_WRAPPER: sccache
+        run: |
+          set -o pipefail
+          ( /usr/bin/time -v ./mach build 2>&1 || echo "=== mach build returned non-zero ===" ) | tail -300
+
+      - name: Report result
+        run: |
+          echo "build step outcome: ${{ steps.build.outcome }}"
+          df -h /
+          if ls obj-trial/dist/bin/firefox* >/dev/null 2>&1 || ls -d obj-trial/dist/*.app >/dev/null 2>&1; then
+            echo "RESULT: BINARY/APP PRODUCED for ${{ matrix.name }}"
+          else
+            echo "RESULT: no final binary for ${{ matrix.name }} (see build log tail above)"
+          fi
+          sccache --show-stats 2>/dev/null || true
