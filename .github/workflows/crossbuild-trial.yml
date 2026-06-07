@@ -98,9 +98,17 @@ jobs:
           fi
           echo "----- mozconfig -----"; cat mozconfig
 
-      - name: Bootstrap build deps (best-effort)
+      - name: Bootstrap build deps (non-interactive, bounded)
         continue-on-error: true
-        run: ./mach --no-interactive bootstrap --application-choice=browser || true
+        env:
+          DEBIAN_FRONTEND: noninteractive
+          MOZBUILD_STATE_PATH: ${{ github.workspace }}/.mozbuild
+        run: |
+          # --no-interactive AFTER the subcommand (correct position) + stdin EOF so
+          # any residual prompt can't hang the job; timeout caps it; build's
+          # --enable-bootstrap fetches toolchains anyway.
+          timeout 1800 ./mach bootstrap --no-interactive --application-choice=browser < /dev/null \
+            || echo "bootstrap exited/timed out — continuing (mozconfig --enable-bootstrap fetches toolchains during build)"
 
       - name: BUILD (capture how far it gets)
         id: build
@@ -110,7 +118,7 @@ jobs:
           RUSTC_WRAPPER: sccache
         run: |
           set -o pipefail
-          ( /usr/bin/time -v ./mach build 2>&1 || echo "=== mach build returned non-zero ===" ) | tail -300
+          ( /usr/bin/time -v ./mach build < /dev/null 2>&1 || echo "=== mach build returned non-zero ===" ) | tail -300
 
       - name: Report result
         run: |
