@@ -124,6 +124,33 @@ jobs:
             xattr -dr com.apple.quarantine "$APP" || true
           fi
 
+      - name: RUNTIME TEST on the Mac runner (the whole point)
+        if: steps.build.outputs.finished == 'true'
+        run: |
+          set +e
+          APP="$(find obj-trial -maxdepth 6 -name '*.app' -type d 2>/dev/null | head -1)"
+          FFBIN="$APP/Contents/MacOS/firefox"
+          echo "FFBIN=$FFBIN"
+          echo "=== --version ==="
+          "$FFBIN" --version; echo "VERSION_RC=$?"
+          echo "=== headless screenshot of a real page ==="
+          rm -f "$PWD/shot.png"
+          "$FFBIN" --headless --no-remote --profile "$PWD/macprof" --screenshot "$PWD/shot.png" "https://example.com" > ss.log 2>&1 &
+          SPID=$!
+          for i in $(seq 1 110); do kill -0 $SPID 2>/dev/null || break; sleep 1; done
+          kill -9 $SPID 2>/dev/null
+          echo "--- ss.log tail ---"; tail -8 ss.log
+          if [ -f "$PWD/shot.png" ]; then echo "SCREENSHOT_RESULT=OK bytes=$(stat -f%z "$PWD/shot.png")"; cp "$PWD/shot.png" "macshot-${{ matrix.leg }}.png"; else echo "SCREENSHOT_RESULT=FAIL"; fi
+
+      - name: Upload mac screenshot
+        if: steps.build.outputs.finished == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: macshot-${{ matrix.leg }}
+          path: macshot-${{ matrix.leg }}.png
+          if-no-files-found: ignore
+          retention-days: 5
+
       - name: Report result
         run: |
           echo "leg=${{ matrix.leg }} finished=${{ steps.build.outputs.finished }}"
