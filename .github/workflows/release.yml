@@ -1,0 +1,253 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# release.yml — build all 5 patched-Firefox targets at $0 on GitHub Actions and
+# publish them as DRAFT GitHub Release assets, named per the wrapper contract
+# (constants.ARCHIVE_NAME). DRAFT on purpose: a human runs the realness gate
+# (validate_release.py + real-site checks) and only THEN un-drafts + bumps
+# BINARY_VERSION. Nothing auto-ships (issue #14 lesson).
+#
+# Architecture (hybrid, all free runners):
+#   linux-x64 / linux-arm64 → native Linux runners (lld, NEVER mold — mold segfaults)
+#   win-x64                 → CROSS from Linux (clang-cl+VS via --enable-bootstrap)
+#   macos-arm64 / macos-x64 → native macOS runners (Xcode 26.2 SDK + ad-hoc codesign)
+#
+# Trigger: push a tag `firefox-N` (the release tag), or run manually.
+# ─────────────────────────────────────────────────────────────────────────────
+name: release
+
+on:
+  push:
+    tags: ['firefox-*']
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: 'invisible_firefox ref to build'
+        default: 'stealth/150'
+      release_tag:
+        description: 'release tag to publish the draft under (e.g. firefox-9)'
+        required: true
+
+env:
+  SOURCE_REPO: feder-cr/invisible_firefox
+  SOURCE_REF: ${{ github.event.inputs.source_ref || 'stealth/150' }}
+  # Must match constants.BINARY_BASENAME in the wrapper.
+  BASENAME: firefox-150.0.1-stealth
+
+jobs:
+  build:
+    name: build-${{ matrix.leg }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - leg: linux-x86_64
+            runner: ubuntu-24.04
+            family: linux
+            target: ''
+            rust_target: x86_64-unknown-linux-gnu
+            win_disables: 'no'
+            extra_pkgs: ''
+            asset: firefox-150.0.1-stealth-linux-x86_64.tar.gz
+          - leg: linux-arm64
+            runner: ubuntu-24.04-arm
+            family: linux
+            target: ''
+            rust_target: aarch64-unknown-linux-gnu
+            win_disables: 'no'
+            extra_pkgs: ''
+            asset: firefox-150.0.1-stealth-linux-arm64.tar.gz
+          - leg: win-x86_64
+            runner: ubuntu-24.04
+            family: win            # built ON linux (cross), packaged as .zip
+            target: x86_64-pc-windows-msvc
+            rust_target: x86_64-pc-windows-msvc
+            win_disables: 'yes'
+            extra_pkgs: 'msitools p7zip-full zip'
+            asset: firefox-150.0.1-stealth-win-x86_64.zip
+          - leg: macos-arm64
+            runner: macos-15
+            family: mac
+            target: aarch64-apple-darwin
+            rust_target: aarch64-apple-darwin
+            win_disables: 'no'
+            extra_pkgs: ''
+            asset: firefox-150.0.1-stealth-macos-arm64.tar.gz
+          - leg: macos-x86_64
+            runner: macos-15-intel
+            family: mac
+            target: x86_64-apple-darwin
+            rust_target: x86_64-apple-darwin
+            win_disables: 'no'
+            extra_pkgs: ''
+            asset: firefox-150.0.1-stealth-macos-x86_64.tar.gz
+    steps:
+      - name: Free disk + 16G swap (Linux runners)
+        if: matrix.family != 'mac'
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+            /usr/local/share/boost "${AGENT_TOOLSDIRECTORY:-/opt/hostedtoolcache}" 2>/dev/null || true
+          sudo fallocate -l 16G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile || true
+
+      - name: Checkout patched Firefox source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SOURCE_REPO }}
+          ref: ${{ env.SOURCE_REF }}
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+
+      - name: Install Linux build tools
+        if: matrix.family != 'mac'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y util-linux ${{ matrix.extra_pkgs }}
+
+      - name: Select Xcode 26.2 + export SDK path (macOS)
+        if: matrix.family == 'mac'
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.2.app
+          SDKP="$(xcrun --show-sdk-path)"
+          echo "SDK_PATH=$SDKP" >> "$GITHUB_ENV"
+          echo "macOS SDK $(xcrun --sdk macosx --show-sdk-version) at $SDKP"
+
+      - name: Add Rust target
+        run: rustup target add ${{ matrix.rust_target }} || true
+
+      - name: Extend the repo .mozconfig (NO mold; +target/SDK as needed)
+        run: |
+          test -f .mozconfig || { echo "ERROR: no .mozconfig in source"; exit 1; }
+          rm -f mozconfig
+          {
+            echo ""
+            echo "# --- release CI levers for ${{ matrix.leg }} (mold intentionally OFF) ---"
+            echo "ac_add_options --disable-debug-symbols"
+          } >> .mozconfig
+          if [ -n "${{ matrix.target }}" ]; then echo "ac_add_options --target=${{ matrix.target }}" >> .mozconfig; fi
+          if [ "${{ matrix.family }}" = "mac" ]; then echo "ac_add_options --with-macos-sdk=$SDK_PATH" >> .mozconfig; fi
+          if [ "${{ matrix.win_disables }}" = "yes" ]; then
+            { echo "ac_add_options --disable-default-browser-agent";
+              echo "ac_add_options --disable-maintenance-service";
+              echo "ac_add_options --disable-update-agent"; } >> .mozconfig
+          fi
+          if [ "${{ matrix.family }}" = "mac" ]; then NCPU=$(sysctl -n hw.ncpu); else NCPU=4; fi
+          { echo "mk_add_options MOZ_PARALLEL_BUILD=$NCPU";
+            echo "mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/obj-rel"; } >> .mozconfig
+          echo "----- final .mozconfig -----"; cat .mozconfig
+
+      - name: Build
+        run: ./mach build
+
+      - name: Package + runtime smoke (linux/mac self-gate; win packaged only)
+        id: pkg
+        run: |
+          set -e
+          mkdir -p out
+          if [ "${{ matrix.family }}" = "linux" ]; then
+            BIN=obj-rel/dist/bin
+            echo "=== --version GATE ==="
+            LD_LIBRARY_PATH=$BIN $BIN/firefox-bin --version          # fails the job if it segfaults
+            tar -czf "out/${{ matrix.asset }}" -C "$BIN" .
+          elif [ "${{ matrix.family }}" = "win" ]; then
+            # cross-built on Linux: cannot exec the PE here → gated by the gate-windows job
+            BIN=obj-rel/dist/bin
+            ( cd "$BIN" && zip -qr "$GITHUB_WORKSPACE/out/${{ matrix.asset }}" . )
+          else  # mac
+            ./mach package
+            APP="$(find obj-rel/dist -maxdepth 2 -name '*.app' -type d | head -1)"
+            echo "built app: $APP"
+            codesign --force --deep --sign - --timestamp=none "$APP"
+            codesign --verify --deep --strict --verbose=2 "$APP"
+            echo "=== --version GATE ==="
+            "$APP/Contents/MacOS/firefox" --version                  # fails the job if it segfaults
+            # rename to a stable bundle dir name for the wrapper entry path
+            STABLE="$(dirname "$APP")/Firefox.app"
+            [ "$APP" = "$STABLE" ] || mv "$APP" "$STABLE"
+            tar -czf "out/${{ matrix.asset }}" -C "$(dirname "$STABLE")" "Firefox.app"
+          fi
+          echo "asset=${{ matrix.asset }}" >> "$GITHUB_OUTPUT"
+          ls -la out/
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: asset-${{ matrix.leg }}
+          path: out/${{ matrix.asset }}
+          if-no-files-found: error
+          retention-days: 7
+
+  # Windows binary is cross-built on Linux, so gate it on a real Windows runner.
+  gate-windows:
+    name: gate-windows
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Download win asset
+        uses: actions/download-artifact@v4
+        with: { name: asset-win-x86_64, path: art }
+      - name: Extract + headless screenshot gate
+        shell: pwsh
+        run: |
+          $zip = Get-ChildItem art -Filter *.zip | Select-Object -First 1
+          Expand-Archive $zip.FullName -DestinationPath ff -Force
+          $exe = Join-Path (Resolve-Path ff) 'firefox.exe'
+          Remove-Item shot.png -ErrorAction SilentlyContinue
+          $p = Start-Process -FilePath $exe -ArgumentList '--headless','--no-remote','--profile','prof','--screenshot',"$PWD\shot.png",'https://example.com' -PassThru -NoNewWindow
+          if (-not $p.WaitForExit(90000)) { $p.Kill(); throw 'win gate TIMEOUT' }
+          Start-Sleep 1
+          if (-not (Test-Path shot.png) -or (Get-Item shot.png).Length -lt 3000) { throw 'win gate: no/empty screenshot' }
+          Write-Output "win gate OK: shot.png $((Get-Item shot.png).Length) bytes"
+      - uses: actions/upload-artifact@v4
+        with: { name: gate-win-screenshot, path: shot.png, if-no-files-found: warn, retention-days: 7 }
+
+  publish:
+    name: publish-draft-release
+    needs: [build, gate-windows]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download all build assets
+        uses: actions/download-artifact@v4
+        with:
+          pattern: asset-*
+          path: dl
+          merge-multiple: true
+      - name: Generate checksums.txt
+        run: |
+          cd dl
+          ls -la
+          sha256sum * > checksums.txt
+          echo "----- checksums.txt -----"; cat checksums.txt
+      - name: Resolve release tag
+        id: tag
+        run: |
+          TAG="${{ github.event.inputs.release_tag }}"
+          [ -z "$TAG" ] && TAG="${GITHUB_REF_NAME}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "publishing DRAFT release for tag: $TAG"
+      - name: Create DRAFT release with all assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: invisible_firefox (150.0.1) rev ${{ steps.tag.outputs.tag }}
+          draft: true            # human un-drafts after the realness gate
+          prerelease: false
+          files: |
+            dl/*.tar.gz
+            dl/*.zip
+            dl/checksums.txt
+          body: |
+            Patched Firefox 150.0.1 — built on GitHub Actions ($0, no mold).
+            Targets: linux-x86_64, linux-arm64, win-x86_64, macos-arm64, macos-x86_64.
+
+            DRAFT — do not publish until validate_release.py + realness gate pass on all archives.
+
+            macOS: ad-hoc signed (not notarized). After download run:
+              xattr -dr com.apple.quarantine Firefox.app
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
