@@ -1,0 +1,63 @@
+# PROBE (cheap, ~2-5 min, $0) — gate before wiring the real macOS build legs.
+# FF150 hard-requires macOS SDK >= 26.2 (toolchain.configure mac_sdk_min_version),
+# and cross-from-Linux 403'd fetching the Apple SDK. The research recommendation is
+# NATIVE macОС runners (macos-15 / macos-15-intel) whose preinstalled Xcode 26.2
+# ships SDK macosx26.2. This probe empirically confirms, per runner label:
+#   - Xcode 26.2 is present + selectable, selected SDK >= 26.2
+#   - the decisive compile-time gate: NSGlassEffectView header exists in the SDK
+#   - rust apple-darwin targets installable
+#   - ad-hoc codesign (no paid cert) works
+# Asserts (exit 1) on any failure so a red job == "this label won't work".
+name: macos-probe
+
+on:
+  push:
+    branches: [ci-macos-probe]
+  workflow_dispatch:
+
+jobs:
+  probe:
+    name: probe-${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-15-intel]
+    steps:
+      - name: Probe SDK + toolchain + codesign
+        run: |
+          set -e
+          echo "== runner =="; uname -m; sw_vers || true; sysctl -n hw.ncpu; sysctl -n hw.memsize
+          echo "== xcodes present =="; ls /Applications | grep -i xcode || true
+          if [ -d /Applications/Xcode_26.2.app ]; then
+            sudo xcode-select -s /Applications/Xcode_26.2.app
+            echo "selected Xcode_26.2.app"
+          else
+            echo "WARN: /Applications/Xcode_26.2.app NOT found — using default $(xcode-select -p)"
+          fi
+          echo "== showsdks (macos) =="; xcodebuild -showsdks 2>/dev/null | grep -i macos || true
+          SDKV="$(xcrun --sdk macosx --show-sdk-version)"
+          SDKP="$(xcrun --show-sdk-path)"
+          echo "selected SDK version: $SDKV"
+          echo "selected SDK path:    $SDKP"
+          MIN=26.2
+          LOWEST="$(printf '%s\n%s\n' "$MIN" "$SDKV" | sort -V | head -1)"
+          if [ "$LOWEST" = "$MIN" ]; then echo "ASSERT SDK OK (>= $MIN)"; else echo "ASSERT FAIL: SDK $SDKV < $MIN"; exit 1; fi
+          echo "== NSGlassEffectView header (decisive compile gate) =="
+          if grep -rl NSGlassEffectView "$SDKP/System/Library/Frameworks/AppKit.framework/" >/dev/null 2>&1; then
+            echo "ASSERT NSGlassEffectView: PRESENT"
+          else
+            echo "ASSERT FAIL: NSGlassEffectView MISSING -> SDK too old for FF150"; exit 1
+          fi
+          echo "== rust + apple-darwin targets =="
+          if ! command -v rustup >/dev/null 2>&1; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+            source "$HOME/.cargo/env"
+          fi
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin && echo "ASSERT rust-targets OK"
+          echo "== ad-hoc codesign (no paid cert) =="
+          printf 'int main(){return 0;}' > t.c && cc t.c -o t
+          codesign --force --sign - --timestamp=none t
+          codesign --verify --strict --verbose=2 t && echo "ASSERT codesign-adhoc OK"
+          echo "PROBE_DONE leg=${{ matrix.os }} arch=$(uname -m) sdk=$SDKV cores=$(sysctl -n hw.ncpu)"
