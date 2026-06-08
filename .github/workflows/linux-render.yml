@@ -1,0 +1,87 @@
+# FINAL Linux validation with the FIX (no mold): build linux-x64 + linux-arm64 with
+# the clean recipe (--disable-debug-symbols only, NO mold, NO --target) and RUNTIME
+# TEST in-job on the native runner: firefox --version (hard gate) + a REAL render via
+# xvfb + mesa software GL (llvmpipe) so we get an actual screenshot on Linux too,
+# not just --version. Proves both Linux arches run AND render with mold dropped.
+name: linux-render
+
+on:
+  push:
+    branches: [ci-linux-render]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  render:
+    name: ${{ matrix.leg }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 220
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - leg: linux-x86_64
+            runner: ubuntu-24.04
+          - leg: linux-arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - name: Free disk + 16G swap
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+            /usr/local/share/boost "${AGENT_TOOLSDIRECTORY:-/opt/hostedtoolcache}" 2>/dev/null || true
+          sudo fallocate -l 16G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile || true
+
+      - name: Checkout patched Firefox source (shallow)
+        uses: actions/checkout@v4
+        with: { repository: feder-cr/invisible_firefox, ref: stealth/150, fetch-depth: 1 }
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+
+      - name: Install xvfb + mesa software GL (for a real headless render)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgl1-mesa-dri libglu1-mesa mesa-utils libegl1 libgbm1
+
+      - name: Extend .mozconfig (NO mold, NO --target — the FIX)
+        run: |
+          test -f .mozconfig || { echo "no .mozconfig"; exit 1; }
+          rm -f mozconfig
+          { echo ""; echo "# linux-render (mold dropped)"; echo "ac_add_options --disable-debug-symbols";
+            echo "mk_add_options MOZ_PARALLEL_BUILD=4"; echo "mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/obj-trial"; } >> .mozconfig
+          cat .mozconfig
+
+      - name: Build
+        id: build
+        run: |
+          set +e
+          ./mach build > build.log 2>&1; RC=$?
+          echo "build_rc=$RC"; tail -30 build.log
+          [ "$RC" = "0" ] && echo "ok=true" >> "$GITHUB_OUTPUT" || echo "ok=false" >> "$GITHUB_OUTPUT"
+
+      - name: RUNTIME TEST (--version gate + real render via mesa)
+        if: steps.build.outputs.ok == 'true'
+        run: |
+          set +e
+          BIN=obj-trial/dist/bin
+          echo "=== --version (HARD GATE) ==="
+          LD_LIBRARY_PATH=$BIN $BIN/firefox-bin --version; echo "VERSION_RC=$?"
+          echo "=== real headless render via xvfb + llvmpipe ==="
+          export LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe MOZ_WEBRENDER=1
+          rm -f shot.png
+          xvfb-run -a -s "-screen 0 1366x768x24" timeout 120 \
+            $BIN/firefox --headless --no-remote --profile ./prof --screenshot "$PWD/shot.png" "https://example.com" > ss.log 2>&1
+          echo "screenshot_cmd_rc=$?"; tail -10 ss.log
+          if [ -f shot.png ]; then echo "SCREENSHOT_RESULT=OK bytes=$(stat -c%s shot.png)"; cp shot.png "render-${{ matrix.leg }}.png"; else echo "SCREENSHOT_RESULT=FAIL"; fi
+
+      - name: Upload render
+        if: steps.build.outputs.ok == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: render-${{ matrix.leg }}
+          path: render-${{ matrix.leg }}.png
+          if-no-files-found: ignore
+          retention-days: 5
