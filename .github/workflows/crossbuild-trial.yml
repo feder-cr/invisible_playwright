@@ -1,8 +1,9 @@
-# TRIAL ONLY — feasibility de-risk for the all-in-CI firefox-N pipeline.
-# Goal: prove our patched tree (feder-cr/invisible_firefox#stealth/150) builds
-# in FREE GitHub-hosted runners, for (1) linux-arm64 natively [issue #6] and
-# (2) macos-arm64 cross-compiled from Linux [R1].
-# It does NOT upload, sign, or touch any release. Throwaway branch.
+# TRIAL v3 — feasibility de-risk for the all-in-CI firefox-N pipeline.
+# Goal: prove our patched tree builds FAST ENOUGH (< 6h) on FREE runners, with
+# LIVE visibility. Fixes vs v2: --disable-debug-symbols + mold + sccache-C++ +
+# CARGO_INCREMENTAL=0 + swap + NO `| tail` (stream to file) + a heartbeat that
+# pushes progress to the ci-progress branch every ~150s so we can poll it live.
+# Throwaway branch. No upload/sign/release.
 name: crossbuild-trial
 
 on:
@@ -11,19 +12,19 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write      # needed so the heartbeat can push to ci-progress
 
 jobs:
   trial:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 350      # under the 6h job cap
+    timeout-minutes: 350
     strategy:
       fail-fast: false
       matrix:
         include:
           - name: linux-arm64-native
-            runner: ubuntu-24.04-arm     # FREE arm64 Linux runner (public repos)
+            runner: ubuntu-24.04-arm
             cross: "false"
             target: ""
             rust_target: ""
@@ -33,14 +34,14 @@ jobs:
             target: aarch64-apple-darwin
             rust_target: aarch64-apple-darwin
     steps:
-      - name: Report runner + free disk
+      - name: Free disk + 16G swap (avoid OOM on link)
         run: |
-          echo "runner=${{ matrix.runner }}  arch=$(uname -m)"
           df -h /
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
             /usr/local/share/boost "${AGENT_TOOLSDIRECTORY:-/opt/hostedtoolcache}" 2>/dev/null || true
           sudo apt-get clean 2>/dev/null || true
-          echo "--- after cleanup ---"; df -h /
+          sudo fallocate -l 16G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile || true
+          echo "--- after cleanup ---"; df -h /; free -h
 
       - name: Checkout patched Firefox source (shallow)
         uses: actions/checkout@v4
@@ -57,44 +58,46 @@ jobs:
       - name: Set up sccache
         uses: mozilla-actions/sccache-action@v0.0.5
 
-      # macOS cross only: rust target + a community macOS SDK (TRIAL ONLY; the
-      # production path extracts the SDK from Apple's CLTools pkg, Tor-style).
-      - name: (mac) rust target + community macOS SDK
+      - name: Install mold (linux native leg only)
+        if: ${{ matrix.cross == 'false' }}
+        run: sudo apt-get update && sudo apt-get install -y mold
+
+      - name: (mac) rust target + community macOS SDK (TRIAL ONLY)
         if: ${{ matrix.cross == 'true' }}
         continue-on-error: true
         run: |
           rustup target add ${{ matrix.rust_target }} || true
           mkdir -p "$HOME/sdks" && cd "$HOME/sdks"
-          # best-effort: a community-hosted MacOSX SDK just to test if OUR tree cross-compiles
           for V in 14.5 14.0 13.3; do
             URL="https://github.com/joseluisq/macosx-sdks/releases/download/${V}/MacOSX${V}.sdk.tar.xz"
             echo "trying $URL"; curl -fsSL "$URL" -o sdk.tar.xz && tar -xf sdk.tar.xz && break || true
           done
           ls -d MacOSX*.sdk 2>/dev/null && echo "SDK_DIR=$(ls -d $HOME/sdks/MacOSX*.sdk | head -1)" >> "$GITHUB_ENV" || echo "NO SDK FETCHED"
 
-      - name: Write mozconfig
+      - name: Write mozconfig (speed levers)
         run: |
-          if [ "${{ matrix.cross }}" = "true" ]; then
-            cat > mozconfig <<EOF
+          cat > mozconfig <<EOF
           ac_add_options --enable-application=browser
-          ac_add_options --disable-tests
-          ac_add_options --disable-debug
-          ac_add_options --enable-bootstrap
-          ac_add_options --target=${{ matrix.target }}
-          ac_add_options --with-macos-sdk=${SDK_DIR}
-          mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/obj-trial
-          export CFLAGS="-mcpu=apple-m1"
-          export CXXFLAGS="-mcpu=apple-m1"
-          EOF
-          else
-            cat > mozconfig <<'EOF'
-          ac_add_options --enable-application=browser
-          ac_add_options --disable-tests
-          ac_add_options --disable-debug
           ac_add_options --enable-optimize
+          ac_add_options --disable-debug
+          ac_add_options --disable-debug-symbols
+          ac_add_options --disable-tests
+          ac_add_options --disable-crashreporter
+          ac_add_options --disable-updater
           ac_add_options --enable-bootstrap
+          ac_add_options --with-ccache=sccache
+          mk_add_options MOZ_PARALLEL_BUILD=4
           mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/obj-trial
           EOF
+          if [ "${{ matrix.cross }}" = "false" ]; then
+            echo 'ac_add_options --enable-linker=mold' >> mozconfig
+          else
+            {
+              echo 'ac_add_options --target=${{ matrix.target }}'
+              echo "ac_add_options --with-macos-sdk=${SDK_DIR}"
+              echo 'export CFLAGS="-mcpu=apple-m1"'
+              echo 'export CXXFLAGS="-mcpu=apple-m1"'
+            } >> mozconfig
           fi
           echo "----- mozconfig -----"; cat mozconfig
 
@@ -104,29 +107,51 @@ jobs:
           DEBIAN_FRONTEND: noninteractive
           MOZBUILD_STATE_PATH: ${{ github.workspace }}/.mozbuild
         run: |
-          # --no-interactive AFTER the subcommand (correct position) + stdin EOF so
-          # any residual prompt can't hang the job; timeout caps it; build's
-          # --enable-bootstrap fetches toolchains anyway.
           timeout 1800 ./mach bootstrap --no-interactive --application-choice=browser < /dev/null \
-            || echo "bootstrap exited/timed out — continuing (mozconfig --enable-bootstrap fetches toolchains during build)"
+            || echo "bootstrap exited/timed out — continuing (--enable-bootstrap fetches toolchains)"
 
-      - name: BUILD (capture how far it gets)
+      - name: BUILD with live heartbeat (streams to file; pushes progress every ~150s)
         id: build
-        continue-on-error: true
         env:
           SCCACHE_GHA_ENABLED: "true"
           RUSTC_WRAPPER: sccache
+          CARGO_INCREMENTAL: "0"
+          SCCACHE_CACHE_SIZE: "20G"
+          GH_PUSH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set -o pipefail
-          ( /usr/bin/time -v ./mach build < /dev/null 2>&1 || echo "=== mach build returned non-zero ===" ) | tail -300
+          set +e
+          # heartbeat sink: a throwaway ci-progress branch on THIS repo
+          git clone --depth 1 "https://x-access-token:${GH_PUSH_TOKEN}@github.com/feder-cr/invisible_playwright" hb 2>/dev/null
+          ( cd hb && git checkout -B ci-progress && git config user.email ci@local && git config user.name ci-bot ) 2>/dev/null
+          # real build in background, FULL output to build.log (no tail)
+          ( ./mach build < /dev/null > build.log 2>&1 ; echo $? > build.rc ) &
+          BPID=$!
+          START=$(date +%s)
+          while kill -0 "$BPID" 2>/dev/null; do
+            EL=$(( ($(date +%s) - START) / 60 ))
+            {
+              echo "leg=${{ matrix.name }}  elapsed=${EL}m  ($(date -u +%H:%M:%S) UTC)"
+              echo "sccache: $(sccache --show-stats 2>/dev/null | grep -iE 'compile requests|cache hits|cache misses' | tr '\n' '|')"
+              echo "---- build.log tail ----"
+              tail -15 build.log 2>/dev/null
+            } > "hb/progress-${{ matrix.name }}.txt"
+            ( cd hb && git add -A && (git commit -q --amend --no-edit 2>/dev/null || git commit -q -m progress 2>/dev/null); git push -f -q origin ci-progress ) 2>/dev/null || true
+            sleep 150
+          done
+          wait "$BPID"; RC=$(cat build.rc 2>/dev/null || echo 1)
+          echo "=== BUILD exit code: $RC ==="
+          echo "=== build.log tail (last 150) ==="; tail -150 build.log 2>/dev/null
+          { echo "leg=${{ matrix.name }} DONE rc=$RC at $(date -u +%H:%M:%S)"; echo '---- final tail ----'; tail -30 build.log 2>/dev/null; } > "hb/progress-${{ matrix.name }}.txt" 2>/dev/null
+          ( cd hb && git add -A && (git commit -q --amend --no-edit 2>/dev/null || git commit -q -m progress 2>/dev/null); git push -f -q origin ci-progress ) 2>/dev/null || true
+          [ "$RC" = "0" ] && echo "finished=true" >> "$GITHUB_OUTPUT" || echo "finished=false" >> "$GITHUB_OUTPUT"
 
       - name: Report result
         run: |
-          echo "build step outcome: ${{ steps.build.outcome }}"
+          echo "build finished=${{ steps.build.outputs.finished }}"
           df -h /
           if ls obj-trial/dist/bin/firefox* >/dev/null 2>&1 || ls -d obj-trial/dist/*.app >/dev/null 2>&1; then
             echo "RESULT: BINARY/APP PRODUCED for ${{ matrix.name }}"
           else
-            echo "RESULT: no final binary for ${{ matrix.name }} (see build log tail above)"
+            echo "RESULT: no final binary for ${{ matrix.name }}"
           fi
           sccache --show-stats 2>/dev/null || true
