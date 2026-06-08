@@ -1,16 +1,21 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# release.yml — build all 5 patched-Firefox targets at $0 on GitHub Actions and
-# publish them as DRAFT GitHub Release assets, named per the wrapper contract
-# (constants.ARCHIVE_NAME). DRAFT on purpose: a human runs the realness gate
-# (validate_release.py + real-site checks) and only THEN un-drafts + bumps
+# release.yml — build all 5 patched-Firefox targets at $0 and publish them as
+# DRAFT GitHub Release assets, named per the wrapper contract (constants.ARCHIVE_NAME).
+# DRAFT on purpose: a human runs the realness gate and only THEN un-drafts + bumps
 # BINARY_VERSION. Nothing auto-ships (issue #14 lesson).
 #
-# Architecture (hybrid, all free runners):
-#   linux-x64 / linux-arm64 → native Linux runners (lld, NEVER mold — mold segfaults)
-#   win-x64                 → CROSS from Linux (clang-cl+VS via --enable-bootstrap)
-#   macos-arm64 / macos-x64 → native macOS runners (Xcode 26.2 SDK + ad-hoc codesign)
+# PACKAGING (issue #14: dangling symlinks broke 265 downloads — never again):
+#   Linux → cp -aL (dereference ALL symlinks into real files) + rm dev tools +
+#           strip + sanitize + tar at ROOT, then validate_release.py as a HARD
+#           in-pipeline gate (the exact battle-tested script from the source repo).
+#   Win   → mach package; zip the CONTENTS of dist/firefox (clean tree, NOT
+#           dist/bin) so firefox.exe sits at the zip ROOT. Runtime-gated on a real
+#           windows-latest runner (headless screenshot).
+#   macOS → mach package; ad-hoc codesign the .app; PRESERVE its internal relative
+#           symlinks (a .app legitimately has them — cp -aL would break it); verify
+#           every symlink is relative+internal; tar the bundle. --version self-gate.
 #
-# Trigger: push a tag `firefox-N` (the release tag), or run manually.
+# Trigger: push a tag `firefox-N`, or run manually.  Hybrid runners, all free.
 # ─────────────────────────────────────────────────────────────────────────────
 name: release
 
@@ -29,8 +34,6 @@ on:
 env:
   SOURCE_REPO: feder-cr/invisible_firefox
   SOURCE_REF: ${{ github.event.inputs.source_ref || 'stealth/150' }}
-  # Must match constants.BINARY_BASENAME in the wrapper.
-  BASENAME: firefox-150.0.1-stealth
 
 jobs:
   build:
@@ -59,7 +62,7 @@ jobs:
             asset: firefox-150.0.1-stealth-linux-arm64.tar.gz
           - leg: win-x86_64
             runner: ubuntu-24.04
-            family: win            # built ON linux (cross), packaged as .zip
+            family: win
             target: x86_64-pc-windows-msvc
             rust_target: x86_64-pc-windows-msvc
             win_disables: 'yes'
@@ -104,7 +107,7 @@ jobs:
         if: matrix.family != 'mac'
         run: |
           sudo apt-get update
-          sudo apt-get install -y util-linux ${{ matrix.extra_pkgs }}
+          sudo apt-get install -y util-linux binutils ${{ matrix.extra_pkgs }}
 
       - name: Select Xcode 26.2 + export SDK path (macOS)
         if: matrix.family == 'mac'
@@ -123,7 +126,7 @@ jobs:
           rm -f mozconfig
           {
             echo ""
-            echo "# --- release CI levers for ${{ matrix.leg }} (mold intentionally OFF) ---"
+            echo "# --- release CI levers for ${{ matrix.leg }} (mold intentionally OFF — it segfaults libxul) ---"
             echo "ac_add_options --disable-debug-symbols"
           } >> .mozconfig
           if [ -n "${{ matrix.target }}" ]; then echo "ac_add_options --target=${{ matrix.target }}" >> .mozconfig; fi
@@ -141,34 +144,66 @@ jobs:
       - name: Build
         run: ./mach build
 
-      - name: Package + runtime smoke (linux/mac self-gate; win packaged only)
-        id: pkg
+      # ── LINUX: dereference symlinks (issue #14) + strip + sanitize + tar@root + GATE
+      - name: Package + validate (Linux)
+        if: matrix.family == 'linux'
         run: |
           set -e
+          DIST=obj-rel/dist/bin
+          STAGING=staging
+          rm -rf "$STAGING"; mkdir -p "$STAGING" out
+          cp -aL "$DIST/." "$STAGING/"                      # -L: dereference ALL symlinks into real files
+          N=$(find "$STAGING" -type l | wc -l)
+          [ "$N" -eq 0 ] || { echo "ERROR: $N symlinks remain after cp -aL"; exit 1; }
+          for t in xpcshell certutil pk12util rapl; do rm -f "$STAGING/$t"; done
+          find "$STAGING" -type f \
+            \( -name '*.so' -o -name firefox -o -name firefox-bin -o -name plugin-container \
+               -o -name pingsender -o -name glxtest -o -name vaapitest -o -name updater \) \
+            -exec strip --strip-debug {} + 2>/dev/null || true
+          STAGING="$STAGING" python3 scripts/linux_sanitize.py || true   # no-op in CI (no /home/feder), defensive
+          tar --owner=0 --group=0 --numeric-owner --mtime="2026-01-01 00:00:00 UTC" \
+              -czf "out/${{ matrix.asset }}" -C "$STAGING" .              # firefox at ROOT
+          echo "=== HARD GATE: scripts/validate_release.py (the issue-#14 protector) ==="
+          python3 scripts/validate_release.py --linux "out/${{ matrix.asset }}" --linux-only
+          ls -la out/
+
+      # ── WINDOWS (cross): zip the CLEAN dist/firefox tree, firefox.exe at root
+      - name: Package (Windows cross)
+        if: matrix.family == 'win'
+        run: |
+          set -e
+          ./mach package
+          WIN_APP=obj-rel/dist/firefox
+          [ -f "$WIN_APP/firefox.exe" ] || { echo "ERROR: $WIN_APP/firefox.exe missing (mach package failed?)"; exit 1; }
           mkdir -p out
-          if [ "${{ matrix.family }}" = "linux" ]; then
-            BIN=obj-rel/dist/bin
-            echo "=== --version GATE ==="
-            LD_LIBRARY_PATH=$BIN $BIN/firefox-bin --version          # fails the job if it segfaults
-            tar -czf "out/${{ matrix.asset }}" -C "$BIN" .
-          elif [ "${{ matrix.family }}" = "win" ]; then
-            # cross-built on Linux: cannot exec the PE here → gated by the gate-windows job
-            BIN=obj-rel/dist/bin
-            ( cd "$BIN" && zip -qr "$GITHUB_WORKSPACE/out/${{ matrix.asset }}" . )
-          else  # mac
-            ./mach package
-            APP="$(find obj-rel/dist -maxdepth 2 -name '*.app' -type d | head -1)"
-            echo "built app: $APP"
-            codesign --force --deep --sign - --timestamp=none "$APP"
-            codesign --verify --deep --strict --verbose=2 "$APP"
-            echo "=== --version GATE ==="
-            "$APP/Contents/MacOS/firefox" --version                  # fails the job if it segfaults
-            # rename to a stable bundle dir name for the wrapper entry path
-            STABLE="$(dirname "$APP")/Firefox.app"
-            [ "$APP" = "$STABLE" ] || mv "$APP" "$STABLE"
-            tar -czf "out/${{ matrix.asset }}" -C "$(dirname "$STABLE")" "Firefox.app"
-          fi
-          echo "asset=${{ matrix.asset }}" >> "$GITHUB_OUTPUT"
+          ( cd "$WIN_APP" && zip -qr "$GITHUB_WORKSPACE/out/${{ matrix.asset }}" . )   # firefox.exe at zip ROOT
+          ls -la out/
+
+      # ── macOS: package .app, ad-hoc sign, verify relative-internal symlinks, --version gate, tar
+      - name: Package + validate (macOS)
+        if: matrix.family == 'mac'
+        run: |
+          set -e
+          ./mach package
+          APP="$(find obj-rel/dist -maxdepth 2 -name '*.app' -type d | head -1)"
+          [ -n "$APP" ] || { echo "ERROR: no .app produced"; exit 1; }
+          echo "built app: $APP"
+          codesign --force --deep --sign - --timestamp=none "$APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          echo "=== --version GATE ==="
+          "$APP/Contents/MacOS/firefox" --version
+          echo "=== critical files present ==="
+          for need in "Contents/MacOS/firefox" "Contents/Info.plist"; do
+            [ -e "$APP/$need" ] || { echo "ERROR: missing $need"; exit 1; }
+          done
+          echo "=== verify NO absolute symlinks in the .app (relative-internal ones are fine) ==="
+          BAD="$(find "$APP" -type l -print0 | xargs -0 -I{} sh -c 't=$(readlink "{}"); case "$t" in /*) echo "{} -> $t";; esac')"
+          [ -z "$BAD" ] || { echo "ERROR: absolute symlinks in .app (break on user machines):"; echo "$BAD" | head -5; exit 1; }
+          echo "mac .app OK: critical files present, no absolute symlinks"
+          STABLE="$(dirname "$APP")/Firefox.app"
+          [ "$APP" = "$STABLE" ] || mv "$APP" "$STABLE"
+          mkdir -p out
+          tar -czf "out/${{ matrix.asset }}" -C "$(dirname "$STABLE")" Firefox.app   # preserves internal symlinks
           ls -la out/
 
       - name: Upload build artifact
@@ -179,7 +214,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  # Windows binary is cross-built on Linux, so gate it on a real Windows runner.
+  # Windows binary is cross-built on Linux → gate it on a real Windows runner.
   gate-windows:
     name: gate-windows
     needs: build
@@ -189,18 +224,21 @@ jobs:
       - name: Download win asset
         uses: actions/download-artifact@v4
         with: { name: asset-win-x86_64, path: art }
-      - name: Extract + headless screenshot gate
+      - name: Extract + structure + headless render gate
         shell: pwsh
         run: |
           $zip = Get-ChildItem art -Filter *.zip | Select-Object -First 1
           Expand-Archive $zip.FullName -DestinationPath ff -Force
+          foreach ($f in 'firefox.exe','application.ini','dependentlibs.list') {
+            if (-not (Test-Path (Join-Path ff $f))) { throw "missing critical file: $f" }
+          }
           $exe = Join-Path (Resolve-Path ff) 'firefox.exe'
           Remove-Item shot.png -ErrorAction SilentlyContinue
           $p = Start-Process -FilePath $exe -ArgumentList '--headless','--no-remote','--profile','prof','--screenshot',"$PWD\shot.png",'https://example.com' -PassThru -NoNewWindow
           if (-not $p.WaitForExit(90000)) { $p.Kill(); throw 'win gate TIMEOUT' }
           Start-Sleep 1
           if (-not (Test-Path shot.png) -or (Get-Item shot.png).Length -lt 3000) { throw 'win gate: no/empty screenshot' }
-          Write-Output "win gate OK: shot.png $((Get-Item shot.png).Length) bytes"
+          Write-Output "win gate OK: firefox.exe runs + renders ($((Get-Item shot.png).Length) bytes)"
       - uses: actions/upload-artifact@v4
         with: { name: gate-win-screenshot, path: shot.png, if-no-files-found: warn, retention-days: 7 }
 
@@ -213,14 +251,10 @@ jobs:
     steps:
       - name: Download all build assets
         uses: actions/download-artifact@v4
-        with:
-          pattern: asset-*
-          path: dl
-          merge-multiple: true
+        with: { pattern: asset-*, path: dl, merge-multiple: true }
       - name: Generate checksums.txt
         run: |
-          cd dl
-          ls -la
+          cd dl; ls -la
           sha256sum * > checksums.txt
           echo "----- checksums.txt -----"; cat checksums.txt
       - name: Resolve release tag
@@ -235,7 +269,7 @@ jobs:
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: invisible_firefox (150.0.1) rev ${{ steps.tag.outputs.tag }}
-          draft: true            # human un-drafts after the realness gate
+          draft: true
           prerelease: false
           files: |
             dl/*.tar.gz
