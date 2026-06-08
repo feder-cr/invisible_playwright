@@ -1,9 +1,9 @@
-# TRIAL v4 — done properly. ONE clean leg (linux-arm64 native) to isolate variables.
-# Visibility fixed for real: build runs under a PTY (`script -f`) so output is
-# UNBUFFERED and streams live into build.log; the heartbeat also reports objdir
-# SIZE + disk + sccache (signals that do NOT depend on stdout buffering) every
-# 120s to the ci-progress branch, which we poll. Speed levers: --disable-debug-symbols,
-# mold, sccache for C++ (+ CARGO_INCREMENTAL=0), 16G swap. No upload/sign/release.
+# TRIAL v6 — isolate the COLD build. Drop sccache (it broke configure: `sccache
+# clang -E` exit 2) and drop the bogus bootstrap step (`--no-interactive` is not
+# a valid mach bootstrap flag; --enable-bootstrap in the repo .mozconfig fetches
+# clang+sysroot during configure anyway). Keep ONLY the cold-build speed levers:
+# --disable-debug-symbols + mold. Goal: prove the cold build compiles + fits < 6h,
+# with a real live log (PTY) + objdir-size heartbeat. sccache comes back later.
 name: crossbuild-trial
 
 on:
@@ -41,50 +41,32 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Set up sccache
-        uses: mozilla-actions/sccache-action@v0.0.5
+      - name: Install mold + util-linux (PTY `script`)
+        run: sudo apt-get update && sudo apt-get install -y mold util-linux
 
-      - name: Install mold + util-linux (for PTY `script`)
-        run: sudo apt-get update && sudo apt-get install -y mold bsdutils util-linux
-
-      - name: Extend the repo's .mozconfig with speed levers (exactly ONE mozconfig)
+      - name: Extend the repo's .mozconfig with cold-build speed levers (ONE mozconfig)
         run: |
           test -f .mozconfig || { echo "ERROR: no .mozconfig in source tree"; exit 1; }
-          rm -f mozconfig          # never have a SECOND default mozconfig (caused the v2/v3/v4 stall)
+          rm -f mozconfig          # never a second default mozconfig
           cat >> .mozconfig <<'EOF'
 
-          # --- speed levers appended by the trial CI (their .mozconfig already has
-          # --- --enable-release/--disable-debug/tests/crashreporter/updater/--enable-bootstrap) ---
+          # --- cold-build speed levers appended by the trial CI ---
           ac_add_options --disable-debug-symbols
-          ac_add_options --with-ccache=sccache
           ac_add_options --enable-linker=mold
           mk_add_options MOZ_PARALLEL_BUILD=4
           mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/obj-trial
           EOF
           echo "----- final .mozconfig -----"; cat .mozconfig
 
-      - name: Bootstrap build deps (non-interactive, bounded)
-        continue-on-error: true
-        env:
-          DEBIAN_FRONTEND: noninteractive
-          MOZBUILD_STATE_PATH: ${{ github.workspace }}/.mozbuild
-        run: |
-          timeout 1800 ./mach bootstrap --no-interactive --application-choice=browser < /dev/null \
-            || echo "bootstrap exited/timed out — continuing"
-
       - name: BUILD under PTY (live log) + heartbeat with objdir-size signal
         id: build
         env:
-          SCCACHE_GHA_ENABLED: "true"
-          RUSTC_WRAPPER: sccache
-          CARGO_INCREMENTAL: "0"
-          SCCACHE_CACHE_SIZE: "20G"
           GH_PUSH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set +e
           git clone --depth 1 "https://x-access-token:${GH_PUSH_TOKEN}@github.com/feder-cr/invisible_playwright" hb 2>/dev/null
           ( cd hb && git checkout -B ci-progress && git config user.email ci@local && git config user.name ci-bot ) 2>/dev/null
-          # PTY so output is UNBUFFERED -> build.log streams live. -f flush, -e return child rc, -c command.
+          # PTY -> unbuffered live log. --enable-bootstrap (in .mozconfig) fetches toolchains during build.
           ( script -qefc './mach build' build.log >/dev/null 2>&1 ; echo $? > build.rc ) &
           BPID=$!
           START=$(date +%s)
@@ -92,20 +74,16 @@ jobs:
             {
               echo "leg=linux-arm64-native  elapsed=$1 m  ($(date -u +%H:%M:%S) UTC)  state=$2"
               echo "objdir=$(du -sh obj-trial 2>/dev/null | cut -f1)  rootfree=$(df -h / | awk 'NR==2{print $4}')"
-              echo "sccache: $(sccache --show-stats 2>/dev/null | grep -iE 'compile requests|cache hits|cache misses' | tr '\n' '|')"
               echo '---- build.log tail (live, PTY) ----'
-              tail -22 build.log 2>/dev/null
+              tail -25 build.log 2>/dev/null
             } > hb/progress.txt
             ( cd hb && git add -A && (git commit -q --amend --no-edit 2>/dev/null || git commit -q -m p 2>/dev/null); git push -f -q origin ci-progress ) 2>/dev/null || true
           }
           while kill -0 "$BPID" 2>/dev/null; do
-            EL=$(( ($(date +%s) - START) / 60 ))
-            push_progress "$EL" "building"
-            sleep 120
+            EL=$(( ($(date +%s) - START) / 60 )); push_progress "$EL" "building"; sleep 120
           done
           wait "$BPID"; RC=$(cat build.rc 2>/dev/null || echo 1)
-          EL=$(( ($(date +%s) - START) / 60 ))
-          push_progress "$EL" "DONE rc=$RC"
+          EL=$(( ($(date +%s) - START) / 60 )); push_progress "$EL" "DONE rc=$RC"
           echo "=== BUILD exit=$RC after ${EL}m ==="
           echo "=== build.log tail (last 200) ==="; tail -200 build.log 2>/dev/null
           [ "$RC" = "0" ] && echo "finished=true" >> "$GITHUB_OUTPUT" || echo "finished=false" >> "$GITHUB_OUTPUT"
@@ -115,4 +93,3 @@ jobs:
           echo "finished=${{ steps.build.outputs.finished }}"
           du -sh obj-trial 2>/dev/null || true
           ls -la obj-trial/dist/bin/firefox 2>/dev/null && echo "FIREFOX BINARY PRODUCED" || echo "no binary"
-          sccache --show-stats 2>/dev/null || true
