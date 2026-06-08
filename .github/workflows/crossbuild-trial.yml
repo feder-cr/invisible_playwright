@@ -1,9 +1,14 @@
-# TRIAL v6 — isolate the COLD build. Drop sccache (it broke configure: `sccache
-# clang -E` exit 2) and drop the bogus bootstrap step (`--no-interactive` is not
-# a valid mach bootstrap flag; --enable-bootstrap in the repo .mozconfig fetches
-# clang+sysroot during configure anyway). Keep ONLY the cold-build speed levers:
-# --disable-debug-symbols + mold. Goal: prove the cold build compiles + fits < 6h,
-# with a real live log (PTY) + objdir-size heartbeat. sccache comes back later.
+# TRIAL v7 — the OTHER 4 targets, after v6 proved linux-arm64-native (cold build
+# 58m, binary produced). Cross-compile recipe taken from camoufox's CI (read its
+# Makefile/patch.py): the ONLY cross config needed is `ac_add_options --target=<triple>`
+# + `rustup target add <triple>`; --enable-bootstrap (already in our .mozconfig)
+# auto-fetches every cross toolchain via fetch-content — clang-cl+VS for Windows,
+# the redistributable macOS SDK + cctools/ld64 for Darwin. No proprietary SDK to
+# procure. mold only on Linux (Win uses lld-link, macOS uses ld64). The Win leg
+# also re-adds the --disable-*{maintenance-service,update-agent,default-browser-agent}
+# flags because our .mozconfig gates them on the HOST uname (wrong for cross).
+# Each leg streams a live PTY log + objdir-size heartbeat to its own
+# ci-progress-<leg> branch so 4 concurrent legs don't clobber each other.
 name: crossbuild-trial
 
 on:
@@ -16,9 +21,45 @@ permissions:
 
 jobs:
   trial:
-    name: linux-arm64-native
-    runs-on: ubuntu-24.04-arm
+    name: ${{ matrix.leg }}
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - leg: linux-x86_64
+            runner: ubuntu-24.04
+            triple: x86_64-pc-linux-gnu
+            rust_target: x86_64-unknown-linux-gnu
+            use_mold: "yes"
+            win_disables: "no"
+            extra_pkgs: "mold"
+            bin: firefox
+          - leg: win-x86_64
+            runner: ubuntu-24.04
+            triple: x86_64-pc-windows-msvc
+            rust_target: x86_64-pc-windows-msvc
+            use_mold: "no"
+            win_disables: "yes"
+            extra_pkgs: "msitools p7zip-full"
+            bin: firefox.exe
+          - leg: macos-arm64
+            runner: ubuntu-24.04
+            triple: aarch64-apple-darwin
+            rust_target: aarch64-apple-darwin
+            use_mold: "no"
+            win_disables: "no"
+            extra_pkgs: ""
+            bin: firefox
+          - leg: macos-x86_64
+            runner: ubuntu-24.04
+            triple: x86_64-apple-darwin
+            rust_target: x86_64-apple-darwin
+            use_mold: "no"
+            win_disables: "no"
+            extra_pkgs: ""
+            bin: firefox
     steps:
       - name: Free disk + 16G swap
         run: |
@@ -41,21 +82,38 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install mold + util-linux (PTY `script`)
-        run: sudo apt-get update && sudo apt-get install -y mold util-linux
+      - name: Install build tools (util-linux for PTY + per-leg extras)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y util-linux ${{ matrix.extra_pkgs }}
 
-      - name: Extend the repo's .mozconfig with cold-build speed levers (ONE mozconfig)
+      - name: Add Rust target for cross
+        run: rustup target add ${{ matrix.rust_target }} || true
+
+      - name: Extend the repo's .mozconfig with target + cold-build levers (ONE mozconfig)
         run: |
           test -f .mozconfig || { echo "ERROR: no .mozconfig in source tree"; exit 1; }
           rm -f mozconfig          # never a second default mozconfig
-          cat >> .mozconfig <<'EOF'
-
-          # --- cold-build speed levers appended by the trial CI ---
-          ac_add_options --disable-debug-symbols
-          ac_add_options --enable-linker=mold
-          mk_add_options MOZ_PARALLEL_BUILD=4
-          mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/obj-trial
-          EOF
+          {
+            echo ""
+            echo "# --- trial CI cross levers appended for ${{ matrix.leg }} ---"
+            echo "ac_add_options --disable-debug-symbols"
+            echo "ac_add_options --target=${{ matrix.triple }}"
+          } >> .mozconfig
+          if [ "${{ matrix.use_mold }}" = "yes" ]; then
+            echo "ac_add_options --enable-linker=mold" >> .mozconfig
+          fi
+          if [ "${{ matrix.win_disables }}" = "yes" ]; then
+            {
+              echo "ac_add_options --disable-default-browser-agent"
+              echo "ac_add_options --disable-maintenance-service"
+              echo "ac_add_options --disable-update-agent"
+            } >> .mozconfig
+          fi
+          {
+            echo "mk_add_options MOZ_PARALLEL_BUILD=4"
+            echo "mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/obj-trial"
+          } >> .mozconfig
           echo "----- final .mozconfig -----"; cat .mozconfig
 
       - name: BUILD under PTY (live log) + heartbeat with objdir-size signal
@@ -64,20 +122,22 @@ jobs:
           GH_PUSH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set +e
+          LEG="${{ matrix.leg }}"
+          HBRANCH="ci-progress-${LEG}"
           git clone --depth 1 "https://x-access-token:${GH_PUSH_TOKEN}@github.com/feder-cr/invisible_playwright" hb 2>/dev/null
-          ( cd hb && git checkout -B ci-progress && git config user.email ci@local && git config user.name ci-bot ) 2>/dev/null
-          # PTY -> unbuffered live log. --enable-bootstrap (in .mozconfig) fetches toolchains during build.
+          ( cd hb && git checkout -B "$HBRANCH" && git config user.email ci@local && git config user.name ci-bot ) 2>/dev/null
+          # PTY -> unbuffered live log. --enable-bootstrap (in .mozconfig) fetches cross toolchains during configure.
           ( script -qefc './mach build' build.log >/dev/null 2>&1 ; echo $? > build.rc ) &
           BPID=$!
           START=$(date +%s)
           push_progress() {
             {
-              echo "leg=linux-arm64-native  elapsed=$1 m  ($(date -u +%H:%M:%S) UTC)  state=$2"
+              echo "leg=${LEG}  elapsed=$1 m  ($(date -u +%H:%M:%S) UTC)  state=$2"
               echo "objdir=$(du -sh obj-trial 2>/dev/null | cut -f1)  rootfree=$(df -h / | awk 'NR==2{print $4}')"
               echo '---- build.log tail (live, PTY) ----'
               tail -25 build.log 2>/dev/null
             } > hb/progress.txt
-            ( cd hb && git add -A && (git commit -q --amend --no-edit 2>/dev/null || git commit -q -m p 2>/dev/null); git push -f -q origin ci-progress ) 2>/dev/null || true
+            ( cd hb && git add -A && (git commit -q --amend --no-edit 2>/dev/null || git commit -q -m p 2>/dev/null); git push -f -q origin "$HBRANCH" ) 2>/dev/null || true
           }
           while kill -0 "$BPID" 2>/dev/null; do
             EL=$(( ($(date +%s) - START) / 60 )); push_progress "$EL" "building"; sleep 120
@@ -90,6 +150,7 @@ jobs:
 
       - name: Report result
         run: |
-          echo "finished=${{ steps.build.outputs.finished }}"
+          echo "leg=${{ matrix.leg }} finished=${{ steps.build.outputs.finished }}"
           du -sh obj-trial 2>/dev/null || true
-          ls -la obj-trial/dist/bin/firefox 2>/dev/null && echo "FIREFOX BINARY PRODUCED" || echo "no binary"
+          ls -la obj-trial/dist/bin/${{ matrix.bin }} 2>/dev/null && echo "BINARY PRODUCED (${{ matrix.bin }})" || echo "no binary"
+          echo "--- dist/bin listing ---"; ls -la obj-trial/dist/bin/ 2>/dev/null | head -40 || true
