@@ -1,0 +1,134 @@
+# TRIAL — the 2 macOS legs, native runners (probe confirmed: macos-15 + macos-15-intel
+# both ship Xcode 26.2 / SDK macosx26.2, NSGlassEffectView present, ad-hoc codesign OK).
+# This proves OUR patched tree actually compiles + packages + ad-hoc-signs end-to-end,
+# not just that the SDK exists. Recipe: xcode-select 26.2, pass --with-macos-sdk (this
+# alone disables the 403'd tooltool SDK fetch — verified in toolchain.configure: the
+# bootstrapped SDK fetch is gated `when not --with-macos-sdk`), keep the repo's
+# --enable-bootstrap (fetches Mozilla clang; SDK fetch already disabled), --target +
+# rustup target. NO mold (macOS uses ld64). Live PTY log + per-leg ci-progress heartbeat.
+name: macos-build-trial
+
+on:
+  push:
+    branches: [ci-macos-build]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  trial:
+    name: ${{ matrix.leg }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - leg: macos-arm64
+            runner: macos-15
+            triple: aarch64-apple-darwin
+            rust_target: aarch64-apple-darwin
+            bin: firefox
+          - leg: macos-x86_64
+            runner: macos-15-intel
+            triple: x86_64-apple-darwin
+            rust_target: x86_64-apple-darwin
+            bin: firefox
+    steps:
+      - name: Checkout patched Firefox source (shallow)
+        uses: actions/checkout@v4
+        with:
+          repository: feder-cr/invisible_firefox
+          ref: stealth/150
+          fetch-depth: 1
+
+      - name: Select Xcode 26.2 + export SDK path
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.2.app
+          SDKP="$(xcrun --show-sdk-path)"
+          echo "SDK_PATH=$SDKP" >> "$GITHUB_ENV"
+          echo "selected SDK $(xcrun --sdk macosx --show-sdk-version) at $SDKP"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Add Rust target
+        run: |
+          if ! command -v rustup >/dev/null 2>&1; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+            source "$HOME/.cargo/env"
+          fi
+          rustup target add ${{ matrix.rust_target }}
+
+      - name: Extend the repo's .mozconfig (target + SDK + cold levers, ONE mozconfig)
+        run: |
+          test -f .mozconfig || { echo "ERROR: no .mozconfig in source tree"; exit 1; }
+          rm -f mozconfig
+          {
+            echo ""
+            echo "# --- macOS trial levers for ${{ matrix.leg }} ---"
+            echo "ac_add_options --disable-debug-symbols"
+            echo "ac_add_options --target=${{ matrix.triple }}"
+            echo "ac_add_options --with-macos-sdk=$SDK_PATH"
+            echo "mk_add_options MOZ_PARALLEL_BUILD=$(sysctl -n hw.ncpu)"
+            echo "mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/obj-trial"
+          } >> .mozconfig
+          echo "----- final .mozconfig -----"; cat .mozconfig
+
+      - name: BUILD under PTY (live log) + heartbeat with objdir-size signal
+        id: build
+        env:
+          GH_PUSH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set +e
+          LEG="${{ matrix.leg }}"
+          HBRANCH="ci-progress-${LEG}"
+          git clone --depth 1 "https://x-access-token:${GH_PUSH_TOKEN}@github.com/feder-cr/invisible_playwright" hb 2>/dev/null
+          ( cd hb && git checkout -B "$HBRANCH" && git config user.email ci@local && git config user.name ci-bot ) 2>/dev/null
+          # BSD `script` (macOS): script -q <file> <command...>  (different syntax from util-linux)
+          ( script -q build.log ./mach build >/dev/null 2>&1 ; echo $? > build.rc ) &
+          BPID=$!
+          START=$(date +%s)
+          push_progress() {
+            {
+              echo "leg=${LEG}  elapsed=$1 m  ($(date -u +%H:%M:%S) UTC)  state=$2"
+              echo "objdir=$(du -sh obj-trial 2>/dev/null | cut -f1)  rootfree=$(df -h / | awk 'NR==2{print $4}')"
+              echo '---- build.log tail (live, PTY) ----'
+              tail -25 build.log 2>/dev/null
+            } > hb/progress.txt
+            ( cd hb && git add -A && (git commit -q --amend --no-edit 2>/dev/null || git commit -q -m p 2>/dev/null); git push -f -q origin "$HBRANCH" ) 2>/dev/null || true
+          }
+          while kill -0 "$BPID" 2>/dev/null; do
+            EL=$(( ($(date +%s) - START) / 60 )); push_progress "$EL" "building"; sleep 120
+          done
+          wait "$BPID"; RC=$(cat build.rc 2>/dev/null || echo 1)
+          EL=$(( ($(date +%s) - START) / 60 )); push_progress "$EL" "DONE rc=$RC"
+          echo "=== BUILD exit=$RC after ${EL}m ==="
+          echo "=== build.log tail (last 200) ==="; tail -200 build.log 2>/dev/null
+          [ "$RC" = "0" ] && echo "finished=true" >> "$GITHUB_OUTPUT" || echo "finished=false" >> "$GITHUB_OUTPUT"
+
+      - name: Package + ad-hoc codesign (no paid cert)
+        if: steps.build.outputs.finished == 'true'
+        run: |
+          set +e
+          ./mach package
+          echo "package rc=$?"
+          APP="$(find obj-trial -maxdepth 6 -name 'Firefox*.app' -o -maxdepth 6 -name '*.app' -type d 2>/dev/null | head -1)"
+          echo "APP=$APP"
+          if [ -n "$APP" ]; then
+            codesign --force --deep --sign - --timestamp=none "$APP"
+            codesign --verify --deep --strict --verbose=2 "$APP" && echo "CODESIGN ADHOC OK"
+            xattr -dr com.apple.quarantine "$APP" || true
+          fi
+
+      - name: Report result
+        run: |
+          echo "leg=${{ matrix.leg }} finished=${{ steps.build.outputs.finished }}"
+          du -sh obj-trial 2>/dev/null || true
+          ls -la obj-trial/dist/bin/${{ matrix.bin }} 2>/dev/null && echo "BINARY PRODUCED (${{ matrix.bin }})" || echo "no binary"
+          echo "--- .app + dmg ---"
+          find obj-trial -maxdepth 6 -name '*.app' -type d 2>/dev/null | head
+          ls -la obj-trial/dist/*.dmg 2>/dev/null || true
