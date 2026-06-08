@@ -47,23 +47,21 @@ jobs:
       - name: Install mold + util-linux (for PTY `script`)
         run: sudo apt-get update && sudo apt-get install -y mold bsdutils util-linux
 
-      - name: Write mozconfig (speed levers)
+      - name: Extend the repo's .mozconfig with speed levers (exactly ONE mozconfig)
         run: |
-          cat > mozconfig <<'EOF'
-          ac_add_options --enable-application=browser
-          ac_add_options --enable-optimize
-          ac_add_options --disable-debug
+          test -f .mozconfig || { echo "ERROR: no .mozconfig in source tree"; exit 1; }
+          rm -f mozconfig          # never have a SECOND default mozconfig (caused the v2/v3/v4 stall)
+          cat >> .mozconfig <<'EOF'
+
+          # --- speed levers appended by the trial CI (their .mozconfig already has
+          # --- --enable-release/--disable-debug/tests/crashreporter/updater/--enable-bootstrap) ---
           ac_add_options --disable-debug-symbols
-          ac_add_options --disable-tests
-          ac_add_options --disable-crashreporter
-          ac_add_options --disable-updater
-          ac_add_options --enable-bootstrap
           ac_add_options --with-ccache=sccache
           ac_add_options --enable-linker=mold
           mk_add_options MOZ_PARALLEL_BUILD=4
           mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/obj-trial
           EOF
-          echo "----- mozconfig -----"; cat mozconfig
+          echo "----- final .mozconfig -----"; cat .mozconfig
 
       - name: Bootstrap build deps (non-interactive, bounded)
         continue-on-error: true
