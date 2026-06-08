@@ -1,9 +1,9 @@
-# TRIAL v3 — feasibility de-risk for the all-in-CI firefox-N pipeline.
-# Goal: prove our patched tree builds FAST ENOUGH (< 6h) on FREE runners, with
-# LIVE visibility. Fixes vs v2: --disable-debug-symbols + mold + sccache-C++ +
-# CARGO_INCREMENTAL=0 + swap + NO `| tail` (stream to file) + a heartbeat that
-# pushes progress to the ci-progress branch every ~150s so we can poll it live.
-# Throwaway branch. No upload/sign/release.
+# TRIAL v4 — done properly. ONE clean leg (linux-arm64 native) to isolate variables.
+# Visibility fixed for real: build runs under a PTY (`script -f`) so output is
+# UNBUFFERED and streams live into build.log; the heartbeat also reports objdir
+# SIZE + disk + sccache (signals that do NOT depend on stdout buffering) every
+# 120s to the ci-progress branch, which we poll. Speed levers: --disable-debug-symbols,
+# mold, sccache for C++ (+ CARGO_INCREMENTAL=0), 16G swap. No upload/sign/release.
 name: crossbuild-trial
 
 on:
@@ -12,36 +12,22 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write      # needed so the heartbeat can push to ci-progress
+  contents: write
 
 jobs:
   trial:
-    name: ${{ matrix.name }}
-    runs-on: ${{ matrix.runner }}
+    name: linux-arm64-native
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 350
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: linux-arm64-native
-            runner: ubuntu-24.04-arm
-            cross: "false"
-            target: ""
-            rust_target: ""
-          - name: macos-arm64-cross
-            runner: ubuntu-latest
-            cross: "true"
-            target: aarch64-apple-darwin
-            rust_target: aarch64-apple-darwin
     steps:
-      - name: Free disk + 16G swap (avoid OOM on link)
+      - name: Free disk + 16G swap
         run: |
           df -h /
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
             /usr/local/share/boost "${AGENT_TOOLSDIRECTORY:-/opt/hostedtoolcache}" 2>/dev/null || true
           sudo apt-get clean 2>/dev/null || true
           sudo fallocate -l 16G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile || true
-          echo "--- after cleanup ---"; df -h /; free -h
+          echo "--- after ---"; df -h /; free -h
 
       - name: Checkout patched Firefox source (shallow)
         uses: actions/checkout@v4
@@ -58,25 +44,12 @@ jobs:
       - name: Set up sccache
         uses: mozilla-actions/sccache-action@v0.0.5
 
-      - name: Install mold (linux native leg only)
-        if: ${{ matrix.cross == 'false' }}
-        run: sudo apt-get update && sudo apt-get install -y mold
-
-      - name: (mac) rust target + community macOS SDK (TRIAL ONLY)
-        if: ${{ matrix.cross == 'true' }}
-        continue-on-error: true
-        run: |
-          rustup target add ${{ matrix.rust_target }} || true
-          mkdir -p "$HOME/sdks" && cd "$HOME/sdks"
-          for V in 14.5 14.0 13.3; do
-            URL="https://github.com/joseluisq/macosx-sdks/releases/download/${V}/MacOSX${V}.sdk.tar.xz"
-            echo "trying $URL"; curl -fsSL "$URL" -o sdk.tar.xz && tar -xf sdk.tar.xz && break || true
-          done
-          ls -d MacOSX*.sdk 2>/dev/null && echo "SDK_DIR=$(ls -d $HOME/sdks/MacOSX*.sdk | head -1)" >> "$GITHUB_ENV" || echo "NO SDK FETCHED"
+      - name: Install mold + util-linux (for PTY `script`)
+        run: sudo apt-get update && sudo apt-get install -y mold bsdutils util-linux
 
       - name: Write mozconfig (speed levers)
         run: |
-          cat > mozconfig <<EOF
+          cat > mozconfig <<'EOF'
           ac_add_options --enable-application=browser
           ac_add_options --enable-optimize
           ac_add_options --disable-debug
@@ -86,19 +59,10 @@ jobs:
           ac_add_options --disable-updater
           ac_add_options --enable-bootstrap
           ac_add_options --with-ccache=sccache
+          ac_add_options --enable-linker=mold
           mk_add_options MOZ_PARALLEL_BUILD=4
           mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/obj-trial
           EOF
-          if [ "${{ matrix.cross }}" = "false" ]; then
-            echo 'ac_add_options --enable-linker=mold' >> mozconfig
-          else
-            {
-              echo 'ac_add_options --target=${{ matrix.target }}'
-              echo "ac_add_options --with-macos-sdk=${SDK_DIR}"
-              echo 'export CFLAGS="-mcpu=apple-m1"'
-              echo 'export CXXFLAGS="-mcpu=apple-m1"'
-            } >> mozconfig
-          fi
           echo "----- mozconfig -----"; cat mozconfig
 
       - name: Bootstrap build deps (non-interactive, bounded)
@@ -108,9 +72,9 @@ jobs:
           MOZBUILD_STATE_PATH: ${{ github.workspace }}/.mozbuild
         run: |
           timeout 1800 ./mach bootstrap --no-interactive --application-choice=browser < /dev/null \
-            || echo "bootstrap exited/timed out — continuing (--enable-bootstrap fetches toolchains)"
+            || echo "bootstrap exited/timed out — continuing"
 
-      - name: BUILD with live heartbeat (streams to file; pushes progress every ~150s)
+      - name: BUILD under PTY (live log) + heartbeat with objdir-size signal
         id: build
         env:
           SCCACHE_GHA_ENABLED: "true"
@@ -120,38 +84,37 @@ jobs:
           GH_PUSH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set +e
-          # heartbeat sink: a throwaway ci-progress branch on THIS repo
           git clone --depth 1 "https://x-access-token:${GH_PUSH_TOKEN}@github.com/feder-cr/invisible_playwright" hb 2>/dev/null
           ( cd hb && git checkout -B ci-progress && git config user.email ci@local && git config user.name ci-bot ) 2>/dev/null
-          # real build in background, FULL output to build.log (no tail)
-          ( ./mach build < /dev/null > build.log 2>&1 ; echo $? > build.rc ) &
+          # PTY so output is UNBUFFERED -> build.log streams live. -f flush, -e return child rc, -c command.
+          ( script -qefc './mach build' build.log >/dev/null 2>&1 ; echo $? > build.rc ) &
           BPID=$!
           START=$(date +%s)
+          push_progress() {
+            {
+              echo "leg=linux-arm64-native  elapsed=$1 m  ($(date -u +%H:%M:%S) UTC)  state=$2"
+              echo "objdir=$(du -sh obj-trial 2>/dev/null | cut -f1)  rootfree=$(df -h / | awk 'NR==2{print $4}')"
+              echo "sccache: $(sccache --show-stats 2>/dev/null | grep -iE 'compile requests|cache hits|cache misses' | tr '\n' '|')"
+              echo '---- build.log tail (live, PTY) ----'
+              tail -22 build.log 2>/dev/null
+            } > hb/progress.txt
+            ( cd hb && git add -A && (git commit -q --amend --no-edit 2>/dev/null || git commit -q -m p 2>/dev/null); git push -f -q origin ci-progress ) 2>/dev/null || true
+          }
           while kill -0 "$BPID" 2>/dev/null; do
             EL=$(( ($(date +%s) - START) / 60 ))
-            {
-              echo "leg=${{ matrix.name }}  elapsed=${EL}m  ($(date -u +%H:%M:%S) UTC)"
-              echo "sccache: $(sccache --show-stats 2>/dev/null | grep -iE 'compile requests|cache hits|cache misses' | tr '\n' '|')"
-              echo "---- build.log tail ----"
-              tail -15 build.log 2>/dev/null
-            } > "hb/progress-${{ matrix.name }}.txt"
-            ( cd hb && git add -A && (git commit -q --amend --no-edit 2>/dev/null || git commit -q -m progress 2>/dev/null); git push -f -q origin ci-progress ) 2>/dev/null || true
-            sleep 150
+            push_progress "$EL" "building"
+            sleep 120
           done
           wait "$BPID"; RC=$(cat build.rc 2>/dev/null || echo 1)
-          echo "=== BUILD exit code: $RC ==="
-          echo "=== build.log tail (last 150) ==="; tail -150 build.log 2>/dev/null
-          { echo "leg=${{ matrix.name }} DONE rc=$RC at $(date -u +%H:%M:%S)"; echo '---- final tail ----'; tail -30 build.log 2>/dev/null; } > "hb/progress-${{ matrix.name }}.txt" 2>/dev/null
-          ( cd hb && git add -A && (git commit -q --amend --no-edit 2>/dev/null || git commit -q -m progress 2>/dev/null); git push -f -q origin ci-progress ) 2>/dev/null || true
+          EL=$(( ($(date +%s) - START) / 60 ))
+          push_progress "$EL" "DONE rc=$RC"
+          echo "=== BUILD exit=$RC after ${EL}m ==="
+          echo "=== build.log tail (last 200) ==="; tail -200 build.log 2>/dev/null
           [ "$RC" = "0" ] && echo "finished=true" >> "$GITHUB_OUTPUT" || echo "finished=false" >> "$GITHUB_OUTPUT"
 
       - name: Report result
         run: |
-          echo "build finished=${{ steps.build.outputs.finished }}"
-          df -h /
-          if ls obj-trial/dist/bin/firefox* >/dev/null 2>&1 || ls -d obj-trial/dist/*.app >/dev/null 2>&1; then
-            echo "RESULT: BINARY/APP PRODUCED for ${{ matrix.name }}"
-          else
-            echo "RESULT: no final binary for ${{ matrix.name }}"
-          fi
+          echo "finished=${{ steps.build.outputs.finished }}"
+          du -sh obj-trial 2>/dev/null || true
+          ls -la obj-trial/dist/bin/firefox 2>/dev/null && echo "FIREFOX BINARY PRODUCED" || echo "no binary"
           sccache --show-stats 2>/dev/null || true
