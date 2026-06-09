@@ -156,6 +156,10 @@ jobs:
           N=$(find "$STAGING" -type l | wc -l)
           [ "$N" -eq 0 ] || { echo "ERROR: $N symlinks remain after cp -aL"; exit 1; }
           for t in xpcshell certutil pk12util rapl; do rm -f "$STAGING/$t"; done
+          # JUGGLER GATE: the binary is undrivable by Playwright without it (see 70-known-bugs)
+          { [ -e "$STAGING/chrome/juggler.manifest" ] && [ -d "$STAGING/chrome/juggler" ]; } \
+            || { echo "ERROR: juggler missing from package (chrome/juggler) — Playwright can't drive it"; exit 1; }
+          echo "juggler GATE OK (loose chrome/juggler present)"
           find "$STAGING" -type f \
             \( -name '*.so' -o -name firefox -o -name firefox-bin -o -name plugin-container \
                -o -name pingsender -o -name glxtest -o -name vaapitest -o -name updater \) \
@@ -172,9 +176,20 @@ jobs:
         if: matrix.family == 'win'
         run: |
           set -e
-          ./mach package
-          WIN_APP=obj-rel/dist/firefox
-          [ -f "$WIN_APP/firefox.exe" ] || { echo "ERROR: $WIN_APP/firefox.exe missing (mach package failed?)"; exit 1; }
+          ./mach package || echo "mach package rc=$? (continuing to locate the app tree)"
+          # Prefer the clean packaged tree; fall back to dist/bin if cross didn't produce dist/firefox
+          if [ -f obj-rel/dist/firefox/firefox.exe ]; then WIN_APP=obj-rel/dist/firefox
+          elif [ -f obj-rel/dist/bin/firefox.exe ]; then WIN_APP=obj-rel/dist/bin
+          else echo "ERROR: firefox.exe not found in dist/firefox nor dist/bin"; exit 1; fi
+          echo "packaging from: $WIN_APP"
+          # JUGGLER GATE: omni.ja must carry juggler (dist/firefox) or loose chrome/ (dist/bin fallback)
+          if [ -f "$WIN_APP/omni.ja" ]; then
+            python3 -c "import zipfile,sys; sys.exit(0 if any('juggler' in n.lower() for n in zipfile.ZipFile('$WIN_APP/omni.ja').namelist()) else 1)" \
+              || { echo "ERROR: juggler missing from $WIN_APP/omni.ja — Playwright can't drive it"; exit 1; }
+          elif [ ! -d "$WIN_APP/chrome/juggler" ]; then
+            echo "ERROR: juggler missing from $WIN_APP (no omni.ja juggler, no loose chrome/juggler)"; exit 1
+          fi
+          echo "juggler GATE OK (win)"
           mkdir -p out
           ( cd "$WIN_APP" && zip -qr "$GITHUB_WORKSPACE/out/${{ matrix.asset }}" . )   # firefox.exe at zip ROOT
           ls -la out/
@@ -188,6 +203,10 @@ jobs:
           APP="$(find obj-rel/dist -maxdepth 2 -name '*.app' -type d | head -1)"
           [ -n "$APP" ] || { echo "ERROR: no .app produced"; exit 1; }
           echo "built app: $APP"
+          # JUGGLER GATE: the .app's omni.ja must carry juggler (else Playwright can't drive it)
+          python3 -c "import zipfile,sys,glob; jas=glob.glob('$APP/Contents/Resources/omni.ja')+glob.glob('$APP/Contents/Resources/browser/omni.ja'); sys.exit(0 if jas and any(any('juggler' in n.lower() for n in zipfile.ZipFile(j).namelist()) for j in jas) else 1)" \
+            || { echo "ERROR: juggler missing from .app omni.ja — Playwright can't drive it"; exit 1; }
+          echo "juggler GATE OK (mac)"
           codesign --force --deep --sign - --timestamp=none "$APP"
           codesign --verify --deep --strict --verbose=2 "$APP"
           echo "=== --version GATE ==="
@@ -255,7 +274,8 @@ jobs:
       - name: Generate checksums.txt
         run: |
           cd dl; ls -la
-          sha256sum * > checksums.txt
+          # explicit glob — never include checksums.txt itself (the `*`-includes-itself trap)
+          sha256sum firefox-150.0.1-stealth-* > checksums.txt
           echo "----- checksums.txt -----"; cat checksums.txt
       - name: Resolve release tag
         id: tag
