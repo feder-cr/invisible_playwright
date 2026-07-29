@@ -1,4 +1,4 @@
-"""Public API surface — what users actually import."""
+"""Public API surface - what users actually import."""
 import importlib
 
 import pytest

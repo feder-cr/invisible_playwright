@@ -4,12 +4,12 @@
 The 127 ``@pytest.mark.e2e`` tests are excluded from the default `pytest` run
 (`addopts = -m 'not slow and not e2e'`) because they need a real Firefox binary
 and a display, and they skip themselves when no binary is available. That makes
-them easy to forget — and "we can't afford for something to not work". This is
+them easy to forget - and "we can't afford for something to not work". This is
 the gate that runs them all, deliberately, against a chosen binary.
 
 It is the MANDATORY pre-release e2e gate: run it green against the freshly-built
 release binary BEFORE un-drafting a firefox-N (alongside the fppro + WebRTC
-realness gates). It is NOT in the public CI drive-gate — the hosted runners are
+realness gates). It is NOT in the public CI drive-gate - the hosted runners are
 content-process unstable under a heavy headless interaction sequence (see
 70-known-bugs / 60-ci-release-pipeline); this runs locally on reliable hardware.
 

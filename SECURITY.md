@@ -1,8 +1,12 @@
 # Security Policy
 
+## Disclaimer
+
+This is an educational project. It is provided as-is, with no warranties. The maintainers take no responsibility for how it is used. Use it at your own risk and in compliance with the laws of your jurisdiction.
+
 ## Supported versions
 
-Only the latest release on `main` receives security fixes.
+Only the latest release on `main` receives fixes.
 
 | Version | Supported |
 |---------|-----------|
@@ -11,44 +15,33 @@ Only the latest release on `main` receives security fixes.
 
 ## Reporting a vulnerability
 
-**Please do not report security issues via public GitHub issues, discussions, or pull requests.**
+Do not report security issues via public GitHub issues, discussions, or pull requests.
 
-Use one of the following private channels:
+Send a report to `federico.elia.majo@gmail.com` with subject prefix `[security][invisible_playwright]`.
 
-1. **GitHub Private Vulnerability Reporting** (preferred): open an advisory at https://github.com/feder-cr/invisible_playwright/security/advisories/new
-2. **Email**: `federico.elia.majo@gmail.com` with subject prefix `[security][invisible_playwright]`
+Include:
 
-Please include:
-
-- A clear description of the issue and impact
-- Steps to reproduce (minimal repro preferred)
-- The version of `invisible_playwright` and OS where it was observed
-- Whether you have a suggested fix
-
-## What to expect
-
-- Acknowledgement of your report within **7 days**
-- An initial assessment and tracking issue (private) within **14 days**
-- Coordinated disclosure: a fix and public advisory are released together; reporters are credited unless they prefer to remain anonymous
+- What the issue is and what it affects
+- Steps to reproduce
+- Version of `invisible_playwright` and OS
+- Fix suggestion if you have one
 
 ## Scope
 
 In scope:
 
-- The Python wrapper `invisible_playwright` (this repo)
-- The binary download/verification flow (SHA256 pinning, fetch endpoints)
+- The Python wrapper (this repo)
+- The binary download and verification flow
 - The CLI
 
-Out of scope here (report to the relevant project):
+Out of scope:
 
-- Vulnerabilities in the patched Firefox C++ source — open a private report at [feder-cr/invisible_firefox](https://github.com/feder-cr/invisible_firefox/security/advisories/new)
-- Vulnerabilities in upstream Firefox / mozilla-central — report to Mozilla per https://www.mozilla.org/security/
-- Vulnerabilities in third-party dependencies (`playwright`, `requests`, etc.) — report to those projects directly
+- Vulnerabilities in the patched Firefox source - report to [feder-cr/firefox_antidetect_patch](https://github.com/feder-cr/firefox_antidetect_patch/security/advisories/new)
+- Upstream Firefox / mozilla-central - report to Mozilla directly
+- Third-party dependencies - report to those projects
 
-## Out of scope
+Not security issues:
 
-- Reports that the browser is detected by a specific anti-bot service — open a regular GitHub issue, this is a product-quality concern, not a security one
-- Social engineering of maintainers
-- Denial of service requiring physical access or local privileged access
-
-Thank you for helping keep the project and its users safe.
+- The browser being detected by an anti-bot service - open a regular issue
+- Social engineering
+- DoS requiring physical or local privileged access

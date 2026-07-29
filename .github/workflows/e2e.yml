@@ -1,17 +1,17 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# e2e.yml — run the FULL browser-driving e2e suite (the 127 @pytest.mark.e2e)
+# e2e.yml - run the FULL browser-driving e2e suite (the 127 @pytest.mark.e2e)
 # on GitHub, on every push/PR to main.
 #
 # Why this can run on CI when the drive-gate had to stay light: the drive-gate
 # launched Firefox in true HEADLESS mode, which is content-process unstable on
 # the hosted runners (eval-CSP / context-destroyed). The stealth wrapper instead
 # launches Firefox HEADED on a real display; under `xvfb-run` (a virtual X
-# server) that's exactly what we get on a headless CI box — stable, and the same
+# server) that's exactly what we get on a headless CI box - stable, and the same
 # thing webrtc-e2e.yml already relies on.
 #
 # Secret-free, so it's safe in public CI: the binary is the PUBLIC firefox-9
 # release (no token), and the webrtc e2e fake a local TCP-only SOCKS. The proxy
-# realness gate (fppro / smartproxy) is NOT here — it needs secrets and stays a
+# realness gate (fppro through a real proxy) is NOT here: it needs secrets and stays a
 # local pre-release gate.
 # ─────────────────────────────────────────────────────────────────────────────
 name: e2e
@@ -19,6 +19,10 @@ name: e2e
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -27,8 +31,18 @@ permissions:
   contents: read
 
 jobs:
+  # The install below resolves `invisible-core==N.M.0` from the package index,
+  # and the core is published BEFORE this package. This gate answers whether it
+  # is on the index yet; during that window the e2e job is SKIPPED with the
+  # reason in the run summary rather than faked green, and once the core is up
+  # it runs unchanged. See .github/workflows/core-on-index.yml.
+  core-on-index:
+    uses: ./.github/workflows/core-on-index.yml
+
   e2e:
     name: e2e (linux, xvfb)
+    needs: core-on-index
+    if: needs.core-on-index.outputs.available == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:

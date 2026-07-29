@@ -1,61 +1,54 @@
-# invisible_playwright
+<p>
+  <a href="https://github.com/feder-cr/invisible_playwright/actions/workflows/tests.yml"><img src="https://github.com/feder-cr/invisible_playwright/actions/workflows/tests.yml/badge.svg" alt="tests"></a>
+  <a href="https://github.com/feder-cr/invisible_playwright/blob/main/LICENSE"><img src="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/badges/license.svg" alt="License: MIT"></a>
+  <a href="https://www.python.org/downloads/"><img src="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/badges/python.svg" alt="Python 3.11+"></a>
+  <a href="https://github.com/feder-cr/firefox_antidetect_patch/releases"><img src="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/badges/firefox.svg" alt="Firefox 151.0"></a>
+  <a href="https://github.com/feder-cr/invisible_playwright/stargazers"><img src="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/badges/stars.svg" alt="GitHub stars"></a>
+  <a href="https://github.com/feder-cr/firefox_antidetect_patch/releases/tag/usage-counter"><img src="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/badges/launches.svg" alt="browser launches"></a>
+</p>
 
-[![tests](https://github.com/feder-cr/invisible_playwright/actions/workflows/tests.yml/badge.svg)](https://github.com/feder-cr/invisible_playwright/actions/workflows/tests.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Firefox 150.0.1](https://img.shields.io/badge/firefox-150.0.1-orange.svg)](https://www.mozilla.org/firefox/)
-[![GitHub release](https://img.shields.io/github/v/release/feder-cr/invisible_playwright.svg)](https://github.com/feder-cr/invisible_playwright/releases)
-[![GitHub stars](https://img.shields.io/github/stars/feder-cr/invisible_playwright.svg?style=social)](https://github.com/feder-cr/invisible_playwright/stargazers)
-[![browser launches](https://img.shields.io/github/downloads/feder-cr/invisible_firefox/usage-counter/total?label=browser%20launches&color=blue)](https://github.com/feder-cr/invisible_firefox/releases/tag/usage-counter)
+<div align="center">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/feder-cr/invisible_playwright/7a8693c6b4386e9a84dd93bedc479ca8654482e1/docs/banner-dark.png">
+  <img src="https://raw.githubusercontent.com/feder-cr/invisible_playwright/7a8693c6b4386e9a84dd93bedc479ca8654482e1/docs/banner-light.png" alt="invisible_playwright" width="620">
+</picture>
+</div>
 
-[![LinkedIn](https://img.shields.io/badge/LinkedIn-Federico%20Elia-0A66C2?logo=linkedin&logoColor=white)](https://it.linkedin.com/in/federico-elia-5199951b6)
+<h3 align="center">Undetected Playwright automation on a stealth-patched Firefox.<br>
+Python, MIT, and it passes every bot detection test.</h3>
 
-**Stealth Firefox that passes every bot detection test. Drop-in Playwright replacement, fingerprint patched at the C++ level, not a JavaScript shim.**
+![invisible_playwright - 5/5 detection suites passed](https://raw.githubusercontent.com/feder-cr/invisible_playwright/7a8693c6b4386e9a84dd93bedc479ca8654482e1/docs/screenshots/hero.gif)
 
-![invisible_playwright - 5/5 detection suites passed](docs/screenshots/hero.gif)
+## How it works
 
+Anti-bots ask two questions. invisible_playwright answers yes to both.
 
-## Why it's powerful
+**1. Is this a real browser?** Yes. It is Firefox, patched at the C++ source level.
 
+- Fingerprint set inside the engine, not injected into the page: Navigator, screen, GPU/WebGL, Canvas, fonts, audio, WebRTC, timezone, network.
+- No JS shim, no override, no seam to read.
 
-**Most other anti-detect browsers patch Chromium at the JavaScript level** - they override `navigator`, `WebGLRenderingContext.getParameter`, canvas APIs, and so on via injected scripts. This has two fatal problems:
+**2. Is a real person using it?** Yes. The actions are humanized in the driver.
 
-1. **JS patches are detectable.** Anti-bots enumerate native function `.toString()`, check descriptor configurability, compare property enumeration order, watch for prototype mutations. Every patch leaves a fingerprint of its own. CreepJS has an entire battery of "lies detectors" built around this.
-2. **Chromium itself is now suspect.** Residential-proxy bot traffic is overwhelmingly Chromium-based, so detectors weight anything Chromium-shaped as risky by default. Chromium-based forks inherit Chrome's open-source layers (BoringSSL, Blink, V8, ANGLE) cleanly, but they still cannot fully match Chrome in practice: Chrome ships closed-source components on top (Widevine, proprietary codecs, Google Update / Safe Browsing endpoints) that flip detectable JS feature flags and network signals, and forks lag Chrome's release cadence by days to weeks, leaving telltale version-specific behaviours that detectors lock onto.
+- Every click, hover and drag follows a natural mouse path with human timing, no teleporting cursor.
+- Each input is byte-identical to a real mouse: real input source, pressure, trusted events.
 
-**invisible_playwright patches Firefox at the C++ level.** The spoofed values come back out through the normal Gecko paths - there is no JS shim, no override, no `Object.defineProperty`. **From the page's point of view, the browser is just telling the truth.** Anti-bot lie-detectors have nothing to latch onto.
-
-invisible_playwright spoofs **all the layers that matter, together, coherently**: Navigator, screen, GPU/WebGL, Canvas, fonts, audio, WebRTC, timezone, DevTools detection, SOCKS5 auth, and the rest. See [feder-cr/invisible_firefox](https://github.com/feder-cr/invisible_firefox) for the full per-layer breakdown of which C++ files are patched and why.
-
-Everything is driven by preferences - no hardcoded values in the binary. You change one pref, you change the spoofed value.
+Driven by the standard Playwright API. Full breakdown: [feder-cr/firefox_antidetect_patch](https://github.com/feder-cr/firefox_antidetect_patch).
 
 ---
 
-## How it compares
+## Still seeing captchas or anti-bot? It's the proxy.
+Once the browser is handled it stops being the variable. If you are still getting challenged, the tell is no longer the browser, it is the IP you come from. Around 90% of proxies are public: anyone can rent the same address, so it is already known and sits on the blocked-IP lists sites check. A perfect browser on a known IP still loses.
 
-**CloakBrowser** ships a similar pitch for Chromium, but its binary is **closed source** (the source-level patches are not published, you only get the compiled output), and it still hits the Chromium reCAPTCHA ceiling. The commercial anti-detect browsers (**Multilogin**, **GoLogin**, AdsPower, Dolphin, Kameleo) are paid SaaS that overlay JS-layer spoofing on a patched Chromium. Managed profiles are nice but raw detection bypass sits below both Camoufox and us.
-
-| | invisible_playwright | Camoufox | CloakBrowser | Multilogin |
-|---|---|---|---|---|
-| Engine | Firefox 150 | Firefox (~1 year old base) | Chromium | Chromium fork | 
-| Patch depth | C++ source | C++ source | C++ source  | JS overrides | 
-| Maintenance | Active | Gap (~1 year) | Active | Active SaaS | 
-| Open source | ✅ MIT | ✅ MPL | ❌ Closed source | ❌ Closed source | 
-| `.toString()` clean | ✅ | ✅ | ✅ | ❌ Detectable shims | 
-| Canvas / WebGL / Audio | ✅ C++ | ⚠️ Drift vs current FF | ✅ C++ | ⚠️ JS override |
-| SOCKS5 auth | ✅ Patched | ❌ | ⚠️ Playwright proxy | ⚠️ Varies | 
-| **reCAPTCHA v3 score** | **0.90** | ~0.3-0.5 | ~0.3-0.5 | ~0.3-0.6 | 
-| FP Pro - bot detected | ✅ Not detected | ❌ Detected | ❌ Detected | ❌ Detected | 
-| CreepJS lies | ✅ 0 | ❌ Multiple | ✅ 0 | ❌ Multiple | 
-| Cost | Free | Free | Free | From $99/mo | 
+> The fix is the clean 10%, residential IPs that aren't already known. For those we recommend [sx.org](https://sx.org/?c=invisible_playwright), who filter for and serve only IPs that aren't already on those lists.
 
 ---
 
 ## Install
 
 ```bash
-pip install git+https://github.com/feder-cr/invisible_playwright.git
-python -m invisible_playwright fetch      # one-time ~100 MB download, SHA256-verified
+pip install invisible-playwright
+python -m invisible_playwright fetch      # one-time ~238 MB download (~544 MB unpacked), sha256-verified
 ```
 
 Supported platforms: **Windows x86_64**, **Linux x86_64 / arm64**, **macOS arm64 / x86_64**. On macOS the app is ad-hoc signed (not notarized): if Gatekeeper complains, clear the quarantine flag once with `xattr -dr com.apple.quarantine` on the cached `Firefox.app`.
@@ -74,7 +67,7 @@ Supported platforms: **Windows x86_64**, **Linux x86_64 / arm64**, **macOS arm64
 + with InvisiblePlaywright() as browser:
 ```
 
-Every session gets a unique, coherent fingerprint drawn from real-world Firefox telemetry (GPU / audio / fonts / ~400 other fields) and Bezier-curve mouse motion baked into the browser itself.
+Every session gets a distinct fingerprint (GPU, audio, fonts, screen, ~200 fields) and Bezier-curve mouse motion.
 
 **Sync**
 ```python
@@ -98,19 +91,7 @@ async with InvisiblePlaywright(proxy={"server": "socks5://...", "username": "u",
 
 The `browser` object is a `playwright.sync_api.Browser` / `playwright.async_api.Browser` - every Playwright method works as-is.
 
----
-
-### Random fingerprint per session
-
-```python
-from invisible_playwright import InvisiblePlaywright
-
-with InvisiblePlaywright() as browser:
-    page = browser.new_page()
-    page.goto("https://creepjs-api.web.app")
-```
-
-Every call samples a new coherent profile. Log the seed to reproduce interesting runs:
+Log the seed to replay a run:
 
 ```python
 sf = InvisiblePlaywright()
@@ -138,7 +119,9 @@ with InvisiblePlaywright(proxy=proxy) as browser:
     ...
 ```
 
-Schemes supported: `socks5`, `socks4`, `http`, `https`. Auth works on all of them (SOCKS5 via patched `nsProtocolProxyService.cpp`, HTTP/HTTPS via Playwright). DNS is routed through the proxy by default, no local leak.
+Schemes supported: `socks5`, `socks4`, `http`, `https`. DNS is routed through the proxy by default, no local leak.
+
+Around 90% of proxies are public, so their IPs are already known and blocked. For the clean 10%, residential IPs that aren't already known, we recommend [sx.org](https://sx.org/?c=invisible_playwright), who filter for and serve only IPs that aren't already on those lists.
 
 ### Timezone
 
@@ -150,7 +133,7 @@ The browser timezone follows `timezone=`:
 with InvisiblePlaywright(proxy=proxy) as browser:
     ...
 
-# explicit IANA zone always wins — the only way to force a specific zone
+# explicit IANA zone always wins, the only way to force a specific zone
 with InvisiblePlaywright(proxy=proxy, timezone="America/New_York") as browser:
     ...
 ```
@@ -179,24 +162,91 @@ Full list of pinnable keys, how pinning interacts with the Bayesian sampler, and
 
 ## CLI
 
+The installed command is `invisible-playwright`, with a hyphen. `python -m
+invisible_playwright` works identically and needs nothing on PATH.
+
 ```bash
-invisible_playwright fetch          # download the binary if missing
-invisible_playwright fetch --force  # re-download even if cached
-invisible_playwright path           # print the absolute path to the cached binary
-invisible_playwright version        # wrapper and binary versions
-invisible_playwright clear-cache    # remove all cached binaries
+invisible-playwright fetch          # download the engine if missing
+invisible-playwright fetch --force  # re-download even if cached
+invisible-playwright path           # absolute path to the cached engine (downloads it if absent)
+invisible-playwright version        # wrapper, core and engine versions
+invisible-playwright clear-cache    # remove cached engine trees
+invisible-playwright doctor         # check every cached engine against the seal
 ```
+
+## Documentation, guides and comparisons
+
+All of it reads better, and is searchable, at
+**[feder-cr.github.io/invisible_playwright](https://feder-cr.github.io/invisible_playwright/)**,
+organised into four sections instead of one flat list:
+
+- **[Documentation](docs/documentation.md)** -
+  installation, the two-line switch from plain Playwright, proxy/timezone
+  configuration, pinning specific fields, the CLI.
+- **[Guides](docs/guides.md)** - how
+  detection actually works, in seven groups: browser identity, canvas/WebGL/fonts/
+  audio, network and WebRTC, the automation layer, AI agents, the detectors themselves
+  explained from source, and testing.
+- **[Comparisons](docs/comparisons.md)** -
+  against Camoufox, Patchright, nodriver and playwright-stealth, and the case for
+  Firefox over Chromium generally.
+- **[Integrations](docs/integrations/)** -
+  Scrapy, Crawlee, Robot Framework, CodeceptJS, test runners, Playwright MCP, and the
+  frameworks it does not fit, by name.
+
+If you don't know where to start: [Three ways to make Playwright undetected](docs/playwright-stealth-levels.md)
+is the map most other pages link back to, [Playwright detected as a bot on one site](docs/playwright-detected-as-bot.md)
+is the troubleshooting order, and [navigator.webdriver is not the tell you think it is](docs/navigator-webdriver-explained.md)
+explains the most famous property in this space and why patching it alone buys you
+almost nothing.
+- [crawl4ai stealth and custom browser engines](docs/crawl4ai-stealth-custom-browser.md) - browser_type accepts firefox but there is no executable_path; where the adapter seam is
+- [Why headless browsers render different fonts](docs/headless-fonts-differ.md) - the three causes, the per-platform font sets, and why the fix is not installing more fonts
+- [How to make Linux and macOS report real Windows fonts](docs/bundled-fonts-cross-platform.md) - one manifest, three font backends convinced not to ask the host, and the four seams still open
+- [measureText and TextMetrics as a fingerprinting surface](docs/measuretext-textmetrics-fingerprinting.md) - ten-plus numbers from one call needing no permission prompt, and the two mistakes we made fixing it
+- [What privacy.resistFingerprinting really does](docs/resist-fingerprinting.md) - and why this project sets it to false on purpose
+- [The ChromeDriver cdc_ variable](docs/cdc-variable-explained.md) - why renaming it is not removing it, and what that generalises to
+- [What bot.sannysoft.com actually checks](docs/sannysoft-explained.md) - row by row, and the canvas-in-iframe test nobody reads
+- [How CreepJS decides you are lying](docs/creepjs-explained.md) - four detection techniques, and why blocking the probe is itself recorded
+- [Firefox preferences that silently do nothing](docs/firefox-prefs-not-applying.md) - five reasons, starting with the one that cost us a real bug
+- [What BotD actually detects](docs/botd-explained.md) - twenty detectors, and why most are not about bots at all
+- [Why a FingerprintJS visitor ID changes](docs/fingerprintjs-visitor-id.md) - it is a hash of 41 components, so one moving moves all of it
 
 ## Related projects
 
-invisible_playwright takes a different angle than the major Firefox-hardening projects but stands on their shoulders:
+The open-source neighbours, and what each one is for.
 
-- **[arkenfox/user.js](https://github.com/arkenfox/user.js)** - the canonical Firefox configuration for privacy/security hardening via prefs. Reading arkenfox is how you understand which `user.js` knobs matter; invisible_playwright goes further by patching the C++ source where prefs alone are insufficient (Canvas noise, WebGL parameter overrides, font whitelisting, WebRTC IP swap, DevTools detection bypass).
-- **[LibreWolf](https://librewolf.net)** - a Firefox fork bundled with sensible privacy defaults. Same audience, different distribution model: LibreWolf ships a configured Firefox binary, invisible_playwright ships source patches + a wrapper for automation.
-- **[Camoufox](https://github.com/daijro/camoufox)** - the most well-known open-source anti-detect Firefox project. We share design goals on the fingerprint-spoofing side; the implementation approach differs (Camoufox patches a wider surface and ships its own fingerprint database, while invisible_playwright sticks closer to vanilla and drives spoofing from a Bayesian sampler).
+**On the Firefox side**
+
+- **[Camoufox](https://github.com/daijro/camoufox)** - an anti-detect Firefox that also patches at the C++ level. It covers a wider surface and ships its own fingerprint database; this project derives a fingerprint from a seed with a Bayesian sampler, so one number reproduces one machine. [Full comparison](docs/vs-camoufox.md).
+- **[LibreWolf](https://librewolf.net)** - a Firefox fork with privacy defaults. It ships a configured binary for people to browse with; this ships source patches plus an automation wrapper.
+- **[arkenfox/user.js](https://github.com/arkenfox/user.js)** - Firefox hardening through preferences. Where a preference is enough, use it; this project patches C++ where one is not.
+
+**On the Chromium side**
+
+- **[Patchright](https://github.com/Kaliiiiiiiiii-Vinyzu/patchright)** - a patched Playwright fork, so the stealth work lands in the driver rather than in the browser binary. [Full comparison](docs/vs-patchright.md).
+- **[nodriver](https://github.com/ultrafunkamsterdam/nodriver)** - the successor to `undetected-chromedriver`, driving Chrome over CDP directly and removing the WebDriver-flavoured tells. [Full comparison](docs/vs-nodriver.md).
+- **[playwright-stealth](https://github.com/Mattwmaster58/playwright_stealth)** - an init-script patch applied before the page loads. Its own maintainer calls it a proof-of-concept; [full comparison](docs/vs-playwright-stealth.md).
+
+Which of these fits depends on the layer your problem is at, and on whether you need Firefox or Chromium. [Three ways to make Playwright undetected](docs/playwright-stealth-levels.md) works through what each layer can and cannot reach, including what this one costs.
+
+If you are picking between engines rather than tools, note that a large share of AI agent frameworks drive Chromium over CDP, which decides the question for you: [AI browser agents and stealth](docs/ai-browser-agents-stealth.md).
 
 ---
 
 ## License
 
-MIT - see [LICENSE](LICENSE). The patched Firefox binary is distributed under the MPL-2.0 (Firefox upstream license). The C++ patches against mozilla-central that produce that binary are at [feder-cr/invisible_firefox](https://github.com/feder-cr/invisible_firefox).
+MIT - see [LICENSE](https://github.com/feder-cr/invisible_playwright/blob/main/LICENSE). The patched Firefox binary is distributed under the MPL-2.0 (Firefox upstream license). The C++ patches against mozilla-central that produce that binary are at [feder-cr/firefox_antidetect_patch](https://github.com/feder-cr/firefox_antidetect_patch).
+
+---
+
+## Disclaimer
+
+This project is for educational purposes only. It is provided as-is, with no warranties. I take no responsibility for how it is used. Use it at your own risk and in compliance with the laws of your jurisdiction.
+
+
+---
+
+<p align="center">
+  Built by <a href="https://it.linkedin.com/in/federico-elia-5199951b6">Federico Elia</a>
+  &nbsp;<a href="https://it.linkedin.com/in/federico-elia-5199951b6"><img src="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/badges/linkedin.svg" alt="LinkedIn"></a>
+</p>

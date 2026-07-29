@@ -37,4 +37,4 @@ Describe what you ran:
 - [ ] I added or updated tests covering the change.
 - [ ] `pytest` passes locally.
 - [ ] I updated `README.md` / `docs/` if user-visible behavior changed.
-- [ ] My change is in scope for this repo (Python wrapper / sampler / CLI / packaging — not the patched Firefox C++ source).
+- [ ] My change is in scope for this repo (Python wrapper / sampler / CLI / packaging - not the patched Firefox C++ source).

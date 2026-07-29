@@ -7,9 +7,26 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
+  # `pip install -e ".[dev]"` below resolves `invisible-core==N.M.0` from the
+  # package index. The core is published BEFORE this package, so between the
+  # first push of this repo and that upload there is a window in which no
+  # install here can succeed. This gate answers "is it on the index?" and the
+  # unit job depends on the answer: during the window that job is SKIPPED (grey
+  # in the checks list, with the reason written into the run summary), never
+  # faked green; once the core is published it runs exactly as before. Full
+  # reasoning, including why `|| true`, `--no-deps` and a git fallback were all
+  # rejected, is in .github/workflows/core-on-index.yml.
+  core-on-index:
+    uses: ./.github/workflows/core-on-index.yml
+
   unit:
     name: pytest (${{ matrix.os }}, py${{ matrix.python }})
+    needs: core-on-index
+    if: needs.core-on-index.outputs.available == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -31,5 +48,64 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
+      - name: arm the pre-push gates
+        # A fresh clone has no core.hooksPath, and the suite says so - the
+        # reminder moved into `invisible_core.testing` on 2026-07-28 and all
+        # three repos make the assertion now, but only the core's CI had this
+        # step, so both consumers went red on it. Do here what a developer does
+        # once. It also means install_hooks.py is exercised on every runner
+        # instead of only on the one machine that ever ran it by hand.
+        run: python scripts/install_hooks.py
+
+      - name: undefined names and duplicate definitions
+        # F821 (undefined name) and F811 (redefinition) only. Not a style pass:
+        # these two are the rules that catch a name that cannot resolve, which
+        # `from __future__ import annotations` hides in an annotation and which
+        # a suite only finds if it happens to execute that line. Both bit on
+        # 2026-07-28 - a `throwaway_venv` used and imported nowhere took a
+        # user-install job red at RUNTIME, and six annotations named a type that
+        # was defined in no module at all.
+        #
+        # Zero violations in all three repos when this was added, so it is a
+        # gate rather than a cleanup backlog. Keep it that way.
+        run: |
+          python -m pip install --quiet ruff
+          python -m ruff check --select F821,F811 --no-cache --output-format concise .
+
       - name: Run pytest
-        run: pytest tests/ -v --tb=short
+        shell: bash
+        run: |
+          set -o pipefail   # or tee would swallow pytest's exit code
+          pytest tests/ -v --tb=short -rs | tee tests-report.txt
+
+      # This repo has the largest suite of the three and was the only one with
+      # no floor. pytest's exit code cannot distinguish "everything passed"
+      # from "the marker expression deselected everything", and `addopts`
+      # already filters on two markers - one more, or a typo in one, silently
+      # turns 726 tests into 0 and reports success.
+      - name: Refuse a run in which the suite deselected itself
+        shell: bash
+        run: |
+          python - <<'PY'
+          import pathlib, re, sys
+          text = pathlib.Path("tests-report.txt").read_text(encoding="utf-8", errors="ignore")
+          m = re.search(r"(\d+) passed", text)
+          passed = int(m.group(1)) if m else 0
+          # FLOOR, not a target. It exists because a mis-wired selection runs
+          # almost nothing and still exits 0 - the exit code cannot see it.
+          #
+          # Was 600 until 2026-07-27, when 322 tests MOVED to invisible_core:
+          # they covered core modules and reached them through this package's
+          # four-line back-compat shims, so six real breaks in core code were
+          # surviving the core's own suite. Nothing shrank; the tests are in the
+          # package they test. This suite runs ~420 now.
+          #
+          # Keep it a little under the real count. It is a tripwire for "the
+          # selection collapsed", not an assertion about how many tests exist.
+          if passed < 380:
+              print(f"only {passed} test(s) ran (expected 380+) - the selection "
+                    f"dropped most of the suite and the exit code cannot see it",
+                    file=sys.stderr)
+              sys.exit(1)
+          print(f"{passed} tests ran")
+          PY

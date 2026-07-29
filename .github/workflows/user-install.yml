@@ -1,0 +1,177 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# user-install.yml - can a person who has never seen this repo install it and
+# drive a browser, on the two operating systems we claim to support?
+#
+# WHY THIS EXISTS, SEPARATELY FROM e2e.yml.
+# e2e.yml installs the wrapper FROM THE CHECKOUT and then pins Playwright by
+# hand. That is the right shape for testing a change: it exercises the code in
+# the PR. It is the wrong shape for answering "does the published thing work",
+# and the difference is not academic:
+#
+#   * a checkout install never resolves `invisible-core==X.Y.Z` from the index,
+#     so the entire pin mechanism - the part most likely to break a release,
+#     and the reason a binary bump is now a three-package release - is outside
+#     what that job can see;
+#   * installing a blessed `playwright==<pin>` afterwards REPAIRS the venv. If
+#     the declared range resolves to a client the shipped Juggler cannot speak,
+#     that manual line turns the job green while every fresh install is broken.
+#     What a user gets is what pip resolves from the declaration, and that is
+#     what has to be under test.
+#
+# So this workflow installs nothing from the checkout except the test files. It
+# takes `pip install invisible-playwright` from the index, in an empty venv, and
+# runs it the way somebody's first script would.
+#
+# WHY IT MUST NOT BE MADE TOLERANT.
+# There is a real window in which this cannot pass: between publishing the core
+# and publishing the consumers. The tempting fixes - `|| true`, `--no-deps`, a
+# git fallback - all produce a GREEN job that installed nothing, and that lie
+# outlives the window by months. A red run during a publish is correct and
+# readable. See core-on-index.yml, which makes the same argument at length.
+#
+# WHY BOTH OPERATING SYSTEMS.
+# Windows is the primary target, and the two most recent defects were
+# Windows-only by construction: firefox.exe is a launcher stub that spawns the
+# real browser and exits, so a killed runner used to leave the tree behind, and
+# the job-object fix for it has no counterpart on Linux. A Linux-only matrix
+# would have seen neither.
+# ─────────────────────────────────────────────────────────────────────────────
+name: user-install
+
+on:
+  workflow_dispatch:
+    inputs:
+      source:
+        description: "index (what users get) or git (an unpublished commit)"
+        required: false
+        default: index
+        type: choice
+        options: [index, git]
+  schedule:
+    # Daily. The published artifacts do not change on their own, but everything
+    # around them does: pip resolves a new Playwright, GitHub moves a release
+    # asset, an index mirror lags. Those break users without any commit here,
+    # so a run triggered only by pushes would never see them.
+    - cron: "17 6 * * *"
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: user-install-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  install:
+    name: ${{ matrix.os }} - install from ${{ github.event.inputs.source || 'index' }} and launch
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false      # one OS failing must not hide the other's result
+      matrix:
+        os: [ubuntu-24.04, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+
+      # Only what the TEST needs. The package under test is installed by the
+      # test itself, into a venv it creates, from the index - installing it
+      # here as well would put a second copy on the path and the assertions
+      # would be reading the wrong one.
+      - name: Test harness only
+        run: python -m pip install --upgrade pip pytest packaging
+
+      # PyPI does not serve a new version to pip the instant twine finishes, and
+      # this workflow runs on `release:` - which fires seconds after the upload.
+      # MEASURED 2026-07-28: invisible-firefox 0.2.6 was uploaded, the release was
+      # created about forty seconds later, and the pip install below still resolved
+      # 0.2.5. The job reported a forgotten publish that had happened two minutes
+      # earlier, which is the most expensive kind of red: it looks exactly like the
+      # real defect this workflow exists to catch.
+      #
+      # Bounded at five minutes, so a genuinely forgotten publish still fails. The
+      # PER-VERSION endpoint is the authority; the aggregate `info.version` lags it
+      # by minutes and has its own trap, so this asks for the exact URL.
+      #
+      # Only on `release:`. A scheduled or dispatched run is not racing anything,
+      # and a wait there would hide a real absence behind five minutes of polling.
+      - name: wait for the index to serve this version
+        if: github.event_name == 'release'
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os, sys, time, tomllib, urllib.error, urllib.request
+          dist = tomllib.load(open("pyproject.toml", "rb"))["project"]["name"]
+          version = tomllib.load(open("pyproject.toml", "rb"))["project"]["version"]
+          url = f"https://pypi.org/pypi/{dist}/{version}/json"
+          deadline = time.monotonic() + 300
+          n = 0
+          while True:
+              n += 1
+              try:
+                  with urllib.request.urlopen(url, timeout=30) as r:
+                      if json.load(r).get("urls"):
+                          print(f"::notice::{dist} {version} is on the index (attempt {n})")
+                          sys.exit(0)
+              except urllib.error.HTTPError as e:
+                  if e.code != 404:
+                      print(f"::warning::index returned HTTP {e.code}; not waiting further")
+                      sys.exit(0)
+              except OSError as e:
+                  print(f"index unreachable ({e}); retrying")
+              if time.monotonic() >= deadline:
+                  print(f"::warning::{dist} {version} still not on the index after 300s; "
+                        f"running the checks anyway so a real absence is reported")
+                  sys.exit(0)
+              time.sleep(10)
+          PY
+
+      - name: Linux runtime libraries for the browser
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgtk-3-0 libdbus-glib-1-2 libasound2t64
+
+      - name: The user path, end to end
+        env:
+          INVPW_E2E_SOURCE: ${{ github.event.inputs.source || 'index' }}
+        shell: bash
+        run: |
+          set -o pipefail   # or the tee below would swallow pytest's exit code
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            xvfb-run -a python -m pytest tests/test_release_e2e.py tests/test_upgrade_e2e.py -m e2e \
+              -o addopts="" -v -rs | tee e2e-report.txt
+          else
+            python -m pytest tests/test_release_e2e.py tests/test_upgrade_e2e.py -m e2e \
+              -o addopts="" -v -rs | tee e2e-report.txt
+          fi
+
+      # A run whose tests all SKIPPED is not a pass, and it is the failure this
+      # suite is most exposed to: every test here is gated on `-m e2e` and
+      # several on a platform. `-rs` above prints the skips; this turns "nothing
+      # ran" into a refusal rather than a green tick.
+      - name: Refuse a run in which nothing actually ran
+        shell: bash
+        run: |
+          python - <<'PY'
+          import pathlib, re, sys
+          # pytest's own exit code cannot distinguish "all passed" from "all
+          # skipped", so the count is read back from the report it wrote.
+          report = pathlib.Path("e2e-report.txt")
+          if not report.is_file():
+              print("no report written; the step above did not run", file=sys.stderr)
+              sys.exit(1)
+          text = report.read_text(encoding="utf-8", errors="ignore")
+          m = re.search(r"(\d+) passed", text)
+          passed = int(m.group(1)) if m else 0
+          if passed < 6:
+              print(f"only {passed} test(s) actually ran (expected at least 6) - a suite that skipped "
+                    f"itself is not a pass", file=sys.stderr)
+              sys.exit(1)
+          print(f"{passed} tests ran")
+          PY

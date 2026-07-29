@@ -6,3 +6,11 @@ build/
 .pytest_cache/
 .venv/
 firefox-source/
+
+# Third-party source trees kept on disk for on-demand compatibility audits.
+# They are somebody else's code, with their own licence and their own .git, and
+# they must never be committed into this repository: `git add -A` would either
+# stage 3.9 MB of Apache-2.0 sources into an MIT repo or, worse, record a bare
+# gitlink that nobody can clone. The sdist/wheel excludes only protect the
+# published artifacts, not the repo, so the ignore has to live here too.
+tests/playwright-upstream/

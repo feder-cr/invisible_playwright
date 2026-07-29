@@ -1,14 +1,19 @@
 name: firefox-launch-matrix
 
-# Cross-Windows-edition smoke for the shipped firefox-N binary.
-# Triggered by issue #22 (firefox-7 SxS mismatch on Win11 build 26200,
-# reporter `jannusdorfer-create`).
+# Cross-Windows-edition smoke for the SEALED binary, on every Windows runner
+# GitHub offers, from a fresh checkout.
 #
-# Runs the exact reporter snippet on every Windows runner GitHub offers,
-# from a fresh checkout. If any matrix cell fails the same way, the bug
-# is reproducible on at least one clean-ish environment and we ship a
-# sidecar mozglue.manifest fix. If all cells pass, the bug is confined
-# to the reporter's specific environment (Pro/Enterprise GPO, EDR, etc.).
+# HISTORY, and what this can no longer do. It was written for issue #22 (a SxS
+# mismatch on Win11 build 26200) and ran the reporter snippet against firefox-7.
+# It cannot: a sealed invisible-core serves the sealed tag and refuses every
+# other one, so `fetch firefox-7` is a SealMismatch by design now.
+#
+# It was also SILENTLY WRONG from the seal landing to 2026-07-26: the verify
+# step rebuilt the cache path by hand as Cache/firefox-7/firefox.exe while the
+# cache is content-keyed (Cache/<tag>_<version>_<buildid>/), so every cell failed
+# with NOT FOUND - a failure that looked exactly like the bug under investigation
+# and was not. Nine red cells read as "reproduced everywhere". The path now comes
+# from `python -m invisible_playwright path`, the only thing that knows it.
 
 on:
   workflow_dispatch:
@@ -18,8 +23,18 @@ on:
       - '.github/workflows/firefox-launch-matrix.yml'
 
 jobs:
+  # `pip install .` below resolves `invisible-core==N.M.0` from the package
+  # index, and the core is published BEFORE this package. This gate answers
+  # whether it is there yet; during that window the smoke matrix is SKIPPED
+  # with the reason in the run summary rather than faked green, and once the
+  # core is up it runs unchanged. See .github/workflows/core-on-index.yml.
+  core-on-index:
+    uses: ./.github/workflows/core-on-index.yml
+
   smoke:
     name: launch (${{ matrix.os }}, py${{ matrix.python }})
+    needs: core-on-index
+    if: needs.core-on-index.outputs.available == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -57,19 +72,24 @@ jobs:
           python -m pip install --upgrade pip
           pip install .
 
-      - name: Fetch firefox-7 binary
+      - name: Fetch the sealed binary
         run: python -m invisible_playwright fetch
 
-      - name: Verify firefox.exe can launch standalone (the snippet that fails for issue #22)
+      - name: Verify firefox.exe can launch standalone
         shell: pwsh
         run: |
-          # The platformdirs path has the duplicated `invisible-playwright` segment
-          # on Windows (user_cache_dir convention).
-          $ffPath = "$env:LOCALAPPDATA\invisible-playwright\invisible-playwright\Cache\firefox-7\firefox.exe"
-          if (-not (Test-Path $ffPath)) {
-              Write-Error "firefox.exe NOT FOUND at $ffPath"
+          # ASK for the path, never rebuild it. The cache directory is keyed on
+          # tag + base version + BuildID, so any string assembled here is a second
+          # copy of a naming rule that has already moved once - and when it drifts
+          # the step fails with NOT FOUND, which is indistinguishable from the
+          # launch bug this job exists to detect.
+          $ffPath = (python -m invisible_playwright path).Trim()
+          Write-Host "Package reports: $ffPath"
+          if (-not $ffPath -or -not (Test-Path $ffPath)) {
+              Write-Error "firefox.exe NOT FOUND at '$ffPath' (reported by the package)"
               exit 1
           }
+          "FF_PATH=$ffPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           Write-Host "Launching: $ffPath --version"
           # NOTE: firefox.exe --version on Windows prints the version but may
           # return non-zero exit code (sub-process fork quirk). Check stdout.
@@ -100,7 +120,6 @@ jobs:
         with:
           name: launch-failure-${{ matrix.os }}-py${{ matrix.python }}
           path: |
-            ${{ env.LOCALAPPDATA }}/invisible-playwright/invisible-playwright/Cache/firefox-7/firefox.exe
-            ${{ env.LOCALAPPDATA }}/invisible-playwright/invisible-playwright/Cache/firefox-7/mozglue.dll
+            ${{ env.FF_PATH }}
           if-no-files-found: warn
           retention-days: 7

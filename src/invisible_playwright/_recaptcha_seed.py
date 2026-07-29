@@ -3,13 +3,13 @@
 Consumes the Bayesian-sampled `browsing_history` from the persona Profile
 (see `_fpforge/_sampler.py:derive_browsing_history`). For each visited
 site, builds 1-5 realistic cookies whose composition is chosen by the
-site's `cookie_profile` tag (analytics-only / consent / cloudflare-bot-
-management / etc.). All values seeded deterministically from the persona
+site's `cookie_profile` tag (analytics-only / consent / bot-defense
+/ etc.). All values seeded deterministically from the persona
 seed, so a given persona always presents the SAME cookies across sessions.
 
 In addition, always seeds 5 cookies on .google.com (NID, CONSENT, SOCS,
 _GRECAPTCHA, ENID). Excludes 1P_JAR which was deprecated by Google in 2022
-— including it now is an anachronism flag.
+- including it now is an anachronism flag.
 
 Public API:
     await seed_recaptcha_cookies_async(context, profile, timezone=None)
@@ -206,7 +206,7 @@ def _fbp_cookie(rng: random.Random, now: int, domain: str) -> dict:
 
 
 def _gtm_cookie(rng: random.Random, now: int, domain: str) -> dict:
-    """_dc_gtm_<container_id>=1 — Google Tag Manager throttle flag."""
+    """_dc_gtm_<container_id>=1 - Google Tag Manager throttle flag."""
     container = f"UA-{rng.randint(10000000, 99999999)}-{rng.randint(1, 9)}"
     return {"name": f"_dc_gtm_{container}",
             "value": "1",
@@ -216,7 +216,7 @@ def _gtm_cookie(rng: random.Random, now: int, domain: str) -> dict:
 
 
 def _hssrc_cookie(rng: random.Random, now: int, domain: str) -> dict:
-    """HubSpot referrer flag — small int."""
+    """HubSpot referrer flag - small int."""
     return {"name": "__hssrc",
             "value": str(rng.randint(1, 5)),
             "domain": domain, "path": "/",
@@ -289,7 +289,7 @@ def build_cookies(seed: int,
     ts = now if now is not None else int(time.time())
     cookies: List[dict] = []
 
-    # 5 .google.com cookies (always) — CONSENT lang derived from tz
+    # 5 .google.com cookies (always) - CONSENT lang derived from tz
     rng_g = random.Random(_sub_seed(int(seed), "google"))
     cookies.extend(_google_cookies(rng_g, ts, timezone=timezone))
 

@@ -1,16 +1,15 @@
-"""Service worker interception regression tests — issue #18 root cause.
+"""Service worker interception regression tests - issue #18 root cause.
 
 The bug: `juggler/content/NetworkObserver.js:channelIntercepted` called
-`interceptedChannel.interceptAfterServiceWorkerResets()` — an IDL method
+`interceptedChannel.interceptAfterServiceWorkerResets()` - an IDL method
 that upstream Playwright adds via a C++ patch (InterceptedHttpChannel.cpp
 + nsINetworkInterceptController.idl). Our fork was missing those patches
 until firefox-6, so the call threw TypeError → C++ NetworkObserver was
 left in an inconsistent state → content process disposal manifested as
-"page crash" on sites whose service workers fall through to the network
-(e.g., id.sky.com).
+"page crash" on sites whose service workers fall through to the network.
 
 These tests inline-serve a service worker via data: URLs / blob URLs
-where possible — no external network required. They assert the page
+where possible - no external network required. They assert the page
 stays alive across SW registration + fetch lifecycle.
 
 Run:
@@ -31,7 +30,7 @@ from invisible_playwright import InvisiblePlaywright
 
 
 # ---------------------------------------------------------------------------
-# Local HTTP fixture server — service workers need a real http(s) origin
+# Local HTTP fixture server - service workers need a real http(s) origin
 # (data: and about:blank are opaque-origin, no SW registration possible).
 # ---------------------------------------------------------------------------
 
@@ -79,7 +78,7 @@ self.addEventListener('fetch', e => {
             self.send_response(status)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(body)))
-            # SW requires HTTPS or localhost — we're on localhost so plain http is fine
+            # SW requires HTTPS or localhost - we're on localhost so plain http is fine
             self.send_header("Service-Worker-Allowed", "/")
             self.end_headers()
             self.wfile.write(body)
@@ -155,7 +154,7 @@ def test_page_with_sw_can_navigate_repeatedly(page, fixture_server):
     page.goto(f"{fixture_server}/", timeout=15_000)
     page.wait_for_function("window.__swState !== 'loading'", timeout=10_000)
 
-    # 5 reloads — the SW fetch handler runs each time
+    # 5 reloads - the SW fetch handler runs each time
     for _ in range(5):
         page.reload(timeout=15_000)
         assert not crashed["v"]
@@ -165,8 +164,8 @@ def test_page_with_sw_can_navigate_repeatedly(page, fixture_server):
 @pytest.mark.e2e
 def test_fetch_through_sw_returns_sw_synthesized_response(page, fixture_server):
     """The SW intercepts `/from-sw` and synthesizes a response without
-    hitting the network. Verifies the SW fetch path is functional — this
-    is the exact flow that crashed in id.sky.com."""
+    hitting the network. Verifies the SW fetch path is functional - this
+    is the exact flow that crashed on a real site's login page."""
     page.goto(f"{fixture_server}/", timeout=15_000)
     page.wait_for_function("window.__swState === 'registered'", timeout=10_000)
 
@@ -176,7 +175,7 @@ def test_fetch_through_sw_returns_sw_synthesized_response(page, fixture_server):
         return await r.text();
     }""", fixture_server)
     # Either the SW served 'hello from SW' (intercepted) or the network
-    # served 'network-fallback' (if SW didn't claim yet). Both are OK —
+    # served 'network-fallback' (if SW didn't claim yet). Both are OK -
     # the regression we test is that it doesn't CRASH.
     assert body in ("hello from SW", "network-fallback"), (
         f"unexpected /from-sw response body: {body!r}"
@@ -196,7 +195,7 @@ def test_sw_fall_through_to_network_does_not_crash(page, fixture_server):
     page.goto(f"{fixture_server}/", timeout=15_000)
     page.wait_for_function("window.__swState === 'registered'", timeout=10_000)
 
-    # /from-network is NOT intercepted by SW — exercises the fall-through
+    # /from-network is NOT intercepted by SW - exercises the fall-through
     body = page.evaluate("""async (base) => {
         const r = await fetch(base + '/from-network');
         return await r.text();

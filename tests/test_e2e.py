@@ -125,7 +125,7 @@ def test_e8_new_context_defaults_from_profile(firefox_binary):
 # These exercise the launcher's Linux code paths without spawning real
 # Firefox or Xvfb. They monkeypatch ``sys.platform`` and (where needed)
 # the ``make_virtual_display`` dispatcher so the tests run on any host
-# — including Windows hosts that ship the production CI for this repo.
+# - including Windows hosts that ship the production CI for this repo.
 # ────────────────────────────────────────────────────────────────────
 
 
@@ -148,7 +148,7 @@ def test_e10_linux_resolve_headless_invokes_xvfb_dispatcher(monkeypatch):
     """E10: ``_resolve_headless`` with ``headless=True`` on Linux must
     call ``make_virtual_display().start()`` and store the result on
     ``self._virtual_display``. We stub the dispatcher so no real Xvfb
-    is spawned — the dispatcher's platform routing is covered separately
+    is spawned - the dispatcher's platform routing is covered separately
     in ``test_headless.py``."""
     import sys as _sys
     monkeypatch.setattr(_sys, "platform", "linux")
@@ -209,8 +209,7 @@ def test_e12_linux_resolve_headless_without_xvfb_raises_clear_error(monkeypatch)
     the early-check path in ``_LinuxVirtualDisplay.start``."""
     import sys as _sys
     monkeypatch.setattr(_sys, "platform", "linux")
-
-    from invisible_playwright import _headless as _h
+    from invisible_core import _headless as _h
     monkeypatch.setattr(_h, "_binary_on_path", lambda name: False)
 
     ip = InvisiblePlaywright(seed=42, headless=True)

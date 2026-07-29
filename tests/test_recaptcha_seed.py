@@ -38,7 +38,7 @@ _SAMPLE_HISTORY = [
 
 def test_only_google_cookies_when_no_history():
     """Empty/None history → only the 5 .google.com cookies (1P_JAR removed
-    in realism round 2 — deprecated by Google 2022)."""
+    in realism round 2 - deprecated by Google 2022)."""
     cookies = build_cookies(seed=42, browsing_history=None, now=_FIXED_NOW)
     names = sorted(c["name"] for c in cookies)
     assert names == sorted(["NID", "CONSENT", "SOCS",
@@ -105,7 +105,7 @@ def test_profile_ga_consent_yields_three_cookies():
 
 def test_profile_ga_consent_clarity_yields_at_least_four_cookies():
     """Always _ga + _gid + _clck + consent banner. Optionally _fbp, _dc_gtm_*,
-    __hssrc (probabilistic per rng — see test_new_helper_cookies_*)."""
+    __hssrc (probabilistic per rng - see test_new_helper_cookies_*)."""
     history = [{"name": "x.com", "cookie_profile": "ga_consent_clarity"}]
     cookies = build_cookies(seed=42, browsing_history=history, now=_FIXED_NOW)
     host = [c for c in cookies if c["domain"] == ".x.com"]
@@ -196,7 +196,7 @@ def test_all_expiries_within_400_day_cap():
             continue
         assert c["expires"] <= max_allowed, (
             f"Cookie {c['name']} expires {c['expires'] - _FIXED_NOW}s "
-            f"(> 400d cap) — would be silently dropped"
+            f"(> 400d cap) - would be silently dropped"
         )
 
 
@@ -238,7 +238,7 @@ def test_httponly_on_signed_cookies():
 def test_with_real_fpforge_profile():
     """End-to-end: generate a real Profile, ensure browsing_history is populated
     and build_cookies works against it."""
-    from invisible_playwright._fpforge import generate_profile
+    from invisible_core._fpforge import generate_profile
     prof = generate_profile(seed=42)
     assert isinstance(prof.browsing_history, list)
     # The Bayesian network samples ~15-30 sites per persona
@@ -256,7 +256,7 @@ def test_with_real_fpforge_profile():
 
 def test_same_seed_same_browsing_history_via_fpforge():
     """Profile.browsing_history is deterministic from seed (Bayesian sampler)."""
-    from invisible_playwright._fpforge import generate_profile
+    from invisible_core._fpforge import generate_profile
     a = generate_profile(seed=42).browsing_history
     b = generate_profile(seed=42).browsing_history
     assert a == b
@@ -276,7 +276,7 @@ def test_no_1p_jar_cookie():
 
 def test_nid_prefix_broadened_range():
     """NID 3-digit prefix should cover historical versions (137/105/511/525
-    seen in real captures) — range 100-540, not just 500-540."""
+    seen in real captures) - range 100-540, not just 500-540."""
     seen_prefixes = set()
     for seed in range(200):
         cookies = build_cookies(seed=seed, now=_FIXED_NOW)
@@ -346,4 +346,4 @@ def test_fbp_format():
             assert parts[2].isdigit() and len(parts[2]) >= 13  # unix ms
             assert parts[3].isdigit()
             return
-    raise AssertionError("never got _fbp across 20 seeds — distribution broken")
+    raise AssertionError("never got _fbp across 20 seeds - distribution broken")

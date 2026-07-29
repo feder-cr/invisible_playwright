@@ -3,21 +3,21 @@
 Instead of our own hand-rolled signal checks, this loads the actual detection
 libraries and uses their FULL API surface:
 
-  * BotD (@fingerprintjs/botd, MIT) — the client-side bot detector that
+  * BotD (@fingerprintjs/botd, MIT) - the client-side bot detector that
     FingerprintJS Pro itself uses. We assert the aggregate verdict
     (``detect().bot == False``) AND every one of its ~18 individual detectors
     (``getDetections()``) returns ``bot == False``.
-  * FingerprintJS open-source (MIT) — ``get()`` must return a ``visitorId``
+  * FingerprintJS open-source (MIT) - ``get()`` must return a ``visitorId``
     that is STABLE across two fresh launches with the same seed, and a RICH
     component set (the fingerprint surface is real, not a stub).
-  * fpscanner (antoinevastel/fpscanner 1.0.6, MIT) — ``collectFingerprint()``
+  * fpscanner (antoinevastel/fpscanner 1.0.6, MIT) - ``collectFingerprint()``
     runs ~21 bot-detection rules in the browser. We assert the **engine-agnostic**
     subset (webdriver / selenium / bot-UA / platform / timezone / language) is
     clean. We deliberately do NOT assert the Chrome/GPU-only rules (hasCDP,
     hasPlaywright, hasSwiftshaderRenderer, hasMissingChromeObject, …): they're
     trivially clean on Firefox, and the GPU ones can legitimately fire on a
-    software-WebGL CI host (Xvfb/llvmpipe) — asserting them would false-red.
-  * CreepJS (abrahamjuliot/creepjs, MIT, pinned) — the gold-standard Firefox-aware
+    software-WebGL CI host (Xvfb/llvmpipe) - asserting them would false-red.
+  * CreepJS (abrahamjuliot/creepjs, MIT, pinned) - the gold-standard Firefox-aware
     headless/stealth/lie detector. It exposes its result on ``window.Fingerprint``.
     We assert ``headlessRating == 0`` (webdriver + headless-UA tells) and the
     JS-proxy stealth tells are absent. ``stealthRating`` / ``totalLies`` /
@@ -26,11 +26,11 @@ libraries and uses their FULL API surface:
     differ on a GPU-less CI host.
 
 Everything is hermetic: the libraries are vendored (tests/vendor/) and served
-from a localhost HTTP server — no external CDN call. For CreepJS, every non-local
+from a localhost HTTP server - no external CDN call. For CreepJS, every non-local
 request is aborted, so its optional crowd-comparison POST never runs and the
 verdict is computed purely locally. Runs identically on a dev box and a GH runner.
 
-NOT covered: FingerprintJS *Pro* (commercial, server-side) — stays the local
+NOT covered: FingerprintJS *Pro* (commercial, server-side) - stays the local
 realness gate.
 """
 from __future__ import annotations
@@ -50,7 +50,7 @@ _FPJS = "fingerprintjs-5.2.0.umd.min.js"
 _FPSCANNER = "fpscanner-1.0.6.es.js"
 _CREEPJS = "creepjs-10aa672.js"  # pinned abrahamjuliot/creepjs@10aa6724
 
-# fpscanner rules that are MEANINGFUL on Firefox and GPU-independent — these must
+# fpscanner rules that are MEANINGFUL on Firefox and GPU-independent - these must
 # stay clean. The omitted rules are Chrome-only (hasCDP/hasPlaywright/
 # hasMissingChromeObject/hasHighCPUCount/hasImpossibleDeviceMemory/
 # headlessChromeScreenResolution) or GPU-sensitive on a software-WebGL CI host
@@ -206,7 +206,7 @@ def _run_creepjs(firefox_binary, creep_url):
 
 @pytest.mark.e2e
 def test_botd_no_detector_flags_automation(firefox_binary, detector_site):
-    """The real BotD must not flag the build — aggregate AND every one of its
+    """The real BotD must not flag the build - aggregate AND every one of its
     individual detectors (webDriver/userAgent/appVersion/plugins/process/...)."""
     botd, _fp, _fps, err = _run_detectors(firefox_binary, detector_site.url)
     assert botd is not None, f"BotD produced no result (err:{err!r})"
@@ -222,7 +222,7 @@ def test_botd_no_detector_flags_automation(firefox_binary, detector_site):
 @pytest.mark.e2e
 def test_fingerprintjs_visitorid_stable_across_launches(firefox_binary, detector_site):
     """FingerprintJS visitorId must be present and identical across two fresh
-    launches with the same seed — a real browser is stable; an over-randomized
+    launches with the same seed - a real browser is stable; an over-randomized
     spoof drifts (and a drifting fingerprint is itself a bot tell)."""
     _b1, fp1, _f1, err1 = _run_detectors(firefox_binary, detector_site.url)
     _b2, fp2, _f2, err2 = _run_detectors(firefox_binary, detector_site.url)
@@ -242,7 +242,7 @@ def test_fingerprintjs_collects_rich_fingerprint(firefox_binary, detector_site):
     assert fp and fp.get("visitorId"), f"FingerprintJS produced no id (err:{err!r})"
     keys = fp.get("componentKeys") or []
     assert len(keys) >= 15, (
-        f"FingerprintJS collected only {len(keys)} components — surface too thin "
+        f"FingerprintJS collected only {len(keys)} components - surface too thin "
         f"(suppressed signals are themselves a tell): {keys}"
     )
 
@@ -251,7 +251,7 @@ def test_fingerprintjs_collects_rich_fingerprint(firefox_binary, detector_site):
 def test_fpscanner_no_automation_rules(firefox_binary, detector_site):
     """fpscanner's engine-agnostic bot rules (webdriver/selenium/bot-UA/platform/
     timezone/language) must all be clean. The Chrome/GPU-only rules are ignored
-    on purpose (see module docstring) — they false-red on a software-WebGL host."""
+    on purpose (see module docstring) - they false-red on a software-WebGL host."""
     _b, _fp, fps, err = _run_detectors(firefox_binary, detector_site.url)
     assert fps is not None, f"fpscanner produced no result (err:{err!r})"
     details = fps.get("details") or {}
@@ -271,7 +271,7 @@ def test_creepjs_headless_and_proxy_clean(firefox_binary, detector_site):
     """CreepJS (Firefox-aware) must see no headless tell and no JS-proxy stealth
     tell. ``headlessRating`` aggregates webDriverIsOn + headless-UA checks (all
     GPU-independent). The proxy/runtime stealth sub-signals (hasIframeProxy,
-    hasToStringProxy, hasBadChromeRuntime) must be false — a spoof implemented
+    hasToStringProxy, hasBadChromeRuntime) must be false - a spoof implemented
     with a JS Proxy is exactly what CreepJS catches. stealthRating/totalLies/
     likeHeadlessRating are GPU/theme-sensitive, so we log them, not assert."""
     r = _run_creepjs(firefox_binary, detector_site.creep_url)

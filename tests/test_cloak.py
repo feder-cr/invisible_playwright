@@ -1,9 +1,9 @@
-"""Cloak guard (e2e) — verifies the source-level "invisible headless" cloak:
+"""Cloak guard (e2e) - verifies the source-level "invisible headless" cloak:
 the chrome window is hidden from the screen YET keeps rendering on the real GPU
 (not Playwright's native headless, which has no WebGL). Runs per-platform in CI:
 - Windows: the DWMWA_CLOAK attribute (queried via DWMWA_CLOAKED).
 - macOS:   the NSWindow alpha (queried via Quartz CGWindowListCopyWindowInfo).
-- Linux:   skipped — there the wrapper hides via Xvfb, not a source-level cloak.
+- Linux:   skipped - there the wrapper hides via Xvfb, not a source-level cloak.
 
 This is the CI validation for the macOS cocoa cloak patch, which can't be built
 or run on the Windows/Linux dev boxes.

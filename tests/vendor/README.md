@@ -2,14 +2,14 @@
 
 These are upstream, unmodified, MIT-licensed browser-fingerprinting / bot-detection
 libraries, vendored so the detector e2e tests run **hermetically and identically**
-on a dev box and on a GitHub runner (no external CDN at test time — Firefox
+on a dev box and on a GitHub runner (no external CDN at test time - Firefox
 tracking-protection blocks the openfpcdn.io CDN anyway, and we want CI offline).
 
 They are served from a localhost HTTP server and loaded into the patched Firefox;
 the tests assert the REAL detectors don't flag the stealth build (BotD: `bot===false`;
 fpscanner: engine-agnostic rules clean; CreepJS: `headlessRating===0` + no JS-proxy
 tells) and that the fingerprint is stable (FingerprintJS: same `visitorId` across
-launches). CreepJS runs fully offline — the tests abort every non-loopback request,
+launches). CreepJS runs fully offline - the tests abort every non-loopback request,
 so its optional crowd-comparison POST never fires and the verdict is computed locally.
 
 | File | Package | Version | Source | License |

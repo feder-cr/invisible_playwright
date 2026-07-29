@@ -1,4 +1,4 @@
-"""Integration tests — multi-module pipelines without a real browser.
+"""Integration tests - multi-module pipelines without a real browser.
 
 These tests verify that the fingerprint sampler, Profile dataclass, prefs
 translation and proxy translation compose correctly. They do NOT launch
@@ -15,23 +15,37 @@ import sys
 
 import pytest
 
-from invisible_playwright._fpforge import generate_profile
-from invisible_playwright._proxy import configure_proxy
-from invisible_playwright.prefs import (
+from invisible_core._fpforge import generate_profile
+from invisible_core._proxy import configure_proxy
+from invisible_core.prefs import (
     _WIN_LIGHT_COLORS,
     translate_profile_to_prefs,
 )
 
 
-# Keys every Profile-derived prefs dict MUST carry. Sourced from
-# ``translate_profile_to_prefs`` direct writes (not from _BASELINE) plus
-# a couple of baseline keys that callers commonly read.
+# Keys every Profile-derived prefs dict MUST carry.
+#
+# CAREFUL: this list is a DUPLICATE of a contract that belongs to another
+# package. `invisible_core.prefs` is a pure alias shim for
+# `invisible_core.prefs`, so this file tests the CORE's function through an
+# alias - against whichever core version pip resolved, which on CI is the
+# PUBLISHED one and locally is the checkout.
+#
+# That difference made CI red on 2026-07-27. Two codec prefs were renamed to
+# their real Firefox spellings (`media.webm.enabled` / `media.mp4.enabled`) in
+# the core's checkout; the pinned release does not emit them yet, so this list
+# asserted a contract the declared dependency does not meet. That is a NORMAL
+# state between releases, and a gate that is red for a normal state is a gate
+# people learn to ignore.
+#
+# The two keys are asserted in the core's own suite
+# (`invisible_core/tests/test_prefs_surface.py`), which is where the change
+# lives and where the assertion moves with it. Nothing is lost by not repeating
+# them here. Only add a key to this list once the PINNED core emits it.
 _REQUIRED_PREFS_KEYS = (
     "zoom.stealth.screen.width",
     "zoom.stealth.screen.height",
-    "zoom.stealth.screen.avail_width",
-    "zoom.stealth.screen.avail_height",
-    "zoom.stealth.screen.dpr",
+    "layout.css.devPixelsPerPx",
     "layout.css.devPixelsPerPx",
     "zoom.stealth.hw_concurrency",
     "zoom.stealth.storage.quota_mb",
@@ -40,10 +54,6 @@ _REQUIRED_PREFS_KEYS = (
     "zoom.stealth.audio.max_channel_count",
     "media.av1.enabled",
     "media.encoder.webm.enabled",
-    "media.mediasource.webm.enabled",
-    "media.mediasource.mp4.enabled",
-    "zoom.stealth.font.whitelist",
-    "zoom.stealth.font.metrics",
     "ui.systemUsesDarkTheme",
     "intl.accept_languages",
     "general.useragent.locale",
@@ -52,7 +62,7 @@ _REQUIRED_PREFS_KEYS = (
     "zoom.stealth.webrtc.host_ip",
     "zoom.stealth.webgl.renderer",
     "zoom.stealth.webgl.vendor",
-    "zoom.stealth.webgl.msaa",
+    "webgl.msaa-samples",
     "zoom.stealth.canvas.noise_skip_mask",
     # baseline sanity
     "privacy.resistFingerprinting",
@@ -68,7 +78,7 @@ _REQUIRED_PREFS_KEYS = (
 
 @pytest.mark.integration
 def test_generate_profile_then_translate_has_all_required_keys():
-    """IT1 — generate_profile → translate_profile_to_prefs succeeds and the
+    """IT1 - generate_profile → translate_profile_to_prefs succeeds and the
     returned dict contains every key downstream code (Playwright, the C++
     patches) needs to find."""
     profile = generate_profile(seed=42)
@@ -79,17 +89,18 @@ def test_generate_profile_then_translate_has_all_required_keys():
 
 
 # ──────────────────────────────────────────────────────────────────────
-#  IT2: SOCKS proxy + prefs — mutates prefs in place, returns None
+#  IT2: SOCKS proxy + prefs - mutates prefs in place, returns None
 # ──────────────────────────────────────────────────────────────────────
 
 
 @pytest.mark.integration
 def test_socks5_proxy_mutates_prefs_then_pipeline_still_valid():
-    """IT2 — configure_proxy writes SOCKS auth keys to the profile-derived
+    """IT2 - configure_proxy writes SOCKS auth keys to the profile-derived
     prefs dict; the result is still a valid prefs dict (all required keys
     intact) and the proxy return is ``None`` so Playwright sees no proxy."""
     profile = generate_profile(seed=42)
     prefs = translate_profile_to_prefs(profile)
+    before = dict(prefs)
 
     pw_proxy = configure_proxy(
         {
@@ -110,6 +121,13 @@ def test_socks5_proxy_mutates_prefs_then_pipeline_still_valid():
     assert prefs["network.proxy.socks_remote_dns"] is True
 
     # Profile-derived keys must still be present after proxy mutation.
+    #
+    # Compared against the dict as it was BEFORE the call, not against the
+    # literal list above. Strictly stronger - it catches the loss of any key,
+    # including ones nobody thought to list - and it is version-independent, so
+    # it says the same thing whichever core is installed.
+    lost = sorted(set(before) - set(prefs))
+    assert not lost, f"proxy mutation dropped {len(lost)} pref(s): {lost}"
     for k in _REQUIRED_PREFS_KEYS:
         assert k in prefs, f"proxy mutation dropped required key {k!r}"
 
@@ -121,7 +139,7 @@ def test_socks5_proxy_mutates_prefs_then_pipeline_still_valid():
 
 @pytest.mark.integration
 def test_pin_screen_width_propagates_through_pipeline():
-    """IT3 — a pinned ``screen.width`` shows up in the final prefs dict
+    """IT3 - a pinned ``screen.width`` shows up in the final prefs dict
     under ``zoom.stealth.screen.width``."""
     profile = generate_profile(seed=42, pin={"screen.width": 2560})
     prefs = translate_profile_to_prefs(profile)
@@ -132,7 +150,7 @@ def test_pin_screen_width_propagates_through_pipeline():
 
 @pytest.mark.integration
 def test_multiple_pins_all_visible_in_prefs():
-    """IT3.b — pinning several unrelated fields at once still routes every
+    """IT3.b - pinning several unrelated fields at once still routes every
     one through to the prefs dict."""
     pin = {
         "screen.width": 3840,
@@ -156,7 +174,7 @@ def test_multiple_pins_all_visible_in_prefs():
 
 @pytest.mark.integration
 def test_pipeline_deterministic_for_same_seed():
-    """IT4 — running the full pipeline twice with the same seed produces
+    """IT4 - running the full pipeline twice with the same seed produces
     identical prefs dicts."""
     a = translate_profile_to_prefs(generate_profile(seed=1234))
     b = translate_profile_to_prefs(generate_profile(seed=1234))
@@ -165,7 +183,7 @@ def test_pipeline_deterministic_for_same_seed():
 
 @pytest.mark.integration
 def test_pipeline_varies_across_seeds():
-    """IT5 — different seeds produce different prefs dicts. Compare the
+    """IT5 - different seeds produce different prefs dicts. Compare the
     full dict, not just a sampled field, to catch regressions where a
     single hot field accidentally becomes seed-invariant."""
     a = translate_profile_to_prefs(generate_profile(seed=1))
@@ -180,7 +198,7 @@ def test_pipeline_varies_across_seeds():
 
 @pytest.mark.integration
 def test_http_proxy_returned_unchanged_no_socks_mutations():
-    """IT6 — an HTTP proxy is returned to Playwright unchanged and the
+    """IT6 - an HTTP proxy is returned to Playwright unchanged and the
     SOCKS prefs are never written. Verifies the two proxy paths don't
     cross-pollute the prefs dict."""
     profile = generate_profile(seed=42)
@@ -197,23 +215,24 @@ def test_http_proxy_returned_unchanged_no_socks_mutations():
 
 
 # ──────────────────────────────────────────────────────────────────────
-#  IT7: profile.fonts reaches prefs as a comma-joined whitelist
+#  IT7: fonts are NOT configured via prefs (the binary is self-contained)
 # ──────────────────────────────────────────────────────────────────────
 
 
 @pytest.mark.integration
-def test_profile_fonts_propagate_to_prefs_whitelist():
-    """IT7 — every font in ``profile.fonts`` appears in the comma-joined
-    ``zoom.stealth.font.whitelist`` pref, in order."""
+def test_fonts_are_not_configured_via_prefs():
+    """IT7 - the patched binary is self-contained for fonts: it is always
+    bundle-only (the exposed set IS the bundle), with system-ui + the CSS
+    generics baked in C++. There is no external font customization channel, so
+    the config pipeline must emit NO font prefs. Locks the 2026-07-06
+    self-contained refactor (fonts moved entirely into the binary)."""
     profile = generate_profile(seed=42)
     prefs = translate_profile_to_prefs(profile)
 
-    assert profile.fonts, "fixture seed=42 produced empty fonts list"
-    whitelist = prefs["zoom.stealth.font.whitelist"]
-    assert isinstance(whitelist, str)
-    assert whitelist == ",".join(profile.fonts)
-    for font in profile.fonts:
-        assert font in whitelist
+    assert "zoom.stealth.font.fontlist" not in prefs
+    assert "zoom.stealth.font.system_ui" not in prefs
+    assert not any(k.startswith("zoom.stealth.font.") for k in prefs)
+    assert not any(k.startswith("font.name-list.") for k in prefs)
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -223,7 +242,7 @@ def test_profile_fonts_propagate_to_prefs_whitelist():
 
 @pytest.mark.integration
 def test_dark_theme_pipeline_omits_light_palette():
-    """IT8.a — dark_theme=True profile → no light-palette colors in prefs."""
+    """IT8.a - dark_theme=True profile → no light-palette colors in prefs."""
     profile = generate_profile(seed=42, pin={"dark_theme": True})
     prefs = translate_profile_to_prefs(profile)
 
@@ -234,7 +253,7 @@ def test_dark_theme_pipeline_omits_light_palette():
 
 @pytest.mark.integration
 def test_light_theme_pipeline_includes_light_palette():
-    """IT8.b — dark_theme=False profile → full Win10 light palette is
+    """IT8.b - dark_theme=False profile → full Win10 light palette is
     overlaid onto the prefs dict."""
     profile = generate_profile(seed=42, pin={"dark_theme": False})
     prefs = translate_profile_to_prefs(profile)
@@ -251,7 +270,7 @@ def test_light_theme_pipeline_includes_light_palette():
 
 @pytest.mark.integration
 def test_many_seeds_all_produce_valid_prefs():
-    """IT9 — sweep 10 distinct seeds through the full pipeline. Every run
+    """IT9 - sweep 10 distinct seeds through the full pipeline. Every run
     must succeed and yield a prefs dict containing every required key.
     Catches regressions where a rare CPT branch produces a prefs key
     missing/wrong-typed."""
@@ -266,7 +285,7 @@ def test_many_seeds_all_produce_valid_prefs():
 
 
 # ──────────────────────────────────────────────────────────────────────
-#  IT10 (extra): Windows-specific pipeline — virtual display + SOCKS
+#  IT10 (extra): Windows-specific pipeline - virtual display + SOCKS
 #
 #  Combines two Windows-specific branches that real callers stack:
 #  headless mode (virtual_display=True) and a SOCKS5 proxy. Catches
@@ -276,7 +295,7 @@ def test_many_seeds_all_produce_valid_prefs():
 
 @pytest.mark.integration
 def test_windows_virtual_display_with_socks_proxy(monkeypatch):
-    """IT10 — Windows + virtual_display=True + SOCKS5 proxy: both branches
+    """IT10 - Windows + virtual_display=True + SOCKS5 proxy: both branches
     land their keys in the prefs dict and don't clobber each other."""
     monkeypatch.setattr(sys, "platform", "win32")
     profile = generate_profile(seed=42)
@@ -289,12 +308,14 @@ def test_windows_virtual_display_with_socks_proxy(monkeypatch):
     assert prefs["security.sandbox.gpu.level"] == 0  # virtual_display branch
     assert prefs["network.proxy.type"] == 1          # SOCKS branch
     assert prefs["network.proxy.socks"] == "127.0.0.1"
-    # Windows still has the renderer cleared.
-    assert prefs["zoom.stealth.webgl.renderer"] == ""
+    # Windows exposes a validated persona renderer (calibrated clean bucket),
+    # not empty/native - see _webgl_personas.
+    assert prefs["zoom.stealth.webgl.renderer"].startswith("ANGLE (")
+    assert prefs["zoom.stealth.webgl.renderer"].rstrip().endswith(", D3D11)")
 
 
 # ──────────────────────────────────────────────────────────────────────
-#  IT11 (extra): Linux-specific pipeline — Xvfb workarounds + GPU spoof
+#  IT11 (extra): Linux-specific pipeline - Xvfb workarounds + GPU spoof
 #  + SOCKS5 proxy. The Linux equivalent of IT10. Verifies that the three
 #  Linux-only branches (renderer spoof, Xvfb webrender disable, MSAA
 #  from profile) coexist with proxy mutation in the same prefs dict.
@@ -303,10 +324,10 @@ def test_windows_virtual_display_with_socks_proxy(monkeypatch):
 
 @pytest.mark.integration
 def test_linux_xvfb_workarounds_with_socks_proxy(monkeypatch):
-    """IT11 — Linux + SOCKS5 proxy: Xvfb workarounds applied, GPU renderer
-    spoofed from profile, SOCKS keys written. virtual_display is a Windows-
-    only concept so we omit it here; passing ``virtual_display=True`` on
-    Linux must NOT set ``security.sandbox.gpu.level`` (covered by VD3)."""
+    """IT11 - Linux + SOCKS5 proxy: Xvfb workarounds applied, GPU renderer
+    spoofed from the validated WebGL persona, SOCKS keys written. virtual_display
+    is a Windows-only concept so we omit it here; passing ``virtual_display=True``
+    on Linux must NOT set ``security.sandbox.gpu.level`` (covered by VD3)."""
     monkeypatch.setattr(sys, "platform", "linux")
     profile = generate_profile(seed=42)
     prefs = translate_profile_to_prefs(profile, virtual_display=True)
@@ -321,9 +342,15 @@ def test_linux_xvfb_workarounds_with_socks_proxy(monkeypatch):
     assert prefs["webgl.force-enabled"] is True
     # Windows-only sandbox key absent on Linux even with virtual_display=True.
     assert "security.sandbox.gpu.level" not in prefs
-    # GPU renderer is spoofed from the profile (not cleared like on Windows).
-    assert prefs["zoom.stealth.webgl.renderer"] == profile.gpu.renderer
+    # GPU renderer is spoofed from the validated WebGL persona (a coherent Windows
+    # ANGLE GPU whose renderer + params cross-check), applied on every host - NOT the
+    # raw profile.gpu.renderer, which has no coherent param set and is never exposed.
+    from invisible_core._webgl_personas import select_persona
+    _persona = select_persona(profile.seed)
+    assert _persona, "expected a validated persona for this seed"
+    assert prefs["zoom.stealth.webgl.renderer"] == _persona["prefs"]["zoom.stealth.webgl.renderer"]
     assert prefs["zoom.stealth.webgl.renderer"]  # non-empty
+    assert "ANGLE" in prefs["zoom.stealth.webgl.renderer"]  # Windows ANGLE form
     # SOCKS branch wrote its keys without clobbering the Linux prefs above.
     assert prefs["network.proxy.type"] == 1
     assert prefs["network.proxy.socks"] == "127.0.0.1"
@@ -338,34 +365,14 @@ def test_linux_xvfb_workarounds_with_socks_proxy(monkeypatch):
 
 @pytest.mark.integration
 def test_linux_msaa_pin_propagates_through_pipeline(monkeypatch):
-    """IT12 — pinning MSAA on Linux survives the prefs translation; on
+    """IT12 - pinning MSAA on Linux survives the prefs translation; on
     Windows the same pin is overwritten to 4 (covered by the unit tests)."""
     monkeypatch.setattr(sys, "platform", "linux")
     profile = generate_profile(seed=42, pin={"webgl.msaa_samples": 8})
     prefs = translate_profile_to_prefs(profile)
 
-    assert prefs["zoom.stealth.webgl.msaa"] == 8
+    assert prefs["webgl.msaa-samples"] == 8
     assert prefs["webgl.msaa-samples"] == 8
     assert prefs["webgl.msaa-force"] is True
 
 
-# ──────────────────────────────────────────────────────────────────────
-#  IT13 (extra): Linux font metrics receive the GTK/DejaVu compensation
-#  block. End-to-end check that ``_LINUX_GENERIC_FONT_FACTORS`` is
-#  prepended to the per-font metrics string sampled from the profile.
-# ──────────────────────────────────────────────────────────────────────
-
-
-@pytest.mark.integration
-def test_linux_font_metrics_include_generic_factors(monkeypatch):
-    """IT13 — on Linux the font metrics pref starts with the generic
-    width-scale factors (GTK/DejaVu compensation) so glyph widths match
-    Windows. Without this, Linux sessions leak via metric drift."""
-    from invisible_playwright.prefs import _LINUX_GENERIC_FONT_FACTORS
-
-    monkeypatch.setattr(sys, "platform", "linux")
-    profile = generate_profile(seed=42)
-    prefs = translate_profile_to_prefs(profile)
-
-    metrics = prefs["zoom.stealth.font.metrics"]
-    assert metrics.startswith(_LINUX_GENERIC_FONT_FACTORS)

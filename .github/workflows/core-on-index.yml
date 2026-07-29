@@ -1,0 +1,206 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# core-on-index.yml - the one question every job in this repo has to answer
+# before it can install anything: is the invisible-core version we pin actually
+# on the package index?
+#
+# WHY THIS EXISTS.
+# [project].dependencies now carries a real specifier, `invisible-core==N.M.0`,
+# instead of a `name @ git+url@ref` direct reference. That was measured to be
+# the stronger contract: a direct reference has no version to compare, so
+# `pip check` is structurally blind to a violated one, while a real specifier
+# makes it exit 1, and a plain `pip install` of this package repairs an
+# environment somebody broke by hand. The cost is that every `pip install` in
+# this repo now has to RESOLVE that dependency from the index.
+#
+# The publish order is fixed and non-negotiable: invisible-core is uploaded
+# FIRST, the two consumers after it. So there is a window - from the first push
+# of this repo to GitHub until the core's first upload - in which every install
+# step here cannot possibly succeed, for a reason nobody can fix from inside
+# this repository.
+#
+# WHAT WE DO ABOUT IT, AND WHAT WE REFUSE TO DO.
+# The tempting fix is to make the install tolerant: `|| true`, `--no-deps`, or
+# a fallback that pulls the core straight from git. All three are worse than a
+# red run. `|| true` and `--no-deps` produce a GREEN job that installed nothing
+# and tested nothing, which is a lie that survives long after the window has
+# closed. The git fallback is worse still: it satisfies the pin by name and
+# version with content nobody compared, which is the exact failure mode the
+# `==` specifier was adopted to expose.
+#
+# So this workflow asks the index and reports a verdict, and the callers make
+# their real jobs depend on it. Three outcomes, all of them visible:
+#
+#   the project is not on the index at all
+#       -> the publish window. This job passes, emits a ::warning:: annotation
+#          on the run page, writes the reason into the run summary, and returns
+#          available=false. Every caller job is then SKIPPED - grey in the
+#          checks list, not green - and the summary says in words that no tests
+#          ran. Nobody can mistake it for a passing build.
+#
+#   the project is on the index and carries the pinned version
+#       -> available=true. Every caller job runs exactly as it did before this
+#          file existed. Nothing is weakened, ever.
+#
+#   the project is on the index but NOT at the pinned version
+#       -> this is not the window. The core has been published, so the pin
+#          names a version that was never uploaded. Hard failure, red.
+#
+# Anything ambiguous (index unreachable, malformed answer, no `==` pin in
+# pyproject.toml, two of them) is also a hard failure. A gate that answers
+# "skip" when it does not know would silently disable this repo's whole CI the
+# first time PyPI has a bad minute.
+#
+# This does NOT stop being useful once the core is published: it is the check
+# that catches a pin pointing at a version that does not exist, about 20s
+# before the install step would have failed with a resolver wall of text.
+# ─────────────────────────────────────────────────────────────────────────────
+name: core-on-index
+
+on:
+  workflow_call:
+    outputs:
+      available:
+        description: >-
+          "true" when the invisible-core version pinned in pyproject.toml can
+          be resolved from the package index. Any other value means the caller
+          must not attempt an install.
+        value: ${{ jobs.probe.outputs.available }}
+      pin:
+        description: The invisible-core version this repo pins.
+        value: ${{ jobs.probe.outputs.pin }}
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: is the pinned invisible-core on the index?
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      available: ${{ steps.probe.outputs.available }}
+      pin: ${{ steps.probe.outputs.pin }}
+    steps:
+      # SHA-pinned like e2e.yml: this job decides whether the rest of the repo's
+      # CI runs at all, so it is the last place to want a moving tag.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with: { fetch-depth: 1 }
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: { python-version: '3.11' }   # tomllib
+
+      - id: probe
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os, re, sys, time, tomllib, urllib.error, urllib.request
+
+          DIST = "invisible-core"
+          PIN_RE = re.compile(
+              r"\s*(?P<name>[A-Za-z0-9][A-Za-z0-9._-]*)\s*"
+              r"(?:\[[^\]]*\])?\s*==\s*(?P<version>[^\s;,]+)")
+
+          def norm(name):
+              """PEP 503: invisible_core and invisible-core are one name."""
+              return re.sub(r"[-_.]+", "-", name).lower()
+
+          def write(path_var, text):
+              path = os.environ.get(path_var)
+              if path:
+                  with open(path, "a", encoding="utf-8") as fh:
+                      fh.write(text + "\n")
+
+          def die(msg):
+              print(f"::error title={DIST} pin::{msg}")
+              write("GITHUB_STEP_SUMMARY",
+                    f"### CI stopped: the {DIST} pin cannot be verified\n\n{msg}\n")
+              sys.exit(1)
+
+          # ---- what do we pin? -------------------------------------------------
+          try:
+              deps = tomllib.loads(
+                  open("pyproject.toml", "rb").read().decode("utf-8")
+              )["project"]["dependencies"]
+          except Exception as e:
+              die(f"pyproject.toml has no readable [project].dependencies: {e!r}")
+
+          pins = []
+          for dep in deps:
+              m = PIN_RE.match(dep) if isinstance(dep, str) else None
+              if m and norm(m.group("name")) == DIST:
+                  pins.append(m.group("version"))
+          if len(pins) != 1:
+              die(f"expected exactly one `{DIST}==X.Y.Z` requirement in "
+                  f"[project].dependencies, found {pins or 'none'}. Either the pin was "
+                  f"loosened, replaced by a direct reference, or duplicated. This gate "
+                  f"will not guess which core the build is supposed to wait for. "
+                  f"Declared: {deps}")
+          pin = pins[0]
+          print(f"pyproject.toml pins {DIST}=={pin}")
+          write("GITHUB_OUTPUT", f"pin={pin}")
+
+          # ---- is it on the index? --------------------------------------------
+          url = f"https://pypi.org/simple/{DIST}/"
+          req = urllib.request.Request(
+              url, headers={"Accept": "application/vnd.pypi.simple.v1+json"})
+          data = unpublished = None
+          last = ""
+          for attempt in range(1, 4):   # retry transient failures, never guess
+              try:
+                  with urllib.request.urlopen(req, timeout=30) as r:
+                      data = json.load(r)
+                  break
+              except urllib.error.HTTPError as e:
+                  if e.code == 404:
+                      unpublished = True
+                      break
+                  last = f"HTTP {e.code}"
+              except Exception as e:
+                  last = repr(e)
+              print(f"index probe attempt {attempt}/3 failed: {last}")
+              if attempt < 3:
+                  time.sleep(5 * attempt)
+
+          if data is None and not unpublished:
+              die(f"could not read {url} after 3 attempts ({last}). That is not a "
+                  f"verdict, so this job fails instead of guessing. Re-run it.")
+
+          if unpublished:
+              msg = (f"{DIST} has never been published to the index. This is the "
+                     f"expected publish window: the core is uploaded first, this "
+                     f"repo's package after it.")
+              print(f"::warning title={DIST} is not on the index yet::{msg} "
+                    f"NOTHING WAS INSTALLED AND NO TEST RAN in this workflow run.")
+              write("GITHUB_STEP_SUMMARY",
+                    f"### NO TESTS RAN\n\n{msg}\n\n"
+                    f"Every job in this workflow was **skipped**, not passed. "
+                    f"`pyproject.toml` pins `{DIST}=={pin}`; until that version is on "
+                    f"the index no `pip install` in this repository can resolve, so "
+                    f"there is nothing to run. Publish `{DIST}=={pin}`, then re-run "
+                    f"this workflow - the jobs come back on their own, with no edit "
+                    f"to any file here.\n")
+              write("GITHUB_OUTPUT", "available=false")
+              sys.exit(0)
+
+          versions = data.get("versions")
+          if not versions:
+              die(f"{url} answered but listed no versions. The index API changed shape "
+                  f"or served something unexpected; refusing to turn that into a skip.")
+          if pin not in versions:
+              shown = sorted(versions)[-10:]   # diagnostics only, so a plain sort
+              die(f"pyproject.toml pins {DIST}=={pin}, but the index publishes "
+                  f"{len(versions)} version(s) ({', '.join(shown)}) and not {pin}. "
+                  f"{DIST} exists, so this is NOT the "
+                  f"publish window - the pin names a version that was never uploaded. "
+                  f"Fix the pin (workbench: python scripts/sync_core_pin.py) or publish "
+                  f"the core first.")
+
+          print(f"{DIST}=={pin} is on the index - the workflow runs normally.")
+          write("GITHUB_OUTPUT", "available=true")
+          PY
+
+      - name: Say so in the run summary
+        if: steps.probe.outputs.available == 'true'
+        run: |
+          echo "invisible-core==${{ steps.probe.outputs.pin }} is on the index; jobs run normally." \
+            >> "$GITHUB_STEP_SUMMARY"

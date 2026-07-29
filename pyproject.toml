@@ -3,8 +3,8 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "invisible-playwright"
-version = "0.2.0"
+name = "invisible_playwright"
+version = "0.4.8"
 description = "Playwright wrapper for a patched Firefox with deterministic stealth profile."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -14,38 +14,102 @@ keywords = ["playwright", "firefox", "stealth", "anti-detect", "automation"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Testing",
+    "Topic :: Internet :: WWW/HTTP :: Browsers",
+    "Typing :: Typed",
 ]
 dependencies = [
-    "playwright>=1.40",
-    "platformdirs>=4",
-    "requests[socks]>=2.31",
-    "maxminddb>=2.2",
-    "tzdata>=2024.1",
-    "tqdm>=4.66",
-    "pywin32>=306; sys_platform == 'win32'",
+    # Pure config (seed -> fingerprint -> prefs, binary download, proxy, geo) lives
+    # in invisible-core since the 2026-07-03 split; it pulls platformdirs/requests/
+    # maxminddb/tzdata transitively. The wrapper only adds Playwright.
+    #
+    # An EXACT specifier, not the bare `invisible-core @ git+...` direct reference
+    # this line used to carry. Measured, not assumed: pip is structurally blind to
+    # a violated direct reference. A direct reference carries no version specifier,
+    # so there is nothing for `pip check` to compare, and it reports "No broken
+    # requirements found" (exit 0) on an environment where the wrong core is
+    # installed. The same mismatch written as a real version specifier is reported,
+    # exit 1. pip also discards the metadata it just built for a moved git tag and
+    # leaves direct_url.json recording the OLD commit, so the file meant to be
+    # ground truth lies exactly when it matters.
+    #
+    # Cost, accepted knowingly: the pin literal now moves on every engine release,
+    # so a firefox-N bump is a three-repo release instead of a core-only push.
+    # invisible-core must be live on the index BEFORE this package is published,
+    # or a cold install fails to resolve.
+    #
+    # This literal is the ONLY place the expected core version is written. The
+    # import-time assertion in _pin.py reads it back out of this package's own
+    # metadata; nothing in src/ hardcodes a second copy (tests/test_core_pin.py
+    # fails if one appears). What stays invisible to install-time machinery is the
+    # --no-deps / lockfile residue, and _pin.py is the only layer that sees it.
+    "invisible_core==18.9.0",
+    # Install-time approximation of the Juggler client range we test against.
+    # 1.61 added an isMobile field to Browser.setDefaultViewport that an older
+    # Juggler rejects, which kills the session (issue #48). The authoritative
+    # range now travels in the seal and is enforced at import by
+    # _engine.assert_playwright_range(), so widening it no longer needs a
+    # wrapper release; this bound only keeps a fresh install in the ballpark.
+    "playwright>=1.55,<=1.61.0",
+    # Reading another process's environment block is the only way to identify
+    # THIS session's browser tree exactly, and it is the identification that
+    # makes reaping safe: on a fleet, several sessions start on the same binary
+    # within the same second, so any heuristic ("a firefox that appeared after
+    # we did") eventually kills a healthy browser belonging to someone else.
+    #
+    # A hard dependency rather than an optional one, deliberately. The leak it
+    # closes appears exactly when teardown did NOT run cleanly - a timeout, an
+    # exception, a killed runner - so an optional reaper would be absent on
+    # precisely the machines that need it, and absent silently.
+    "psutil>=5.9",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7", "pytest-mock>=3", "responses>=0.24", "build>=1", "pytest-rerunfailures>=14", "playwright>=1.40"]
+dev = ["pytest>=7", "pytest-mock>=3", "responses>=0.24", "build>=1", "pytest-rerunfailures>=14", "playwright>=1.55,<=1.61.0"]
 
 [tool.pytest.ini_options]
 markers = [
-    "unit: pure-logic tests, no I/O or external deps",
-    "integration: multi-module tests, no browser",
-    "e2e: requires patched Firefox binary and display",
-    "slow: tests that build the wheel — opt-in only",
-    "linux_only: tests that require Linux platform",
+    # ONE VOCABULARY FOR ALL THREE REPOSITORIES. Aligned 2026-07-27; before
+    # that the same word meant different things and selected different sets.
+    #
+    #   `integration` was "multi-module tests, no browser" in invisible_core and
+    #   invisible_playwright, and "launches the real patched Firefox binary" in
+    #   invisible_firefox - which is what `e2e` means. So the manager excluded
+    #   `integration` by default while the other two ran it, and CLAUDE.md's
+    #   "integration is reserved for explicit release runs" was true in one repo
+    #   and wrong in the other two, where it names 57 structural tests that must
+    #   run on every push.
+    #
+    #   invisible_core's addopts said `not slow` while never declaring `slow`,
+    #   so the exclusion matched nothing and the word meant nothing.
+    #
+    # The blocks are byte-identical on purpose, and
+    # invisible_core/tests/test_marker_vocabulary.py fails when they drift.
+    "unit: pure logic - no I/O, no network, no subprocess, no browser",
+    "integration: several modules together, in process - no network, no browser",
+    "e2e: needs something outside this process - the network, the real patched binary, or a display",
+    "slow: builds a wheel or an sdist - opt-in only",
+    "linux_only: requires Linux",
 ]
-addopts = "-m 'not slow and not e2e'"
+# Both exclusions in ONE addopts: declaring the key twice is a TOML error, not
+# a merge, and pytest then sees neither value.
+#
+# `integration` is NOT excluded. It is in-process and fast, it is what covers
+# the release wiring, and it is the selection a push most needs.
+addopts = "-m 'not slow and not e2e' --strict-markers"
+
 # tests/playwright-upstream/ is a vendored Microsoft Playwright test suite
 # used for compatibility verification on demand. It has its own deps
 # (pixelmatch with API not matching our version) and a conftest that fails
 # collection in our env. Run it explicitly with --override-ini for compat
-# audits, not on every push.
+# audits, not on every push. Also why --strict-markers above is safe: its
+# only_browser / skip_browser / only_platform markers are never collected.
 norecursedirs = ["playwright-upstream"]
 
 [project.scripts]
@@ -53,10 +117,42 @@ invisible-playwright = "invisible_playwright.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/feder-cr/invisible_playwright"
+Repository = "https://github.com/feder-cr/invisible_playwright"
 Issues = "https://github.com/feder-cr/invisible_playwright/issues"
+Changelog = "https://github.com/feder-cr/invisible_playwright/blob/main/CHANGELOG.md"
+Documentation = "https://github.com/feder-cr/invisible_playwright#readme"
+
+# No [tool.hatch.metadata] allow-direct-references opt-in: there is no direct
+# reference left in [project].dependencies, and leaving the switch on is what
+# would let one creep back in silently. Without it hatchling refuses to build a
+# direct reference at all, which turns the decision above into a build-time gate.
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/invisible_playwright"]
+exclude = ["*.bak", "*-bak"]
 
 [tool.hatch.build.targets.sdist]
 include = ["src/invisible_playwright", "tests", "README.md", "LICENSE", "pyproject.toml"]
+# tests/playwright-upstream/ is a vendored copy of microsoft/playwright-python,
+# Apache-2.0, ~322 files. Redistributing it inside an sdist whose only declared
+# licence is MIT misstates the licence of what is being distributed, and a PyPI
+# filename can never be re-uploaded once published.
+#
+# The forbidden-name guard used to be excluded here too. It is no longer in this
+# repository at all: it needs a word list that deliberately lives outside every
+# public repo, so as a shipped test it handed every user three red tests they
+# could not make green. It is a workbench gate now, run by the pre-push hook.
+exclude = ["tests/playwright-upstream"]
+
+# Which pre-push gates this repository wants. `.githooks/pre-push` is a stub;
+# the policy is invisible_core.hooks, and this block is the only per-repo part
+# of it. Declared rather than defaulted on purpose: the wrong default silently
+# skips a gate, and a skipped gate reads exactly like a passed one.
+#
+# `pin = true`: the invisible-core== specifier below must name the version the
+# core checkout actually builds. No test here can see a stale pin - it only
+# shows up at install time, on someone else's machine.
+[tool.invisible.hooks]
+pytest = true
+pin = true
+release_tags = ["v"]

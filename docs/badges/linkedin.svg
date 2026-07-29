@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="159" height="20" role="img" aria-label="LinkedIn: Federico Elia">
+<title>LinkedIn: Federico Elia</title>
+<linearGradient id="s" x2="0" y2="100%"><stop offset="0" stop-color="#bbb" stop-opacity=".1"/><stop offset="1" stop-opacity=".1"/></linearGradient>
+<clipPath id="r"><rect width="159" height="20" rx="3" fill="#fff"/></clipPath>
+<g clip-path="url(#r)">
+<rect width="63" height="20" fill="#555"/>
+<rect x="63" width="96" height="20" fill="#0A66C2"/>
+<rect width="159" height="20" fill="url(#s)"/>
+</g>
+<g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" font-size="11">
+<text x="31.5" y="15" fill="#010101" fill-opacity=".3">LinkedIn</text>
+<text x="31.5" y="14">LinkedIn</text>
+<text x="111.0" y="15" fill="#010101" fill-opacity=".3">Federico Elia</text>
+<text x="111.0" y="14">Federico Elia</text>
+</g>
+</svg>

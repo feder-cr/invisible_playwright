@@ -39,4 +39,4 @@ def test_built_wheel_has_no_duplicate_entries(tmp_path):
     assert not dupes, f"wheel has duplicate entries (PyPI will reject): {dupes}"
     # Sanity: the Bayesian data files must still be packaged.
     json_files = [n for n in names if n.endswith(".json")]
-    assert json_files, "no .json data files in wheel — packaging broken"
+    assert json_files, "no .json data files in wheel - packaging broken"

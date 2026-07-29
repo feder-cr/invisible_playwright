@@ -1,31 +1,55 @@
 #!/bin/sh
-# Pre-push hook: blocks push if the test suite isn't fully green.
+# Pre-push gate. THE POLICY IS NOT IN THIS FILE - it is `invisible_core.hooks`,
+# and this stub exists only to find an interpreter and hand over stdin.
 #
-# Enable once with:
+# It used to be here, in three repositories, as 743 lines of shell that were 207
+# identical lines out of 211 between two of them. Nine of the eleven differences
+# were accidental: the core ran no pytest, the core set a variable three times
+# that only the other two ever read, the core resolved an interpreter and then
+# called bare `python` anyway. Every fix landed in whichever copy was open.
+#
+# What this repository wants gated is declared in its own pyproject, under
+# [tool.invisible.hooks]. That is the only per-repo part, and it is data.
+#
+# Install once with:
 #   git config core.hooksPath .githooks
-#
-# Bypass for a known-broken WIP push (NOT for releases):
-#   git push --no-verify
-# The --no-verify flag is the only escape hatch. Use it sparingly and never
-# for branches that feed into a release.
+# A test in this repo fails in an uninstalled checkout, so nobody has to
+# remember. Bypass a known-broken WIP push with `git push --no-verify`; that is
+# the only escape hatch, and never for a branch that feeds a release.
 
-set -e
+# No `set -e`: exit codes here have to be READ and explained, not turned into a
+# silent abort. A gate that dies without a message is the worst shape of all.
 
-echo "[pre-push] running unit + integration tests before push..."
+# Run from the repository root regardless of where `git push` was invoked.
+cd "$(dirname "$0")/.." || exit 1
 
-# Run from this script's directory so it works regardless of where the user
-# invoked git push from.
-cd "$(dirname "$0")/.."
-
-# Default pyproject addopts skip slow/e2e. That's the gate we want for every
-# push — fast feedback. e2e is reserved for explicit release runs.
-if ! python -m pytest -q --tb=short; then
-    echo ""
-    echo "[pre-push] TESTS FAILED — push aborted."
-    echo "[pre-push] Either fix the failure or use 'git push --no-verify' if"
-    echo "[pre-push] you really know what you're doing (NOT for release branches)."
+python_bin=""
+for candidate in "$INVISIBLE_GATE_PYTHON" python3 python py; do
+    [ -n "$candidate" ] || continue
+    if command -v "$candidate" >/dev/null 2>&1; then
+        python_bin="$candidate"
+        break
+    fi
+done
+if [ -z "$python_bin" ]; then
+    echo "[pre-push] REFUSED - no python on PATH, so no gate can run." >&2
+    echo "[pre-push] Nothing must be pushed past a hook that could not check it." >&2
+    echo "[pre-push] Set INVISIBLE_GATE_PYTHON to an interpreter and push again." >&2
     exit 1
 fi
 
-echo "[pre-push] all tests green — push proceeding."
-exit 0
+# `src` first so a checkout gates itself with the policy in the tree being
+# pushed. os.getcwd() rather than $PWD on purpose: under git-bash on Windows
+# $PWD is /c/... and Python does not resolve that mount.
+# exec, so stdin (the refs git is pushing) reaches the policy untouched.
+exec "$python_bin" -c 'import os, sys
+sys.path.insert(0, os.path.join(os.getcwd(), "src"))
+try:
+    from invisible_core.hooks import main
+except ImportError as exc:
+    sys.exit("[pre-push] REFUSED - cannot import invisible_core.hooks (%s).\n"
+             "[pre-push] The pre-push policy lives in invisible-core. This repo is\n"
+             "[pre-push] either that package (so src/ is not where it should be) or\n"
+             "[pre-push] pins it exactly (so install it). Either way, nothing is\n"
+             "[pre-push] pushed past a hook that could not check it." % exc)
+sys.exit(main())'

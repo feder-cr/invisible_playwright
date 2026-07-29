@@ -37,7 +37,7 @@ def test_version_is_not_the_stale_010_string():
     and never updated. If this ever returns to a literal '0.1.0' the
     package has been published or shipped with stale metadata."""
     assert __version__ != "0.1.0", (
-        "__version__ is the stale hardcoded '0.1.0' string — issue #24 has "
+        "__version__ is the stale hardcoded '0.1.0' string - issue #24 has "
         "regressed. Use importlib.metadata to derive it from pyproject.toml."
     )
 
@@ -51,9 +51,20 @@ def test_version_subcommand_prints_real_version():
     assert rc == 0
     out = buf.getvalue()
     assert f"invisible_playwright {__version__}" in out
-    assert "0.1.0" not in out or __version__ == "0.1.0"  # safety: only allowed if truly 0.1.0
-    assert "BINARY_VERSION=" in out
+    # Safety, scoped to the wrapper's own line: other lines legitimately carry
+    # version strings we do not control (the core's pip-visible version, which
+    # is exactly the number this command exists to expose when it lags).
+    wrapper_line = next(l for l in out.splitlines() if l.startswith("invisible_playwright"))
+    assert "0.1.0" not in wrapper_line or __version__ == "0.1.0"
+    # The engine identity is printed as tag + base version + BuildID + seal
+    # digest. That is what makes a core lagging behind the newest binary
+    # release visible on any machine (it used to print a bare BINARY_VERSION=,
+    # which could not distinguish two builds carrying the same tag).
+    assert "invisible_core" in out
+    assert "engine" in out and "firefox-" in out
     assert "Firefox " in out
+    assert "build " in out
+    assert "seal" in out
 
 
 def test_dash_dash_version_flag_works():

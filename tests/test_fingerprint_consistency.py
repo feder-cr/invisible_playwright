@@ -1,7 +1,7 @@
 """Fingerprint consistency / lie-detection tests.
 
 Complementary to test_fingerprint_surface.py: those tests ask "do you
-look like a real browser?" — these ask "are your fingerprint surfaces
+look like a real browser?" - these ask "are your fingerprint surfaces
 INTERNALLY CONSISTENT?"
 
 Anti-bot systems catch spoofers not by checking each signal in
@@ -11,11 +11,11 @@ WebGL renderer in the main thread but not in a Web Worker, the
 inconsistency proves the spoof is fake.
 
 Sources studied (all FOSS, MIT-licensed):
-  - creepjs/src/lies/index.ts   — the canonical lie detector
-  - creepjs/src/worker/index.ts — main-vs-worker scope cross-check
-  - creepjs/src/math/index.ts   — Math.x(p) deterministic equality
-  - creepjs/src/navigator/index.ts — UA/platform/oscpu invariants
-  - niespodd/browser-fingerprinting README — worker hwConcurrency,
+  - creepjs/src/lies/index.ts   - the canonical lie detector
+  - creepjs/src/worker/index.ts - main-vs-worker scope cross-check
+  - creepjs/src/math/index.ts   - Math.x(p) deterministic equality
+  - creepjs/src/navigator/index.ts - UA/platform/oscpu invariants
+  - niespodd/browser-fingerprinting README - worker hwConcurrency,
                                               plugin chain, perf.timeOrigin
 
 Everything runs against `about:blank` with NO network and NO proxy.
@@ -61,7 +61,7 @@ def _ev(page, expr):
 
 
 # ===========================================================================
-# 1. Math determinism — same input MUST yield same output
+# 1. Math determinism - same input MUST yield same output
 # Source: creepjs/src/math/index.ts
 # A wrapper that adds noise to Math.* (canvas-spoofing prefs) exposes
 # itself here: two consecutive calls with the same input must be
@@ -114,7 +114,7 @@ def test_math_pow_two_arg_determinism(page):
 
 
 # ===========================================================================
-# 2. Worker scope vs main thread — navigator properties MUST agree
+# 2. Worker scope vs main thread - navigator properties MUST agree
 # Source: creepjs/src/worker/index.ts
 # ===========================================================================
 
@@ -286,7 +286,7 @@ def test_navigator_oscpu_matches_userAgent(page):
 
 
 def _is_native_toString(text, fn_name):
-    """Mirror of CreepJS hasKnownToString — accept the engine-specific
+    """Mirror of CreepJS hasKnownToString - accept the engine-specific
     native patterns (single-line on V8, multi-line on SpiderMonkey)."""
     import re as _re
     name = _re.escape(fn_name)
@@ -399,7 +399,7 @@ def test_navigator_language_matches_Intl_Collator(page):
 # ===========================================================================
 # 8. Property descriptor shape lies
 # Spoofers using Object.defineProperty(navigator, prop, {value: ...})
-# leave a 'value' field on the descriptor — real native props use a getter.
+# leave a 'value' field on the descriptor - real native props use a getter.
 # ===========================================================================
 
 
@@ -414,7 +414,7 @@ _DESCRIPTOR_NATIVE_PROPS = [
 @pytest.mark.parametrize("prop", _DESCRIPTOR_NATIVE_PROPS)
 def test_navigator_property_descriptor_is_getter_not_value(page, prop):
     """Each spoofable navigator.* property must be defined via a native
-    getter — NOT Object.defineProperty(..., {value: x}). The value-field
+    getter - NOT Object.defineProperty(..., {value: x}). The value-field
     descriptor is the lazy spoof leak CreepJS catches."""
     has_lie = _ev(page, f"""() => {{
         let proto = navigator;
@@ -429,7 +429,7 @@ def test_navigator_property_descriptor_is_getter_not_value(page, prop):
     if has_lie is None:
         pytest.skip(f"navigator.{prop} not exposed")
     assert has_lie is False, (
-        f"navigator.{prop} descriptor exposes 'value' field — lazy spoof"
+        f"navigator.{prop} descriptor exposes 'value' field - lazy spoof"
     )
 
 
@@ -487,7 +487,7 @@ def test_firefox_UA_implies_empty_vendor(page):
     if "Firefox" not in _ev(page, "navigator.userAgent"):
         pytest.skip("Firefox-only invariant")
     if "Chrome" in _ev(page, "navigator.userAgent"):
-        pytest.skip("Chrome+Firefox UA — likely synthetic")
+        pytest.skip("Chrome+Firefox UA - likely synthetic")
     assert _ev(page, "navigator.vendor") == ""
 
 

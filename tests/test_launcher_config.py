@@ -18,7 +18,7 @@ def test_tz_env_known_iana_returns_posix():
 
 
 def test_tz_env_arizona_no_dst():
-    """America/Phoenix must NOT have a DST suffix — Arizona doesn't observe DST."""
+    """America/Phoenix must NOT have a DST suffix - Arizona doesn't observe DST."""
     assert _tz_env("America/Phoenix") == "MST7"
 
 
@@ -57,9 +57,8 @@ def test_invisible_playwright_constructs_without_launching():
     assert obj2 is not None
 
 
-# ─── profile_dir kwarg — persistent context support ─────────────────────── #
+# ─── profile_dir kwarg - persistent context support ─────────────────────── #
 
-import pytest
 from pathlib import Path
 
 
@@ -89,7 +88,7 @@ def test_profile_dir_path_is_stored_as_is(tmp_path):
 @pytest.mark.unit
 def test_profile_dir_does_not_create_dir_until_enter(tmp_path):
     """Construction must not touch the filesystem. Directory creation only
-    happens when the user actually enters the context manager — otherwise
+    happens when the user actually enters the context manager - otherwise
     a typo at instantiation would silently spawn dirs."""
     target = tmp_path / "nonexistent"
     assert not target.exists()
@@ -107,7 +106,7 @@ def test_persistent_context_kwargs_match_default_exactly():
 
     Before firefox-5 we had to filter these out (180s timeout otherwise).
     A future refactor that re-introduces that filter would silently lose
-    timezone/locale isolation in persistent sessions — this test is the
+    timezone/locale isolation in persistent sessions - this test is the
     sentinel that catches the regression at the unit level."""
     obj = InvisiblePlaywright(seed=42, locale="en-GB", timezone="Europe/London",
                               profile_dir="/tmp/x")
@@ -124,7 +123,7 @@ def test_persistent_context_kwargs_INCLUDES_locale_and_timezone():
     """Sentinel for the C7 closure: firefox-5 ships the C++ overrideTimezone
     IDL method, so locale + timezone_id MUST be passed through to
     launch_persistent_context. If they're not, the wrapper is silently
-    dropping per-context isolation — two sessions with different
+    dropping per-context isolation - two sessions with different
     `timezone=` would end up sharing whatever TZ the env var set.
 
     Regression-defense: do NOT re-add the firefox-4-era filter."""
@@ -144,7 +143,7 @@ def test_persistent_context_kwargs_INCLUDES_locale_and_timezone():
 
 @pytest.mark.unit
 def test_persistent_context_kwargs_omits_timezone_when_empty_string():
-    """Empty timezone='' is the 'use host TZ' sentinel — must NOT pass
+    """Empty timezone='' is the 'use host TZ' sentinel - must NOT pass
     timezone_id to Playwright in that case (would pin to literal '' and
     break Intl)."""
     obj = InvisiblePlaywright(seed=42, timezone="", profile_dir="/tmp/x")
@@ -152,7 +151,7 @@ def test_persistent_context_kwargs_omits_timezone_when_empty_string():
     assert "timezone_id" not in kw
 
 
-# ─── Mocked __enter__ flow — confirms the right Playwright call is made ── #
+# ─── Mocked __enter__ flow - confirms the right Playwright call is made ── #
 
 
 @pytest.mark.unit
@@ -160,12 +159,12 @@ def test_enter_with_profile_dir_calls_launch_persistent_context(tmp_path, monkey
     """When profile_dir is set, __enter__ must call
     `firefox.launch_persistent_context(user_data_dir=...)` and NOT
     `firefox.launch(...)`. This is the structural test that the persistent
-    branch is wired correctly — without it, profile_dir would be silently
+    branch is wired correctly - without it, profile_dir would be silently
     accepted but ignored."""
     from unittest.mock import MagicMock
-    # Mock ensure_binary so we don't hit the network
-    monkeypatch.setattr("invisible_playwright.launcher.ensure_binary",
-                       lambda: tmp_path / "firefox")
+    # Mock the engine resolver (download + seal check) so we don't hit the network
+    monkeypatch.setattr("invisible_playwright.launcher.resolve_executable",
+                       lambda binary_path=None: tmp_path / "firefox")
 
     # Mock sync_playwright().start() → fake playwright with our recording firefox
     fake_ctx = MagicMock(name="persistent_context")
@@ -204,8 +203,8 @@ def test_enter_without_profile_dir_calls_launch_not_persistent(tmp_path, monkeyp
     launch_persistent_context. Sentinel that the non-persistent flow
     isn't accidentally rerouted."""
     from unittest.mock import MagicMock
-    monkeypatch.setattr("invisible_playwright.launcher.ensure_binary",
-                       lambda: tmp_path / "firefox")
+    monkeypatch.setattr("invisible_playwright.launcher.resolve_executable",
+                       lambda binary_path=None: tmp_path / "firefox")
 
     fake_browser = MagicMock(name="browser")
     fake_browser.new_context = MagicMock()
@@ -233,8 +232,8 @@ def test_persistent_context_user_data_dir_is_created_if_missing(tmp_path, monkey
     __enter__ must mkdir -p it (Playwright won't, and would crash with
     'user_data_dir does not exist')."""
     from unittest.mock import MagicMock
-    monkeypatch.setattr("invisible_playwright.launcher.ensure_binary",
-                       lambda: tmp_path / "firefox")
+    monkeypatch.setattr("invisible_playwright.launcher.resolve_executable",
+                       lambda binary_path=None: tmp_path / "firefox")
     fake_pw = MagicMock()
     fake_pw.start.return_value = MagicMock()
     fake_pw.start.return_value.firefox.launch_persistent_context = MagicMock(
@@ -257,8 +256,8 @@ def test_teardown_closes_persistent_context(tmp_path, monkeypatch):
     which on long-running tools (job orchestrators, MCP servers) leaks
     handles indefinitely."""
     from unittest.mock import MagicMock
-    monkeypatch.setattr("invisible_playwright.launcher.ensure_binary",
-                       lambda: tmp_path / "firefox")
+    monkeypatch.setattr("invisible_playwright.launcher.resolve_executable",
+                       lambda binary_path=None: tmp_path / "firefox")
     fake_ctx = MagicMock(name="persistent_context")
     fake_pw = MagicMock()
     fake_pw.start.return_value.firefox.launch_persistent_context.return_value = fake_ctx

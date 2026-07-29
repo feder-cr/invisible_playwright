@@ -73,7 +73,7 @@ body:
     id: logs
     attributes:
       label: Extra logs
-      description: Output of `DEBUG=pw:browser* python yourscript.py 2>&1`. Optional but speeds things up.
+      description: Output of `DEBUG=pw:browser* python yourscript.py 2>&1`. Optional.
       render: text
     validations:
       required: false

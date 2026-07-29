@@ -6,8 +6,8 @@ Playwright's own ``proxy=`` ignores SOCKS auth; this is the patched
 sets those prefs; this proves the binary actually performs the RFC1929 auth
 handshake and relays traffic.
 
-Fully hermetic — a local SOCKS5 server + a local HTTP target, with the localhost
-target forced through the proxy via ``allow_hijacking_localhost`` — so it runs
+Fully hermetic - a local SOCKS5 server + a local HTTP target, with the localhost
+target forced through the proxy via ``allow_hijacking_localhost`` - so it runs
 identically on a dev box and on a GitHub runner (no external site, no secrets).
 """
 from __future__ import annotations
@@ -129,7 +129,7 @@ class _Socks5AuthRecorder:
 
 
 class _LocalHTTP:
-    """A tiny localhost HTTP server — the CONNECT target relayed by the proxy."""
+    """A tiny localhost HTTP server - the CONNECT target relayed by the proxy."""
 
     _HTML = b"<!doctype html><title>ok</title><h1 id=ok>socks-routed</h1>"
 

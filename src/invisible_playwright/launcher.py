@@ -7,12 +7,22 @@ from typing import Any, Dict, Optional, Union
 
 from playwright.sync_api import Browser, BrowserContext, Playwright, sync_playwright
 
-from ._fpforge import Profile, generate_profile
-from ._geo import prepare_session_geo
-from ._headless import cloak_prefs, make_virtual_display
-from ._proxy import configure_proxy as _configure_proxy_shared
-from .download import ensure_binary
-from .prefs import translate_profile_to_prefs
+from . import _session
+from ._cursor import (
+    ENGINE_PYTHON,
+    enable_for as _enable_cursor_engine,
+    humanize_prefs as _humanize_prefs,
+    max_seconds_for as _cursor_max_seconds,
+    resolve_cursor_engine,
+)
+from invisible_core._fpforge import Profile, generate_profile
+from invisible_core import forced_gpu_class
+from invisible_core import prepare_session_geo
+from invisible_core import cloak_prefs, make_virtual_display
+from ._engine import assert_wire_version, resolve_executable
+from invisible_core import configure_proxy as _configure_proxy_shared
+from ._reaper import SessionToken, guard_for
+from invisible_core import translate_profile_to_prefs
 
 
 def _patch_sync_new_page_sleep(ctx: Any) -> None:
@@ -41,33 +51,11 @@ _CHROME_W  = 14
 _CHROME_H  = 91
 _TASKBAR_H = 40
 
-# IANA → POSIX TZ mapping. Linux glibc accepts IANA names directly via
-# /usr/share/zoneinfo, but Windows MSVCRT only understands the POSIX form
-# ("EST5EDT") — convert here so ``TZ`` works on both platforms when the
-# binary runs on Windows. Common US zones cover the vast majority of
-# residential proxies; everything else falls through to its IANA name.
-_IANA_TO_POSIX_TZ = {
-    "America/New_York":            "EST5EDT",
-    "America/Detroit":              "EST5EDT",
-    "America/Indiana/Indianapolis": "EST5EDT",
-    "America/Kentucky/Louisville":  "EST5EDT",
-    "America/Chicago":              "CST6CDT",
-    "America/Denver":               "MST7MDT",
-    "America/Los_Angeles":          "PST8PDT",
-    # Arizona (except Navajo Nation) does NOT observe DST. Mapping it to
-    # MST7MDT made libc apply DST → Date.getTimezoneOffset() returned -360
-    # in summer (Denver-like) instead of -420 (true Phoenix), and FP Pro
-    # deduced vpn_origin_timezone="America/Denver" → timezone_mismatch.
-    "America/Phoenix":              "MST7",
-    "America/Anchorage":            "AKST9AKDT",
-    # Hawaii does not observe DST.
-    "Pacific/Honolulu":             "HST10",
-}
-
-
-def _tz_env(timezone: str) -> str:
-    """Return the value to set in ``TZ`` for the given IANA zone."""
-    return _IANA_TO_POSIX_TZ.get(timezone, timezone)
+# The IANA -> POSIX TZ table moved to `_session` on 2026-07-27, so the async
+# class no longer has to import it FROM the sync module. Re-exported under the
+# original names because tests and `async_api` import them from here.
+_IANA_TO_POSIX_TZ = _session._IANA_TO_POSIX_TZ
+_tz_env = _session.tz_env
 
 
 class InvisiblePlaywright:
@@ -86,9 +74,11 @@ class InvisiblePlaywright:
         with InvisiblePlaywright(seed=42) as browser:
             ...
 
-        # human-like cursor motion (Bezier trajectory on every mousemove)
+        # human-like cursor motion, on by default: the ordinary Playwright
+        # pointer calls move the cursor along a path drawn from `seed`
         with InvisiblePlaywright(humanize=True) as browser:
-            ...
+            page = browser.new_page()
+            page.click("#submit")   # the pointer travels there, it does not jump
 
     Optional ``pin`` forces specific fingerprint fields while the rest still
     varies with ``seed``::
@@ -96,7 +86,7 @@ class InvisiblePlaywright:
         with InvisiblePlaywright(seed=42, pin={"screen.width": 2560}) as browser:
             ...
 
-    After construction, the chosen seed is available as ``self.seed`` — useful
+    After construction, the chosen seed is available as ``self.seed`` - useful
     to reproduce a random run later.
     """
 
@@ -109,7 +99,7 @@ class InvisiblePlaywright:
         proxy: Optional[Dict[str, str]] = None,
         extra_args: Optional[list[str]] = None,
         humanize: Union[bool, float] = True,
-        locale: str = "en-US",
+        locale: str = "auto",
         timezone: str = "",
         extra_prefs: Optional[Dict[str, Any]] = None,
         binary_path: Optional[str] = None,
@@ -130,13 +120,25 @@ class InvisiblePlaywright:
                 ``nsProtocolProxyService``; ``http(s)://`` go through
                 Playwright's own ``proxy=`` kwarg.
             extra_args: Extra command-line args forwarded to Firefox.
-            humanize: Every mouse move is expanded by the patched Juggler
-                into a Bezier trajectory with ~10 ms between waypoints.
-                Default ``True`` (~1.5 s max motion). ``False`` disables;
-                a float caps the motion in seconds.
-            locale: BCP-47 tag (e.g. ``"en-US"``). Drives the
-                ``Accept-Language`` header and ``navigator.language``.
-            timezone: IANA zone (e.g. ``"America/New_York"``) — used as-is
+            humanize: Move the pointer along a curved, paced path instead of
+                teleporting it. Applies to ``page.click`` / ``page.hover`` /
+                ``locator.click`` / ``page.mouse.move`` and the rest of the
+                ordinary Playwright pointer API - there is nothing new to
+                call. Default ``True`` (~1.5 s cap per movement); ``False``
+                disables; a float caps a movement in seconds. The path is
+                drawn from ``seed``, so the same seed replays the same motion.
+                Set ``INVPW_CURSOR_ENGINE=binary`` to go back to letting the
+                browser draw it, or ``=off`` to disable motion process-wide.
+            locale: BCP-47 tag (e.g. ``"en-US"``) or ``"auto"`` (default).
+                ``"auto"`` derives the locale from the egress country - the proxy
+                egress IP, or the host's public IP without a proxy - exactly like
+                ``timezone="auto"``, keeping the browser language consistent with the
+                exit country (a French proxy → ``fr-FR``). Drives
+                ``intl.accept_languages`` → both ``navigator.language``/``languages``
+                AND the q-valued ``Accept-Language`` header (the patched binary builds
+                the header from the pref, never from the raw Playwright locale override,
+                so the two never diverge - see nsHttpHandler STEALTHFOX note).
+            timezone: IANA zone (e.g. ``"America/New_York"``) - used as-is
                 when set, the only way to force a specific zone. ``""``
                 (default) or ``"auto"`` ALWAYS resolves from the egress IP:
                 through the proxy when one is set, otherwise from the host's
@@ -145,23 +147,23 @@ class InvisiblePlaywright:
                 ``timezone_mismatch`` signal); without a proxy it falls back to
                 the host TZ so a transient lookup failure can't break launch.
             extra_prefs: Optional dict of Firefox prefs overlayed on top
-                of the generated profile — useful for niche tweaks
+                of the generated profile - useful for niche tweaks
                 without monkey-patching the package.
             profile_dir: Path to a persistent Firefox profile directory.
                 When set, the session uses ``launch_persistent_context()``
                 so cookies, localStorage, sessionStorage, extensions, cache
                 and prefs are kept on disk between runs. ``__enter__``
-                returns a ``BrowserContext`` (not a ``Browser``) — use it
+                returns a ``BrowserContext`` (not a ``Browser``) - use it
                 directly: ``with InvisiblePlaywright(profile_dir=p) as ctx:
                 page = ctx.new_page()``. First run creates the dir;
                 subsequent runs reuse it. Pair with a stable ``seed=`` to
                 also pin the fingerprint identity across runs.
         """
-        # Constrain to int31 — Firefox's `zoom.stealth.fpp.hw_seed` and
+        # Constrain to int31 - Firefox's `zoom.stealth.fpp.hw_seed` and
         # related stealth prefs are declared as ``int32_t`` in
         # ``StaticPrefList.yaml``. A 32-bit seed risks the high bit being
         # interpreted as negative on the C++ side, where the noise hooks
-        # bail out on ``seed <= 0`` — which produces bit-identical audio
+        # bail out on ``seed <= 0`` - which produces bit-identical audio
         # / canvas fingerprints across half the sessions.
         self.seed: int = int(seed) if seed is not None else secrets.randbits(31)
         self._pin = pin
@@ -169,20 +171,33 @@ class InvisiblePlaywright:
         self._proxy = proxy
         self._extra_args = list(extra_args or [])
         self._humanize = humanize
+        # Who draws the cursor path: this package (default), the browser
+        # (``INVPW_CURSOR_ENGINE=binary``, the way back for anyone depending on
+        # the old behaviour), or nobody (``humanize=False``). Resolved once,
+        # here, because the prefs handed to the browser depend on the answer.
+        self._cursor_engine = resolve_cursor_engine(humanize)
         self._locale = locale
         self._timezone = timezone
         self._extra_prefs = extra_prefs
         self._binary_path = binary_path
         self._profile_dir: Optional[Path] = Path(profile_dir) if profile_dir else None
-        # reCAPTCHA cookie pre-seed — opt-in. Gated server-side: if a
+        # reCAPTCHA cookie pre-seed - opt-in. Gated server-side: if a
         # persistent profile_dir is in use, respect its existing cookies
         # and DON'T enable pre-seed (the profile owns its own state).
         self._prep_recaptcha = bool(prep_recaptcha) and self._profile_dir is None
-        self._profile: Profile = generate_profile(self.seed, pin=self._pin)
+        self._profile: Profile = generate_profile(
+            self.seed, pin=self._pin, fixed_gpu_class=forced_gpu_class(self.seed)
+        )
         self._pw: Optional[Playwright] = None
         self._browser: Optional[Browser] = None
         self._persistent_context: Optional[BrowserContext] = None
         self._virtual_display: Any = None
+        # Identity for this session's browser tree, and the guard that ties
+        # that tree to this process's lifetime. Declared here rather than in
+        # __enter__ so that _teardown - which runs on the failure path too,
+        # before __enter__ has got anywhere - always finds them.
+        self._session_token = SessionToken()
+        self._lifetime_guard = guard_for()
         # Proxy egress IP, discovered at launch (see __enter__). Feeds the
         # WebRTC srflx override so the candidate matches the proxy IP, not the
         # real host IP. None when no proxy is set.
@@ -190,22 +205,31 @@ class InvisiblePlaywright:
 
     def __enter__(self) -> Union[Browser, BrowserContext]:
         # Resolve timezone="auto" (and the proxy-set-but-unset default) to a
-        # concrete IANA zone AND discover the proxy egress IP — one round-trip,
+        # concrete IANA zone AND discover the proxy egress IP - one round-trip,
         # before anything reads self._timezone or builds prefs/env. Fail-early
         # if a proxy is set but the egress can't be resolved.
         _geo = prepare_session_geo(self._timezone, self._proxy)
         self._timezone = _geo.timezone
         self._webrtc_egress_ip = _geo.egress_ip
-        executable = self._binary_path or ensure_binary()
+        # Geo-aware locale: "auto" derives the language from the egress country (reusing
+        # the egress IP already discovered above), like timezone="auto". Keeps the browser
+        # language consistent with the proxy's country instead of a fixed en-US.
+        if (self._locale or "").strip().lower() == "auto":
+            from invisible_core import resolve_session_locale
+            self._locale = resolve_session_locale(_geo.egress_ip, self._proxy)
+        # binary_path= never reaches ensure_binary(), so the engine check lives
+        # on the resolved executable rather than inside the fetcher.
+        executable = resolve_executable(self._binary_path)
         prefs = self._build_prefs()
         playwright_proxy = _configure_proxy_shared(self._proxy, prefs)
         pw_headless = self._resolve_headless()
-        env = self._build_env()
+        self._session_token = SessionToken.mint()
+        env = self._build_env(prefs)
 
         try:
             self._pw = sync_playwright().start()
             if self._profile_dir is not None:
-                # Persistent context — cookies / localStorage / extensions /
+                # Persistent context - cookies / localStorage / extensions /
                 # prefs all live on disk between runs. Stealth prefs are
                 # re-injected via firefox_user_prefs on every launch (Playwright
                 # writes them to user.js, which overrides anything in
@@ -222,6 +246,8 @@ class InvisiblePlaywright:
                     **self._persistent_context_kwargs(),
                 )
                 _patch_sync_new_page_sleep(self._persistent_context)
+                self._bind_process_tree()
+                self._arm_cursor_engine(self._persistent_context)
                 return self._persistent_context
             self._browser = self._pw.firefox.launch(
                 executable_path=str(executable),
@@ -231,14 +257,59 @@ class InvisiblePlaywright:
                 args=self._extra_args,
                 env=env,
             )
+            # Free post-launch wire check: browser.version is a cached property
+            # from the connection initializer, so it costs no round trip and no
+            # pref can spoof it. Inside the try so a refusal tears the browser
+            # down instead of leaking the process we just refused.
+            assert_wire_version(self._browser)
+            self._bind_process_tree()
         except BaseException:
-            # Python doesn't call __exit__ when __enter__ raises — clean up
+            # Python doesn't call __exit__ when __enter__ raises - clean up
             # the virtual display + Playwright manually so we don't leak Xvfb
             # / desktop handles into the user's process.
             self._teardown()
             raise
         self._patch_new_context_defaults(self._browser)
+        self._arm_cursor_engine(self._browser)
         return self._browser
+
+    def _bind_process_tree(self) -> None:
+        """Tie the browser tree to this process's lifetime, at the OS level.
+
+        MEASURED before being written, because the first attempt at this fixed
+        a path that was not broken: an exception out of the `with` block does
+        NOT leak - __exit__ runs and Playwright cleans up, zero survivors over
+        an interleaved A/B. The leak is the killed-runner path, where __exit__
+        never executes at all: launch, kill the runner, and eight processes
+        were still alive; twelve on the second attempt. Nothing written inside
+        _teardown can reach that, so the guarantee comes from a Windows job
+        object that the kernel empties when this process's handle closes,
+        however this process ends.
+
+        Best-effort by construction: a failure here leaves the pre-existing
+        behaviour rather than breaking a launch that is otherwise fine.
+        """
+        try:
+            self._lifetime_guard.bind(self._session_token)
+        except Exception:
+            pass
+
+    def _arm_cursor_engine(self, owner: Any) -> None:
+        """Register this session so its pages move through the Python generator.
+
+        Registered on the browser (or on the persistent context, which is all
+        there is in that mode) rather than on each page: pages appear by
+        several routes we do not control - ``browser.new_page()`` builds its
+        context inside the driver, and a site can open a popup on its own - and
+        every one of them can find its way back to this owner. The seed is the
+        session seed, so a replayed seed replays the cursor exactly as it
+        replays the fingerprint.
+        """
+        if self._cursor_engine != ENGINE_PYTHON:
+            return
+        _enable_cursor_engine(
+            owner, seed=self.seed, max_seconds=_cursor_max_seconds(self._humanize)
+        )
 
     def _persistent_context_kwargs(self) -> Dict[str, Any]:
         """Context-level kwargs accepted by launch_persistent_context.
@@ -291,7 +362,7 @@ class InvisiblePlaywright:
         # Pass timezone via Playwright's per-realm override (docShell.overrideTimezone
         # → JS::SetRealmTimezoneOverride). The juggler.timezone.override pref path
         # uses JS::SetTimeZoneOverride globally, which is broken on Windows ICU for
-        # no-DST IANA names (America/Phoenix, Pacific/Honolulu, ...) — those silently
+        # no-DST IANA names (America/Phoenix, Pacific/Honolulu, ...) - those silently
         # fall back to the host system TZ. The per-realm path works for every zone.
         if self._timezone:
             kwargs["timezone_id"] = self._timezone
@@ -327,64 +398,52 @@ class InvisiblePlaywright:
             except Exception:
                 pass
             self._virtual_display = None
+        # Last, and unconditionally: whatever Playwright's close() did or did
+        # not manage, nothing carrying this session's token may outlive it. Each
+        # step above is individually wrapped in `except: pass`, so before this
+        # existed a browser that refused to close was swallowed and leaked in
+        # silence. Only processes positively identified as ours are touched.
+        if self._session_token:
+            try:
+                self._lifetime_guard.reap(self._session_token)
+            except Exception:
+                pass
+            self._session_token = SessionToken()
 
     # ── helpers ─────────────────────────────────────────────────────────
 
     def _build_prefs(self) -> Dict[str, Any]:
-        """Fingerprint prefs plus humanize toggle (always set explicitly)."""
-        import sys as _sys
-        prefs = translate_profile_to_prefs(
-            self._profile,
+        """Fingerprint prefs plus humanize toggle (always set explicitly).
+
+        The body lives in `_session.build_prefs`, which the async class calls
+        too. It used to be twenty lines here and the SAME twenty inlined into
+        `async_api.__aenter__` - identical calls in identical order, differing
+        only in their comments, which is how the two entry points drift.
+        """
+        return _session.build_prefs(
+            profile=self._profile,
             locale=self._locale,
             timezone=self._timezone,
             extra_prefs=self._extra_prefs,
-            virtual_display=bool(self._headless and _sys.platform == "win32"),
+            headless=self._headless,
+            cursor_engine=self._cursor_engine,
+            humanize=self._humanize,
         )
-        # Windows & macOS hide the headless window via the binary's own cloak
-        # (DWMWA_CLOAK / NSWindow alpha) — inject the pref so the patched build
-        # cloaks its chrome windows. setdefault: an explicit user override wins.
-        if self._headless and _sys.platform in ("win32", "darwin"):
-            for _k, _v in cloak_prefs().items():
-                prefs.setdefault(_k, _v)
-        # Pref namespace MUST be stealthfox.* — that's what the binary's Juggler
-        # reads (PageHandler.js gates the Bezier mouse path on `stealthfox.humanize`).
-        # The old `invisible_playwright.*` name was a dead no-op (nothing read it), so
-        # humanize silently never fired and every click teleported the cursor.
-        prefs["stealthfox.humanize"] = bool(self._humanize)
-        if self._humanize:
-            prefs["stealthfox.humanize.maxTime"] = str(self._humanize_max_seconds())
-        return prefs
 
-    def _build_env(self) -> Dict[str, str]:
-        """Env vars passed to the Firefox subprocess.
+    def _build_env(self, prefs: Dict[str, Any]) -> Dict[str, str]:
+        """Env for the Firefox subprocess, then stamped with this session's token.
 
-        ``TZ`` tunes the libc clock the content process reads for
-        ``Date`` / ``Intl.DateTimeFormat`` so the JS-visible timezone
-        matches ``self._timezone`` regardless of the host TZ.
-        ``STEALTHFOX_WEBRTC_PUBLIC_IP`` is propagated when the calling
-        process has set it — read by nICEr's nr_stealth_bridge to inject
-        a synthetic srflx candidate matching the proxy egress IP, avoiding
-        the StaticPref IPC propagation timing issue between parent and
-        socket processes.
+        The body is `_session.build_env`, shared with the async class - it was
+        written twice, identically, and the WebRTC pair is a contract with the
+        binary, so two landing sites meant two chances to miss a change.
+
+        The token stamp stays here because it is the only genuinely per-session
+        part: children inherit the environment, so every process in the tree
+        carries it and teardown can find its own tree and only its own.
         """
-        import os as _os
-        env = _os.environ.copy()
-        if self._timezone:
-            env["TZ"] = _tz_env(self._timezone)
-        # WebRTC srflx override: feed nICEr's nr_stealth_bridge the proxy egress
-        # IP so the srflx candidate matches the proxy (not the real host the
-        # UDP STUN would otherwise leak). An explicit env var set by the caller
-        # wins; otherwise we use the egress IP auto-discovered in __enter__.
-        # Behind a proxy we also drop IPv6 from gathering (the disableIPv6 pref
-        # is dead on FF150 — the bridge filter is the real switch).
-        webrtc_ip = (
-            _os.environ.get("STEALTHFOX_WEBRTC_PUBLIC_IP")
-            or self._webrtc_egress_ip
-        )
-        if webrtc_ip:
-            env["STEALTHFOX_WEBRTC_PUBLIC_IP"] = webrtc_ip
-            env["STEALTHFOX_WEBRTC_DISABLE_IPV6"] = "1"
-        return env
+        return self._session_token.stamp(
+            _session.build_env(timezone=self._timezone,
+                               egress_ip=self._webrtc_egress_ip))
 
     def _resolve_headless(self) -> bool:
         """Translate the user's ``headless`` flag.
@@ -397,14 +456,15 @@ class InvisiblePlaywright:
         """
         if not self._headless:
             return False
+        # Opt-in TRUE headless, shared with the async class. It existed on the
+        # async API ONLY until 2026-07-27: a documented env var that worked
+        # depending on which entry point the caller happened to pick, which is
+        # the same drift that shipped the process-leak fix to half the users.
+        if _session.true_headless_requested():
+            return True
         vd = make_virtual_display()
         if vd is not None:
             vd.start()
             self._virtual_display = vd
         return False
-
-    def _humanize_max_seconds(self) -> float:
-        if self._humanize is True:
-            return 1.5
-        return float(self._humanize)
 

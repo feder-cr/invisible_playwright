@@ -1,0 +1,15 @@
+# The pre-push hook is a shell script, and git must never hand it to a POSIX
+# shell with CRLF line endings: `/bin/sh^M: bad interpreter` is how a gate stops
+# running on a machine where nothing else looks wrong. This repo is developed on
+# Windows with core.autocrlf=true, so without this line a fresh Windows clone
+# gets CRLF in the working tree - and Git-for-Windows' sh is the one that runs it.
+#
+# The index has always stored LF, so a Linux clone was never affected. That is
+# exactly why this was worth pinning rather than leaving to a default that
+# happens to be right today.
+.githooks/** text eol=lf
+
+# The publish ledger is compared byte for byte across an autocrlf checkout and a
+# Linux one. The gate folds CRLF vs LF deliberately, but there is no reason to
+# make it do that work.
+PUBLISHED.json text eol=lf

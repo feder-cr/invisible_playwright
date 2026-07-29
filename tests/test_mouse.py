@@ -28,7 +28,7 @@ def _data_url(html: str) -> str:
 
 
 # ────────────────────────────────────────────────────────────────────
-# Page.dispatchMouseEvent::sendEvents — the main loop swapped in fix #9.
+# Page.dispatchMouseEvent::sendEvents - the main loop swapped in fix #9.
 # ────────────────────────────────────────────────────────────────────
 
 
@@ -110,7 +110,7 @@ def test_locator_click(firefox_binary):
 
 
 # ────────────────────────────────────────────────────────────────────
-# Off-viewport mousemove hack — the ``windowUtils.sendMouseEvent`` call
+# Off-viewport mousemove hack - the ``windowUtils.sendMouseEvent`` call
 # at the old line 642 (also removed in FF150). The synthesizeMouseEvent
 # replacement must not raise.
 # ────────────────────────────────────────────────────────────────────
@@ -126,7 +126,7 @@ def test_mouse_move_outside_viewport_does_not_raise(firefox_binary):
 
 
 # ────────────────────────────────────────────────────────────────────
-# Stealthfox humanize hook — bezier expansion uses synthesizeMouseEvent
+# Stealthfox humanize hook - bezier expansion uses synthesizeMouseEvent
 # inside a per-step loop. We verify the hook still fires intermediate
 # moves between two faraway points.
 # ────────────────────────────────────────────────────────────────────
@@ -150,7 +150,7 @@ def _humanize_move_count(firefox_binary, humanize):
 def test_humanize_emits_intermediate_moves(firefox_binary):
     """A long mouse.move must expand into MANY intermediate mousemove events when
     humanize is on (Bezier), and ~1 (a teleport) when off. We assert the on/off
-    CONTRAST: `moves >= 1` alone was a false-green — a teleport already fires 1 —
+    CONTRAST: `moves >= 1` alone was a false-green - a teleport already fires 1 -
     and that false-green hid a pref-namespace bug (wrapper wrote
     `invisible_playwright.humanize`, the binary's Juggler reads `stealthfox.humanize`)
     that left humanize silently dead in production. This test now fails if the
@@ -160,14 +160,14 @@ def test_humanize_emits_intermediate_moves(firefox_binary):
     assert off <= 2, f"humanize OFF should ~teleport (<=2 moves), got {off}"
     assert on >= 4, (
         f"humanize ON must expand into many intermediate moves (Bezier); got {on} "
-        f"(off={off}). moves==1 means the cursor teleports — the exact automation "
+        f"(off={off}). moves==1 means the cursor teleports - the exact automation "
         f"tell humanize exists to remove, and a sign the stealthfox.* pref isn't "
         f"reaching the binary's Juggler."
     )
 
 
 # ────────────────────────────────────────────────────────────────────
-# Page.dispatchWheelEvent — the second scrollRectIntoViewIfNeeded site
+# Page.dispatchWheelEvent - the second scrollRectIntoViewIfNeeded site
 # was guarded so wheel events do not crash before dispatch.
 # ────────────────────────────────────────────────────────────────────
 
@@ -184,7 +184,7 @@ def test_mouse_wheel_does_not_raise(firefox_binary):
 
 
 # ────────────────────────────────────────────────────────────────────
-# Hover — locator.hover sends a mousemove through the same sendEvents
+# Hover - locator.hover sends a mousemove through the same sendEvents
 # path; checked via mouseenter on the target element.
 # ────────────────────────────────────────────────────────────────────
 
@@ -202,14 +202,14 @@ def test_hover_triggers_mouseenter(firefox_binary):
         # virtual display the mouseenter can land a beat after hover() returns,
         # which made an instant read flaky. wait_for_function still fails (times
         # out) if mouseenter genuinely never fires. Timeout is generous (10s) so a
-        # busy full-suite run — where browser startup + CPU contention can push
-        # the event past a tight 5s window — doesn't flake; the event itself fires
+        # busy full-suite run - where browser startup + CPU contention can push
+        # the event past a tight 5s window - doesn't flake; the event itself fires
         # in well under a second when run in isolation.
         page.wait_for_function("() => window.__h === true", timeout=10_000)
 
 
 # ────────────────────────────────────────────────────────────────────
-# Manual mousedown/mouseup — exercises the same sendEvents path but
+# Manual mousedown/mouseup - exercises the same sendEvents path but
 # splits the press/release across two API calls.
 # ────────────────────────────────────────────────────────────────────
 
@@ -236,7 +236,7 @@ def test_manual_down_up_fires_full_sequence(firefox_binary):
 
 
 # ────────────────────────────────────────────────────────────────────
-# Scroll-and-click — verifies the scrollRectIntoViewIfNeeded guard in
+# Scroll-and-click - verifies the scrollRectIntoViewIfNeeded guard in
 # Page.dispatchMouseEvent does not break the auto-scroll behavior on a
 # button placed off-screen below the viewport.
 # ────────────────────────────────────────────────────────────────────

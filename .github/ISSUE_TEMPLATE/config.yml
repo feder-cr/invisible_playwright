@@ -1,11 +1,5 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Security vulnerability
-    url: https://github.com/feder-cr/invisible_playwright/security/advisories/new
-    about: Report a security issue privately. Do NOT open a public issue.
-  - name: Bug in the patched Firefox source (C++, IDL, Juggler JS)
-    url: https://github.com/feder-cr/invisible_firefox/issues
-    about: Source-level patches in the Firefox fork go in the invisible_firefox repo. Detection results (FpJS, CreepJS, etc.) use the stealth detection template here.
   - name: Question or general discussion
     url: https://github.com/feder-cr/invisible_playwright/discussions
     about: Usage questions, ideas, chat. Bugs and features still go in issues.

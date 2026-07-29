@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Use this when something detects the browser (Fingerprint Pro, CreepJS, BotD, reCAPTCHA, Cloudflare, sannysoft, etc).
+        Use this when something detects the browser (Fingerprint Pro, CreepJS, BotD, reCAPTCHA, sannysoft, etc).
         Bugs in operations (clicks, navigation) go to the site/action template.
         Browser failing to start goes to the launch failure template.
 
@@ -14,7 +14,17 @@ body:
     id: version
     attributes:
       label: Version
+      description: Output of `python -m invisible_playwright version`.
       placeholder: 0.1.7 (binary firefox-7)
+    validations:
+      required: true
+
+  - type: input
+    id: firefox_rev
+    attributes:
+      label: Firefox revision
+      description: The `firefox-N` tag the binary was built from (shown in the version output above).
+      placeholder: firefox-7
     validations:
       required: true
 
@@ -60,22 +70,7 @@ body:
     attributes:
       label: Detector name and URL
       description: Exact site / service / product that flagged us.
-      placeholder: Fingerprint Pro — https://demo.fingerprint.com/playground
-    validations:
-      required: true
-
-  - type: textarea
-    id: scores
-    attributes:
-      label: Detector verdict
-      description: Paste the relevant flags / scores verbatim. For Fingerprint Pro paste `bot`, `vpn`, `virtual_machine`, `tampering*`, `vm_ml_score`, `suspect_score`. For CreepJS the headless / lies / trust scores. For reCAPTCHA v3 the score number.
-      render: text
-      placeholder: |
-        bot: bad
-        vpn: true
-        virtual_machine: true
-        vm_ml_score: 0.74
-        suspect_score: 22
+      placeholder: Fingerprint Pro - https://demo.fingerprint.com/playground
     validations:
       required: true
 
@@ -83,15 +78,15 @@ body:
     id: screenshot
     attributes:
       label: Screenshot of the detector result
-      description: Drag-drop a screenshot of the detector page so we see what you see.
+      description: Screenshot of the detector result.
     validations:
       required: true
 
   - type: textarea
     id: snippet
     attributes:
-      label: How you launched
-      description: The InvisiblePlaywright launch + navigation that produced the result above. Redact creds.
+      label: Reproduction script
+      description: Runnable. Redact creds.
       render: python
       value: |
         from invisible_playwright import InvisiblePlaywright
@@ -100,6 +95,7 @@ body:
             ctx = browser.new_context()
             page = ctx.new_page()
             page.goto("https://demo.fingerprint.com/playground")
+            # add any extra steps needed to reach the flagged result
     validations:
       required: true
 
@@ -107,7 +103,7 @@ body:
     id: expected
     attributes:
       label: What you expected
-      description: Most detectors will never give a perfect score for any browser. Tell us what threshold you'd accept (e.g. bot=not_detected, vm_ml_score < 0.3).
+      description: "e.g. bot=not_detected, vm_ml_score < 0.3"
     validations:
       required: true
 
@@ -115,7 +111,7 @@ body:
     id: full_report
     attributes:
       label: Full detector response
-      description: For Fingerprint Pro paste the JSON from /api/event/v4/ if you have it. For CreepJS paste the full Smart Signals block. Optional but speeds things up a lot.
+      description: "FP Pro: JSON from /api/event/v4/. CreepJS: Smart Signals block. Optional."
       render: json
     validations:
       required: false

@@ -2,15 +2,15 @@
 
 Two layers, both runnable on GitHub CI:
 
-* **unit** (`@pytest.mark.unit`) — pure SDP/candidate assertions against golden
+* **unit** (`@pytest.mark.unit`) - pure SDP/candidate assertions against golden
   samples. No browser, no proxy, no network. These lock in every rule we found
   on 2026-06-06: host must be mDNS ``.local``; the synthetic srflx must carry the
   egress IP with a GENUINE nICEr priority (never ``local_pref == 0xFFFF``) and a
   stable, distinct foundation; CreepJS's resolver must return the egress, and a
   host-only SDP must read as "blocked". They run in the standard ``tests.yml``.
 
-* **e2e** (`@pytest.mark.e2e`) — launch the patched binary and verify the live
-  ICE gather. "Being behind a proxy" is faked WITHOUT smartproxy:
+* **e2e** (`@pytest.mark.e2e`) - launch the patched binary and verify the live
+  ICE gather. "Being behind a proxy" is faked WITHOUT any external proxy provider:
     - the egress IP is injected via ``STEALTHFOX_WEBRTC_PUBLIC_IP`` (RFC 5737
       TEST-NET, so it never collides with a real IP);
     - the "behind a TCP-only SOCKS proxy" condition is reproduced by a tiny
@@ -33,7 +33,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import pytest
 
 # ──────────────────────────────────────────────────────────────────────────
-#  Pure SDP / ICE-candidate helpers (no I/O) — the heart of the sentinels.
+#  Pure SDP / ICE-candidate helpers (no I/O) - the heart of the sentinels.
 # ──────────────────────────────────────────────────────────────────────────
 _CAND = re.compile(
     r"candidate:(?P<foundation>\S+)\s+(?P<component>\d+)\s+(?P<proto>UDP|TCP|udp|tcp)\s+"
@@ -110,7 +110,7 @@ def srflx_realness(cand, expected_ip=None):
     if p["type_pref"] != 100:
         reasons.append(f"type_pref {p['type_pref']} != 100 (SRV_RFLX)")
     if p["local_pref"] == 0xFFFF:
-        reasons.append("local_pref == 0xFFFF — impossible nICEr value (the old hardcoded tell)")
+        reasons.append("local_pref == 0xFFFF - impossible nICEr value (the old hardcoded tell)")
     elif not (0x7000 <= p["local_pref"] < 0x8000):
         reasons.append(f"local_pref {p['local_pref']} outside the genuine ~0x7E00-0x7FFF band")
     if not (16 <= p["stun_priority"] <= 31):
@@ -123,7 +123,7 @@ def srflx_realness(cand, expected_ip=None):
 def creep_get_ipaddress(sdp):
     """Faithful port of CreepJS's getIPAddress(sdp): connection line first, then
     the first candidate IP; '0.0.0.0' counts as blocked. Returns None if blocked
-    — i.e. exactly what makes CreepJS render 'stun connection: blocked'."""
+    - i.e. exactly what makes CreepJS render 'stun connection: blocked'."""
     blocked = "0.0.0.0"
     conn = (re.findall(r"c=IN\s.+\s", sdp) or [""])[0].strip().split(" ")
     conn_ip = conn[2] if len(conn) > 2 else ""
@@ -135,7 +135,7 @@ def creep_get_ipaddress(sdp):
 
 
 # ──────────────────────────────────────────────────────────────────────────
-#  Golden samples — real priority/foundation values, TEST-NET IPs (RFC 5737)
+#  Golden samples - real priority/foundation values, TEST-NET IPs (RFC 5737)
 #  so no real address is ever committed (feedback_pre_push_privacy_check).
 # ──────────────────────────────────────────────────────────────────────────
 HOST_MDNS = "candidate:0 1 UDP 2122252543 1460e928-16b3-4c66-80ad-04abcdef0000.local 54551 typ host"
@@ -215,20 +215,20 @@ def test_mdns_host_is_invisible_to_creep_resolver():
 
 
 # ──────────────────────────────────────────────────────────────────────────
-#  SHIPPED-BASELINE guard — the cheap unit test that would have caught the
+#  SHIPPED-BASELINE guard - the cheap unit test that would have caught the
 #  2026-06-10 gap (baseline obfuscate=False, dead disableIPv6, orphan prefs).
 #  These lock the shipped wrapper config to the manually-validated one so a
 #  future edit / merge can't silently un-ship it. Run in tests.yml.
 # ──────────────────────────────────────────────────────────────────────────
-from invisible_playwright._fpforge import generate_profile  # noqa: E402
-from invisible_playwright.prefs import translate_profile_to_prefs  # noqa: E402
+from invisible_core._fpforge import generate_profile  # noqa: E402
+from invisible_core.prefs import translate_profile_to_prefs  # noqa: E402
 
 
 @pytest.mark.unit
 def test_shipped_webrtc_baseline_is_the_validated_config():
     prefs = translate_profile_to_prefs(generate_profile(seed=42))
     # host candidate must be mDNS .local like vanilla Firefox (manually
-    # validated on BrowserLeaks/CreepJS through a residential proxy) — not a
+    # validated on BrowserLeaks/CreepJS through a residential proxy) - not a
     # raw LAN IP.
     assert prefs["media.peerconnection.ice.obfuscate_host_addresses"] is True
     # IPv6 dropped via OUR live filter pref; the native pref is dead on FF150
@@ -241,7 +241,7 @@ def test_shipped_webrtc_baseline_is_the_validated_config():
 
 @pytest.mark.unit
 def test_no_orphan_prefs_in_baseline():
-    """zoom.stealth.timezone / zoom.stealth.seed are read by NO C++ — they must
+    """zoom.stealth.timezone / zoom.stealth.seed are read by NO C++ - they must
     not be written (juggler.timezone.override + zoom.stealth.fpp.hw_seed are the
     real ones). Guards against re-introducing a pref the binary ignores."""
     prefs = translate_profile_to_prefs(generate_profile(seed=42), timezone="America/Chicago")
@@ -258,7 +258,7 @@ class _Socks5TcpOnly:
     """Minimal SOCKS5: no-auth, CONNECT (TCP) relayed, UDP ASSOCIATE refused.
 
     Reproduces a residential TCP-only proxy: pages load over TCP, but WebRTC's
-    UDP path is dead — which (for a no-camera page in default_address_only mode)
+    UDP path is dead - which (for a no-camera page in default_address_only mode)
     is exactly what made the default-route probe fail and ICE return zero
     candidates before Fix C.
     """
@@ -421,7 +421,7 @@ def _launch(**extra):
 
     kw = {"headless": True,
           # Fixed zone so the wrapper does NOT run timezone="auto" egress
-          # discovery through the (fake) proxy — irrelevant here, we inject the
+          # discovery through the (fake) proxy - irrelevant here, we inject the
           # egress IP directly and want the launch deterministic/offline.
           "timezone": "America/New_York",
           "extra_prefs": {"media.peerconnection.ice.obfuscate_host_addresses": True}}
@@ -476,14 +476,14 @@ def test_not_blocked_behind_tcp_only_socks(socks5_tcp_only):
         pytest.skip(f"proxy/network path unavailable: {exc!r}")
     cands = candidates(res["candidates"])
     # Hard regression check: ZERO candidates means WebRTC is fully blocked behind
-    # the SOCKS proxy — that's the Fix C regression this sentinel exists to catch.
-    assert cands, "behind SOCKS the gather returned ZERO candidates — Fix C regressed (blocked)"
+    # the SOCKS proxy - that's the Fix C regression this sentinel exists to catch.
+    assert cands, "behind SOCKS the gather returned ZERO candidates - Fix C regressed (blocked)"
     assert host_is_mdns(cands)
     # The synthetic srflx (= fake egress) needs the remote origin to load FULLY
     # through the proxy so the WebRTC proxy config engages. That path is
     # environment-sensitive (it doesn't always engage on a datacenter CI box even
     # though host candidates gather), so treat a missing srflx as a skip, not a
-    # failure — the local run validates it where the path is real.
+    # failure - the local run validates it where the path is real.
     if not any(c["address"] == _FAKE_EGRESS for c in srflx_candidates(cands)):
         pytest.skip("synthetic srflx not engaged in this environment "
                     "(needs the remote origin fully through the proxy); validated locally")

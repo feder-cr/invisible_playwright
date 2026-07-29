@@ -5,21 +5,35 @@ name: webrtc-e2e
 # Manual (workflow_dispatch) on purpose: it needs a firefox-N binary that
 # carries the WebRTC fixes (synthetic srflx in genuine nICEr form + the
 # default-route fallback behind a proxy). Run it after publishing such a
-# binary — it is the release gate for "WebRTC looks real behind a proxy".
+# binary - it is the release gate for "WebRTC looks real behind a proxy".
 # Until that binary ships, test_not_blocked_behind_tcp_only_socks is EXPECTED
 # to fail (the old binary is fully blocked behind a SOCKS proxy), which is the
 # whole point of the gate.
 #
-# No smartproxy / credentials: the "behind a proxy" condition is faked by an
+# No external proxy provider, no credentials: the "behind a proxy" condition is faked by an
 # in-process TCP-only SOCKS5 server (refuses UDP ASSOCIATE) and the egress IP
 # is injected as an RFC 5737 TEST-NET address. Fully self-contained.
 
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
+  # `pip install -e ".[dev]"` below resolves `invisible-core==N.M.0` from the
+  # package index, and the core is published BEFORE this package. This gate
+  # answers whether it is there yet; during that window the realness job is
+  # SKIPPED with the reason in the run summary rather than faked green, and
+  # once the core is up it runs unchanged. See
+  # .github/workflows/core-on-index.yml.
+  core-on-index:
+    uses: ./.github/workflows/core-on-index.yml
+
   webrtc-e2e:
     name: webrtc realness (ubuntu, py3.12)
+    needs: core-on-index
+    if: needs.core-on-index.outputs.available == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -39,9 +53,50 @@ jobs:
         run: python -m invisible_playwright fetch
 
       - name: Resolve binary path
-        run: echo "STEALTHFOX_E2E_BINARY=$(python -m invisible_playwright path)" >> "$GITHUB_ENV"
+        shell: bash
+        run: |
+          # NOT `echo "VAR=$(cmd)" >> $GITHUB_ENV`. echo exits 0 whatever the
+          # substitution did, so `set -e` never sees a failure and an EMPTY
+          # value lands in the environment. Both tests below then hit
+          # `pytest.skip("no patched binary")`, pytest exits 0, and the job is
+          # green having verified nothing - which is exactly what run #1 did.
+          set -euo pipefail
+          BIN="$(python -m invisible_playwright path)"
+          if [ -z "$BIN" ] || [ ! -e "$BIN" ]; then
+            echo "invisible_playwright path returned '$BIN', which is not a" >&2
+            echo "file. Refusing to run a suite that would skip itself green." >&2
+            exit 1
+          fi
+          echo "STEALTHFOX_E2E_BINARY=$BIN" >> "$GITHUB_ENV"
 
       - name: Run WebRTC realness e2e (xvfb for the headless Firefox)
         run: |
+          set -o pipefail
           sudo apt-get update && sudo apt-get install -y xvfb
-          xvfb-run -a pytest tests/test_webrtc_realness.py -m e2e -o addopts="" -v -rs
+          xvfb-run -a pytest tests/test_webrtc_realness.py -m e2e             -o addopts="" -v -rs | tee webrtc-report.txt
+
+      # Run #1 was GREEN with the headline assertion skipped: "1 passed, 1
+      # skipped", and the skipped one is the test this workflow's own header
+      # calls the point of the gate. pytest's exit code cannot tell that from a
+      # pass, and this file was the only one of four without a floor.
+      - name: Refuse a run whose main assertion did not execute
+        shell: bash
+        run: |
+          python - <<'PY'
+          import pathlib, re, sys
+          text = pathlib.Path("webrtc-report.txt").read_text(encoding="utf-8", errors="ignore")
+          passed = int((re.search(r"(\d+) passed", text) or [0, 0])[1] or 0)
+          skipped = int((re.search(r"(\d+) skipped", text) or [0, 0])[1] or 0)
+          if skipped:
+              print("these tests SKIPPED, so the gate verified less than it "
+                    "claims:", file=sys.stderr)
+              for line in text.splitlines():
+                  if line.startswith("SKIPPED"):
+                      print("  " + line, file=sys.stderr)
+          if passed < 2 or skipped:
+              print(f"{passed} passed / {skipped} skipped - this gate exists for "
+                    f"the synthetic-srflx assertion; a run that skips it is not "
+                    f"a pass.", file=sys.stderr)
+              sys.exit(1)
+          print(f"{passed} tests ran, none skipped")
+          PY

@@ -1,4 +1,4 @@
-"""Fingerprint surface tests — replicate the checks performed by the canonical
+"""Fingerprint surface tests - replicate the checks performed by the canonical
 anti-bot detection libraries against an OFFLINE browser session.
 
 Each test asserts the SAME thing the upstream detector would flag. A pass
@@ -6,16 +6,16 @@ here means our patched build appears human to that detector; a fail
 means a real stealth hole that anti-bot kits would exploit in production.
 
 Detector libraries studied (all FOSS, MIT-licensed):
-  - github.com/fingerprintjs/BotD            — 19 detectors, the most
+  - github.com/fingerprintjs/BotD            - 19 detectors, the most
                                                 widely deployed client-side
                                                 bot detector
-  - github.com/abrahamjuliot/creepjs         — headless / stealth / lies
+  - github.com/abrahamjuliot/creepjs         - headless / stealth / lies
                                                 modules
-  - github.com/fingerprintjs/fingerprintjs   — canvas / audio / color /
+  - github.com/fingerprintjs/fingerprintjs   - canvas / audio / color /
                                                 touch consistency
-  - github.com/antoinevastel/fpscanner       — UA / platform / oscpu
+  - github.com/antoinevastel/fpscanner       - UA / platform / oscpu
                                                 cross-checks
-  - bot.sannysoft.com                        — classic Puppeteer harness
+  - bot.sannysoft.com                        - classic Puppeteer harness
 
 Everything runs against `about:blank` with NO network and NO proxy. The
 suite is intended to be part of the release-gate: pre-push hook runs
@@ -35,7 +35,7 @@ from invisible_playwright import InvisiblePlaywright
 
 
 # ────────────────────────────────────────────────────────────────────
-# Inline PIN — a coherent mid-range Windows desktop. Not user-config:
+# Inline PIN - a coherent mid-range Windows desktop. Not user-config:
 # these specific values are what the surface tests assert against.
 # Keep PIN small (only fields that JS exposes) and stable across runs.
 # ────────────────────────────────────────────────────────────────────
@@ -73,7 +73,7 @@ def _ev(page, expr):
 
 
 # ===========================================================================
-# sannysoft.com — classic Puppeteer detection harness
+# sannysoft.com - classic Puppeteer detection harness
 # ===========================================================================
 
 
@@ -128,7 +128,7 @@ def test_sannysoft_iframe_languages_not_empty(page):
 
 
 # ===========================================================================
-# FingerprintJS — fingerprint surface coherence
+# FingerprintJS - fingerprint surface coherence
 # ===========================================================================
 
 
@@ -274,7 +274,7 @@ _WEBGL_MASKING_PROBE = """() => {
   const px = new Uint8Array(w * h * 4);
   gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
   // count small local extrema (|delta|<=3 to both horizontal neighbours, same
-  // sign) — the +-1-noise signature; a smooth/monotonic render has ~none.
+  // sign) - the +-1-noise signature; a smooth/monotonic render has ~none.
   let spikes = 0;
   for (let y = 0; y < h; y++) {
     for (let x = 1; x < w - 1; x++) {

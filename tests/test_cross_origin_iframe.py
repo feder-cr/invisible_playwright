@@ -1,7 +1,7 @@
 """Regression tests for cross-origin / cross-process iframe interaction.
 
 History: wrapper repo issue #20 reported that a third-party cookie
-consent iframe was completely unreachable from Playwright in 0.1.7 —
+consent iframe was completely unreachable from Playwright in 0.1.7 -
 ``element_handle.content_frame()`` returned ``None``, ``frame.evaluate()``
 threw cross-origin SOP errors, and ``frame_locator().click()`` timed
 out.
@@ -17,8 +17,8 @@ These tests exist so a future Firefox upgrade or a fingerprint A/B
 that flips this pref by accident cannot ship without a red CI signal.
 
 Layers:
-  * ``unit`` — ``_BASELINE`` contains the pref with the right value. No browser.
-  * ``e2e``  — launch the real binary against a LOCAL HTTP harness on
+  * ``unit`` - ``_BASELINE`` contains the pref with the right value. No browser.
+  * ``e2e``  - launch the real binary against a LOCAL HTTP harness on
               ``127.0.0.1`` (two ports = two SOP origins) and verify the
               four protocol operations that regressed: frame URL tracking,
               ``handle.content_frame()``, ``frame.evaluate()``, and
@@ -36,12 +36,12 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
 
-from invisible_playwright._fpforge import generate_profile
-from invisible_playwright.prefs import _BASELINE, translate_profile_to_prefs
+from invisible_core._fpforge import generate_profile
+from invisible_core.prefs import _BASELINE, translate_profile_to_prefs
 
 
 # ────────────────────────────────────────────────────────────────────
-# Unit layer — fast, no browser, runs on every CI
+# Unit layer - fast, no browser, runs on every CI
 # ────────────────────────────────────────────────────────────────────
 
 
@@ -58,7 +58,7 @@ def test_baseline_pins_web_content_isolation_strategy_to_zero():
         "fission.webContentIsolationStrategy must be 0 (IsolateNothing). "
         "If you bumped it for an A/B, cross-origin iframes will appear "
         "in page.frames with empty URLs and content_frame() will return "
-        "None — see the changelog entry that introduced this test."
+        "None - see the changelog entry that introduced this test."
     )
 
 
@@ -94,7 +94,7 @@ def test_extra_prefs_override_can_break_isolation_only_explicitly():
 
 
 # ────────────────────────────────────────────────────────────────────
-# E2E layer — needs cached binary + bind to localhost ports
+# E2E layer - needs cached binary + bind to localhost ports
 # ────────────────────────────────────────────────────────────────────
 
 
@@ -259,7 +259,7 @@ def test_cross_origin_iframe_dispatch_event_click_works(firefox_binary, cross_or
     """End-to-end interaction via ``dispatch_event`` must succeed.
 
     Plain ``.click()`` can trip Playwright's actionability heuristic on
-    some third-party UIs (same on vanilla Playwright Firefox — not our
+    some third-party UIs (same on vanilla Playwright Firefox - not our
     regression), but ``dispatch_event('click')`` always works once the
     iframe is reachable.
     """

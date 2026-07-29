@@ -1,125 +1,35 @@
-"""Unit tests for the public ``config`` helpers."""
+"""The wrapper re-exports the core's config helpers, and they are the same objects.
+
+That is the whole claim left here. The twelve BEHAVIOUR tests that used to sit
+beside these moved to `invisible_core/tests/test_config_defaults.py` on
+2026-07-27: they exercised core code, reached through a four-line shim, in a
+suite belonging to a package on a different release cadence.
+
+What remains is genuinely about this package, and it is stated the way it should
+always have been - against `invisible_core` directly, not against
+`invisible_playwright.config`, which is an alias of it and so compares a thing
+with itself.
+"""
+from __future__ import annotations
 
 import pytest
 
-from invisible_playwright import (
-    ensure_binary,
-    get_default_args,
-    get_default_stealth_prefs,
-)
-from invisible_playwright.config import get_default_stealth_prefs as _direct
-
+from invisible_playwright import ensure_binary, get_default_stealth_prefs
 
 pytestmark = pytest.mark.unit
 
-
-def test_get_default_args_is_empty_list():
-    """Currently no baseline CLI args, but must return a list (mutable, fresh each call)."""
-    args = get_default_args()
-    assert args == []
-    assert isinstance(args, list)
-    args.append("--foo")
-    # next call must return a fresh empty list, not the mutated one
-    assert get_default_args() == []
-
-
-def test_get_default_stealth_prefs_random_seed_returns_dict():
-    """No seed -> fresh random fingerprint, dict has expected stealth keys."""
-    prefs = get_default_stealth_prefs()
-    assert isinstance(prefs, dict)
-    assert len(prefs) > 0
-    # humanize toggle is always set explicitly
-    assert "stealthfox.humanize" in prefs
-    assert prefs["stealthfox.humanize"] is True
-
-
-def test_get_default_stealth_prefs_seed_is_deterministic():
-    """Same seed -> byte-identical prefs across calls."""
-    a = get_default_stealth_prefs(seed=42)
-    b = get_default_stealth_prefs(seed=42)
-    assert a == b
-
-
-def test_get_default_stealth_prefs_different_seeds_differ():
-    """Different seeds -> different prefs."""
-    a = get_default_stealth_prefs(seed=1)
-    b = get_default_stealth_prefs(seed=2)
-    assert a != b
-
-
-def test_humanize_false_disables_prefs():
-    """humanize=False removes the maxTime knob and flips the toggle to False."""
-    prefs = get_default_stealth_prefs(seed=42, humanize=False)
-    assert prefs["stealthfox.humanize"] is False
-    assert "stealthfox.humanize.maxTime" not in prefs
-
-
-def test_humanize_default_sets_max_time_1_5():
-    """humanize=True -> default maxTime is 1.5s, stored as string."""
-    prefs = get_default_stealth_prefs(seed=42, humanize=True)
-    assert prefs["stealthfox.humanize"] is True
-    assert prefs["stealthfox.humanize.maxTime"] == "1.5"
-
-
-def test_humanize_float_overrides_max_time():
-    """Float for humanize is the explicit cap in seconds."""
-    prefs = get_default_stealth_prefs(seed=42, humanize=3.0)
-    assert prefs["stealthfox.humanize"] is True
-    assert prefs["stealthfox.humanize.maxTime"] == "3.0"
-
-
-def test_extra_prefs_overlay_takes_precedence():
-    """extra_prefs overlay LAST overrides any baseline value."""
-    prefs = get_default_stealth_prefs(
-        seed=42, extra_prefs={"some.custom.pref": 999}
-    )
-    assert prefs["some.custom.pref"] == 999
-
-
-def test_extra_prefs_can_override_baseline():
-    """A key in extra_prefs that also exists in baseline gets overridden."""
-    baseline = get_default_stealth_prefs(seed=42)
-    a_baseline_key = next(iter(baseline.keys()))
-    overridden = get_default_stealth_prefs(
-        seed=42, extra_prefs={a_baseline_key: "OVERRIDDEN_SENTINEL"}
-    )
-    assert overridden[a_baseline_key] == "OVERRIDDEN_SENTINEL"
-
-
-def test_locale_argument_changes_prefs():
-    """Different locales produce different prefs (Accept-Language affected)."""
-    en = get_default_stealth_prefs(seed=42, locale="en-US")
-    it = get_default_stealth_prefs(seed=42, locale="it-IT")
-    assert en != it
-
-
-def test_timezone_argument_changes_prefs():
-    """Different timezones produce different prefs."""
-    ny = get_default_stealth_prefs(seed=42, timezone="America/New_York")
-    rome = get_default_stealth_prefs(seed=42, timezone="Europe/Rome")
-    assert ny != rome
-
-
-def test_pin_argument_forces_specific_fields():
-    """Pin forces a specific field while the rest stays seed-derived."""
-    plain = get_default_stealth_prefs(seed=42)
-    pinned = get_default_stealth_prefs(
-        seed=42, pin={"hardware.concurrency": 999}
-    )
-    # something in the dict must differ vs the plain seed=42 build
-    assert plain != pinned
-
-
 def test_public_import_matches_direct_import():
-    """Top-level re-export and direct module import return identical output."""
+    """The wrapper's re-export IS the core's function, not a copy of it."""
+    from invisible_core.config import get_default_stealth_prefs as _core
+
     a = get_default_stealth_prefs(seed=42)
-    b = _direct(seed=42)
+    b = _core(seed=42)
     assert a == b
 
 
 def test_ensure_binary_is_callable_via_public_namespace():
     """ensure_binary is re-exported and stays callable from the package root."""
-    # We don't invoke it (would trigger a network download in CI) — just
+    # We don't invoke it (would trigger a network download in CI) - just
     # verify the public attribute is the same callable as the underlying.
-    from invisible_playwright.download import ensure_binary as _direct_eb
+    from invisible_core.download import ensure_binary as _direct_eb
     assert ensure_binary is _direct_eb
