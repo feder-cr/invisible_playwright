@@ -6,37 +6,6 @@ grand_parent: "Guides"
 nav_order: 1
 ---
 
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "BreadcrumbList",
-  "itemListElement": [
-    {
-      "@type": "ListItem",
-      "position": 1,
-      "name": "Home",
-      "item": "https://feder-cr.github.io/invisible_playwright/"
-    },
-    {
-      "@type": "ListItem",
-      "position": 2,
-      "name": "Guides",
-      "item": "https://feder-cr.github.io/invisible_playwright/guides.html"
-    },
-    {
-      "@type": "ListItem",
-      "position": 3,
-      "name": "Network, Proxy and WebRTC",
-      "item": "https://feder-cr.github.io/invisible_playwright/guides-network-proxy-webrtc.html"
-    },
-    {
-      "@type": "ListItem",
-      "position": 4,
-      "name": "WebRTC leak with a proxy in Playwright and Selenium"
-    }
-  ]
-}
-</script>
 
 # WebRTC leak with a proxy in Playwright and Selenium
 
@@ -137,6 +106,27 @@ This is the general rule, and it is the most useful thing on this page:
 
 The same shape shows up in [fonts](headless-fonts-differ.md), in [canvas](canvas-fingerprint-noise.md), in [audio](audiocontext-fingerprinting.md). Anything you can suppress will
 pass a suppression-based test.
+
+## A second gap, found days later: the test wasn't testing what shipped
+
+Fixing the assertion closed one hole and opened up a more uncomfortable question:
+what config had the passing test actually been running against?
+
+The answer was that the test suite set the real-address handling, the derived public
+IP, and the IPv6 filter itself, through explicit overrides, and called that combination
+"the intended production config" in its own comments. A default session - the one an
+actual user gets with no extra arguments - had none of those three switched on in the
+wrapper's own shipped baseline. The gate had been green for every run because it never
+ran the shipped defaults at all; it ran a configuration nobody's real session used.
+
+That is a different failure from the one above, and worth naming separately: the first
+was a test whose assertions couldn't tell working from broken; this one had assertions
+that were fine, aimed at a target that wasn't the one being shipped. Both produce the
+same outward symptom - a green gate over a feature real users don't actually get - for
+opposite reasons. The fix was to make the shipped baseline match what the test already
+assumed, not the other way around: derive the public IP from the proxy's own exit
+address automatically, turn the real-address handling on by default, and only then
+treat the gate as validating a real session instead of a hypothesis about one.
 
 ## `media.peerconnection.ice.disableIPv6` does nothing in current Firefox
 

@@ -5,31 +5,6 @@ parent: "Comparisons"
 nav_order: 2
 ---
 
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "BreadcrumbList",
-  "itemListElement": [
-    {
-      "@type": "ListItem",
-      "position": 1,
-      "name": "Home",
-      "item": "https://feder-cr.github.io/invisible_playwright/"
-    },
-    {
-      "@type": "ListItem",
-      "position": 2,
-      "name": "Comparisons",
-      "item": "https://feder-cr.github.io/invisible_playwright/comparisons.html"
-    },
-    {
-      "@type": "ListItem",
-      "position": 3,
-      "name": "Firefox or Chromium for anti-detect automation"
-    }
-  ]
-}
-</script>
 
 # Firefox or Chromium for anti-detect automation
 
@@ -74,15 +49,17 @@ looking.
 
 The strongest version of the argument, and the one most comparisons skip entirely.
 
-Playwright ships **open-source Chromium** by default, not Chrome. Chromium has no H.264,
-no AAC and no Widevine, because those are the proprietary parts Google adds on top. Real
-people run Chrome, Edge, Brave or Opera, all of which have them.
+Playwright's default managed Chromium closed its codec gap in 2026 - as of Playwright 1.57
+it ships Chrome for Testing, which carries H.264 and AAC. Widevine, the DRM real streaming
+services require, did not come along with it: checked directly, the current default still
+rejects a Widevine session request. Real people run Chrome, Edge, Brave or Opera, all of
+which have it.
 
-So the capability set that automation reports belongs to almost nobody, and the two gaps
-are testable in one line each. Worse, they are **capabilities rather than values**: a
-missing decoder is missing machine code, so no property override produces it, and a user
-agent claiming Chrome on a build without H.264 is a provable contradiction rather than an
-unusual reading.
+So the capability set that automation reports belongs to almost nobody on that one
+remaining axis, and it is testable in one line. Worse, it is a **capability rather than a
+value**: a missing DRM module is missing machine code, so no property override produces it,
+and a user agent claiming Chrome on a build that can't negotiate Widevine is a provable
+contradiction rather than an unusual reading.
 
 Firefox has no equivalent split. There is no stripped Firefox that automation runs and
 people do not, so a patched Firefox is Firefox in the ways a capability check can test.

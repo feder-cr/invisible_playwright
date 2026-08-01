@@ -5,31 +5,6 @@ parent: "Comparisons"
 nav_order: 5
 ---
 
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "BreadcrumbList",
-  "itemListElement": [
-    {
-      "@type": "ListItem",
-      "position": 1,
-      "name": "Home",
-      "item": "https://feder-cr.github.io/invisible_playwright/"
-    },
-    {
-      "@type": "ListItem",
-      "position": 2,
-      "name": "Comparisons",
-      "item": "https://feder-cr.github.io/invisible_playwright/comparisons.html"
-    },
-    {
-      "@type": "ListItem",
-      "position": 3,
-      "name": "invisible_playwright vs Patchright: driver vs engine"
-    }
-  ]
-}
-</script>
 
 # invisible_playwright vs Patchright: driver vs engine
 
@@ -108,13 +83,13 @@ some API surface may behave differently than documented Playwright behaviour.
 
 ## The Chromium-is-not-Chrome question, restated for a fork
 
-Because Patchright is a Playwright fork, it launches the same open-source Chromium
-Playwright ships by default, with the same missing proprietary codecs, unless you also
-set `channel="chrome"` yourself. [That gap is not a driver-level problem](chromium-is-not-chrome.md)
-and patching the driver does not close it. It is worth keeping the two concerns separate
-when evaluating any Chromium-based stealth tool: driver-level patches fix automation
-tells, they do not fix codec or DRM tells, and nothing in Patchright's README claims they
-do.
+Because Patchright is a Playwright fork, it launches the same Chromium build Playwright
+ships by default - Chrome for Testing as of Playwright 1.57, which closed the codec gap
+but not the Widevine one - unless you also set `channel="chrome"` yourself.
+[That remaining gap is not a driver-level problem](chromium-is-not-chrome.md) and patching
+the driver does not close it. It is worth keeping the two concerns separate when evaluating
+any Chromium-based stealth tool: driver-level patches fix automation tells, they do not fix
+DRM tells, and nothing in Patchright's README claims they do.
 
 ## How to actually choose
 
@@ -162,9 +137,11 @@ changes.
 
 **See also:** [three ways to make Playwright undetected](playwright-stealth-levels.md),
 for the full map this comparison sits inside; [Firefox or Chromium for anti-detect](firefox-vs-chromium-antidetect.md),
-for the engine question Patchright's Chromium-only scope decides for you; and
+for the engine question Patchright's Chromium-only scope decides for you;
 [four leaks from our own driver layer](debugger-timing-detection.md), for what the
-equivalent problem looks like on Firefox.
+equivalent problem looks like on Firefox; and
+[invisible_playwright vs rebrowser-patches](vs-rebrowser-patches.md), an unrelated
+project that independently converged on close to the same `Runtime.enable` fix.
 
 ## Sources
 

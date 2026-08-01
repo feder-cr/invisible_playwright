@@ -6,37 +6,6 @@ grand_parent: "Guides"
 nav_order: 6
 ---
 
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "BreadcrumbList",
-  "itemListElement": [
-    {
-      "@type": "ListItem",
-      "position": 1,
-      "name": "Home",
-      "item": "https://feder-cr.github.io/invisible_playwright/"
-    },
-    {
-      "@type": "ListItem",
-      "position": 2,
-      "name": "Guides",
-      "item": "https://feder-cr.github.io/invisible_playwright/guides.html"
-    },
-    {
-      "@type": "ListItem",
-      "position": 3,
-      "name": "Canvas, WebGL, Fonts and Audio",
-      "item": "https://feder-cr.github.io/invisible_playwright/guides-canvas-webgl-fonts-audio.html"
-    },
-    {
-      "@type": "ListItem",
-      "position": 4,
-      "name": "How to make Linux and macOS report real Windows fonts"
-    }
-  ]
-}
-</script>
 
 # How to make Linux and macOS report real Windows fonts
 
@@ -113,6 +82,38 @@ Closing all three took a different patch per backend, because "don't enumerate t
 host" means something different to DirectWrite, to fontconfig, and to CoreText. There
 is no single flag that does this once for all platforms.
 
+## The macOS gap: two layers, and only one was visible without a Mac
+
+CoreText's version of this fix shipped later than Windows' and Linux's, and not
+because it was harder to write. It was harder to *know was wrong*, because nobody
+doing the work had a Mac to run it on.
+
+**Layer one, found by reading the code rather than running it:** the block-at-birth
+hook that stops each backend from falling back to a live host enumeration had been
+wired into the Windows and Linux font backends, and simply never ported to CoreText.
+Reading the three backends side by side made that omission visible without running
+anything - a Mac host would enumerate its own system fonts right alongside the bundle,
+leaking the host OS on the one platform where nobody could see it happen locally.
+
+**Layer two surfaced only when the first fix actually ran in CI.** Porting the hook
+and shipping it should have closed the gap. It didn't: the very next automated
+macOS run still showed most of the bundle missing and several real host fonts
+leaking through, on a build that had compiled cleanly and looked, from the source,
+like a complete fix. The actual cause was one level down - the build configuration
+that turns bundled fonts on at all was set to enable itself only on two of the three
+target platforms. The third silently defaulted off, which also compiled out the very
+hook layer one had just added, since that code only exists when bundled fonts are
+built in. A hook that is correct and a build that never includes it produce the same
+observed nothing.
+
+Both layers are closed now, and CoreText enumerates the identical family set the
+other two backends do. The reason this is worth telling as one story rather than two
+separate fixes: the first fix looked complete by every check available without a
+real Mac, and was not. The only thing that caught the second layer was an automated
+run on the actual operating system, checking the actual output, after the fix that
+was supposed to be the whole answer. A gate that runs somewhere other than the real
+target platform is checking a different, easier question.
+
 ## What this validates, and what it costs
 
 Validated cross-platform: Windows and Linux expose the identical family set from the
@@ -152,6 +153,42 @@ that check passed, repeatedly, on real measurement. They are narrower seams: spe
 code paths that keep a live dependency on the host font service instead of routing
 through the bundle like everything else. Each is a known, open item rather than
 something papered over, because a gap you haven't found yet is worse than one you have.
+
+## A closed example of the same class: enumeration passing while rendering was wrong
+
+Before the manifest fixed multi-face naming across platforms, a narrower version of the
+same problem shipped and was found and closed on Linux specifically. It is worth
+walking through because it is the clearest illustration of why enumeration alone is
+never enough of a check.
+
+A `.ttc` file is a collection: several complete faces sharing one set of font tables,
+addressed through a `TTCHeader` that starts with the four-byte marker `ttcf` instead of
+the single-face `sfnt` header an ordinary font file has. Several bundled CJK families -
+regional Chinese, Japanese and a couple of serif/math variants - ship as `.ttc`
+collections for exactly that reason: related faces, one file.
+
+The font-table code on Linux never checked for that marker. It read every font file as
+if it only had one face, at a fixed offset from the start of the file. For an ordinary
+font that offset is correct. For a `.ttc` collection it lands wherever the first face's
+data happens to be, regardless of which face was actually requested by name.
+
+The result was a font that enumerated correctly - the family name resolved, the browser
+reported it was using the right font - while the glyphs actually rendered came from
+whichever face happened to sit at that fixed offset. Measured directly: metrics for
+several of these families were wrong on Linux and correct on Windows, same seed, same
+manifest, same claimed font name. Enumeration was clean. Rendering was not. That gap is
+exactly what a check that stops at "is the font in the list" cannot see.
+
+The fix adds a lookup that reads the `TTCHeader` when the `ttcf` marker is present,
+finds the requested face's own offset from the collection's face-directory table, and
+reads from there instead of assuming offset zero. After the fix, the same measurement
+that had shown a mismatch showed matching metrics on both platforms, for every affected
+family.
+
+The general lesson is the same one the four seams above are named for: a signal that
+looks closed because the obvious check passed is not the same as a signal that is
+closed. This one needed a metrics comparison, not a font list, to be caught at all -
+and it was a real, shipped gap for a period, not a hypothetical one.
 
 ## Conclusion
 

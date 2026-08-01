@@ -6,31 +6,6 @@ has_children: true
 nav_order: 4
 ---
 
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "BreadcrumbList",
-  "itemListElement": [
-    {
-      "@type": "ListItem",
-      "position": 1,
-      "name": "Home",
-      "item": "https://feder-cr.github.io/invisible_playwright/"
-    },
-    {
-      "@type": "ListItem",
-      "position": 2,
-      "name": "Guides",
-      "item": "https://feder-cr.github.io/invisible_playwright/guides.html"
-    },
-    {
-      "@type": "ListItem",
-      "position": 3,
-      "name": "The Automation Layer"
-    }
-  ]
-}
-</script>
 
 # The Automation Layer
 

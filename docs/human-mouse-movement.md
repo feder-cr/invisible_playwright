@@ -6,37 +6,6 @@ grand_parent: "Guides"
 nav_order: 5
 ---
 
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "BreadcrumbList",
-  "itemListElement": [
-    {
-      "@type": "ListItem",
-      "position": 1,
-      "name": "Home",
-      "item": "https://feder-cr.github.io/invisible_playwright/"
-    },
-    {
-      "@type": "ListItem",
-      "position": 2,
-      "name": "Guides",
-      "item": "https://feder-cr.github.io/invisible_playwright/guides.html"
-    },
-    {
-      "@type": "ListItem",
-      "position": 3,
-      "name": "The Automation Layer",
-      "item": "https://feder-cr.github.io/invisible_playwright/guides-automation-layer.html"
-    },
-    {
-      "@type": "ListItem",
-      "position": 4,
-      "name": "Human-like mouse movement: Bezier curves are the easy part"
-    }
-  ]
-}
-</script>
 
 # Human-like mouse movement: Bezier curves are the easy part
 

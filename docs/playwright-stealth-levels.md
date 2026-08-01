@@ -5,31 +5,6 @@ parent: "Comparisons"
 nav_order: 1
 ---
 
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "BreadcrumbList",
-  "itemListElement": [
-    {
-      "@type": "ListItem",
-      "position": 1,
-      "name": "Home",
-      "item": "https://feder-cr.github.io/invisible_playwright/"
-    },
-    {
-      "@type": "ListItem",
-      "position": 2,
-      "name": "Comparisons",
-      "item": "https://feder-cr.github.io/invisible_playwright/comparisons.html"
-    },
-    {
-      "@type": "ListItem",
-      "position": 3,
-      "name": "Three ways to make Playwright undetected"
-    }
-  ]
-}
-</script>
 
 # Three ways to make Playwright undetected
 
@@ -71,8 +46,9 @@ flags that make the browser set `navigator.webdriver` at all, remove the binding
 the automation framework injects into the page's global scope, stop using the
 execution-context isolation pattern that leaves observable traces.
 
-**Tools:** Patchright, the drop-in Playwright fork. `rebrowser-playwright` and the
-rebrowser patches take a similar line.
+**Tools:** [Patchright](vs-patchright.md), the drop-in Playwright fork.
+[`rebrowser-playwright` and the rebrowser patches](vs-rebrowser-patches.md) take a
+similar line, converging on close to the same fix independently.
 
 **What it fixes:** a whole class of tells at the source instead of covering them.
 The difference is real and worth understanding with an example. At level 1 the

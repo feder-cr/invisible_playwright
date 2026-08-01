@@ -6,37 +6,6 @@ grand_parent: "Guides"
 nav_order: 4
 ---
 
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "BreadcrumbList",
-  "itemListElement": [
-    {
-      "@type": "ListItem",
-      "position": 1,
-      "name": "Home",
-      "item": "https://feder-cr.github.io/invisible_playwright/"
-    },
-    {
-      "@type": "ListItem",
-      "position": 2,
-      "name": "Guides",
-      "item": "https://feder-cr.github.io/invisible_playwright/guides.html"
-    },
-    {
-      "@type": "ListItem",
-      "position": 3,
-      "name": "Browser Identity",
-      "item": "https://feder-cr.github.io/invisible_playwright/guides-browser-identity.html"
-    },
-    {
-      "@type": "ListItem",
-      "position": 4,
-      "name": "Headless vs headful: what is actually being detected"
-    }
-  ]
-}
-</script>
 
 # Headless vs headful: what is actually being detected
 
@@ -117,6 +86,47 @@ Being straight about the limits, because they matter:
   [the claim you make about the GPU still has to match the pixels](renderer-string-vs-render.md).
   This removes the headless code path, not the datacenter.
 - The window exists, so the process uses more memory than a true headless run.
+
+## This was latent for a while, and worth being honest about
+
+The Windows and macOS hiding described above is not how this project's `headless=True`
+worked from the start. For several releases, across two different Playwright versions,
+`headless=True` on Windows rendered the browser window on the real desktop anyway -
+visible, with a taskbar entry, indistinguishable from a headful run except that nobody
+had asked for one. macOS raised outright. Only Linux, through a virtual display, ever
+actually hid anything.
+
+The cause was a scope mistake, not a missing feature: the hiding mechanism operated at
+the *thread* level, on the assumption that a child process launched with no explicit
+desktop inherits the calling thread's desktop. It does not - it inherits the parent
+*process's* desktop, so the browser's own child processes stayed on the visible one
+regardless of what the launching thread had been moved to. An automated test suite
+that happened to spawn its own worker process with the desktop set explicitly at that
+same process level passed throughout, which is exactly why this went unnoticed: the
+thing validating the behaviour and the thing shipping it were not using the same
+mechanism.
+
+The fix is the compositor-level cloak described above, set on the window itself rather
+than on any thread or process, which is also why it needs to live in the browser
+binary: only the window's own owning process can set that attribute. Validated
+afterward against a visible, headful window on the same machine: identical fingerprint
+surface (no `visibilityState`, focus, canvas or WebGL tell), a real GPU-composited
+screenshot, and a passing result on a commercial detector that specifically checks for
+masked headless state. A per-platform automated check now asserts the underlying
+window attribute directly - the cloak flag on Windows, the transparency and occlusion
+state on macOS - rather than trusting a screenshot alone.
+
+**The same fix closed a second, unrelated-looking bug for free.** An earlier hiding
+approach had put the browser's main process on one virtual desktop and left its
+sandboxed content processes on a different one by default. Ordinary page loads never
+noticed. A page that triggered a cross-process navigation - handing the active tab from
+one content process to another mid-session - did notice: the window being reparented
+expected both processes on the same desktop, found them split across two, and the tab
+crashed. Because the compositor-level cloak keeps every process on the single real
+desktop and hides at the window level instead, that split stopped existing as a
+possibility, and the crash went away as a side effect of fixing something else
+entirely. It's a reminder that "which mechanism hides the window" and "which processes
+can actually talk to each other" are not as separate as they look.
 
 ## How to find out which one is your problem
 

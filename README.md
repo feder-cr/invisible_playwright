@@ -1,3 +1,8 @@
+## GitAds Sponsored
+[![Sponsored by GitAds](https://gitads.dev/v1/ad-serve?source=feder-cr/invisible_playwright@github)](https://gitads.dev/v1/ad-track?source=feder-cr/invisible_playwright@github)
+
+<!-- GitAds-Verify: 787HB3AYTV66U4DWORC86V2KW4VXDIGY -->
+
 <p>
   <a href="https://github.com/feder-cr/invisible_playwright/actions/workflows/tests.yml"><img src="https://github.com/feder-cr/invisible_playwright/actions/workflows/tests.yml/badge.svg" alt="tests"></a>
   <a href="https://github.com/feder-cr/invisible_playwright/blob/main/LICENSE"><img src="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/badges/license.svg" alt="License: MIT"></a>
@@ -226,6 +231,12 @@ The open-source neighbours, and what each one is for.
 - **[Patchright](https://github.com/Kaliiiiiiiiii-Vinyzu/patchright)** - a patched Playwright fork, so the stealth work lands in the driver rather than in the browser binary. [Full comparison](docs/vs-patchright.md).
 - **[nodriver](https://github.com/ultrafunkamsterdam/nodriver)** - the successor to `undetected-chromedriver`, driving Chrome over CDP directly and removing the WebDriver-flavoured tells. [Full comparison](docs/vs-nodriver.md).
 - **[playwright-stealth](https://github.com/Mattwmaster58/playwright_stealth)** - an init-script patch applied before the page loads. Its own maintainer calls it a proof-of-concept; [full comparison](docs/vs-playwright-stealth.md).
+- **[puppeteer-extra-plugin-stealth](https://github.com/berstend/puppeteer-extra)** - the original of this init-script lineage, still widely recommended. Its repository's last substantive commit is from mid-2024; [what that means in practice](docs/puppeteer-extra-stealth-unmaintained.md).
+- **[selenium-stealth](https://github.com/diprajpatra/selenium-stealth)** - the same approach on Selenium/CDP. Its repository's last commit is from December 2021; [what that means in practice](docs/selenium-stealth-unmaintained.md).
+- **[pyppeteer](https://github.com/pyppeteer/pyppeteer)** - the unofficial Python port of Puppeteer. Its own README says it's unmaintained and points to `playwright-python` instead; [what that recommendation is actually about](docs/pyppeteer-unmaintained-playwright.md).
+- **[rebrowser-patches](https://github.com/rebrowser/rebrowser-patches)** - fixes the `Runtime.enable` CDP leak on Chromium, independently converging on close to the same fix Patchright uses. [Full comparison](docs/vs-rebrowser-patches.md).
+- **[fingerprint-suite](https://github.com/apify/fingerprint-suite)** - generates a coherent fingerprint with a Bayesian network, close to this project's own generation approach, then injects it into a Playwright or Puppeteer page on either Chromium or Firefox. [Full comparison](docs/vs-fingerprint-suite.md).
+- **[playwright-with-fingerprints](https://github.com/bablosoft/playwright-with-fingerprints)** - injects fingerprint values sourced from a remote paid service, Windows-only, pinned to a specific Chromium build. [Full comparison](docs/vs-playwright-with-fingerprints.md).
 
 Which of these fits depends on the layer your problem is at, and on whether you need Firefox or Chromium. [Three ways to make Playwright undetected](docs/playwright-stealth-levels.md) works through what each layer can and cannot reach, including what this one costs.
 

@@ -1,3 +1,65 @@
 <link rel="icon" type="image/png" href="{{ '/invisible_playwright-logo.png' | relative_url }}">
 <link rel="apple-touch-icon" href="{{ '/invisible_playwright-logo.png' | relative_url }}">
 <meta name="theme-color" content="#27262b">
+{% if page.parent %}
+{% assign crumb_url = "" %}
+{% case page.parent %}
+  {% when "Guides" %}{% assign crumb_url = "/guides.html" %}
+  {% when "Documentation" %}{% assign crumb_url = "/documentation.html" %}
+  {% when "Comparisons" %}{% assign crumb_url = "/comparisons.html" %}
+  {% when "AI Agents and Frameworks" %}{% assign crumb_url = "/guides-ai-agents.html" %}
+  {% when "Browser Identity" %}{% assign crumb_url = "/guides-browser-identity.html" %}
+  {% when "Canvas, WebGL, Fonts and Audio" %}{% assign crumb_url = "/guides-canvas-webgl-fonts-audio.html" %}
+  {% when "Detectors, Explained" %}{% assign crumb_url = "/guides-detectors-explained.html" %}
+  {% when "Network, Proxy and WebRTC" %}{% assign crumb_url = "/guides-network-proxy-webrtc.html" %}
+  {% when "Testing and Troubleshooting" %}{% assign crumb_url = "/guides-testing-troubleshooting.html" %}
+  {% when "The Automation Layer" %}{% assign crumb_url = "/guides-automation-layer.html" %}
+{% endcase %}
+{% if crumb_url != "" %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": "{{ site.url }}{{ site.baseurl }}/"
+    }
+    {% if page.grand_parent %}
+    ,{
+      "@type": "ListItem",
+      "position": 2,
+      "name": "{{ page.grand_parent }}",
+      "item": "{{ site.url }}{{ site.baseurl }}/guides.html"
+    }
+    ,{
+      "@type": "ListItem",
+      "position": 3,
+      "name": "{{ page.parent }}",
+      "item": "{{ site.url }}{{ site.baseurl }}{{ crumb_url }}"
+    }
+    ,{
+      "@type": "ListItem",
+      "position": 4,
+      "name": "{{ page.title }}"
+    }
+    {% else %}
+    ,{
+      "@type": "ListItem",
+      "position": 2,
+      "name": "{{ page.parent }}",
+      "item": "{{ site.url }}{{ site.baseurl }}{{ crumb_url }}"
+    }
+    ,{
+      "@type": "ListItem",
+      "position": 3,
+      "name": "{{ page.title }}"
+    }
+    {% endif %}
+  ]
+}
+</script>
+{% endif %}
+{% endif %}

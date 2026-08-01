@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "invisible_playwright"
-version = "0.4.8"
+version = "0.4.9"
 description = "Playwright wrapper for a patched Firefox with deterministic stealth profile."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -49,7 +49,7 @@ dependencies = [
     # metadata; nothing in src/ hardcodes a second copy (tests/test_core_pin.py
     # fails if one appears). What stays invisible to install-time machinery is the
     # --no-deps / lockfile residue, and _pin.py is the only layer that sees it.
-    "invisible_core==18.9.0",
+    "invisible_core==18.11.0",
     # Install-time approximation of the Juggler client range we test against.
     # 1.61 added an isMobile field to Browser.setDefaultViewport that an older
     # Juggler rejects, which kills the session (issue #48). The authoritative

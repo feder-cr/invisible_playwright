@@ -6,37 +6,6 @@ grand_parent: "Guides"
 nav_order: 1
 ---
 
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "BreadcrumbList",
-  "itemListElement": [
-    {
-      "@type": "ListItem",
-      "position": 1,
-      "name": "Home",
-      "item": "https://feder-cr.github.io/invisible_playwright/"
-    },
-    {
-      "@type": "ListItem",
-      "position": 2,
-      "name": "Guides",
-      "item": "https://feder-cr.github.io/invisible_playwright/guides.html"
-    },
-    {
-      "@type": "ListItem",
-      "position": 3,
-      "name": "Detectors, Explained",
-      "item": "https://feder-cr.github.io/invisible_playwright/guides-detectors-explained.html"
-    },
-    {
-      "@type": "ListItem",
-      "position": 4,
-      "name": "What bot.sannysoft.com actually checks, row by row"
-    }
-  ]
-}
-</script>
 
 # What bot.sannysoft.com actually checks, row by row
 
@@ -120,6 +89,26 @@ same question from two places and see whether the answers match.
 This is why "does it pass sannysoft" is a weaker question than it looks. The table
 rows can all be green while the iframe comparison quietly shows that something is
 rewriting values in one context and not another.
+
+## What a real run against this page actually shows
+
+Opened directly against a live Playwright-driven Chromium session, all eleven
+rows in group one came back green - `WebDriver` and `WebDriver Advanced` both
+read "passed," and `navigator.webdriver` resolved through a genuinely native,
+unmodified getter (`function get webdriver() { [native code] }`), not a patched
+one. Nothing in that specific session had touched the property; it simply
+reported `false` on its own.
+
+Worth being precise about what that does and does not establish. It confirms the
+point this page keeps making rather than undermining it: clearing group one is
+the easy part, achievable without any stealth layer doing anything at all in this
+case. It says nothing about which exact configuration produced that result, and a
+different launch configuration on the same underlying browser could read
+differently - the honest scope of this observation is "this is what one real,
+directly-checked session showed," not "this is guaranteed behaviour for every
+Playwright session everywhere." [Test your own setup directly](how-to-test-bot-detection.md)
+rather than trusting either this page's description or a general claim about
+what Playwright does by default.
 
 ## What passing actually proves
 

@@ -6,37 +6,6 @@ grand_parent: "Guides"
 nav_order: 5
 ---
 
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "BreadcrumbList",
-  "itemListElement": [
-    {
-      "@type": "ListItem",
-      "position": 1,
-      "name": "Home",
-      "item": "https://feder-cr.github.io/invisible_playwright/"
-    },
-    {
-      "@type": "ListItem",
-      "position": 2,
-      "name": "Guides",
-      "item": "https://feder-cr.github.io/invisible_playwright/guides.html"
-    },
-    {
-      "@type": "ListItem",
-      "position": 3,
-      "name": "Browser Identity",
-      "item": "https://feder-cr.github.io/invisible_playwright/guides-browser-identity.html"
-    },
-    {
-      "@type": "ListItem",
-      "position": 4,
-      "name": "Why you should not set the user agent in Playwright"
-    }
-  ]
-}
-</script>
 
 # Why you should not set the user agent in Playwright
 
@@ -179,9 +148,11 @@ free check.
 tools sometimes change one and not the other.
 
 **See also:** [navigator.webdriver is not the tell you think it is](navigator-webdriver-explained.md),
-the same argument applied to the other famous value, and
+the same argument applied to the other famous value,
 [the checklist for being detected on one site](playwright-detected-as-bot.md), where
-values you overrode yourself are step one because they are the most common cause.
+values you overrode yourself are step one because they are the most common cause, and
+[fake-useragent's 2026 archive, and what it does and doesn't change](fake-useragent-archived.md),
+the most common tool for doing exactly what this page argues against.
 
 ## Sources
 

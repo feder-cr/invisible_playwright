@@ -6,37 +6,6 @@ grand_parent: "Guides"
 nav_order: 3
 ---
 
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "BreadcrumbList",
-  "itemListElement": [
-    {
-      "@type": "ListItem",
-      "position": 1,
-      "name": "Home",
-      "item": "https://feder-cr.github.io/invisible_playwright/"
-    },
-    {
-      "@type": "ListItem",
-      "position": 2,
-      "name": "Guides",
-      "item": "https://feder-cr.github.io/invisible_playwright/guides.html"
-    },
-    {
-      "@type": "ListItem",
-      "position": 3,
-      "name": "The Automation Layer",
-      "item": "https://feder-cr.github.io/invisible_playwright/guides-automation-layer.html"
-    },
-    {
-      "@type": "ListItem",
-      "position": 4,
-      "name": "Why an attached debugger makes automation detectable"
-    }
-  ]
-}
-</script>
 
 # Why an attached debugger makes automation detectable
 
@@ -55,7 +24,9 @@ that mattered most, which had nothing to do with timing at all.
 
 Playwright drives Firefox through a component that needs to evaluate code in the page,
 track promises and manage execution contexts. The natural way to do that is the
-engine's own `Debugger` API.
+engine's own `Debugger` API. [The same frame-tracking machinery has its own separate
+failure mode against cross-origin iframes](cross-origin-iframe-unreachable.md), for a
+different reason than anything covered here.
 
 Attaching one calls `setIsDebuggee()` on every realm it touches, and that flag is not
 cosmetic. It puts the JavaScript engine into debug mode:

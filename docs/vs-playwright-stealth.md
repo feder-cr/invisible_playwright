@@ -5,31 +5,6 @@ parent: "Comparisons"
 nav_order: 7
 ---
 
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "BreadcrumbList",
-  "itemListElement": [
-    {
-      "@type": "ListItem",
-      "position": 1,
-      "name": "Home",
-      "item": "https://feder-cr.github.io/invisible_playwright/"
-    },
-    {
-      "@type": "ListItem",
-      "position": 2,
-      "name": "Comparisons",
-      "item": "https://feder-cr.github.io/invisible_playwright/comparisons.html"
-    },
-    {
-      "@type": "ListItem",
-      "position": 3,
-      "name": "invisible_playwright vs playwright-stealth: page vs engine"
-    }
-  ]
-}
-</script>
 
 # invisible_playwright vs playwright-stealth: page vs engine
 
@@ -43,7 +18,8 @@ same job, and the tool's own maintainer says as much.
 ## What playwright-stealth actually does
 
 `playwright-stealth` traces back to `puppeteer-extra-plugin-stealth` on the Node side,
-ported to Python. Mechanically it is init scripts: JavaScript injected into the page
+ported to Python - [and that original plugin has its own separate maintenance story worth knowing](puppeteer-extra-stealth-unmaintained.md).
+Mechanically it is init scripts: JavaScript injected into the page
 before the site's own code runs, redefining the properties a detector is likely to check.
 `navigator.webdriver`, the plugins array, `navigator.languages`, and similar.
 
@@ -137,9 +113,11 @@ address different layers; combining them is a normal pattern on Chromium.
 
 **See also:** [three ways to make Playwright undetected](playwright-stealth-levels.md),
 for the full map this page sits inside; [why every override carries its source](tostring-native-code-detection.md),
-for the race any page-level fix eventually loses; and
-[how to test which layer is actually blocking you](how-to-test-bot-detection.md), before
-picking a tool at any level.
+for the race any page-level fix eventually loses; [how to test which layer is actually blocking you](how-to-test-bot-detection.md), before
+picking a tool at any level; [pyppeteer's own maintainer recommending Playwright](pyppeteer-unmaintained-playwright.md),
+one layer up from stealth technique - which driver library to build on at all; and
+[invisible_playwright vs fingerprint-suite](vs-fingerprint-suite.md), the same
+injection layer with a considerably more sophisticated generation model behind it.
 
 ## Sources
 

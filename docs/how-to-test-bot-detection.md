@@ -6,37 +6,6 @@ grand_parent: "Guides"
 nav_order: 1
 ---
 
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "BreadcrumbList",
-  "itemListElement": [
-    {
-      "@type": "ListItem",
-      "position": 1,
-      "name": "Home",
-      "item": "https://feder-cr.github.io/invisible_playwright/"
-    },
-    {
-      "@type": "ListItem",
-      "position": 2,
-      "name": "Guides",
-      "item": "https://feder-cr.github.io/invisible_playwright/guides.html"
-    },
-    {
-      "@type": "ListItem",
-      "position": 3,
-      "name": "Testing and Troubleshooting",
-      "item": "https://feder-cr.github.io/invisible_playwright/guides-testing-troubleshooting.html"
-    },
-    {
-      "@type": "ListItem",
-      "position": 4,
-      "name": "How to test whether your browser is detected"
-    }
-  ]
-}
-</script>
 
 # How to test whether your browser is detected
 
@@ -101,6 +70,11 @@ Concretely: the WebRTC section must complete and show a host candidate and a ser
 reflexive one. The canvas must produce a hash, twice, matching. The font list must be
 non-empty and belong to the platform you claim. A suppressed signal is itself a signal,
 and [CreepJS records blocking by name](creepjs-explained.md).
+
+The same trap shows up one level down, inside a test itself rather than in what it
+tests. [A cleanup-identification check once passed for exactly this reason](orphaned-browser-process-windows.md) -
+the input it claimed to reject never actually reached the code path being checked, so
+removing the guard entirely still left it green.
 
 ## Compare, do not read verdicts
 

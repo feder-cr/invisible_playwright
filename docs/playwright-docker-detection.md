@@ -6,37 +6,6 @@ grand_parent: "Guides"
 nav_order: 7
 ---
 
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "BreadcrumbList",
-  "itemListElement": [
-    {
-      "@type": "ListItem",
-      "position": 1,
-      "name": "Home",
-      "item": "https://feder-cr.github.io/invisible_playwright/"
-    },
-    {
-      "@type": "ListItem",
-      "position": 2,
-      "name": "Guides",
-      "item": "https://feder-cr.github.io/invisible_playwright/guides.html"
-    },
-    {
-      "@type": "ListItem",
-      "position": 3,
-      "name": "Network, Proxy and WebRTC",
-      "item": "https://feder-cr.github.io/invisible_playwright/guides-network-proxy-webrtc.html"
-    },
-    {
-      "@type": "ListItem",
-      "position": 4,
-      "name": "Playwright in Docker: it runs, and still gets blocked"
-    }
-  ]
-}
-</script>
 
 # Playwright in Docker: it runs, and still gets blocked
 

@@ -3,6 +3,7 @@ title: "docs/ source folder"
 description: "This folder is the Jekyll source for the published documentation site. Read it there, with search and proper navigation, not as raw files."
 nav_exclude: true
 search_exclude: true
+sitemap: false
 ---
 
 # docs/ source folder

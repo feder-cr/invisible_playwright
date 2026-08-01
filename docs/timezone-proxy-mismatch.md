@@ -6,37 +6,6 @@ grand_parent: "Guides"
 nav_order: 5
 ---
 
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "BreadcrumbList",
-  "itemListElement": [
-    {
-      "@type": "ListItem",
-      "position": 1,
-      "name": "Home",
-      "item": "https://feder-cr.github.io/invisible_playwright/"
-    },
-    {
-      "@type": "ListItem",
-      "position": 2,
-      "name": "Guides",
-      "item": "https://feder-cr.github.io/invisible_playwright/guides.html"
-    },
-    {
-      "@type": "ListItem",
-      "position": 3,
-      "name": "Network, Proxy and WebRTC",
-      "item": "https://feder-cr.github.io/invisible_playwright/guides-network-proxy-webrtc.html"
-    },
-    {
-      "@type": "ListItem",
-      "position": 4,
-      "name": "Playwright timezone does not match the proxy IP"
-    }
-  ]
-}
-</script>
 
 # Playwright timezone does not match the proxy IP
 
@@ -175,8 +144,10 @@ long as you resolve the zone from the address you actually exit through.
 **See also:** [Firefox preferences that silently do nothing](firefox-prefs-not-applying.md),
 if you are here because a setting looks ignored,
 [WebRTC leak with a proxy](webrtc-leak-proxy.md), which is the other half
-of "the browser and the network disagree", and
-[the checklist for being detected on one site](playwright-detected-as-bot.md).
+of "the browser and the network disagree",
+[the checklist for being detected on one site](playwright-detected-as-bot.md), and
+[why web scraping keeps getting blocked even with good proxies](web-scraping-getting-blocked-proxies.md),
+the tool-agnostic version of this same argument.
 
 ---
 

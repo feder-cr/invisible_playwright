@@ -6,37 +6,6 @@ grand_parent: "Guides"
 nav_order: 2
 ---
 
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "BreadcrumbList",
-  "itemListElement": [
-    {
-      "@type": "ListItem",
-      "position": 1,
-      "name": "Home",
-      "item": "https://feder-cr.github.io/invisible_playwright/"
-    },
-    {
-      "@type": "ListItem",
-      "position": 2,
-      "name": "Guides",
-      "item": "https://feder-cr.github.io/invisible_playwright/guides.html"
-    },
-    {
-      "@type": "ListItem",
-      "position": 3,
-      "name": "Browser Identity",
-      "item": "https://feder-cr.github.io/invisible_playwright/guides-browser-identity.html"
-    },
-    {
-      "@type": "ListItem",
-      "position": 4,
-      "name": "hardwareConcurrency, deviceMemory and storage quota"
-    }
-  ]
-}
-</script>
 
 # hardwareConcurrency, deviceMemory and storage quota
 

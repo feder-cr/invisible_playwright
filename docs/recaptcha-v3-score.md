@@ -6,37 +6,6 @@ grand_parent: "Guides"
 nav_order: 5
 ---
 
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "BreadcrumbList",
-  "itemListElement": [
-    {
-      "@type": "ListItem",
-      "position": 1,
-      "name": "Home",
-      "item": "https://feder-cr.github.io/invisible_playwright/"
-    },
-    {
-      "@type": "ListItem",
-      "position": 2,
-      "name": "Guides",
-      "item": "https://feder-cr.github.io/invisible_playwright/guides.html"
-    },
-    {
-      "@type": "ListItem",
-      "position": 3,
-      "name": "Detectors, Explained",
-      "item": "https://feder-cr.github.io/invisible_playwright/guides-detectors-explained.html"
-    },
-    {
-      "@type": "ListItem",
-      "position": 4,
-      "name": "reCAPTCHA v3 score: why a fresh browser scores badly"
-    }
-  ]
-}
-</script>
 
 # reCAPTCHA v3 score: why a fresh browser scores badly
 
