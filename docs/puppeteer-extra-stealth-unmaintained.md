@@ -1,29 +1,35 @@
 ---
-title: "puppeteer-extra-plugin-stealth hasn't shipped a real update since 2024"
-description: "The plugin that popularized JavaScript-level stealth patches has had no meaningful commits in two years, while the detection it was built to defeat kept moving. What that means depends on which of its checks you're actually relying on."
+title: "puppeteer-extra-plugin-stealth: unmaintained since 2024"
+description: "puppeteer-extra-plugin-stealth has had no real update since mid-2024. Its old patches still work, but the checklist froze while detection kept moving on."
 parent: "Comparisons"
 nav_order: 8
 ---
 
 
-# puppeteer-extra-plugin-stealth hasn't shipped a real update since 2024
+# puppeteer-extra-plugin-stealth: unmaintained since 2024
 
-A lot of automation code still imports `puppeteer-extra-plugin-stealth`, and a lot of
-tutorials still recommend it as the default answer to "how do I stop getting flagged."
-The part that's easy to miss: its home repository's last substantive commit is from
-July 2024. If you checked it two years ago and never checked again, this page is the
-update.
+puppeteer-extra-plugin-stealth has not shipped a substantive update since mid-2024.
+Its existing JavaScript patches still do their job, but the list of checks it covers
+froze the day active development stopped, while the detection it was built to defeat
+kept moving. If you checked the project two years ago and never checked again, this
+page is the update.
 
-This covers `playwright-extra` too, the Node package that wraps the same plugin for
-Playwright instead of Puppeteer. Both ship from the same repository, so the
-maintenance status and everything below applies to it identically.
+A lot of automation code still imports it, and a lot of tutorials still recommend it
+as the default answer to "how do I stop getting flagged." The part that's easy to
+miss is the date on its home repository's last substantive commit: July 2024.
+
+This covers [`playwright-extra`](vs-playwright-extra-stealth.md) too, the Node package
+that wraps the same plugin for Playwright instead of Puppeteer. Both ship from the
+same repository, so the maintenance status and everything below applies to it
+identically.
 
 ## What the plugin actually does, and why that part hasn't changed
 
 The plugin's approach has always been the same, and it's a reasonable one for what
 it targets: before the page's own scripts run, inject a set of small JavaScript
 patches that make individual automation-detectable properties answer the way a real
-browser's would. `navigator.webdriver` returns `undefined` instead of `true`. A
+browser's would. [`navigator.webdriver`](navigator-webdriver-explained.md) returns
+`undefined` instead of `true`. A
 handful of other CDP-visible artifacts get papered over the same way. Each patch is a
 few lines, targeted at one specific property a detector might check.
 
@@ -51,22 +57,35 @@ changes that.
 
 ## The ceiling this was always going to hit, maintained or not
 
-This is worth separating from the maintenance question, because it's the more
-durable point. [Patching individual properties from the page, one at a time, is a
-different strategy from being a real browser](vs-playwright-stealth.md), and it has
-the same shape whether the patch list is current or two years stale.
+[Patching individual properties from the page, one at a time, is a different
+strategy from being a real browser](vs-playwright-stealth.md), and it has the same
+shape whether the patch list is current or two years stale. That's worth separating
+from the maintenance question, because it's the more durable point.
 
 Every property this class of plugin fixes is fixed **after the fact**: the browser's
 real, honest properties get overwritten by a script that runs before the page's own
 code. That overwrite is itself detectable through several completely different
-mechanisms - checking whether `Function.prototype.toString` on the patched getter
-still returns `[native code]`, checking `Object.getOwnPropertyDescriptor` for a
-descriptor shape a native property wouldn't have, or simply finding one of the
-several dozen properties nobody wrote a patch for yet. A frozen patch list makes this
-worse by construction, but a perfectly current one would still have the same
-fundamental gap: the browser's TLS handshake, its real GPU-backed WebGL output, its
-real font rendering are not JavaScript-visible properties, so no amount of page-level
-patching touches any of them at all.
+mechanisms - checking whether
+[`Function.prototype.toString` on the patched getter still returns `[native code]`](tostring-native-code-detection.md),
+checking `Object.getOwnPropertyDescriptor` for a descriptor shape a native property
+wouldn't have, or simply finding one of the several dozen properties nobody wrote a
+patch for yet.
+
+A frozen patch list makes this worse by construction, but a perfectly current one
+would still have the same fundamental gap: the browser's TLS handshake, its real
+GPU-backed WebGL output, its real font rendering are not JavaScript-visible
+properties, so no amount of page-level patching touches any of them at all.
+
+The split is easiest to read as a table:
+
+| Signal | JavaScript-visible? | Does page-level patching touch it? |
+|---|---|---|
+| `navigator.webdriver` and similar property values | Yes | Yes, but the patch itself is detectable |
+| `toString` / descriptor shape of a patched getter | Yes | No, and it exposes the patch |
+| Properties nobody wrote a patch for yet | Yes | No |
+| TLS handshake fingerprint | No | No |
+| Real GPU-backed WebGL output | No | No |
+| Real font rendering | No | No |
 
 ## What to check if you're relying on this today
 
@@ -105,7 +124,8 @@ page-level property-patching approach, on any driver, maintained or not.
 **See also:** [invisible_playwright vs playwright-stealth: page vs engine](vs-playwright-stealth.md),
 the same architectural question asked about this plugin's Playwright-side port, and
 [three ways to make Playwright undetected](playwright-stealth-levels.md), which
-places this whole category at one specific level rather than the top of it.
+places this whole category at one specific level rather than the top of it, and
+[selenium-stealth, the same unmaintained situation on the Selenium side](selenium-stealth-unmaintained.md).
 
 ## Sources
 

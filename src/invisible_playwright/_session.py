@@ -24,9 +24,12 @@ import os
 import sys
 from typing import Any, Dict, Optional
 
-from invisible_core import cloak_prefs, translate_profile_to_prefs
+from invisible_core import compose_session_prefs
 
-from ._cursor import humanize_prefs as _humanize_prefs
+from ._cursor import (
+    ENGINE_BINARY,
+    max_seconds_for as _cursor_max_seconds,
+)
 
 __all__ = ["build_prefs", "true_headless_requested", "TRUE_HEADLESS_ENV"]
 
@@ -60,7 +63,10 @@ def true_headless_requested(env: Optional[Dict[str, str]] = None) -> bool:
 #: this, and a bare module-level import walks straight past it. Reported by a
 #: user within minutes of the change.
 try:
-    from invisible_core import IANA_TO_POSIX_TZ as _IANA_TO_POSIX_TZ, tz_env
+    from invisible_core import (  # noqa: F401 - the import IS the probe
+        IANA_TO_POSIX_TZ as _IANA_TO_POSIX_TZ,
+        tz_env,
+    )
 except ImportError as _exc:  # pragma: no cover - exercised by the old-core probe
     from ._pin import declared_core_pin as _declared_core_pin
 
@@ -122,26 +128,38 @@ def build_prefs(
     without constructing either class - and so that adding a field to one class
     cannot silently change what the other one builds.
     """
-    prefs = translate_profile_to_prefs(
+    # The core composes it. This was the third of
+    # three places that stacked layers on top of translate_profile_to_prefs in
+    # its own order, and nothing compared the results: the one in
+    # get_default_stealth_prefs never called configure_proxy at all, so a caller
+    # driving Playwright themselves with a SOCKS endpoint got no network.proxy.*
+    # pref and went out on the host's own address.
+    #
+    # What stays here is this path's DELIVERY and its two decisions:
+    #
+    #   cloak      Windows and macOS hide the headless window through the
+    #              binary's own cloak (DWMWA_CLOAK / NSWindow alpha), so the
+    #              pref has to reach the build. The composer applies it with
+    #              setdefault, which is the precedence it had here: an explicit
+    #              user override wins.
+    #   humanize   The pref selects WHICH generator runs, not whether motion
+    #              happens. While the wrapper draws the path it must be false,
+    #              or every waypoint we send would itself be expanded into a
+    #              path by the browser. `max_seconds_for` is applied HERE rather
+    #              than passing `humanize` through, because a falsy-but-numeric
+    #              cap with the binary engine selected has to mean the default,
+    #              not "off".
+    #
+    # The namespace MUST be stealthfox.* - that is what the binary's Juggler
+    # reads. An earlier `invisible_playwright.*` spelling was a dead no-op, so
+    # humanize never fired and every click teleported the cursor.
+    return compose_session_prefs(
         profile,
         locale=locale,
         timezone=timezone,
         extra_prefs=extra_prefs,
         virtual_display=bool(headless and sys.platform == "win32"),
-    )
-    # Windows and macOS hide the headless window through the binary's own cloak
-    # (DWMWA_CLOAK / NSWindow alpha), so the pref has to reach the build.
-    # setdefault: an explicit user override wins.
-    if headless and sys.platform in ("win32", "darwin"):
-        for key, value in cloak_prefs().items():
-            prefs.setdefault(key, value)
-    # The namespace MUST be stealthfox.* - that is what the binary's Juggler
-    # reads, and it gates its own mouse-path expansion on `stealthfox.humanize`.
-    # An earlier `invisible_playwright.*` spelling was a dead no-op, so humanize
-    # never fired and every click teleported the cursor.
-    #
-    # The pref selects WHICH generator runs, not whether motion happens. While
-    # the wrapper draws the path it must be false, or each waypoint we send would
-    # itself be expanded into a whole path by the browser.
-    prefs.update(_humanize_prefs(cursor_engine, humanize))
-    return prefs
+        cloak=bool(headless and sys.platform in ("win32", "darwin")),
+        humanize=(_cursor_max_seconds(humanize)
+                  if cursor_engine == ENGINE_BINARY else False),
+    ).prefs

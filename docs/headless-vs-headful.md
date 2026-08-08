@@ -1,6 +1,6 @@
 ---
 title: "Headless vs headful: what is actually being detected"
-description: "Headlessness is rarely what actually gets detected. What gets detected is the collection of signals that usually accompany it, and a headful browser on the same server still has almost all of them."
+description: "Headless vs headful: headlessness is rarely what gets detected. It is the hardware and rendering signals around it, and a headful server keeps almost all of them."
 parent: "Browser Identity"
 grand_parent: "Guides"
 nav_order: 4
@@ -46,8 +46,9 @@ the rendering-path differences and nothing else.
 Two facts worth having, because they are concrete and checkable.
 
 **In Chromium, headless has been a different binary.** Recent Playwright versions
-default headed runs to Chrome and headless runs to a separate headless shell. A
-different implementation composites and paints differently, which changes both what is
+default headed runs to Chrome and headless runs to
+[a separate headless shell](https://playwright.dev/docs/browsers#chromium-headless-shell).
+A different implementation composites and paints differently, which changes both what is
 rendered and when state transitions are observable. Google has spent real effort making
 the newer headless behave like the desktop browser, and the obvious tells from a few
 years ago are largely gone, but "a different binary" is a meaningful sentence.
@@ -89,8 +90,8 @@ Being straight about the limits, because they matter:
 
 ## This was latent for a while, and worth being honest about
 
-The Windows and macOS hiding described above is not how this project's `headless=True`
-worked from the start. For several releases, across two different Playwright versions,
+This project's `headless=True` did not always hide the window on Windows and macOS the
+way it does now. For several releases, across two different Playwright versions,
 `headless=True` on Windows rendered the browser window on the real desktop anyway -
 visible, with a taskbar entry, indistinguishable from a headful run except that nobody
 had asked for one. macOS raised outright. Only Linux, through a virtual display, ever
@@ -106,9 +107,9 @@ same process level passed throughout, which is exactly why this went unnoticed: 
 thing validating the behaviour and the thing shipping it were not using the same
 mechanism.
 
-The fix is the compositor-level cloak described above, set on the window itself rather
-than on any thread or process, which is also why it needs to live in the browser
-binary: only the window's own owning process can set that attribute. Validated
+The fix is a compositor-level cloak, set on the window itself rather than on any
+thread or process, which is also why it needs to live in the browser binary: only the
+window's own owning process can set that attribute. Validated
 afterward against a visible, headful window on the same machine: identical fingerprint
 surface (no `visibilityState`, focus, canvas or WebGL tell), a real GPU-composited
 screenshot, and a passing result on a commercial detector that specifically checks for
@@ -156,10 +157,12 @@ same server it changes the rendering path and leaves every hardware tell in plac
 does nothing about the GPU, the fonts, the audio device or the screen.
 
 **Why does my script work locally and fail in CI?** Almost always the machine rather
-than the mode. Compare the fingerprint reports, not the modes.
+than the mode. Compare the fingerprint reports, not the modes. The full version of this
+is [why a Playwright script works locally and fails in the cloud](why-playwright-works-locally-fails-in-cloud.md).
 
-**Do I need Xvfb?** On Linux, for a headed run without a desktop, yes. On Windows and
-macOS this project hides the real window instead.
+**Do I need Xvfb?** On Linux, for a headed run without a desktop, yes; see
+[running headful on a Linux server with Xvfb](run-invisible-playwright-headful-server-xvfb.md).
+On Windows and macOS this project hides the real window instead.
 
 **Does running headful cost much more?** More memory and a display server on Linux. If
 your target does not care about the mode, it buys nothing, which is why step one is

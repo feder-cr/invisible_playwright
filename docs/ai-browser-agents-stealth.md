@@ -1,6 +1,6 @@
 ---
 title: "AI browser agents and stealth: what fits and what does not"
-description: "browser-use, Stagehand, Skyvern, crawl4ai and Maxun, checked from their source. Most drive Chromium over CDP, which decides what a stealth engine can do for them, and what still applies regardless."
+description: "Most AI browser agents drive Chromium over CDP, so a stealth Firefox does not drop in. What each tool exposes, checked from source, and what applies regardless."
 parent: "AI Agents and Frameworks"
 grand_parent: "Guides"
 nav_order: 1
@@ -8,6 +8,11 @@ nav_order: 1
 
 
 # AI browser agents and stealth: what fits and what does not
+
+Most AI browser agents cannot run a stealth Firefox, because they speak the Chrome
+DevTools Protocol (CDP) and Firefox does not answer it. The few built on Playwright can
+select Firefox in principle, but rarely expose a custom binary. And on a server the engine
+is usually not what gets the agent blocked in the first place.
 
 If your agent works on your laptop and gets challenge pages on a server, there are two
 separate questions and they get answered as one. The first is whether you can swap the
@@ -30,9 +35,10 @@ browser. CDP is Chromium's own protocol. Firefox does not implement it in the wa
 drivers expect, so an `executablePath` pointing at a Firefox build does not produce a
 working session: the driver would be speaking a language the browser does not answer.
 
-**Tools built on Playwright** go through an abstraction that already supports three
-engines. Swapping the binary is then a question of whether the tool exposes the launch
-option, not of whether the protocol matches.
+**Tools built on Playwright** go through an abstraction that already supports
+[three engines](https://playwright.dev/docs/browsers) - Chromium, Firefox and WebKit.
+Swapping the binary is then a question of whether the tool exposes the launch option,
+not of whether the protocol matches.
 
 Almost every AI browser agent is in the first family. That is a reasonable engineering
 choice, since CDP gives fine-grained control that agent loops want, and it is also why
@@ -40,8 +46,9 @@ choice, since CDP gives fine-grained control that agent loops want, and it is al
 
 ## What each project actually exposes
 
-Read from each repository, 2026-07-27 and 2026-07-28. Star counts are from the same
-check.
+Only two of these five projects expose a custom-binary option, and both expect a Chromium
+build. The table below is read from each repository on 2026-07-27 and 2026-07-28, with
+star counts from the same check.
 
 | Project | Stars | Family | Custom binary | Firefox |
 |---|---|---|---|---|
@@ -94,10 +101,10 @@ that is a coherent product decision rather than an oversight.
 
 ## What applies regardless of the engine
 
-Here is the part that matters more than any of the above, because it is true for every
-row in that table.
-
-On a server, all of these are true at once and none of them is about automation:
+Swapping the browser engine changes none of the tells a server leaks, and those tells
+matter more than the binary question because they are true for every tool, CDP or
+Playwright. On a server, all of these are true at once and none of them is about
+automation:
 
 - **No GPU**, so WebGL reports a software renderer.
   [What those strings give away](webgl-renderer-strings.md).
@@ -120,10 +127,9 @@ difference is, and it is the same for a CDP tool and a Playwright tool.
 
 ## The signal that is specific to agents
 
-Separate from everything above, and not fixed by any fingerprint work.
-
-An agent thinks between actions: it reads the page, calls a model, waits, then acts. The
-resulting rhythm has a shape no person produces.
+One signal no fingerprint work touches is the rhythm of the agent loop itself. An agent
+thinks between actions: it reads the page, calls a model, waits, then acts. The resulting
+rhythm has a shape no person produces.
 
 - Long pauses clustered around **model latency** rather than around reading speed.
 - **No movement during the pause.** A person drifts, scrolls slightly, hovers. An agent's

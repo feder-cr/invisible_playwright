@@ -1,6 +1,6 @@
 ---
 title: "Screen size and viewport tells in headless browsers"
-description: "A headless browser has no monitor, so every screen and viewport value it reports was decided by something else. Which combinations never occur on a real machine, and the detail that catches almost everyone."
+description: "A headless browser has no monitor, so its screen and viewport values are invented. Which size combinations never occur on a real machine, and the top tell."
 parent: "Browser Identity"
 grand_parent: "Guides"
 nav_order: 3
@@ -32,7 +32,7 @@ than any of them alone.
 
 ## The detail that catches almost everybody
 
-**`availHeight` should be smaller than `height`.**
+**[`availHeight`](https://developer.mozilla.org/en-US/docs/Web/API/Screen/availHeight) should be smaller than `height`.**
 
 On a real Windows desktop the taskbar occupies the bottom of the screen, so the
 available area is shorter than the display by the height of that bar. Typically around
@@ -57,7 +57,7 @@ The related traps:
 headless browser is told to use a large viewport while reporting a small display. This
 is a documented, widely used check.
 
-**`outerHeight` should exceed `innerHeight`.** The difference is the browser's own
+**[`outerHeight`](https://developer.mozilla.org/en-US/docs/Web/API/Window/outerHeight) should exceed `innerHeight`.** The difference is the browser's own
 chrome: tab strip, address bar. A window where they are equal is a browser with no
 interface, which is what headless actually is.
 
@@ -66,7 +66,9 @@ which is a value no visible window has.
 
 **The device pixel ratio has to be plausible for the resolution.** Common values are
 1, 1.25, 1.5 and 2. A ratio of 1 on a very high resolution, or a fractional ratio no
-operating system offers, is a made-up number.
+operating system offers, is a made-up number. See
+[how devicePixelRatio is set per profile in Firefox](devicepixelratio-firefox-pref.md)
+for why this value has to travel with the rest of the identity.
 
 **The resolution should be one people have.** 1920x1080 and 1366x768 are everywhere.
 800x600 is not a laptop in 2026, and neither is 1024x768. A resolution chosen for a
@@ -85,7 +87,7 @@ describes a virtual one.
 It is the same category as [a software WebGL renderer](webgl-renderer-strings.md),
 [fonts that belong to another platform](headless-fonts-differ.md) and
 [a missing audio device](audiocontext-fingerprinting.md). Four independent ways of
-saying the same thing: this is a server.
+saying the same thing: [this is a server](can-a-website-tell-you-are-on-a-server.md).
 
 ## How this project handles it
 
@@ -100,8 +102,10 @@ Sampled faithfully from real data, a pool will occasionally hand out something
 unfortunate; we have written up
 [the time ours handed out a software GPU for exactly that reason](webgl-renderer-strings.md).
 
-The viewport is yours to set, and it is the one you can break yourself: ask for a
-viewport larger than the seeded screen and you have created the impossible
+The viewport is derived for you: both `new_context()` and `new_page()` open with a viewport that
+fits inside the seeded screen, along with the screen, the device pixel ratio and the colour scheme
+from the same profile. It is still the one you can break yourself, because an explicit viewport
+kwarg wins: ask for one larger than the seeded screen and you have created the impossible
 relationship above.
 
 ## Checking your own

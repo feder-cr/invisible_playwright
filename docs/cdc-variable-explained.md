@@ -1,6 +1,6 @@
 ---
 title: "The ChromeDriver `cdc_` variable, and why renaming it fails"
-description: "The cdc_ variable ChromeDriver leaves on the page is a one-line automation test. Renaming it in the binary does not remove the tell, and the reason generalises well past this one variable."
+description: "The cdc_ variable ChromeDriver leaves on the page is a one-line Selenium test. Renaming it in the binary raises the bar but does not remove the tell."
 parent: "The Automation Layer"
 grand_parent: "Guides"
 nav_order: 2
@@ -9,10 +9,14 @@ nav_order: 2
 
 # The ChromeDriver `cdc_` variable, and why renaming it fails
 
+**The `cdc_` variable is a property that ChromeDriver injects into every page it
+controls, and its presence is a one-line test for Selenium automation. Renaming the
+string in the binary hides it from a check that greps for the exact prefix, but not
+from one that looks for the pattern, because the properties are still on the page.**
+
 If you have automated Chrome with Selenium and been detected, you have probably met
-the `cdc_` variable: a property ChromeDriver leaves on the document, whose presence
-is a one-line test for automation. This is what it is, why renaming it in the binary
-does not remove it, and what that generalises to.
+this variable. This is what it is, why renaming it in the binary does not remove it,
+and what that generalises to.
 
 The check looks like this:
 
@@ -47,9 +51,9 @@ in order to function.
 
 ## Why the usual fix is a rename
 
-The well-known remedy, and what `undetected-chromedriver` does, is to patch the
-binary and replace that literal with a different random-looking string of the same
-length. Same length matters: it is an in-place patch of a compiled file, so the
+The well-known remedy, and what [`undetected-chromedriver`](vs-undetected-chromedriver.md)
+does, is to patch the binary and replace that literal with a different random-looking
+string of the same length. Same length matters: it is an in-place patch of a compiled file, so the
 replacement has to fit.
 
 That works against the check at the top of this page, because the check greps for
@@ -88,10 +92,12 @@ is a fact about the protocol, not a virtue: Firefox's automation surfaces are
 simply different ones.
 
 What Firefox does still do by default is set `navigator.webdriver` to `true` when a
-session is under automation control, because the WebDriver specification requires it.
-So a stock Playwright Firefox is trivially detectable too, just by a different
-two-line check, and anyone claiming Firefox is inherently undetected is selling
-something.
+session is under automation control, because the
+[WebDriver specification](https://www.w3.org/TR/webdriver2/) requires it: the
+property reflects a "webdriver-active" flag the spec sets whenever the user agent
+is under remote control. So a stock Playwright Firefox is trivially detectable too,
+just by a different two-line check, and anyone claiming Firefox is inherently
+undetected is selling something.
 
 The useful difference is architectural, not moral. Firefox's automation
 protocol runs in privileged code with its own execution contexts, so the state a

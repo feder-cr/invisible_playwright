@@ -1,12 +1,19 @@
 ---
 title: "Firefox or Chromium for anti-detect automation"
-description: "Firefox has no CDP surface and no Client Hints pipeline to keep in sync, and detection heuristics are tuned for Chromium. It is also a small share of real traffic, which is a real cost."
+description: "Firefox vs Chromium for anti-detect: no CDP surface, one identity not three, detection tuned for Chromium - traded against Firefox's smaller, rarer traffic share."
 parent: "Comparisons"
 nav_order: 2
 ---
 
 
 # Firefox or Chromium for anti-detect automation
+
+Firefox is the stronger engine for anti-detect automation when the target's detection is
+Chromium-tuned, which most of it is: it exposes no CDP automation protocol, keeps one copy
+of its identity instead of three, and ships one binary instead of a separate headless one.
+The cost is real and specific - Firefox is a small single-digit share of real traffic, so
+its fingerprint is rarer than a Chrome one. Pick whichever your stack supports, then fix
+the machine, because in most cases the engine is not the binding constraint.
 
 The usual framing is that Firefox gives stronger engine-level stealth at a higher
 resource cost, and Chromium gives better compatibility. Both halves are true and neither
@@ -20,16 +27,31 @@ Firefox in a way most comparisons skip.
 This page is the four structural arguments for Firefox, the one serious argument against
 it, what the choice does not fix, and how to decide.
 
+## Firefox vs Chromium at a glance
+
+The differences that matter are structural, not cosmetic. This table summarises them; each
+row is unpacked in its own section below.
+
+| Dimension | Firefox (patched) | Chromium |
+|---|---|---|
+| Automation protocol | No CDP; driven by a patch whose artefacts are smaller and less studied, not absent | CDP shipped in the browser, a well-studied detection surface |
+| Copies of identity to keep in sync | One (no Client Hints) | Three: user agent string, `Sec-CH-UA` headers, `navigator.userAgentData` |
+| Capability parity with what people run | Firefox is Firefox; no stripped variant runs in automation only | Default managed build fails a DRM capability check that real Chrome, Edge, Brave and Opera pass |
+| Headed vs headless | One binary with a flag | Different binaries by default in recent Playwright |
+| Detection attention | Comparatively little; most research targets Chromium | The overwhelming majority of accumulated detection work |
+| Share of real traffic | Small single-digit share, so the fingerprint is rarer (a real cost) | Large majority of real browsers |
+| AI agent framework fit | Usually not; most frameworks drive Chromium over CDP | Native fit for CDP-based frameworks |
+
 ## Firefox has no CDP surface
+
+Firefox has no CDP. Playwright drives it through a patch of its own, which means there is
+no shipped protocol to detect.
 
 Chromium's automation protocol is the Chrome DevTools Protocol, and it is a first-class,
 shipped part of the browser. That is convenient and it is also a surface: enabling the
 runtime domain has observable effects, the listener exists, and a body of detection work
 targets exactly those artefacts. Chromium stealth builds spend a lot of their effort
 stripping them.
-
-Firefox has no CDP. Playwright drives it through a patch of its own, which means there is
-no shipped protocol to detect.
 
 **And here is the honest half**, which the comparisons that say "Firefox has no CDP"
 always omit: that patch has its own artefacts, and they are not trivial. Attaching a
@@ -47,13 +69,12 @@ looking.
 
 ## The automation Chromium is not the Chromium people run
 
-The strongest version of the argument, and the one most comparisons skip entirely.
-
 Playwright's default managed Chromium closed its codec gap in 2026 - as of Playwright 1.57
 it ships Chrome for Testing, which carries H.264 and AAC. Widevine, the DRM real streaming
 services require, did not come along with it: checked directly, the current default still
 rejects a Widevine session request. Real people run Chrome, Edge, Brave or Opera, all of
-which have it.
+which have it - this is the strongest version of the argument, and the one most comparisons
+skip entirely.
 
 So the capability set that automation reports belongs to almost nobody on that one
 remaining axis, and it is testable in one line. Worse, it is a **capability rather than a
@@ -70,7 +91,8 @@ escape and what it costs.
 ## Firefox has one identity, Chromium has three
 
 Modern Chromium reports who it is in three places: the user agent string, the
-`Sec-CH-UA` request headers, and `navigator.userAgentData`. In a real browser all three
+[`Sec-CH-UA`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Client_hints)
+request headers, and `navigator.userAgentData`. In a real browser all three
 come from one internal state and agree by construction.
 
 For anything modifying that identity, they are three copies to keep in sync, and the
@@ -86,21 +108,22 @@ claiming Chrome and carrying no Client Hints contradicts itself.
 
 ## Headless is one binary, not a different one
 
-Recent Playwright versions default Chromium's headed and headless modes to **different
-binaries**. A separate implementation composites and paints differently, which is a real
-difference in what gets rendered and when.
-
 Firefox is one binary with a flag. The flag still changes behaviour, and
 [this project avoids it entirely by running headed and hiding the window](headless-vs-headful.md),
 but the starting position is one codebase rather than two.
 
+[Recent Playwright versions default Chromium's headed and headless modes to different
+binaries](https://playwright.dev/docs/browsers): a regular Chromium build for headed
+operations and a separate headless shell for headless mode. A separate implementation
+composites and paints differently, which is a real difference in what gets rendered and
+when.
+
 ## Detection is tuned for Chromium
 
-This one is about attention rather than architecture.
-
-The overwhelming majority of browser automation is Chromium. So the detectors, the
+The overwhelming majority of browser automation is Chromium, so the detectors, the
 research, the blog posts and the heuristics are Chromium-first: `window.chrome` shape,
-CDP artefacts, the Chromium headless user agent, ChromeDriver's own leftovers.
+CDP artefacts, the Chromium headless user agent, ChromeDriver's own leftovers - this one
+is about attention rather than architecture.
 [The `cdc_` variable](cdc-variable-explained.md) is a Chromium-family problem that
 Firefox users never think about.
 
@@ -143,11 +166,9 @@ you.
 
 ## What the choice does not fix
 
-Worth stating plainly, because the engine debate absorbs attention that belongs
-elsewhere.
-
-Neither engine changes the machine. On a server, both report a software renderer, a
-container font set, no audio device, no speech voices and a default screen, and
+Neither engine changes the machine, which is worth stating plainly because the engine
+debate absorbs attention that belongs elsewhere. On a server, both report a software
+renderer, a container font set, no audio device, no speech voices and a default screen, and
 [each of those is a stronger signal than the engine](playwright-docker-detection.md).
 
 Neither changes the TLS handshake beyond making it genuinely that browser's, and
@@ -203,8 +224,10 @@ is the same either way.
 - The Chrome DevTools Protocol as a shipped Chromium interface, and this project's own
   automation-layer artefacts, documented on
   [the debugger page](debugger-timing-detection.md).
-- User Agent Client Hints as implemented in Chromium and absent in Firefox.
-- Recent Playwright defaulting headed and headless Chromium to different binaries.
+- [User Agent Client Hints](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Client_hints)
+  as implemented in Chromium and absent in Firefox.
+- Recent Playwright [defaulting headed and headless Chromium to different
+  binaries](https://playwright.dev/docs/browsers).
 - Five agent frameworks read from source, tabulated on
   [the agents page](ai-browser-agents-stealth.md).
 

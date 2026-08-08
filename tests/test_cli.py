@@ -25,150 +25,192 @@ def test_help_subcommand():
     )
     assert r.returncode == 0
     assert "fetch" in r.stdout
-    assert "path" in r.stdout
-    assert "clear-cache" in r.stdout
+    assert "version" in r.stdout
 
 
-# CL1: clear-cache prints "removed:" once per engine tree it dropped.
-# It removes ENGINE TREES, never the cache root itself: the root is shared with
-# the profile manager and holds the geoip database, and wiping it took both.
 @pytest.mark.unit
-def test_clear_cache_with_existing_cache(tmp_path, monkeypatch, capsys):
-    engine_dir = tmp_path / "firefox-18_151.0_20260724001949"
-    engine_dir.mkdir()
-    calls = {}
+def test_the_cli_offers_exactly_two_commands():
+    """Six subcommands became two, and this is what keeps it there.
 
-    def fake_clear_cache(tag=None, *, everything=False):
-        calls["tag"], calls["everything"] = tag, everything
-        return [engine_dir]
+    `path`, `clear-cache`, `doctor` and `fetch --force` were each a step somebody
+    had to know to take, in a package whose promise is that the browser handles
+    itself. Their behaviour did not go: `fetch` checks every cached tree against
+    the seal on every run - which is what `doctor` did, and it was the thing most
+    worth doing and least likely to be typed - and prints the path as its last
+    line, which is what `path` did with the added guarantee that the thing it
+    names exists.
 
-    monkeypatch.setattr("invisible_core.download.clear_cache", fake_clear_cache)
+    `clear-cache` is the one deliberately NOT folded in: the cache root is shared
+    with invisible_firefox, so pruning trees no seal points at would delete the
+    other product's engine. `version` prints the location instead.
 
-    rc = cli.main(["clear-cache"])
+    Asserted as an exact set, not a subset. A subset check passes while the
+    surface grows back one convenience at a time, which is how it got to six.
+    """
+    import argparse
 
-    captured = capsys.readouterr()
-    assert rc == 0
-    assert captured.out.startswith("removed:")
-    assert str(engine_dir) in captured.out
-    assert calls == {"tag": None, "everything": False}
+    parser = cli.build_parser()
+    actions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]
+    assert len(actions) == 1, actions
+    assert set(actions[0].choices) == {"fetch", "version"}, sorted(actions[0].choices)
 
 
-# CL2: clear-cache with nothing to drop prints "nothing to remove"
 @pytest.mark.unit
-def test_clear_cache_with_no_cache(monkeypatch, capsys):
-    monkeypatch.setattr("invisible_core.download.clear_cache",
-                        lambda tag=None, *, everything=False: [])
+def test_fetch_takes_no_arguments():
+    """The tag went with the commands. The seal decides which engine this build
+    runs and `verify_engine` refuses anything else, so a tag on the command line
+    could only ever name something that would then be rejected - and `--force` is
+    unnecessary once every run verifies: a tree is replaced because it does not
+    match, not because a flag was passed."""
+    import argparse
 
-    rc = cli.main(["clear-cache"])
+    parser = cli.build_parser()
+    sub = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
+    fetch = sub.choices["fetch"]
+    optionals = {o for a in fetch._actions for o in a.option_strings}
+    assert optionals == {"-h", "--help"}, optionals
+    positionals = [a.dest for a in fetch._actions if not a.option_strings]
+    assert not positionals, positionals
 
-    captured = capsys.readouterr()
-    assert rc == 0
-    assert captured.out.startswith("nothing to remove")
 
 
-# CL2b: --all forwards `everything=True`; --tag forwards the tag. Without these
-# the flags would parse and silently do nothing.
+
 @pytest.mark.unit
-def test_clear_cache_flags_are_forwarded(monkeypatch, capsys):
-    calls = {}
+def test_fetch_prints_the_path_as_its_last_line(tmp_path, monkeypatch, capsys):
+    """`$(invisible-playwright fetch)` has to be a path.
 
-    def fake_clear_cache(tag=None, *, everything=False):
-        calls["tag"], calls["everything"] = tag, everything
-        return []
-
-    monkeypatch.setattr("invisible_core.download.clear_cache", fake_clear_cache)
-
-    assert cli.main(["clear-cache", "--tag", "firefox-14", "--all"]) == 0
-    assert calls == {"tag": "firefox-14", "everything": True}
-
-
-# CL3: path when binary exists prints path, exit 0
-@pytest.mark.unit
-def test_path_subcommand_when_binary_exists(tmp_path, monkeypatch, capsys):
-    fake_binary = tmp_path / "firefox.exe"
-    fake_binary.write_text("x")
-    monkeypatch.setattr("invisible_playwright.cli.ensure_binary", lambda: fake_binary)
-
-    rc = cli.main(["path"])
-
-    captured = capsys.readouterr()
-    assert rc == 0
-    assert str(fake_binary) in captured.out
-    assert captured.err == ""
-
-
-# CL4: path when binary missing prints to stderr, exit 1
-@pytest.mark.unit
-def test_path_subcommand_when_binary_missing(monkeypatch, capsys):
-    def boom():
-        raise RuntimeError("download failed")
-    monkeypatch.setattr("invisible_playwright.cli.ensure_binary", boom)
-
-    rc = cli.main(["path"])
-
-    captured = capsys.readouterr()
-    assert rc == 1
-    assert "error:" in captured.err
-    assert "download failed" in captured.err
-    assert captured.out == ""
-
-
-# CL5: no subcommand → argparse error, exit != 0
-@pytest.mark.unit
-def test_no_subcommand_errors():
-    with pytest.raises(SystemExit) as exc_info:
-        cli.main([])
-    assert exc_info.value.code != 0
-
-
-# CL6: unknown subcommand → argparse error
-@pytest.mark.unit
-def test_unknown_subcommand_errors():
-    with pytest.raises(SystemExit) as exc_info:
-        cli.main(["bogus"])
-    assert exc_info.value.code != 0
-
-
-# Extra: fetch happy path with mocked ensure_binary. `fetch` takes an optional
-# positional tag now, so ensure_binary is called with it (None = the sealed tag).
-@pytest.mark.unit
-def test_fetch_subcommand_prints_path(tmp_path, monkeypatch, capsys):
-    fake_binary = tmp_path / "firefox.exe"
-    fake_binary.write_text("x")
-    seen = []
-
-    def fake_ensure_binary(tag=None):
-        seen.append(tag)
-        return fake_binary
-
-    monkeypatch.setattr("invisible_playwright.cli.ensure_binary", fake_ensure_binary)
+    That is the whole replacement for the `path` subcommand, so the path must be
+    the last line of stdout and nothing else may follow it. The mismatch report
+    goes to stderr for exactly this reason.
+    """
+    fake = tmp_path / "firefox.exe"
+    fake.write_text("x")
+    monkeypatch.setattr("invisible_playwright.cli.ensure_binary", lambda: fake)
+    monkeypatch.setattr("invisible_core.download.iter_cached_engines", lambda: [])
 
     rc = cli.main(["fetch"])
 
-    captured = capsys.readouterr()
+    out = capsys.readouterr().out
     assert rc == 0
-    assert str(fake_binary) in captured.out
-    assert seen == [None]
+    assert out.strip().splitlines()[-1] == str(fake)
 
 
-# Extra: `fetch --force` drops the cached engine trees first, then downloads.
-# Without the clear_cache call, --force was a no-op on a warm cache.
 @pytest.mark.unit
-def test_fetch_force_clears_before_download(tmp_path, monkeypatch, capsys):
-    fake_binary = tmp_path / "firefox.exe"
-    fake_binary.write_text("x")
-    dropped = tmp_path / "firefox-18_151.0_20260724001949"
-    order = []
+def test_a_mismatching_cached_tree_is_reported_but_does_not_stop_the_fetch(
+    tmp_path, monkeypatch, capsys,
+):
+    """This is what `doctor` used to do, and why it is not fatal.
 
-    monkeypatch.setattr("invisible_core.download.clear_cache",
-                        lambda tag=None, *, everything=False: (order.append("clear"), [dropped])[1])
-    monkeypatch.setattr("invisible_playwright.cli.ensure_binary",
-                        lambda tag=None: (order.append("fetch"), fake_binary)[1])
+    A tree left over from an older seal is the ordinary case, not a fault:
+    `ensure_binary` refuses it by construction and fetches the sealed one, so
+    reporting it and carrying on IS the repair. It goes to stderr so it cannot
+    end up inside a captured path.
+    """
+    fake = tmp_path / "firefox.exe"
+    fake.write_text("x")
+    stale = tmp_path / "firefox-14"
+    monkeypatch.setattr("invisible_playwright.cli.ensure_binary", lambda: fake)
+    monkeypatch.setattr("invisible_core.download.iter_cached_engines",
+                        lambda: [(stale, object())])
+    monkeypatch.setattr("invisible_core.seal.engine_problems",
+                        lambda ident, seal: ["application.ini Version '150.0.1' != '151.0'"])
 
-    rc = cli.main(["fetch", "--force"])
+    rc = cli.main(["fetch"])
 
-    captured = capsys.readouterr()
+    cap = capsys.readouterr()
     assert rc == 0
-    assert order == ["clear", "fetch"]
-    assert f"removed: {dropped}" in captured.out
-    assert str(fake_binary) in captured.out
+    assert "firefox-14" in cap.err and "150.0.1" in cap.err
+    assert "firefox-14" not in cap.out
+    assert cap.out.strip().splitlines()[-1] == str(fake)
+
+
+@pytest.mark.unit
+def test_no_subcommand_errors():
+    with pytest.raises(SystemExit) as exc:
+        cli.main([])
+    assert exc.value.code != 0
+
+
+@pytest.mark.unit
+def test_unknown_subcommand_errors():
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["bogus"])
+    assert exc.value.code != 0
+
+
+@pytest.mark.unit
+def test_a_removed_subcommand_is_refused_rather_than_silently_ignored():
+    """`doctor`, `path` and `clear-cache` were real commands people scripted.
+
+    They must fail loudly now, not be swallowed. argparse gives that for free
+    with a subparser set, and this is what stops somebody re-adding a permissive
+    fallback that turns an unknown command into a no-op exit 0.
+    """
+    for gone in ("doctor", "path", "clear-cache"):
+        with pytest.raises(SystemExit) as exc:
+            cli.main([gone])
+        assert exc.value.code != 0, gone
+
+
+@pytest.mark.unit
+def test_no_test_invokes_the_cli_with_arguments_it_rejects():
+    """A test that calls a removed flag is a red workflow with a green suite.
+
+    Measured 2026-08-04. `test_release_e2e.py` still ran `fetch --force` three
+    days after `--force` went with four of the six subcommands in 0.5.0. Every
+    run of that file exited 2 on "unrecognized arguments" - and the DEFAULT suite
+    stayed green the whole time, because that test is `e2e`-marked and therefore
+    deselected. One stale argument, three red workflows: `e2e` on main, and
+    `user-install` on two release tags.
+
+    A sibling guard already forbade `--force` in the engine-mismatch MESSAGE
+    (`test_seal_wire_version.py`). It checked what the package TELLS a user to
+    run and never what the tests themselves run, so the removed flag survived in
+    the one place that actually executes it.
+
+    This validates every invocation against the real parser rather than against a
+    list of removed names. A list would have to be maintained by the same person
+    who forgot to update the call site.
+    """
+    import argparse
+    import pathlib
+    import re
+
+    parser = cli.build_parser()
+    tests_dir = pathlib.Path(__file__).resolve().parent
+    # Matches a subprocess argv of the form -m invisible_playwright <args>.
+    # No example of one is written here: the first version put a sample
+    # invocation in a comment on this line, and the scan flagged its own comment.
+    # That is the defect `18-gate-inventory.md` records about the RFC 5737 gate,
+    # which flagged its own docstring the day it was written.
+    call = re.compile(
+        r'"-m",\s*"invisible_playwright"\s*,\s*((?:"[^"]*"\s*,?\s*)+)')
+
+    problems = []
+    for path in sorted(tests_dir.rglob("test_*.py")):
+        if "playwright-upstream" in path.parts:
+            continue
+        # Comments stripped first, for the reason above.
+        source = "\n".join(
+            line.split("#", 1)[0]
+            for line in path.read_text(encoding="utf-8", errors="replace").splitlines())
+        for match in call.finditer(source):
+            args = re.findall(r'"([^"]*)"', match.group(1))
+            args = [a for a in args if a]
+            if not args:
+                continue
+            line = source[:match.start()].count("\n") + 1
+            try:
+                parser.parse_args(args)
+            except SystemExit as exit_:
+                # argparse exits 0 for --help and --version, which are valid
+                # invocations, and 2 for a parse error. Only the second is a
+                # defect. The first version of this gate treated both alike and
+                # reported `--help` as broken.
+                if exit_.code:
+                    problems.append(f"{path.name}:{line} -> {args}")
+
+    assert not problems, (
+        "these tests invoke the CLI with arguments its own parser refuses, so "
+        "they exit 2 wherever they actually run:\n  " + "\n  ".join(problems)
+        + "\nThe surface is `fetch` and `version`, and `fetch` takes nothing.")

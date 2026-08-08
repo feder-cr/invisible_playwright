@@ -1,6 +1,6 @@
 ---
 title: "WebGL parameters: the numbers are the same on every GPU"
-description: "The common advice is to raise WebGL's numeric limits to match a claimed high-end GPU. On Windows that is backwards: ANGLE clamps every card to the same feature-level ceiling, so raising the numbers gets you caught."
+description: "WebGL parameters are identical across GPUs on Windows: ANGLE clamps every card to the same limits, so raising them to match a high-end GPU gets you caught."
 parent: "Canvas, WebGL, Fonts and Audio"
 grand_parent: "Guides"
 nav_order: 3
@@ -9,7 +9,14 @@ nav_order: 3
 
 # WebGL parameters: the numbers are the same on every GPU
 
-The most repeated advice about WebGL fingerprinting goes like this: if you claim a
+On Windows, WebGL's numeric parameters are identical on almost every GPU, because
+Firefox and Chrome both render through ANGLE, which clamps every card to the same
+Direct3D feature-level ceiling. `MAX_TEXTURE_SIZE` reads 16384 on a recent flagship and
+a 2012 integrated chip alike. So raising those limits to match a claimed high-end card
+does not blend in; it leaves the set of values real browsers actually produce, and that
+gets you caught.
+
+The most repeated advice about WebGL fingerprinting goes the other way: if you claim a
 high-end card, you must also raise `MAX_TEXTURE_SIZE` and the forty-odd other numeric
 limits to match, or you have reported an expensive GPU with a cheap card's ceiling.
 
@@ -56,12 +63,15 @@ WebGL parameter distributions in the wild.
 
 ## What happens when you randomise them anyway
 
-We know because we did it. An early version of this project had a dozen preferences
-that randomised the numeric limits per session, on the reasonable-sounding theory that
+Randomising the numeric limits makes things worse, not better: it produces a combination
+no real browser emits, so a detector that compares against known-real sets treats it as
+fake rather than as private. We know because we did it. An early version of this project
+randomised the numeric limits per session, on the reasonable-sounding theory that
 varying values are harder to track.
 
 The result was the opposite of privacy. [CreepJS](https://abrahamjuliot.github.io/creepjs/)
-compares the parameter set against a collection of hashes seen on real browsers. Ours
+([what CreepJS checks](creepjs-explained.md)) compares the parameter set against a
+collection of hashes seen on real browsers. Ours
 matched none of them, so it was classified as low entropy and the **entire WebGL section
 was dropped from the report**.
 
@@ -78,7 +88,7 @@ is what almost every real Windows browser emits.
 ## The extension list is a different question
 
 The numbers are a driver-stack property. The **extension list** is a platform property,
-and it is the one that catches a Linux machine claiming Windows.
+and it is the one that catches a [Linux machine claiming Windows](canvas-webgl-cross-platform-consistency.md).
 
 `gl.getSupportedExtensions()` on Windows returns a list shaped by ANGLE, including
 `ANGLE_`-prefixed entries. The same browser built on Linux runs on Mesa and native
@@ -103,14 +113,18 @@ if you depend on it.
 - **Numeric parameters** are the canonical block for that platform, identical across
   machines, not scaled to the claimed card.
 - **The extension list** belongs to the claimed platform, not the host.
-- **Shader precision formats** come from the same place as the numbers, for the same
-  reason.
+- **[Shader precision formats](webgl-shader-precision-fingerprint.md)** come from the
+  same place as the numbers, for the same reason.
 - **Everything is stable** for one identity across sessions. A parameter set that moves
   between page loads is the loudest possible outcome.
 - **The pixels agree with the claim**, which is the one thing none of the above fixes.
   [The renderer string can say NVIDIA while a software rasterizer draws](renderer-string-vs-render.md).
 
 ## Checking your own
+
+Every number below comes from one call,
+[`gl.getParameter()`](https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/getParameter),
+the same call any fingerprinting script uses:
 
 ```js
 const gl = document.createElement('canvas').getContext('webgl');

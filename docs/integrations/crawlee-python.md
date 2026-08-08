@@ -39,7 +39,7 @@ subclass instead of a fork. This page is the integration guide for
 which is where Crawlee asks third-party integrations to live.
 
 Written against `crawlee` on `master` as of 2026-07-27, `invisible-playwright`
-0.4.6 and `invisible-core` 18.2.0. If Crawlee changes
+0.6.0 and `invisible-core` 18.12.0. If Crawlee changes
 `PlaywrightBrowserPlugin.new_browser`, this page is the thing that goes stale, so
 check the signature before blaming the engine.
 
@@ -116,12 +116,16 @@ class InvisiblePlaywrightPlugin(PlaywrightBrowserPlugin):
         options = dict(self._browser_launch_options)
         options.pop('executable_path', None)
         options.pop('firefox_user_prefs', None)
+        proxy = options.pop('proxy', None)
         options['executable_path'] = str(ensure_binary())
         options['args'] = [*options.get('args', []), *get_default_args()]
         options['firefox_user_prefs'] = get_default_stealth_prefs(
             seed=self._seed,
             humanize=True,
+            proxy=proxy,
         )
+        if proxy and not proxy['server'].lower().startswith('socks'):
+            options['proxy'] = proxy
 
         if self._use_incognito_pages:
             browser = await self._playwright.firefox.launch(**options)
@@ -182,8 +186,12 @@ identity and observable behaviour disagree.
 ## Proxies
 
 Pass them the way Crawlee already expects, through the launch options the plugin
-receives. SOCKS5 goes through the patched proxy path inside the engine, HTTP and
-HTTPS go through Playwright's own `proxy=` argument.
+receives. A SOCKS5 endpoint has to reach `get_default_stealth_prefs` through its
+`proxy=` argument, which writes the `network.proxy.*` preferences the patched
+engine reads, and it must not also reach Playwright: Playwright configures the
+proxy itself, without the SOCKS credentials, and that configuration wins over the
+preferences. HTTP and HTTPS are the other way round and go through Playwright's
+own `proxy=` argument.
 
 If you use one, leave locale and timezone on their defaults. They resolve from the
 exit IP and not from the host machine, which is what keeps the JS timezone, the

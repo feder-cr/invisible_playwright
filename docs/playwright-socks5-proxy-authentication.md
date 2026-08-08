@@ -1,6 +1,6 @@
 ---
 title: "Playwright SOCKS5 proxy with authentication"
-description: "Playwright's proxy option documents SOCKS5 credentials for HTTP proxies only. What actually happens when you pass a username and password to a socks5:// server, and the routes that work instead."
+description: "Playwright documents SOCKS5 proxy credentials for HTTP proxies only. Why a username and password on a socks5:// server fails silently, and the routes that work."
 parent: "Network, Proxy and WebRTC"
 grand_parent: "Guides"
 nav_order: 4
@@ -16,7 +16,7 @@ evidence, what happens when you do it anyway, and the routes that work.
 
 ## What Playwright's own documentation says
 
-Two statements from the same API reference, and they are not about the same thing.
+Two statements from the same [API reference](https://playwright.dev/python/docs/api/class-browsertype#browser-type-launch), and they are not about the same thing.
 
 On the `server` field:
 
@@ -38,9 +38,13 @@ opened in November 2021 and **still open**, with 49 thumbs-up and the label
 `P3-collecting-feedback`. A feature request that has been open for five years is not a
 feature that quietly works.
 
-Checked 2026-07-27, against Playwright's `docs/src/api/params.md` and the live issue.
+Checked 2026-07-27, against Playwright's [`docs/src/api/params.md`](https://github.com/microsoft/playwright/blob/main/docs/src/api/params.md) and the live issue.
 
 ## What happens when you pass them anyway
+
+Passing SOCKS5 credentials to Playwright fails silently. Nothing raises, the browser
+starts, and the username and password are dropped on the SOCKS path, so the failure
+surfaces later as requests that never arrive or arrive from the wrong address.
 
 ```python
 browser = p.chromium.launch(proxy={
@@ -50,7 +54,7 @@ browser = p.chromium.launch(proxy={
 })
 ```
 
-Nothing raises. That is the whole problem, and it is why the wrong advice spreads: the
+That silent acceptance is the whole problem, and it is why the wrong advice spreads: the
 API accepts the arguments, the browser starts, and the failure shows up later as
 requests that do not arrive, or that arrive from the wrong address, depending on how
 the proxy reacts to an unauthenticated handshake.
@@ -68,10 +72,18 @@ does support. It costs you a process to supervise and a port, and it works on ev
 engine.
 
 **Use an HTTP proxy instead**, if your provider offers one. The credentials are
-supported there, which is what the documentation says.
+supported there, which is what the documentation says; the
+[trade-offs between a SOCKS5 and an HTTP proxy in the browser](socks5-vs-http-proxy-browser.md)
+are their own topic.
 
 **Configure the browser directly**, if the browser is Firefox. This is the route this
 project takes, and it is worth explaining because the mechanism is not obvious.
+
+| Route | Works on | What it costs | Carries SOCKS5 credentials |
+|---|---|---|---|
+| Local relay that authenticates upstream | Every engine | A process and a port to supervise | Yes, at the relay |
+| HTTP proxy instead of SOCKS5 | Every engine | Needs an HTTP endpoint from your provider | Yes, on the documented path |
+| Firefox preferences directly | Firefox only | A patched proxy service (this project) | Yes, via the two added prefs |
 
 ## Doing it in Firefox preferences
 

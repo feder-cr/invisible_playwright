@@ -1,19 +1,26 @@
 ---
-title: "fake-useragent is archived: what that changes and what it doesn't"
-description: "The most widely used library for randomizing a user agent string was archived by its own maintainer in 2026. The practical break is real. The part worth understanding is that the string alone was never the fix people treated it as."
+title: "fake-useragent is archived: what changes and what doesn't"
+description: "The fake-useragent Python package was archived by its maintainer in 2026. What breaks, what to use instead, and why the string alone was never the whole fix."
 parent: "Browser Identity"
 grand_parent: "Guides"
 nav_order: 16
 ---
 
 
-# fake-useragent is archived: what that changes and what it doesn't
+# fake-useragent is archived: what changes and what doesn't
 
-If a script that used to pull a random, realistic-looking user agent string suddenly
-started failing on import, this is why: the `fake-useragent` Python package was
-archived by its own maintainer in 2026. GitHub's archive state is unambiguous - the
-repository is read-only, there will be no further releases, and no issue or pull
-request against it will ever be merged.
+The `fake-useragent` Python package was archived by its own maintainer in 2026.
+Archived means read-only: no new releases, no merged fixes, and a bundled string
+database frozen at whatever it held on the archive date. If a script that used to
+pull a random, realistic-looking user agent string suddenly started failing on
+import, that is why. GitHub's archive state is unambiguous: no issue or pull request
+against the repository will ever be merged again.
+
+The practical break is real, but the premise underneath the package was always
+incomplete: a current user agent string is only one claim a session makes, and
+detectors check whether the claims agree with each other, not whether any single
+string looks plausible on its own. This page covers what breaks, what to replace it
+with, and why [changing the user agent string alone was never enough](is-changing-user-agent-enough.md).
 
 ## What actually breaks
 
@@ -39,9 +46,9 @@ stays incomplete with a perfectly current one.
 [A user agent string is one claim among many a real session makes](playwright-user-agent.md),
 and a request or a browser session is checked for whether those claims agree with
 each other, not for whether any single one of them looks plausible in isolation. A
-freshly scraped, perfectly current Chrome 130 user agent string sitting on top of a
-TLS handshake that doesn't match Chrome, or a font list that doesn't match the
-claimed OS, is a contradiction - it just takes one more field to notice than a
+freshly scraped, perfectly current Chrome 130 user agent string sitting on top of
+[a TLS handshake that names a different browser](tls-fingerprint-user-agent-mismatch.md),
+or a font list that doesn't match the claimed OS, is a contradiction - it just takes one more field to notice than a
 stale or obviously-fake string does. The database going stale makes the tell
 cheaper to find. It doesn't create a problem that a live, always-current database
 would have solved outright.
@@ -51,8 +58,8 @@ would have solved outright.
 If a script depended on this package for HTTP requests without a real browser
 attached, the honest fix is deciding what's actually being verified against you: a
 static list of current strings, hand-maintained and updated on your own schedule,
-covers the same ground for a pure HTTP client and doesn't depend on an external
-package's continued maintenance either way.
+covers the same ground for [a pure HTTP client](http-client-vs-real-browser.md) and
+doesn't depend on an external package's continued maintenance either way.
 
 If the user agent is coming from an actual browser session - Playwright, Selenium,
 anything driving a real engine - the better fix is not to set it at all. The

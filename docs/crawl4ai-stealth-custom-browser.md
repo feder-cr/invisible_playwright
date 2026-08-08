@@ -1,6 +1,6 @@
 ---
 title: "crawl4ai stealth mode and custom browser engines"
-description: "crawl4ai supports browser_type firefox but has no executable_path, so you get Playwright's own build. Where the adapter seam is, what its stealth mode reaches, and what stays out of reach."
+description: "crawl4ai accepts browser_type firefox but has no executable_path, so you get Playwright's managed build. Where the adapter seam is and what stealth misses."
 parent: "AI Agents and Frameworks"
 grand_parent: "Guides"
 nav_order: 3
@@ -9,9 +9,11 @@ nav_order: 3
 
 # crawl4ai stealth mode and custom browser engines
 
-crawl4ai ships two anti-detection features and a browser abstraction, which makes it
-look like a patched engine should drop straight in. It does not, and the reason is a
-single missing field rather than an architectural one.
+crawl4ai cannot launch a custom (patched) browser binary today, because its
+`BrowserConfig` has no `executable_path` field, so `browser_type="firefox"` always gets
+Playwright's own managed Firefox build. crawl4ai ships two anti-detection features and a
+browser abstraction, which makes it look like a patched engine should drop straight in.
+It does not, and the reason is that single missing field rather than an architectural one.
 
 This page is what its configuration actually exposes, what its stealth mode reaches,
 where the adapter seam is, the workaround that works today, and the part that no
@@ -19,7 +21,9 @@ configuration changes.
 
 ## What BrowserConfig exposes, and the field that is missing
 
-Read from `crawl4ai/async_configs.py`:
+`BrowserConfig` exposes the browser choice, headless mode, a user data directory, a proxy
+and extra arguments, but not the path to a binary. Read from
+`crawl4ai/async_configs.py`:
 
 | Field | Default |
 |---|---|
@@ -42,7 +46,9 @@ that has already been chosen, not the choice of browser.
 
 ## What crawl4ai's stealth mode actually reaches
 
-Two separate features, and it is worth knowing which is which.
+crawl4ai's stealth mode reaches only page-level JavaScript, and on Firefox it is largely
+inert because its evasion modules target Chromium APIs. There are two separate features
+here, and it is worth knowing which is which.
 
 **Stealth mode** applies `playwright-stealth`, which is the page-level approach: scripts
 injected into the document that redefine properties before the page's own code runs.
@@ -90,8 +96,9 @@ change, and until it exists there is no supported route.
 ## The workaround that works today, with its cost
 
 Playwright resolves its managed browsers from a directory, and that directory is
-configurable through `PLAYWRIGHT_BROWSERS_PATH`. Put a build where Playwright expects to
-find one, and `p.firefox.launch()` uses it, with no crawl4ai change at all.
+configurable through [`PLAYWRIGHT_BROWSERS_PATH`](https://playwright.dev/docs/browsers#managing-browser-binaries).
+Put a build where Playwright expects to find one, and `p.firefox.launch()` uses it, with
+no crawl4ai change at all.
 
 Be clear-eyed about what that is:
 
@@ -175,7 +182,9 @@ seam looks like, and
   2026-07-27.
 - crawl4ai's own documentation for stealth mode and the undetected browser adapter,
   including its statement that the underlying evasion modules do not support Firefox.
-- Playwright's `PLAYWRIGHT_BROWSERS_PATH` behaviour, for the workaround.
+- Playwright's own [browser-management
+  documentation](https://playwright.dev/docs/browsers#managing-browser-binaries), for
+  the `PLAYWRIGHT_BROWSERS_PATH` behaviour the workaround depends on.
 
 ---
 

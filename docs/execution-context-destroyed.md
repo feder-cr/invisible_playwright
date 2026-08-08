@@ -1,6 +1,6 @@
 ---
 title: "Execution context was destroyed, and when it means detection"
-description: "Execution context was destroyed is usually a race condition, and sometimes a site deciding mid-visit it does not like you. The two look identical in the stack trace and need entirely different fixes."
+description: "Execution context was destroyed is usually a race condition, but sometimes it means a site redirected you to a challenge. Here is how to tell the two apart."
 parent: "The Automation Layer"
 grand_parent: "Guides"
 nav_order: 4
@@ -68,7 +68,8 @@ If that solves it, you are done, and the rest of this page is not about you.
 
 ## When it is the site, not your code
 
-Now the case nobody writes about.
+Sometimes the error is not your code at all: the site navigated you away on purpose,
+and the destroyed context is the side effect. This is the case nobody writes about.
 
 A site that decides a session is automated does not usually return a clean error. It
 redirects: to a challenge page, to an interstitial, to a login wall, sometimes to the
@@ -78,7 +79,16 @@ mid-evaluation produces exactly this error.
 So the same message means either "my code raced" or "the page moved me somewhere else
 because it did not want me".
 
-Four things separate them:
+Four signals separate a race in your code from a block by the site:
+
+| Signal | Your code raced | The site moved you |
+|---|---|---|
+| Where it shows up | Anywhere the timing is tight | One specific site, never elsewhere |
+| How often | Intermittent, unpredictable | Reliably, at the same step |
+| Final `page.url` | The URL you asked for | A challenge, login wall, or interstitial |
+| When in the flow | Often at load | Usually after an interaction |
+
+The same four points in full:
 
 **It happens on one site and never elsewhere.** Race conditions are a property of your
 code and show up wherever the timing is tight. A block is a property of one target.
@@ -142,7 +152,7 @@ happened during your evaluation, and a redirect to a challenge is a navigation.
 **How do I tell the difference?** Read `page.url` and take a screenshot when it fires.
 If you ended up somewhere you did not ask for, it is the site.
 
-**Does `wait_until="networkidle"` fix it?** It changes when `goto` returns, which helps
+**Does [`wait_until="networkidle"`](https://playwright.dev/python/docs/api/class-page#page-goto) fix it?** It changes when `goto` returns, which helps
 with some races and does nothing for a redirect that happens later.
 
 **Why does it only happen in headless or only in CI?** Usually timing, because a loaded

@@ -1,12 +1,20 @@
 ---
-title: "invisible_playwright vs fingerprint-suite: same statistics, different layer"
-description: "Apify's fingerprint-suite generates realistic fingerprints with a Bayesian network and injects them into a Playwright or Puppeteer page. The generation approach is close to this project's own. Where it lands - the page, rather than the engine - is not."
+title: "invisible_playwright vs fingerprint-suite: injection vs engine"
+description: "fingerprint-suite injects a Bayesian-generated fingerprint into a Playwright or Puppeteer page. invisible_playwright sets it in the Firefox engine instead."
 parent: "Comparisons"
 nav_order: 12
 ---
 
 
-# invisible_playwright vs fingerprint-suite: same statistics, different layer
+# invisible_playwright vs fingerprint-suite: injection vs engine
+
+**invisible_playwright and fingerprint-suite generate a browser fingerprint the
+same way - as one coherent statistical identity rather than a grab-bag of
+independently randomized fields - but apply it at different layers.**
+fingerprint-suite injects the generated fingerprint into a running Playwright or
+Puppeteer page; invisible_playwright makes the patched Firefox engine report those
+values in its own code, so there is no property-overwrite for a detector to find.
+The generation approach converges; the layer it lands on is where the two part.
 
 Most of the tools on this site's comparison pages fix a short list of specific
 properties. `fingerprint-suite`, maintained by Apify as part of the Crawlee
@@ -16,7 +24,9 @@ overrides. Where it puts that fingerprint is the part worth comparing carefully.
 
 ## What fingerprint-suite actually does
 
-The toolkit is modular: a header generator, a fingerprint generator, an injector,
+fingerprint-suite is Apify's open-source toolkit that generates a coherent browser
+fingerprint with a Bayesian network and injects it into a Playwright or Puppeteer
+page. The toolkit is modular: a header generator, a fingerprint generator, an injector,
 and underneath them a generative Bayesian network the project built specifically to
 produce realistic, internally consistent fingerprints rather than independently
 randomized field values. Point it at a Playwright or Puppeteer browser instance and
@@ -34,6 +44,13 @@ generation is worth taking as a signal about the problem, not a coincidence.
 ## Where the two part ways: injection versus the engine
 
 The generation strategy converges. What happens with the result does not.
+
+| Dimension | fingerprint-suite | invisible_playwright |
+|---|---|---|
+| Fingerprint generation | Coherent statistical model (a Bayesian network) | Coherent statistical identity derived from one seed |
+| Where it is applied | Injected into the page via Playwright or Puppeteer | Reported by the patched Firefox engine in its own code |
+| Engine coverage | Chromium and Firefox | Firefox (source-patched) |
+| Property-overwrite detection surface | Present - values are written over the real ones | Absent - nothing is overwritten |
 
 `fingerprint-injector` does exactly what its name says: it injects the generated
 fingerprint into a running Chromium or Firefox instance via Playwright or

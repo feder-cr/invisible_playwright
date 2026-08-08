@@ -1,6 +1,6 @@
 ---
 title: "What bot.sannysoft.com actually checks, row by row"
-description: "What bot.sannysoft.com's rows actually test, group by group, which ones still mean anything in 2026, read from the live page's own element ids rather than from memory."
+description: "What bot.sannysoft.com actually tests, group by group: which rows still mean something in 2026, which are 2018 relics, and the canvas check nobody reads."
 parent: "Detectors, Explained"
 grand_parent: "Guides"
 nav_order: 1
@@ -8,6 +8,13 @@ nav_order: 1
 
 
 # What bot.sannysoft.com actually checks, row by row
+
+bot.sannysoft.com runs three groups of checks: a legacy pass/fail table of automation
+flags, an unscored dump of `navigator` and `screen` properties, and a set of canvas
+tests that quietly run twice, once in the page and once inside an iframe, then compare
+the results. Passing the table proves only that you are not an unmodified headless
+browser from around 2018; the canvas consistency check and the property dump are the
+parts that still decide anything in 2026.
 
 Everyone in browser automation ends up on this page, and most people read the colour
 of the rows instead of what they mean. Here is what each group tests, which ones are
@@ -22,14 +29,14 @@ Eleven rows, the oldest and best-known set. In page order:
 | Row | What it reads |
 |---|---|
 | **User Agent** | whether the string contains `HeadlessChrome` |
-| **WebDriver** | `navigator.webdriver` |
+| **WebDriver** | [`navigator.webdriver`](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/webdriver) |
 | **WebDriver Advanced** | the same value read through a less obvious path, to catch a shallow override |
 | **Chrome** | whether `window.chrome` exists and looks whole, on a Chromium build |
 | **Permissions** | whether the Notifications permission state and `Notification.permission` agree |
 | **Plugins Length** | `navigator.plugins.length` being zero, which old headless builds reported |
 | **Plugins is of type PluginArray** | the prototype of `navigator.plugins`, catching an array pretending to be one |
 | **Languages** | `navigator.languages` being empty |
-| **WebGL Vendor** and **WebGL Renderer** | the unmasked strings |
+| **WebGL Vendor** and **WebGL Renderer** | the [unmasked strings](https://developer.mozilla.org/en-US/docs/Web/API/WEBGL_debug_renderer_info) |
 | **Broken Image Dimensions** | the natural size of an image that failed to load |
 
 Almost all of these are historical. They describe headless Chrome as it behaved
@@ -44,9 +51,10 @@ automation at all:
 here is a server tell that no amount of automation-flag fixing hides. There is a
 [longer page on that](webgl-renderer-strings.md).
 
-**Permissions** is the interesting shape: it does not ask a single question, it asks
-two and compares the answers. That pattern, cross-checking two sources that must
-agree, is what everything modern is built on.
+**[Permissions](https://developer.mozilla.org/en-US/docs/Web/API/Permissions_API)** is
+the interesting shape: it does not ask a single question, it asks two and compares the
+answers. That pattern, cross-checking two sources that must agree, is what everything
+modern is built on.
 
 ## Group two: the property dump
 
@@ -70,8 +78,11 @@ values that cannot both be true.
 
 ## Group three: canvas, and the part worth the page
 
-The element ids give this away: `canvas1`, `canvas2`, `canvas3`, `canvas4`,
-`canvas5`, and crucially **`canvas3-iframe`, `canvas4-iframe`, `canvas5-iframe`**.
+The canvas section is the most revealing test on the page, and it is not a
+fingerprint test at all: it checks whether your canvas gives the same answer in two
+different execution contexts. The element ids give this away: `canvas1`, `canvas2`,
+`canvas3`, `canvas4`, `canvas5`, and crucially **`canvas3-iframe`, `canvas4-iframe`,
+`canvas5-iframe`**.
 
 Three of the canvas tests are run twice: once in the page, once inside an iframe, and
 the results compared.
@@ -154,6 +165,11 @@ All green is not the target; matching is.
 
 **What does it not check?** Behaviour, the network layer, the TLS handshake, and
 whether your hardware is plausible. All of those decide more than this table does.
+
+**See also:** [how detectors decide you are a bot](how-do-websites-detect-bots.md),
+[what the WebGL vendor and renderer strings give away](webgl-renderer-strings.md),
+[why identical WebGL parameters are their own tell](webgl-parameters-are-identical.md),
+and [how to test your own setup against bot detection](how-to-test-bot-detection.md).
 
 ---
 

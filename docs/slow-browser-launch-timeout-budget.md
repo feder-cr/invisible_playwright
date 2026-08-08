@@ -1,18 +1,24 @@
 ---
-title: "Why one launch in six was randomly slow, and a per-request timeout didn't fix it"
-description: "Every network request during launch had its own timeout, and every one of them was respected. The step around them still had no upper bound, because a per-request timeout answers a different question than the one that actually matters."
+title: "Slow browser launch: a per-request timeout is not a budget"
+description: "One launch in six was randomly slow even though every network request had its own timeout. The fix is a total step budget, not a shorter per-request timeout."
 parent: "Testing and Troubleshooting"
 grand_parent: "Guides"
 nav_order: 4
 ---
 
 
-# Why one launch in six was randomly slow, and a per-request timeout didn't fix it
+# Slow browser launch: a per-request timeout is not a budget
 
-An intermittent slow launch is one of the more frustrating classes of bug, because
-every individual piece of code involved is provably bounded and the whole still
-isn't. This is a real case of that shape, the wrong question a timeout was answering,
-and the one-line fix once the right question was asked.
+When a browser launch is randomly slow with no error, the usual cause is a
+multi-step network operation where every individual call has its own timeout but
+nothing bounds the sequence as a whole. The fix is a total budget for the step, not a
+shorter per-request timeout.
+
+This is a real case of that shape. An intermittent slow launch is one of the more
+frustrating classes of bug, because every individual piece of code involved is
+provably bounded and the whole still is not. Below is the symptom, the wrong question
+the per-request timeout was answering, and the one-line fix once the right question
+was asked.
 
 ## The symptom
 
@@ -65,6 +71,15 @@ per-item timeout is a promise about one item. A budget is a promise about the ca
 actual patience, and only the second one is what a launch, a request pipeline, or any
 multi-step network operation actually needs to bound.
 
+The difference in one table:
+
+| | Per-request timeout | Total step budget |
+|---|---|---|
+| What it bounds | one endpoint's wait | the whole step, end to end |
+| Worst case | N x timeout | one fixed ceiling |
+| When you add an endpoint | worst case grows silently | ceiling is unchanged |
+| Answers | "how long for this server" | "how long the caller will wait" |
+
 ## What to check in your own setup
 
 If a multi-step network operation is occasionally slow despite every individual call
@@ -78,9 +93,15 @@ cap it.
 
 **Why is my automation's launch occasionally much slower than usual, with no error?**
 A common cause is a multi-step network resolution during launch (proxy egress lookup,
-geo lookup, similar) where each step has its own timeout but nothing bounds the
-sequence as a whole. The slow cases are every step in the list being tried in the
-worst order, not a single broken request.
+[timezone resolution from the proxy exit IP](offline-geoip-timezone-proxy.md), and
+similar) where each step has its own timeout but nothing bounds the sequence as a
+whole. The slow cases are every step in the list being tried in the worst order, not
+a single broken request.
+
+**What is a timeout budget?** A timeout budget is a single upper bound on how long an
+entire multi-step operation may take, independent of how many sub-steps it runs. Each
+sub-step still gets a timeout, but that per-step value is capped at whatever is left
+of the budget, so the sum can never exceed the ceiling the caller actually cares about.
 
 **Doesn't a shorter per-request timeout fix this?** It lowers the ceiling
 proportionally but doesn't remove it, and it risks cutting off a slow-but-honest

@@ -1,16 +1,23 @@
 ---
 title: "Playwright detected as a bot on one site: a checklist"
-description: "A troubleshooting order for when Playwright gets a different page than a human does, written so you check the free things first instead of buying a better proxy on day one."
+description: "A troubleshooting checklist for when Playwright gets detected as a bot on one site: check the free fixes first, before buying a better proxy on day one."
 parent: "Testing and Troubleshooting"
 grand_parent: "Guides"
 nav_order: 2
 ---
 
-
 # Playwright detected as a bot on one site: a checklist
 
 A troubleshooting order for when automation gets a different page than a human does.
 It is written for Playwright but almost none of it is Playwright-specific.
+
+Most sites that show automation a different page are not reacting to "a bot" in the
+abstract. They are reacting to one specific, findable mismatch: a value you set by
+hand that disagrees with another value, a machine that reveals it has no display or
+audio hardware, a leftover automation artifact, a behaviour no human produces, or a
+network exit that tells a different story than the browser does. This checklist works
+through those causes in the order they are actually the culprit - cheapest and most
+likely first, expensive and least likely last.
 
 The order matters. Most people start at the bottom of this list, buy a better proxy,
 and find out three days later that the problem was a user agent they set themselves.
@@ -33,9 +40,9 @@ lives.
 This is the most common cause and the most embarrassing one.
 
 Every value you set by hand is a value that now has to agree with every value you did
-not. A user agent claiming one platform, on a browser reporting another. A timezone
-you pinned, against an IP on a different continent. A language list from your own
-machine, on an exit somewhere else.
+not. [A user agent claiming one platform](playwright-user-agent.md), on a browser
+reporting another. A timezone you pinned, against an IP on a different continent. A
+language list from your own machine, on an exit somewhere else.
 
 Grep your own code for `user_agent`, `locale`, `timezone_id`, `viewport`,
 `extra_http_headers` and any stealth plugin you installed. Then remove all of them
@@ -51,8 +58,9 @@ If you use a patched browser or a stealth build **and** a JavaScript stealth plu
 they are both answering the same questions and they will not give the same answer.
 Two disguises produce a contradiction that neither produces alone.
 
-Pick one layer. If the engine handles the fingerprint, turn off the page-level
-patching and any header generator the framework offers.
+Pick [one layer](playwright-stealth-levels.md). If the engine handles the
+fingerprint, turn off the page-level patching and any header generator the framework
+offers.
 
 ## 3. Check the machine, not the browser
 
@@ -64,13 +72,13 @@ that most often give away a server:
   graphics hardware. No amount of property patching hides that. Worse, and less
   obvious: the string can say NVIDIA while the pixels are still drawn by a software
   rasterizer, which is [a mismatch you cannot patch](renderer-string-vs-render.md).
-- **A screen that does not exist.** Odd resolutions, a device pixel ratio that no
-  real display has, an available height equal to the full height, meaning no
-  taskbar.
-- **Font lists that do not match the claimed platform.** Claiming Windows with a
-  Linux font set is a one-line check.
-- **Hardware concurrency and device memory** that pair oddly with the claimed
-  machine.
+- **[A screen that does not exist](screen-size-headless-tells.md).** Odd
+  resolutions, a device pixel ratio that no real display has, an available height
+  equal to the full height, meaning no taskbar.
+- **[Font lists that do not match the claimed platform](bundled-fonts-cross-platform.md).**
+  Claiming Windows with a Linux font set is a one-line check.
+- **[Hardware concurrency and device memory](hardware-concurrency-device-memory.md)**
+  that pair oddly with the claimed machine.
 - **No audio device.** Sample rate, output latency and channel count come from real
   hardware, and a container that has none answers with defaults that say so. See
   [AudioContext fingerprinting](audiocontext-fingerprinting.md).
@@ -85,8 +93,9 @@ gift to change.
 
 ## 4. Only now, check the automation tells
 
-`navigator.webdriver`, leftover automation globals, a headless user agent, a missing
-or malformed `chrome` object on a Chromium build. These are worth checking and they
+[`navigator.webdriver`](navigator-webdriver-explained.md), leftover automation
+globals, a headless user agent, a missing or malformed `chrome` object on a Chromium
+build. These are worth checking and they
 are almost never still the problem in 2026, because every tool fixes them first.
 
 If you find one, note that setting it to `false` is not the fix: a clean browser
@@ -114,8 +123,8 @@ first request.
 ## 6. Check the network layer
 
 TLS fingerprints, HTTP/2 settings frames, header order. A real browser's handshake is
-distinctive and a mismatch between "I am Firefox" in the user agent and a handshake
-that is not Firefox's is decisive.
+distinctive, and [a User-Agent that claims one browser while the handshake belongs to
+another](tls-fingerprint-user-agent-mismatch.md) is decisive.
 
 You cannot fix this from JavaScript. Either the browser is real, or the request is
 made by something that impersonates the handshake too.
@@ -175,7 +184,7 @@ has.
 platform, the fonts and everything else. Randomising it alone creates contradictions
 rather than hiding anything.
 
-**See also:** [WebGL renderer strings](webgl-renderer-strings.md) and [why headless renders different fonts](headless-fonts-differ.md) for step three, and [what sannysoft actually checks](sannysoft-explained.md) before you trust a green table.
+**See also:** [WebGL renderer strings](webgl-renderer-strings.md) and [why headless renders different fonts](headless-fonts-differ.md) for step three, [what sannysoft actually checks](sannysoft-explained.md) before you trust a green table, and, if every step above comes back clean and the block persists anyway, [why you might still be blocked with a clean fingerprint](why-blocked-with-a-clean-fingerprint.md).
 
 ---
 

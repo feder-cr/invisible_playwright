@@ -1,6 +1,6 @@
 ---
 title: "Playwright proxy per context: what it does not isolate"
-description: "One browser with a proxy per context gives every session a different IP and the same canvas, fonts, GPU, audio and timezone. That is one machine appearing from several countries, not several users."
+description: "A Playwright proxy per context rotates the exit IP but not the fingerprint. Canvas, GPU, fonts and audio stay identical across contexts. One machine, not many."
 parent: "Network, Proxy and WebRTC"
 grand_parent: "Guides"
 nav_order: 3
@@ -9,8 +9,14 @@ nav_order: 3
 
 # Playwright proxy per context: what it does not isolate
 
-The recommended pattern for rotating IPs in Playwright is one browser with a proxy per
-`BrowserContext`. It is in every guide, it is efficient, and for many jobs it is right.
+**A Playwright proxy per context rotates the exit IP but not the fingerprint.** Every
+context in one browser reports the same canvas, GPU, fonts, audio, screen and TLS
+handshake, because they all come from one process on one machine. Storage is isolated;
+hardware is not.
+
+The recommended pattern for [rotating IPs in Playwright](how-to-rotate-proxies-playwright.md)
+is one browser with a proxy per `BrowserContext`. It is in every guide, it is efficient,
+and for many jobs it is right.
 
 It also has a consequence nobody states: **a context isolates storage, not hardware.**
 Every context in that browser reports the same canvas hash, the same GPU, the same fonts,
@@ -23,6 +29,24 @@ five countries at once, and the constant fingerprint links them to each other.
 This page is what a context actually separates, what it does not, the timezone problem
 the pattern creates, when it is nonetheless the right choice, and what to do when it is
 not.
+
+## Isolated vs shared per context, at a glance
+
+A `BrowserContext` separates storage and the proxy; it shares everything the hardware
+reports. In one table:
+
+| Property | Separate per context? |
+|---|---|
+| Cookies, local storage, session storage, IndexedDB | Yes |
+| Cache and service workers | Yes |
+| Permissions and their grants | Yes |
+| Proxy / exit IP (when set per context) | Yes |
+| Canvas hash | No, shared |
+| WebGL renderer and numeric parameters | No, shared |
+| Font set, audio profile, speech voices, codecs | No, shared |
+| Screen dimensions, `hardwareConcurrency`, `deviceMemory` | No, shared |
+| TLS handshake shape | No, shared |
+| Timezone and locale | No, carried from the launch-time exit |
 
 ## What a BrowserContext genuinely isolates
 
@@ -49,7 +73,8 @@ Everything the machine reports about itself, because there is one machine:
   [And is a comparison, not a count](headless-fonts-differ.md).
 - **The audio profile**, the speech voice list, the codec support.
 - **The screen dimensions** and their relationships.
-- **`hardwareConcurrency`, `deviceMemory`, the storage quota.**
+- **[`hardwareConcurrency`](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/hardwareConcurrency),
+  [`deviceMemory`](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/deviceMemory), the storage quota.**
 - **The TLS handshake**, which is per connection and identical in shape.
   [And decided below all of this](ja3-ja4-tls-fingerprint.md).
 
@@ -63,11 +88,14 @@ several countries simultaneously.
 
 ## The timezone problem the pattern creates
 
-This one is specific and it bites the careful.
+**A timezone resolved from the exit address has to be resolved per exit, and this pattern
+resolves it only once, at launch.** That is specific and it bites the careful: it looks
+like a setting you configured correctly, and it behaves like one that was never applied
+to most of the browser.
 
-A timezone resolved from the exit address has to be resolved **per exit**. If your tool
-resolves it at browser launch, it resolved it for the launch-time exit, and every context
-afterwards carries that zone regardless of where its own proxy leaves from.
+If your tool resolves the timezone at browser launch, it resolved it for the launch-time
+exit, and every context afterwards carries that zone regardless of where its own proxy
+leaves from.
 
 Context one leaves from Germany with a German timezone. Context two leaves from Japan
 with a German timezone. The second one is the mismatch that
@@ -154,13 +182,17 @@ seed does.
 
 **See also:** [when the timezone does not match the proxy](timezone-proxy-mismatch.md),
 [why you should not set the user agent](playwright-user-agent.md), which is the same
-mistake on a different value, and
-[Playwright SOCKS5 proxy with authentication](playwright-socks5-proxy-authentication.md).
+mistake on a different value,
+[how to isolate identities with a context per session](isolate-identities-browser-context-per-session.md),
+and [Playwright SOCKS5 proxy with authentication](playwright-socks5-proxy-authentication.md).
 
 ## Sources
 
 - Playwright's proxy option at browser and context level, and its behaviour of fixing the
-  proxy at creation time.
+  proxy at creation time: [Playwright network documentation](https://playwright.dev/python/docs/network).
+- `navigator.hardwareConcurrency` and `navigator.deviceMemory`, two of the shared values
+  listed above: [MDN: hardwareConcurrency](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/hardwareConcurrency),
+  [MDN: deviceMemory](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/deviceMemory).
 - The surfaces listed above are each documented on their own page, linked in place.
 - This project resolves the timezone, locale and WebRTC exit address from one lookup per
   launch, which is why one identity is one launch here.

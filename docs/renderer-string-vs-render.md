@@ -1,6 +1,6 @@
 ---
 title: "Your renderer string says NVIDIA. Your pixels say software."
-description: "A detection flag chased in the wrong direction for a while: you can spoof what a browser says about its GPU, and you cannot spoof what the GPU actually draws. The story of finding that out the hard way."
+description: "You can spoof a browser's GPU renderer string, but not the pixels a software rasterizer draws. Why headless GPU spoofing gets flagged, and what actually helps."
 parent: "Canvas, WebGL, Fonts and Audio"
 grand_parent: "Guides"
 nav_order: 4
@@ -18,14 +18,14 @@ GPU draws.**
 ## What happened
 
 A commercial fingerprinting service was returning `tampering = True` on our realness
-gate. The seed under test had an NVIDIA GTX 980 persona, so the first hypothesis was
-obvious: something about that persona is wrong, probably the renderer string bucket.
+gate. The seed under test reported an NVIDIA GTX 980, so the first hypothesis was
+obvious: something about that GPU value is wrong, probably the renderer string.
 
 That hypothesis was wrong, and three measurements killed it.
 
-**A seed sweep.** Ten seeds on the same build, spanning all three vendor buckets:
-four NVIDIA, three AMD, three Intel. Ten out of ten flagged. Not persona-specific,
-then. Whatever it was applied to every identity equally.
+**A seed sweep.** Ten different seeds on the same build, each reporting a different
+GPU. Ten out of ten flagged. Not value-specific, then. Whatever it was applied to
+every identity equally.
 
 **An A/B across two builds.** The previous engine release and the current one, same
 rate. Not a regression introduced by the newer build.
@@ -34,7 +34,7 @@ rate. Not a regression introduced by the newer build.
 came back `tampering = False`, with the underlying model score around 0.15 to 0.17,
 well under the threshold that raises the flag.
 
-Same code, same personas, same detector. Clean on one host, flagged on the other.
+Same code, same seeds, same detector. Clean on one host, flagged on the other.
 
 ## The actual cause
 
@@ -55,20 +55,21 @@ claims and the hardware that drew this image are not the same hardware".
 
 Everything else in a fingerprint is a value you can set. This one is an *output*.
 
-A renderer string is a string. A canvas hash is the result of running a rasteriser
-over a shape, and to change it consistently you have to change the rasteriser or the
-machine. That is why:
+A renderer string is a string. A [canvas hash](browserleaks-canvas-webgl-hash.md) is
+the result of running a rasteriser over a shape, and to change it consistently you have
+to change the rasteriser or the machine. That is why:
 
 - Spoofing the string alone is not enough, and is arguably worse than leaving it
   honest, because it creates a claim the pixels contradict.
 - The mismatch is invisible in every check that only reads values. Our own
   release gates read values for a long time before this surfaced, which is [why they now assert presence rather than absence](how-to-test-bot-detection.md).
-- It is worst exactly where automation usually runs: servers, containers and CI, none
-  of which have a GPU.
+- It is worst exactly where automation usually runs: [servers, containers and CI](can-a-website-tell-you-are-on-a-server.md),
+  none of which have a GPU.
 
-If you deploy browser automation to a cloud machine and it behaves differently from
-your laptop, this is high on the list of reasons, and it will not show up in any
-property-level audit.
+If you deploy browser automation to a cloud machine and it
+[behaves differently from your laptop](why-playwright-works-locally-fails-in-cloud.md),
+this is high on the list of reasons, and it will not show up in any property-level
+audit.
 
 ## What the options actually are
 
@@ -88,7 +89,8 @@ The one thing that does not work is claiming a better GPU harder.
 
 ## The other half of the story, which is about testing
 
-While chasing the above, the same reports carried a second flag: `high_activity`.
+The same fingerprinting reports that carried the tampering flag also carried a
+second flag: `high_activity`.
 
 It was not the product. It was us, running the same detector demo repeatedly through
 the same small set of exit addresses over an afternoon. The service was measuring
@@ -139,12 +141,12 @@ at a time, and include the host operating system as an axis. That is what took u
 the wrong answer to the right one.
 
 **See also:** [WebGL renderer strings](webgl-renderer-strings.md), for what those
-strings encode and the software-rasterizer entry we shipped in our own persona pool,
+strings encode and why a software rasterizer is a giveaway,
 and [why headless renders different fonts](headless-fonts-differ.md), which is the
 same value-versus-output problem on a different surface.
 
 ---
 
 *From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright).
-The measurements above are ours: ten seeds across three vendor buckets, two engine
+The measurements above are ours: ten seeds, two engine
 builds, and two host operating systems. The wrong first hypothesis is ours too.*

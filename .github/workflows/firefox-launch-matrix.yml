@@ -22,6 +22,12 @@ on:
     paths:
       - '.github/workflows/firefox-launch-matrix.yml'
 
+# Least privilege: this smoke matrix only checks out the repo and launches
+# firefox.exe, so it needs nothing but read access to the contents. Without an
+# explicit block the token would default to the repo's broader permissions.
+permissions:
+  contents: read
+
 jobs:
   # `pip install .` below resolves `invisible-core==N.M.0` from the package
   # index, and the core is published BEFORE this package. This gate answers
@@ -40,7 +46,10 @@ jobs:
       fail-fast: false
       matrix:
         os: [windows-2022, windows-2025, windows-latest]
-        python: ["3.11", "3.12", "3.13"]
+        # This is a "does firefox.exe launch" smoke test across Windows versions;
+        # the Python version does not change the answer, so one is enough. That
+        # takes this all-Windows (2x-cost) matrix from 9 jobs to 3.
+        python: ["3.12"]
 
     steps:
       - uses: actions/checkout@v4

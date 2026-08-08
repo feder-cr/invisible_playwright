@@ -4,6 +4,61 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-08-05
+
+### Changed
+
+- Pins `invisible-core` 18.13.0, which puts an upper bound in wall-clock time on the engine download. A `requests` timeout is per socket operation, so a connection delivering a byte every 59 seconds satisfied it forever and the transfer had no total limit; `INVISIBLE_DOWNLOAD_DEADLINE` (default 1800s) bounds it, and the refusal names the deadline, the elapsed time and the bytes received. Set it to 0 on a genuinely slow link.
+- README: the Telegram invitation moved to the top and the status badges to the bottom.
+
+## [0.6.0] - 2026-08-01
+
+### Fixed
+- `browser.new_page()` now gives the page the same context `browser.new_context()` does: the profile's viewport, screen, DPR, colour scheme, locale and timezone. It did not, because Playwright's `Browser.new_page` forwards to the IMPLEMENTATION object, whose own `new_page` calls `new_context` on itself, so a wrapper installed on the api object was never consulted. Measured in a real browser with the seed the e2e uses: `new_page` gave `innerWidth` 1280, Playwright's stock viewport, against a fingerprint reporting `screenWidth` 1920, while `new_context` gave 1906; a dark-pinned profile came back light on the same path. `new_page` is the call in this package's README, in the class docstring and in every example it ships, which is why this is a minor bump and not a patch.
+- The engine-mismatch message told you to run `fetch --force`, three days after that flag was removed with four of the six subcommands. A test pinned the old string, so both were wrong together.
+- Four tests marked `unit` drove `__enter__` with Playwright mocked and made two real network calls each, then sat out the lifetime guard's full 10s deadline waiting for a browser tree a mock never produces. 45.6s to 0.34s for that file. CI-only.
+
+### Changed
+- Requires `invisible-core==18.12.0`, which carries one prefs composition for all three entry points (`compose_session_prefs`), a `proxy=` argument on `get_default_stealth_prefs` that had no way to reach `configure_proxy` before, a proxy endpoint with no port refused rather than dropped silently, and a process scan that no longer asks psutil for the parent of every process on the machine.
+- `build_prefs` delegates to that composition, so the three entry points that used to stack layers on top of `translate_profile_to_prefs` in their own order now agree, with the difference asserted as an exact set. What stays here is this path's delivery and its two decisions: the cloak, which only Windows and macOS need, and which generator draws the pointer path. `max_seconds_for` is applied here rather than passing `humanize` through, because `humanize=0` with the binary engine selected is a cap of nothing, not a request to disable motion, and passing it straight to the core would make it falsy and switch the generator off.
+- Eight imports in `launcher.py` and `async_api.py` were unused and are gone. The ninth, `IANA_TO_POSIX_TZ` in `_session.py`, is not dead: the import IS the probe that turns an old core into a message about a version instead of a message about a symbol, so it keeps a `noqa` carrying the reason.
+- `datetime.utcfromtimestamp` is replaced in `_recaptcha_seed.py`. It returns a naive datetime and has been deprecated since 3.12, which matters now that the matrix reaches 3.14.
+- CI runs 3.11, 3.12, 3.13 and 3.14 on Ubuntu and Windows, every version `requires-python` promises; two of them had never run here. ruff selects F601 beside F821 and F811, because a dict literal with a repeated key silently keeps only the last one and Python does not warn.
+- ruff is declared in the dev extra instead of being pip-installed unpinned on every run, so the tool that gates every push cannot change under us between two pushes. `pytest-mock` and `responses` were declared and used by no test in this package, and are dropped.
+- Publishing is a workflow on a tag push using PyPI trusted publishing (OIDC, environment `pypi`), so there is no long-lived token on a machine or in a secret. The upload sits behind a gate that checks three things a person had to remember: the tag names the version being built, the `invisible-core==` pin is already on the index, and the suite passes, since a tag push does not trigger the ordinary test workflow. It needs a GitHub publisher registered on PyPI before its first run; until that exists the upload fails with `invalid-publisher`, which is the correct failure.
+
+## [0.5.0] - 2026-08-01
+
+### Changed
+- The CLI is two commands, `fetch` and `version`. `path`, `clear-cache`, `doctor` and `fetch --force` are gone, and so is the tag argument. **Breaking for anybody scripting the four that were removed** - they fail loudly rather than being ignored, and a test asserts that. None of the behaviour is gone.
+- `doctor` runs inside `fetch` now, on every run and before the download rather than after. That ordering is the point: a cached tree that no longer matches the seal is the case worth catching, and it is invisible to a "download if missing" that only looks at whether a file exists. It was the thing most worth doing and the thing least likely to be typed.
+- `--force` is unnecessary once every run verifies: a tree is replaced because it does not match the seal, not because a flag was passed.
+- `path` is the last line of `fetch`'s stdout, so `$(invisible-playwright fetch)` is the scripting form, and unlike `path` it guarantees the thing it names exists and matches. The mismatch report goes to stderr so it can never end up inside a captured path.
+- `clear-cache` is deliberately NOT folded in. The cache root is shared with `invisible_firefox`, so pruning trees no seal points at would delete the other product's engine on a machine running both. `version` prints the location instead.
+- The tag argument went with them: the seal decides which engine a build runs and `verify_engine` refuses anything else, so a tag on the command line could only ever name something that would then be rejected.
+- The surface is asserted as an EXACT set, not a subset. A subset check passes while the CLI grows back one convenience at a time, which is how it reached six.
+
+## [0.4.9] - 2026-08-01
+
+### Changed
+- Requires `invisible-core==18.11.0`. 18.10.0 classifies a 404 on the engine archive instead of raising a bare `HTTPError`, which is issue #51, and 18.11.0 removed the part of it that ran `pip install --upgrade` on the caller's environment: a library that installs things while it is running mutates an environment nobody asked it to touch, ignores whatever lockfile chose that version, and inside a container rewrites an image layer at runtime. What reaches a user of this package is that a 404 on the engine now says whether the release was retired on purpose, in which case no retry will find it and the message carries the upgrade command, or whether the tag is current and the fault is ours. Nothing in this package's behaviour changed.
+
+### Fixed
+- The README said the sampler draws "~400 fields". Measured against a real profile: 197 leaves on the most generous count, which treats every bundled font name as a field, and 155 prefs emitted. Corrected to ~200. `tests/test_readme_claims.py` now gates the engine version, the platform list, the download size, the documented subcommands in both directions, and every fenced Python example on the page - four claims that had nothing checking them.
+- A publish was racing its own verification: the install e2e runs on `release:`, which fires seconds after the upload, and the index does not serve a new version to pip immediately, so the job reported a forgotten publish that had happened two minutes earlier. A bounded five-minute poll on the per-version endpoint, scoped to the release event. CI-only.
+
+## [0.4.8] - 2026-07-28
+
+### Changed
+- Requires `invisible-core==18.9.0`, which carries a clearer engine refusal (it used to locate a missing juggler inside an `omni.ja` the tree does not have) and a publish gate that no longer reports a mistyped command with the same exit code as a broken gate. An exact pin means those reach a user only when this package's pin moves, so this release is what delivers them.
+- CI runs ruff with F821 and F811 selected, those two only: they catch a name that cannot resolve, which is not a style question and not findable by running tests. Nothing here had ever run a linter, and there are zero violations once the three below are fixed.
+
+### Fixed
+- `Renderer` was used as an annotation six times in `_behaviour.py` and defined in no module in the repository. It survives only because `from __future__ import annotations` never evaluates an annotation, so the six were strings that looked like a type and a reader had no way to learn what the parameter accepts. It is a real alias now.
+- `prof: Any` in `_motion.py`, with `Any` itself unimported. Importing it would have widened that module's deliberately tiny allowlist, which one of its own tests enforces, and there was no need: `prof` is the cumulative distance table `_profile_table` returns and `_profile_at` consumes, both annotated `list[float]` a few lines away.
+- The install e2e imported the venv helpers from `invisible_core.testing`, which the runner does not have on purpose, so the job went red at collection having tested nothing. The helpers are local to those two files again, with the reason above them, and the core's suite now parses every file the user-install workflows name and refuses the import. CI-only.
+- CI arms the hooks, because the suite asserts they are armed. The assertion moved into `invisible_core.testing` and all three repos started making it, but only the core's workflow ran `install_hooks.py`, so this repo went red on every push with a message about an unset config that reads like a developer's mistake rather than a missing CI step. CI-only.
+
 ## [0.4.7] - 2026-07-28
 
 ### Changed
@@ -51,6 +106,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The lifetime guard is a strategy object instead of a module of flags. `SessionToken` (a value object), `find_processes` (the only place psutil appears) and `LifetimeGuard` with a `JobObjectGuard` / `NullGuard` pair: `os.name` is tested in exactly one place, so no launcher code branches on the platform, and the Null implementation reports that it guarantees nothing rather than doing nothing while looking successful. Behaviour unchanged.
 - The stroke planner is six named stages instead of one 203-line function, and the idle planner is a table of episodes instead of an if/elif chain with the weights written as bare literals in the branch conditions. Both verified byte-identical against recorded output, which caught two float-associativity regressions that no other test could see - `a * b * c` and `a * (b * c)` differ in the last bit, and that is enough to change a rounded pixel and every draw after it. A permanent fingerprint test now covers 576 cases and 16135 waypoints.
 
+## [0.4.1] - 2026-07-26
+
+### Changed
+- Three long functions became named stages, with their output pinned before and after so the refactor could not change it in silence.
+- The lifetime guard became a strategy rather than a module of flags.
+- The forbidden-name scan no longer blocks a clone that has no word list.
+
 ## [0.4.0] - 2026-07-26
 
 ### Added
@@ -67,7 +129,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 - `hover()` no longer fails intermittently on Windows. The approach now completes before the automation layer's hit-target check is installed, so the only event inside its window is that layer's own move, on target. Measured on a page whose target needs a scroll: 3 failures out of 3 before, 0 out of 3 after.
 
-## [0.3.5] - 2026-07-24
+## [0.3.6] - 2026-07-25
+
+### Fixed
+- The browser tree now dies with this process even when the process is KILLED. An exception out of the `with` block was never the leak - `__exit__` runs and Playwright cleans up, measured over an interleaved A/B with zero survivors. The leak is the killed-runner path, where `__exit__` never executes at all: launch, kill the runner, and eight processes were still alive, twelve on the second attempt.
+
+### Changed
+- Declared as `invisible_playwright` on the index, pinning `invisible-core==18.1.0`.
+
+## [0.3.5] - 2026-07-25
 
 ### Changed
 - Playwright pin is back to `>=1.55,<=1.61.0`: the floor drop to `1.40` shipped in 0.3.4 is reverted. The conservative CI-tested floor (1.55) is kept together with the tested upper cap (1.61.0).

@@ -1,13 +1,18 @@
 ---
-title: "How to test whether your browser is detected"
-description: "What each public detection suite actually proves, why a green result can mean the feature is broken rather than working, and the comparison method that catches what verdicts miss."
+title: "How to test bot detection without a false pass"
+description: "What each public bot detection suite actually proves, why a passing verdict can hide a broken feature, and the method that catches what a verdict alone misses."
 parent: "Testing and Troubleshooting"
 grand_parent: "Guides"
 nav_order: 1
 ---
 
 
-# How to test whether your browser is detected
+# How to test bot detection without a false pass
+
+Test bot detection by comparing your automated browser against a stock browser on the
+same machine, field by field, run at least ten times through the same proxy production
+uses - and treat any suppressed or empty signal as a failure, not a pass. A single
+suite's verdict cannot tell a working feature from a broken one.
 
 Most people test this by opening a suite, reading the verdict, and stopping. That method
 has a specific failure mode: it cannot tell "working correctly" from "not working at
@@ -23,8 +28,16 @@ of these tools cover.
 Five public tools, each answering a different question. Using them interchangeably is
 most of why people get confused by contradictory results.
 
+| Suite | Question it actually asks | What a pass proves |
+|---|---|---|
+| sannysoft | Are you an unmodified, old headless browser? | Table stakes only - nothing about a modern one |
+| CreepJS | Are you lying about your environment? | Nothing here contradicts anything else here |
+| BotD | Which engine are you really running? | A verdict, not a fingerprint |
+| FingerprintJS | Can you be recognised again? | Linkability, not "looks human" |
+| BrowserLeaks | What does one specific surface report? | A single value, not a score |
+
 **[bot.sannysoft.com](sannysoft-explained.md)** is a smoke test. Its main table
-describes headless Chrome as it behaved several years ago, and every serious tool fixes
+describes headless Chrome as it behaved around 2018, and every serious tool fixes
 those on day one. Passing it proves you are not running an unmodified headless browser.
 The interesting part is not the table: three canvas tests are also run inside an iframe
 and compared, which is a consistency check rather than a fingerprint check.
@@ -35,17 +48,17 @@ descriptors and prototypes, and records a blocked probe as a lie by name. A high
 means nothing here contradicts anything else here.
 
 **[BotD](botd-explained.md)** returns a verdict rather than a fingerprint, and most of its
-detectors are really asking which engine you are, by testing behaviours that differ
-between engines.
+twenty detectors are really asking which engine you are, by testing behaviours that
+differ between engines.
 
 **[FingerprintJS](fingerprintjs-visitor-id.md)** gives you a visitor ID, which is a hash
-of many components. It answers "can I be recognised again", which is a different question
-from "do I look automated". The commercial version adds signals the open-source library
-does not have.
+of roughly forty-one components. It answers "can I be recognised again", which is a
+different question from "do I look automated". The commercial version adds signals the
+open-source library does not have.
 
-**[BrowserLeaks](webrtc-leak-proxy.md)** is per-surface rather than a verdict: WebRTC,
-canvas, WebGL, fonts. It is the one to reach for when you want to read a specific value
-rather than a score.
+**[BrowserLeaks](browserleaks-explained.md)** is per-surface rather than a verdict:
+WebRTC, canvas, WebGL, fonts. It is the one to reach for when you want to read a
+specific value rather than a score.
 
 None of these is a superset of the others, and a green result on one says nothing about
 the rest.
@@ -54,10 +67,10 @@ the rest.
 
 A verdict-based test cannot distinguish a working feature from an absent one.
 
-We learned this the expensive way. Our WebRTC gate asserted the sensible things: the host
-candidate does not expose the LAN address, no IPv6 candidate appears. Both passed, run
-after run. Behind a proxy on real pages, WebRTC was returning **nothing at all**, and the
-gate passed because a dead feature leaks nothing.
+We learned this the expensive way. Our [WebRTC gate](webrtc-leak-proxy.md) asserted the
+sensible things: the host candidate does not expose the LAN address, no IPv6 candidate
+appears. Both passed, run after run. Behind a proxy on real pages, WebRTC was returning
+**nothing at all**, and the gate passed because a dead feature leaks nothing.
 
 Every negative assertion is trivially satisfied by a feature that does not run.
 
@@ -78,7 +91,8 @@ removing the guard entirely still left it green.
 
 ## Compare, do not read verdicts
 
-The single highest-value change to how you test.
+The single highest-value change to how you test bot detection is direct comparison, not
+a verdict.
 
 Open the same page in your automated browser and in a **stock browser on the same
 machine**, and diff the two reports field by field. Not the scores, the fields.
@@ -181,7 +195,7 @@ handshake, your behaviour, or your address, and because a consistent browser on 
 datacenter IP is still on a datacenter IP.
 
 **Is passing sannysoft enough?** It proves you are not running an unmodified headless
-browser from several years ago.
+browser from around 2018.
 
 **Why do I get different results on different runs?** Because the domain is
 non-deterministic. That is why ten runs, not one.

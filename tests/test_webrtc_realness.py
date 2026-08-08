@@ -129,7 +129,7 @@ def creep_get_ipaddress(sdp):
     conn_ip = conn[2] if len(conn) > 2 else ""
     if conn_ip and conn_ip != blocked:
         return conn_ip
-    m = re.search(r"(udp|tcp)\s(?:\d|\w)+\s((?:\d|\w|\.|:)+)(?=\s)", sdp, re.I)
+    m = re.search(r"(udp|tcp)\s\w+\s([\w.:]+)(?=\s)", sdp, re.I)
     ip = m.group(2) if m else None
     return ip if (ip and ip != blocked) else None
 

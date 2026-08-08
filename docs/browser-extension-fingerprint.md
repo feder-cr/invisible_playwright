@@ -1,6 +1,6 @@
 ---
 title: "Browser extensions are a fingerprint surface"
-description: "An installed browser extension is itself a fingerprint surface, checkable three separate ways, and the most common reason to add one is to hide a fingerprint, which is where it turns circular."
+description: "An installed browser extension is a fingerprint surface a page can detect three ways. How sites find extensions, and why a stealth extension backfires."
 parent: "Browser Identity"
 grand_parent: "Guides"
 nav_order: 12
@@ -9,14 +9,23 @@ nav_order: 12
 
 # Browser extensions are a fingerprint surface
 
+Yes, a website can detect an installed browser extension, and it can do so three
+separate ways: by probing the resources the extension exposes, by watching what it
+changes on the page, and by spotting the traces its API overrides leave behind. So an
+extension is not just a feature you add. It is another
+[fingerprint surface](what-is-a-browser-fingerprint.md), and the most common reason
+people add one is to hide a fingerprint, which is where this gets circular.
+
 Adding an extension to an automated browser feels like adding a feature. It is also
-adding something a page can look for, in three different ways, and the most common
-reason people add one is to hide a fingerprint, which is where this gets circular.
+adding something a page can look for, and the sections below cover each of the three
+detection paths, when an extension is safe to run, and how to load one into a Firefox
+profile if you decide to.
 
 ## The three ways a page finds an extension
 
-**Web-accessible resources.** An extension that exposes files to pages does so at a URL
-containing its own identifier. Fetch that URL and see whether it loads.
+**[Web-accessible resources](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/web_accessible_resources).**
+An extension that exposes files to pages does so at a URL containing its own
+identifier. Fetch that URL and see whether it loads.
 
 ```js
 fetch('moz-extension://<id>/<file>')       // resolves only if that extension is here
@@ -38,8 +47,10 @@ own properties where prototypes are expected, getters that are not native,
 
 ## Why a stealth extension is usually the wrong shape
 
-This is worth stating plainly, because it is the most common reason someone asks how to
-load one.
+A stealth extension on top of a stealth engine usually makes you easier to detect, not
+harder, because two components deciding the same values contradict each other. This is
+worth stating plainly, because it is the most common reason someone asks how to load
+one.
 
 A stealth extension operates at the page layer. It runs inside the document, it is
 made of JavaScript, and everything on
@@ -76,8 +87,9 @@ differs from a used personal one, alongside
 
 ## How to load one, if you decide to
 
-There is no extension argument in this wrapper. What there is is a persistent profile,
-and an extension installed into that profile stays there:
+There is no extension argument in this wrapper. What there is is a
+[persistent profile](persistent-profiles.md), and an extension installed into that
+profile stays there:
 
 ```python
 with InvisiblePlaywright(seed=42, profile_dir="/path/to/profile") as browser:
@@ -89,7 +101,8 @@ add-ons page, then reuse the directory. Without `profile_dir`, every session bui
 fresh profile from the seed, which is exactly why an extension installed in one run is
 gone in the next.
 
-Pair a stable profile with a stable seed. A profile that accumulates cookies and
+Pair a stable profile with a [stable seed](reproducible-agent-browser-identity-seed.md).
+A profile that accumulates cookies and
 storage while the hardware it claims changes every launch is a session whose history
 and machine disagree about how long it has existed.
 

@@ -1,6 +1,6 @@
 ---
 title: "What BotD actually detects, and what it does not"
-description: "BotD's twenty detectors, read from its own source, mostly check whether a browser is telling the truth about which browser it is rather than looking for automation directly."
+description: "What BotD's twenty detectors actually check, read from its own source: mostly whether a browser is telling the truth about which engine it is, not automation."
 parent: "Detectors, Explained"
 grand_parent: "Guides"
 nav_order: 3
@@ -30,8 +30,15 @@ webdriver                webgl                    window_external
 window_size
 ```
 
-Exactly one of those, `webdriver`, is the check everybody knows. A handful look for
+Exactly one of those, [`webdriver`](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/webdriver),
+is the check everybody knows. A handful look for
 specific named tools. The rest are engine identity and internal consistency.
+
+| Detector group | The question it asks | Examples named here |
+|---|---|---|
+| The one everyone knows | Is the automation flag set? | `webdriver` |
+| Engine identity | Does the browser behave like the engine its user agent claims? | `eval_length`, `product_sub`, `error_trace`, `window_external` |
+| Internal consistency | Do two views of the same fact agree, and does a real machine and window exist? | `languages_inconsistency`, `mime_types_consistence`, `plugins_inconsistency`, `rtt`, `window_size` |
 
 ## The interesting group: what engine are you really?
 
@@ -46,8 +53,9 @@ that is a bot. A Chromium build claiming to be Firefox fails here on a value nob
 to spoof.
 
 **`product_sub`.** If the browser claims to be Chrome, Safari, Opera or WeChat, then
-`navigator.productSub` must be `20030107`. Firefox reports `20100101`. One
-comparison, no ambiguity.
+[`navigator.productSub`](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/productSub)
+must be `20030107`. Firefox reports `20100101`. One
+comparison, no ambiguity ([why a real Firefox reports `20100101`](navigator-vendor-productsub-firefox.md)).
 
 **`error_trace`.** Stack traces are formatted differently by different engines, and
 the detector matches the string for known tool signatures, PhantomJS among them.
@@ -60,6 +68,9 @@ None of these are secret. They are just values a spoofing layer does not think a
 because they are not on the list of "things bots are known for".
 
 ## The second group: does your story hold together?
+
+This group never asks whether a value is unusual. It asks whether two values that
+must agree actually do, and whether a real machine and window are behind them.
 
 **`languages_inconsistency`**, **`mime_types_consistence`**,
 **`plugins_inconsistency`**: the same fact asked in two ways, with the answers
@@ -74,10 +85,12 @@ looking for bots directly.
 
 ## What this means if you are on the other side
 
-Three things follow, and they are the same three that turn up everywhere in this
-area.
+Three things follow: spoofing a user agent alone tends to make a browser easier to
+detect rather than harder, being a genuine instance of the engine you claim passes
+this whole detector class for free, and the risk BotD does not touch moves to other
+signals entirely. They are the same three that turn up everywhere in this area.
 
-**Spoofing a user agent alone is worse than not spoofing it.** Change the string and
+**[Spoofing a user agent alone is worse than not spoofing it](is-changing-user-agent-enough.md).** Change the string and
 you have to change `productSub`, `eval.toString().length`, the stack-trace format,
 `window.external`, and the plugin and MIME arrays to match, or you have created the
 exact contradiction BotD is built to find. Most user-agent spoofing makes a browser
@@ -89,9 +102,9 @@ right stack format and the right plugin array, because they are not claims, they
 the engine. There is nothing to keep consistent because nothing was changed.
 
 **The remaining risk moves elsewhere.** Passing every one of these twenty says
-nothing about whether your GPU string is plausible, your fonts match your platform,
-or your timezone agrees with your IP. Those are the ones that decide modern outcomes
-and BotD does not look at them.
+nothing about whether [your GPU string is plausible](webgl-renderer-strings.md), your
+fonts match your platform, or [your timezone agrees with your IP](timezone-proxy-mismatch.md).
+Those are the ones that decide modern outcomes and BotD does not look at them.
 
 ## Checking your own
 
@@ -108,15 +121,16 @@ on the other surfaces compensates for that.
 **What is BotD?** The open-source bot detector from the FingerprintJS team. It runs in
 the page and returns a verdict rather than a fingerprint.
 
-**Is BotD the same as FingerprintJS?** No. FingerprintJS identifies a visitor across
-sessions. BotD answers a different question: is this automation.
+**Is BotD the same as FingerprintJS?** No. FingerprintJS
+[identifies a visitor across sessions](fingerprintjs-visitor-id.md). BotD answers a
+different question: is this automation.
 
 **Why does most of it not look like bot detection?** Because most detectors check which
 browser engine you really are, by testing behaviours that differ between engines. A
 browser claiming one engine and behaving like another is the finding.
 
-**Can I pass it by setting `navigator.webdriver` to undefined?** No. That is one
-detector out of roughly twenty.
+**Can I pass it by setting `navigator.webdriver` to undefined?** No. That is
+[one detector out of roughly twenty](navigator-webdriver-explained.md).
 
 **Does passing BotD mean I am undetected?** It means one open-source detector found
 nothing. Commercial systems combine far more, including things no in-page script can

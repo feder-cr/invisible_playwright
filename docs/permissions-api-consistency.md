@@ -1,6 +1,6 @@
 ---
 title: "Permissions API: the two answers that must agree"
-description: "Notification.permission and navigator.permissions.query answer the same question through different code, and headless browsers have historically disagreed. The set of permission states is also a fingerprint."
+description: "The Permissions API and Notification.permission answer one question two ways, and a mismatch long flagged headless browsers. What a real browser shows."
 parent: "Browser Identity"
 grand_parent: "Guides"
 nav_order: 8
@@ -8,6 +8,13 @@ nav_order: 8
 
 
 # Permissions API: the two answers that must agree
+
+**The [Permissions API](https://developer.mozilla.org/en-US/docs/Web/API/Permissions_API) and [`Notification.permission`](https://developer.mozilla.org/en-US/docs/Web/API/Notification/permission_static) describe the same permission state
+through two code paths, and a real browser gives the same answer both ways.** When they
+disagree - classically `Notification.permission` says `denied` while
+`navigator.permissions.query({name: 'notifications'})` says `prompt` - the browser is
+almost certainly headless or automated. The whole set of permission states is a second
+signal: granting everything to silence dialogs produces a browser almost nobody has.
 
 There is a headless check that has been in every detection suite for years and takes two
 lines:
@@ -28,12 +35,11 @@ elsewhere, and what a normal browser looks like.
 
 ## Why the two answers can differ
 
-`Notification.permission` is a property on the Notification API. The Permissions API is a
-separate, newer interface designed to give a uniform way to query any permission. They
-describe the same state and they reach it through different code.
-
-A browser that implements one path fully and the other partially, or an environment where
-notifications are not really available while the permission machinery still answers, ends
+The two answers can differ because they reach the same permission state through separate
+code: `Notification.permission` is a property on the older Notification API, while the
+Permissions API is a newer interface built to query any permission the same way. A browser
+that implements one path fully and the other partially - or an environment where
+notifications are not really available while the permission machinery still answers - ends
 up with two different answers to the same question. Historically that is what headless
 builds did.
 
@@ -78,18 +84,20 @@ worse than the dialog you avoided.
 
 ## What automation does to permissions
 
-Two mechanisms, and the difference matters.
+Automation touches permissions two different ways, and only one of them causes lasting
+trouble: a scoped grant at the context level that disappears with the context, and a grant
+made through the browser's own UI or profile that survives into future sessions.
 
-**Granting at the context level.** Most frameworks let you pre-grant permissions when
-creating a context. This is scoped to that context and disappears with it, which is the
-tidy version.
+**Granting at the context level.** Most frameworks let you
+[pre-grant permissions when you create a context](set-geolocation-permissions-per-playwright-context.md).
+This is scoped to that context and disappears with it, which is the tidy version.
 
 **Granting through the browser's own UI or profile.** A permission granted this way is
 written into the profile and survives. In a persistent profile it survives forever, or
 until something removes it.
 
-Both change what the Permissions API reports. Only the second follows you into future
-sessions, and that is the one that causes trouble.
+Both change what the Permissions API reports, but only the profile grant follows you into
+future sessions.
 
 ### The grant that turns off something else
 
@@ -184,6 +192,7 @@ Profile-level grants persist, including into future sessions on a reused profile
 practice is the same thing.
 
 **See also:** [what a persistent profile fixes and breaks](persistent-profiles.md),
+[the same pair read as a bot-detection signal](notification-permission-detection.md),
 [WebRTC leak with a proxy](webrtc-leak-proxy.md), and
 [what sannysoft actually checks](sannysoft-explained.md), whose permissions row is this
 check.

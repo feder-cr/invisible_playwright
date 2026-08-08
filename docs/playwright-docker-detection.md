@@ -1,6 +1,6 @@
 ---
 title: "Playwright in Docker: it runs, and still gets blocked"
-description: "A container that starts perfectly and renders perfectly can still get a different page than your laptop, because it describes a machine that is not a person's, in about six places at once."
+description: "Playwright runs in Docker but gets blocked? The container describes a datacenter machine - no GPU, few fonts, no audio, a default screen - not automation flags."
 parent: "Network, Proxy and WebRTC"
 grand_parent: "Guides"
 nav_order: 7
@@ -8,6 +8,12 @@ nav_order: 7
 
 
 # Playwright in Docker: it runs, and still gets blocked
+
+**A Playwright container that starts and renders perfectly can still get blocked,
+because it describes a machine no real person owns.** WebGL reports no GPU, the font
+set is tiny, there is no audio device and no speech voices, the screen is a default
+nobody has, and the core and memory counts come in pairs nobody buys. Every answer is
+consistent with "datacenter", and none of it changes when you fix `navigator.webdriver`.
 
 Almost every page about Playwright and Docker is about making it start: install the
 system dependencies, add the fonts, use the official image. Those pages are correct and
@@ -48,18 +54,17 @@ height because there is no taskbar, a device pixel ratio of 1.
 cores reporting eight gigabytes, or the reverse.
 [Which the machine reports directly](hardware-concurrency-device-memory.md).
 
-Six answers, all consistent with each other and all consistent with "datacenter". None
-of them is about automation. This is why fixing `navigator.webdriver` changes nothing
-here.
+Six answers, all consistent with each other and all consistent with
+[a browser running on a server](can-a-website-tell-you-are-on-a-server.md). None of them
+is about automation. This is why fixing `navigator.webdriver` changes nothing here.
 
 ## The official image is a cohort, not a disguise
 
-Worth stating because the advice is universal and the consequence is never mentioned.
-
-Using the maintained Playwright Docker image is the right call for reliability. It is
-also true that everyone else following that advice has the same font set, the same
-library versions and the same defaults. A font list that exactly matches a widely used
-CI image is not anonymous, it is a label.
+The official Playwright Docker image fixes reliability, not detection. Using the
+maintained image is the right call, and it is also true that everyone else following
+that universal advice has the same font set, the same library versions and the same
+defaults. A font list that exactly matches a widely used CI image is not anonymous, it
+is a label, and that is the consequence nobody mentions.
 
 That is not an argument against using it. It is an argument for knowing what it does
 and does not buy: it buys you a browser that starts and renders consistently, and it
@@ -137,8 +142,10 @@ accompanies it, and every item on that list is also true of a headful browser in
 same container.
 
 **See also:** [the checklist for being detected on one site](playwright-detected-as-bot.md),
-which is the order to work in, and [three ways to make Playwright undetected](playwright-stealth-levels.md),
-which explains why none of the page-level tools reach any of this.
+which is the order to work in, [three ways to make Playwright undetected](playwright-stealth-levels.md),
+which explains why none of the page-level tools reach any of this, and
+[why the same code works locally but fails in the cloud](why-playwright-works-locally-fails-in-cloud.md),
+which is this same gap on a bigger host.
 
 ---
 

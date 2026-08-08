@@ -1,6 +1,6 @@
 ---
 title: "Human-like mouse movement: Bezier curves are the easy part"
-description: "A good Bezier curve is the easy half of human-like mouse movement. The half nobody mentions is that every pointer event carries fields saying where it came from, and a perfect curve can still fail that check."
+description: "Human-like mouse movement needs more than a Bezier curve: every pointer event carries fields saying where it came from, and a perfect curve can still fail."
 parent: "The Automation Layer"
 grand_parent: "Guides"
 nav_order: 5
@@ -8,6 +8,11 @@ nav_order: 5
 
 
 # Human-like mouse movement: Bezier curves are the easy part
+
+Human-like mouse movement takes two things, not one: a natural path, and pointer
+events whose fields match a real device. The curve is the easy half. A convincing arc
+delivered as events that report, in plain fields any page can read, that no hand
+produced them still fails on the cheapest possible check.
 
 Search for this and you get a dozen libraries that draw a nice curve between two
 points, with jitter, overshoot and a bell-shaped velocity profile. They are not wrong.
@@ -35,21 +40,27 @@ separates "the driver moved the pointer" from "a script pretended to".
 
 ## The three layers, and what each can reach
 
+Mouse movement can be produced at three layers, and each reaches less of the event
+than the one below it: page JavaScript can shape the path but never the trusted flag,
+the automation driver produces trusted events but not all of their content, and only
+the browser's own input path decides every field the way a real device would.
+
 **Page JavaScript.** `element.dispatchEvent(new MouseEvent('mousemove', ...))`. The
 path can be as human as you like and the events are `isTrusted: false`, permanently,
-because the flag is set by the browser and is not writable. This is the layer most
-"humanize" snippets on the web operate at, and it fails the cheapest possible check.
+because [the flag is set by the browser and is not writable by page script](https://developer.mozilla.org/en-US/docs/Web/API/Event/isTrusted).
+This is the layer most "humanize" snippets on the web operate at, and it fails the
+cheapest possible check.
 
-**The automation driver.** `page.mouse.move()` in Playwright, and the equivalents
-elsewhere. These produce genuinely trusted events, because the browser generates them
-internally rather than the page. This is a real improvement and it is where the
-Bezier libraries plug in: they call `mouse.move()` many times along a curve instead of
-once at the destination.
+**The automation driver.** [`page.mouse.move()`](https://playwright.dev/python/docs/api/class-mouse)
+in Playwright, and the equivalents elsewhere. These produce genuinely trusted events,
+because the browser generates them internally rather than the page. This is a real
+improvement and it is where the Bezier libraries plug in: they call `mouse.move()`
+many times along a curve instead of once at the destination.
 
 What the driver does not fix by itself is the *content* of those events. Whether
-`pressure` changes when a button goes down, whether `pointerType` is set, whether the
-timing between events looks like a device rather than a loop, all depend on what the
-driver fills in.
+`pressure` changes when a button goes down, whether [`pointerType`](https://developer.mozilla.org/en-US/docs/Web/API/PointerEvent/pointerType)
+is set, whether the timing between events looks like a device rather than a loop, all
+depend on what the driver fills in.
 
 **The browser's own input path.** Values decided where the browser builds the event.
 At this level `pressure`, `pointerType` and the trusted flag are simply what a real
@@ -137,7 +148,8 @@ where they came from.
 cheapest check passes. What can still stand out is their timing and their fields.
 
 **Why is `isTrusted` false in my script?** Because you dispatched the event from page
-JavaScript. That flag is set by the browser and cannot be assigned.
+JavaScript. That flag is set by the browser and cannot be assigned, which is
+[why a JS-dispatched click can never be trusted while a driver-level one is](playwright-clicks-istrusted.md).
 
 **Do I need a humanisation library?** If your tool teleports the pointer, yes, or
 something equivalent. If it already draws paths, the next thing worth checking is the

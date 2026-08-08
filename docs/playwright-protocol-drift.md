@@ -1,6 +1,6 @@
 ---
 title: "Why a Playwright upgrade broke 97 of 133 tests overnight"
-description: "A custom Firefox driver speaks a closed-world wire protocol with Playwright's client. When the client adds a field the server never declared, the browser still launches, still loads pages, and one specific API silently stops working."
+description: "A Playwright client upgrade added one undeclared field and broke 97 of 133 tests while the browser launched fine. What protocol drift is and how to catch it."
 parent: "The Automation Layer"
 grand_parent: "Guides"
 nav_order: 6
@@ -8,6 +8,13 @@ nav_order: 6
 
 
 # Why a Playwright upgrade broke 97 of 133 tests overnight
+
+A Playwright upgrade breaks a custom Firefox driver when the newer client sends a
+protocol field the browser's automation server never declared. The server validates
+each command against a closed-world schema, so it rejects the whole call rather than
+ignoring the unknown field, and the browser still launches, still loads pages, and one
+specific API quietly stops working. That mismatch is protocol drift, and in one real
+case it took down 97 of 133 end-to-end tests in a single upgrade.
 
 Playwright does not talk to Firefox through the DevTools Protocol the way it does with
 Chromium. It talks through Juggler, an internal automation protocol built for Firefox,
@@ -33,7 +40,10 @@ calls it.
 A client upgrade added new fields to two existing viewport-related commands. Nothing
 about the command names changed, nothing in a changelog flagged it as a breaking
 change for a third-party server, because from Playwright's own point of view it was
-an addition, not a break.
+an addition, not a break. This driver deliberately runs
+[stock, unmodified Playwright against a patched Firefox binary](stock-playwright-patched-binary.md),
+which keeps upgrades cheap but also means an upstream field addition arrives
+unannounced on the server that has to accept it.
 
 The first of the two fields was found by hand, the ordinary way: something failed,
 someone read the rejected payload, added the missing declaration, moved on. That felt
@@ -122,7 +132,11 @@ against your server's declared schema, in both directions, and validate the diff
 itself by removing a real declaration and confirming it gets flagged.
 
 **See also:** [invisible_playwright vs Patchright](vs-patchright.md), for the other side
-of the driver-versus-engine question this protocol sits underneath; and
+of the driver-versus-engine question this protocol sits underneath;
+[how stock Playwright connects to a patched Firefox binary](stock-playwright-patched-binary.md),
+for why the driver stays unmodified across upgrades;
+[when Firefox launches but Playwright still cannot drive it](juggler-missing-packaged-build.md),
+another green-launch failure that a smoke test misses; and
 [how to test whether your setup is actually working](how-to-test-bot-detection.md), for
 the same shallow-probe-versus-real-usage gap in a different context.
 

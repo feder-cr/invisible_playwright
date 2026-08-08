@@ -1,6 +1,6 @@
 ---
 title: "Three ways to make Playwright undetected"
-description: "Stealth tools for Playwright get compared as a flat list. They actually operate at three different levels, page, driver and engine, and the level decides what each one can and cannot reach."
+description: "Playwright stealth tools get compared as a flat list, but they work at three levels - page, driver, engine - and the level decides what each can reach."
 parent: "Comparisons"
 nav_order: 1
 ---
@@ -8,19 +8,24 @@ nav_order: 1
 
 # Three ways to make Playwright undetected
 
+Playwright stealth tools operate at three different levels: patching the page's
+JavaScript, patching the automation driver, or patching the browser engine itself.
+Each level fixes a different set of tells and stops at a different wall, which is
+the part flat comparison lists never say.
+
 Every few months someone posts a list of stealth tools for Playwright, and the list
 is always flat: eight names, a table of stars, a recommendation. That framing hides
 the only thing that matters, which is that these tools do not do the same kind of
-thing at all. They operate at three different levels, and the level determines what
-they can and cannot fix.
+thing at all.
 
 Here is the map I wish I had when I started.
 
 ## Level 1: patch the page
 
 The oldest approach. Before the site's own JavaScript runs, inject a script that
-redefines the things that give automation away. `navigator.webdriver`, the plugin
-array, the permissions API, the WebGL vendor strings.
+redefines the things that give automation away.
+[`navigator.webdriver`](navigator-webdriver-explained.md), the plugin array, the
+permissions API, the [WebGL vendor strings](webgl-renderer-strings.md).
 
 **Tools:** `playwright-stealth` and its forks on the Python side, the
 `puppeteer-extra-plugin-stealth` lineage on the Node side.
@@ -32,12 +37,13 @@ and you should try it first.
 **Where it stops:** everything you redefine is a JavaScript object living in the
 same runtime as the code inspecting it. A redefined property is an own property
 where a native one would be inherited. A replacement getter is a function whose
-source you can print. Patch `Function.prototype.toString` to hide that, and the
-patched `toString` is now itself the anomaly. You are in a race inside the
+source you can print. Patch
+[`Function.prototype.toString`](tostring-native-code-detection.md) to hide that,
+and the patched `toString` is now itself the anomaly. You are in a race inside the
 opponent's runtime, and the opponent gets to look at everything you did.
 
-It also does nothing about the machine. Fonts, GPU, timezone, audio stack, TLS
-handshake: all still the real ones.
+It also does nothing about the machine. [Fonts](bundled-fonts-cross-platform.md),
+GPU, timezone, audio stack, TLS handshake: all still the real ones.
 
 ## Level 2: patch the driver
 
@@ -66,15 +72,16 @@ normal.
 
 Change the values in the browser's C++ source, compile, and ship the binary.
 
-**Tools:** Camoufox, and `invisible_playwright`, which I maintain. Both are patched
-Firefox builds.
+**Tools:** [Camoufox](vs-camoufox.md), and `invisible_playwright`, which I
+maintain. Both are patched Firefox builds.
 
 **What it fixes:** the distinction between a spoofed value and a real one
 disappears, because the engine reports through the same native code path a normal
 build uses. `Function.prototype.toString` says `[native code]` because it is native
 code. More importantly, it reaches surfaces that JavaScript cannot: what the font
-subsystem enumerates, what the WebGL implementation reports, how the audio pipeline
-rounds, what the network layer sends.
+subsystem enumerates, what the WebGL implementation reports,
+[how the audio pipeline rounds](audiocontext-fingerprinting.md),
+[what the network layer sends](ja3-ja4-tls-fingerprint.md).
 
 That reach is the actual argument for level 3. Not "it is harder to detect", but
 "there are entire surfaces the other two levels cannot touch at all".
@@ -94,8 +101,9 @@ That last point deserves more attention than it gets. A stealth build is only as
 good as the plausibility of what it claims. If the GPU string it reports is a
 software rasterizer, the browser has just announced it is running on a machine with
 no graphics hardware, and no amount of C++ patching elsewhere undoes that. I know
-because I found exactly that in my own persona pool: a small share of seeds were
-handing out the Windows software renderer as if it were a graphics card. Real data
+because I found exactly that in this project's own early data: a small share of
+profiles were handing out the Windows software renderer as if it were a graphics
+card. Real data
 sampled from real users contains servers, and if you sample naively you inherit
 them.
 

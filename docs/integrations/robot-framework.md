@@ -59,8 +59,7 @@ since it is Python underneath anyway.
 ```bash
 pip install robotframework-browser invisible-playwright
 rfbrowser init
-invisible-playwright fetch
-invisible-playwright path
+invisible-playwright fetch    # downloads if needed, prints the path as its last line
 python -c "import json;from invisible_playwright import get_default_stealth_prefs;print(json.dumps(get_default_stealth_prefs(seed=1, humanize=True)))" > prefs.json
 ```
 
@@ -75,7 +74,7 @@ a run.
 Library     Browser
 
 *** Variables ***
-${BINARY}       /absolute/path/from/invisible-playwright path
+${BINARY}       /absolute/path/from/invisible-playwright fetch
 
 *** Keywords ***
 Open Stealth Browser
@@ -157,7 +156,7 @@ reachable, through two different string-format arguments instead of one keyword:
 *** Test Cases ***
 Open the patched Firefox
     Open Browser    about:blank    Firefox
-    ...    options=binary_location=r"/absolute/path/from/invisible-playwright path"
+    ...    options=binary_location=r"/absolute/path/from/invisible-playwright fetch"
     ...    ff_profile_dir=set_preference("privacy.resistFingerprinting", False)
 ```
 

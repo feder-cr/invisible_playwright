@@ -1,6 +1,6 @@
 ---
 title: "pyppeteer's own maintainer says to switch to Playwright"
-description: "The unofficial Python port of Puppeteer carries a plain notice at the top of its own README: unmaintained, use playwright-python instead. Worth reading past the headline for what actually changed underneath, not just that it did."
+description: "pyppeteer's own README says it is unmaintained and points to playwright-python. Why the maintainer names Playwright specifically, and what switching does not fix."
 parent: "Comparisons"
 nav_order: 10
 ---
@@ -8,14 +8,15 @@ nav_order: 10
 
 # pyppeteer's own maintainer says to switch to Playwright
 
-Some of the entries in this section require checking a repository's commit history
-to notice the maintenance question. `pyppeteer` doesn't require that. Its own README
-opens with: "this repo is unmaintained and has been outside of minor changes for a
-long time. Please consider playwright-python as an alternative."
+`pyppeteer` is unmaintained, and its own maintainer recommends switching to
+Playwright. The README opens with a plain notice: "this repo is unmaintained and has
+been outside of minor changes for a long time. Please consider playwright-python as
+an alternative." That is the finding, stated by the source itself, in its own words.
 
-That's the whole finding, from the source, in the source's own words. What's worth
-unpacking is why the recommendation lands specifically on Playwright rather than on
-"a more actively updated Puppeteer port," and what that says about the difference
+Most maintenance questions in this section need a look at a repository's commit
+history to answer. `pyppeteer` doesn't: the notice is the first thing you read. What's
+worth unpacking is why the recommendation lands specifically on Playwright rather than
+on "a more actively updated Puppeteer port," and what that says about the difference
 between the two libraries rather than just about one project's staffing.
 
 ## What pyppeteer was, briefly
@@ -28,14 +29,26 @@ from Python.
 
 ## Why the fix isn't "find a more active fork"
 
-The interesting part of the maintainer's own note is which project they point to.
-Not a competing Puppeteer port with fresher commits - Playwright, a different
-library built by a different team, with a different underlying design.
+The maintainer points to Playwright, not to a competing Puppeteer port with fresher
+commits, because the recommendation is about architecture, not just activity.
+Playwright is a different library built by a different team with a different
+underlying design, and that design is the reason the port stopped being where the
+energy went.
+
+The two libraries differ on more than staffing:
+
+| | pyppeteer | Playwright |
+|---|---|---|
+| Maintenance | Unmaintained, per its own README | Actively developed |
+| Browser family | Chromium only | Chromium, Firefox, WebKit |
+| Automation protocol | CDP only | Per engine (CDP for Chromium, Firefox's own automation layer for Firefox) |
+| Design premise | A Python port of Puppeteer | One driver abstraction over three engines |
 
 Puppeteer and pyppeteer are both built around one browser family and one protocol:
 Chromium and CDP. Playwright was built afterward with a different premise, one
-driver abstraction over three separate engines - Chromium, Firefox, and WebKit -
-each through whatever protocol actually works for that engine (CDP for Chromium,
+driver abstraction over [three separate
+engines](https://playwright.dev/python/docs/browsers) - Chromium, Firefox, and
+WebKit - each through whatever protocol actually works for that engine (CDP for Chromium,
 Firefox's own automation layer for Firefox). That's a wider foundation than a CDP
 port can be extended into, and it's a reasonable part of why maintaining a
 Python-side Puppeteer port stopped being where the energy went: the actively
@@ -52,7 +65,8 @@ changes about how it detects automation traffic going forward. That gap only gro
 The part worth adding, if the reason for using pyppeteer in the first place was
 detection avoidance rather than just Python-side Chromium control: neither
 `pyppeteer` nor Playwright's default configuration were ever solving the property-
-level and protocol-level checks a determined detector runs. Moving to Playwright
+level and protocol-level checks a determined detector runs.
+[Moving to Playwright](migrate-puppeteer-to-playwright-stealth.md)
 because its own upstream is more actively developed fixes a maintenance gap; it
 does not, by itself, fix the underlying automation-detection surface, which is a
 separate concern from which driver you picked.
@@ -69,9 +83,9 @@ and WebKit through a shared interface, rather than being tied to one browser fam
 and one protocol the way a Puppeteer port structurally is.
 
 **Does switching to Playwright fix bot detection on its own?** No. It fixes having
-an actively maintained upstream. What a detector actually checks - properties,
-protocol artifacts, TLS, rendering - is a separate question from which driver
-library you're using.
+an actively maintained upstream. [What a detector actually
+checks](how-do-websites-detect-bots.md) - properties, protocol artifacts, TLS,
+rendering - is a separate question from which driver library you're using.
 
 **Is this specific to Python, or does the same apply elsewhere?** The maintenance
 gap is specific to this particular port. The broader engine-abstraction point is

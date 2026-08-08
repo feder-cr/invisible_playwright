@@ -39,7 +39,7 @@ binary and the seeded preferences.
 
 Written against CodeceptJS 4.x (`lib/helper/Playwright.js`,
 `_getOptionsForBrowser` returns `{ ...config[config.browser] }`) and
-`invisible-playwright` 0.4.6.
+`invisible-playwright` 0.6.0.
 
 CodeceptJS's own [Playwright docs](https://github.com/codeceptjs/CodeceptJS/blob/4.x/docs/playwright.md)
 already mention this project as an example of pointing at a custom executable. This
@@ -52,8 +52,7 @@ JavaScript. Get them once:
 
 ```bash
 pip install invisible-playwright
-invisible-playwright fetch
-invisible-playwright path    # prints the binary path
+invisible-playwright fetch    # downloads it if missing, prints the binary path as its last line
 python -c "import json;from invisible_playwright import get_default_stealth_prefs;print(json.dumps(get_default_stealth_prefs(seed=1, humanize=True)))" > prefs.json
 ```
 
@@ -72,7 +71,7 @@ exports.config = {
       browser: 'firefox',
       show: false,
       firefox: {
-        executablePath: '/absolute/path/from/invisible-playwright path',
+        executablePath: '/absolute/path/from/invisible-playwright fetch',
         firefoxUserPrefs: JSON.parse(fs.readFileSync('prefs.json', 'utf8')),
       },
     },
@@ -150,7 +149,12 @@ launch options, so `executablePath` and `firefoxUserPrefs` both arrive.
 helper's top level. At the top level it is a CodeceptJS option; one level down it is a
 Playwright one.
 
-**Can I set a proxy?** Yes, in the same block, as Playwright's `proxy` object.
+**Can I set a proxy?** Yes, in the same block, as Playwright's `proxy` object, and
+that is the whole answer for an `http://` or `https://` endpoint. For a `socks5://`
+one, leave it out of the helper config and pass it to the prefs generator instead,
+`get_default_stealth_prefs(seed=1, humanize=True, proxy={...})`. The SOCKS
+credentials travel in the preferences, and a proxy set through Playwright's option is
+applied to every request ahead of them with no username or password attached.
 
 **Why should I not set `userAgent` here?** Because CodeceptJS puts it right next to the
 options above, which makes it easy to set by accident, and it is the one value that has

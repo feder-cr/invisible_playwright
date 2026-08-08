@@ -53,7 +53,7 @@ def assert_wire_version(browser) -> None:
             f"build {seal.build_id})\n"
             "  why          : application.ini can be edited; this value comes from the "
             "running engine itself.\n"
-            "  fix          : python -m invisible_playwright fetch --force")
+            "  fix          : python -m invisible_playwright fetch")
 
 
 def assert_playwright_range() -> None:

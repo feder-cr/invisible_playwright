@@ -59,8 +59,7 @@ The binary has a CLI:
 
 ```bash
 pip install invisible-playwright
-invisible-playwright fetch     # downloads and caches it, once
-invisible-playwright path      # prints the absolute path
+invisible-playwright fetch     # downloads and caches it once, prints the absolute path
 ```
 
 The preferences do not, and that is a real gap instead of an omission from this
@@ -86,7 +85,7 @@ raw, _ := os.ReadFile("prefs.json")
 json.Unmarshal(raw, &prefs)
 
 browser, _ := pw.Firefox.Launch(playwright.BrowserTypeLaunchOptions{
-    ExecutablePath:   playwright.String("/path/from/invisible-playwright path"),
+    ExecutablePath:   playwright.String("/path/from/invisible-playwright fetch"),
     FirefoxUserPrefs: prefs,
     Headless:         playwright.Bool(true),
 })
@@ -99,7 +98,7 @@ Map<String, Object> prefs = new ObjectMapper()
         .readValue(new File("prefs.json"), new TypeReference<>() {});
 
 Browser browser = playwright.firefox().launch(new BrowserType.LaunchOptions()
-        .setExecutablePath(Paths.get("/path/from/invisible-playwright path"))
+        .setExecutablePath(Paths.get("/path/from/invisible-playwright fetch"))
         .setFirefoxUserPrefs(prefs)
         .setHeadless(true));
 ```
@@ -112,7 +111,7 @@ var prefs = JsonSerializer.Deserialize<Dictionary<string, object>>(
 
 var browser = await playwright.Firefox.LaunchAsync(new BrowserTypeLaunchOptions
 {
-    ExecutablePath   = "/path/from/invisible-playwright path",
+    ExecutablePath   = "/path/from/invisible-playwright fetch",
     FirefoxUserPrefs = prefs,
     Headless         = true,
 });
@@ -124,7 +123,7 @@ var browser = await playwright.Firefox.LaunchAsync(new BrowserTypeLaunchOptions
 prefs = JSON.parse(File.read('prefs.json'))
 
 playwright.firefox.launch(
-  executablePath: '/path/from/invisible-playwright path',
+  executablePath: '/path/from/invisible-playwright fetch',
   firefoxUserPrefs: prefs,
   headless: true,
 )
@@ -167,8 +166,9 @@ and those two options are the whole contract.
 **Do I still need Python?** Only to obtain the binary and to generate the preferences
 once. The automation itself does not.
 
-**Is there a CLI for the preferences?** Not today. There is `fetch` and `path` for the
-binary; the preferences come from a one-line Python call whose JSON you keep.
+**Is there a CLI for the preferences?** Not today. There is `fetch` for the binary,
+which prints its path as its last line; the preferences come from a one-line Python
+call whose JSON you keep.
 
 **How often do I regenerate `prefs.json`?** Whenever you upgrade the package. The
 preference set moves with the engine, and an old file paired with a new binary is a

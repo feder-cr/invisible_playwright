@@ -1,13 +1,13 @@
 ---
-title: "Firefox launches fine standalone but Playwright can't drive it: a packaging gap"
-description: "A Firefox build renders, screenshots, and passes every manual smoke test, then Playwright fails at launch with TargetClosedError and a chrome://juggler load failure. The cause isn't the browser or the driver - it's what the packaging step left out."
+title: "Firefox launches but Playwright can't drive it: packaging gap"
+description: "A custom Firefox build launches and screenshots fine, yet Playwright fails at launch with TargetClosedError. The real cause is a packaging gap, not the driver."
 parent: "The Automation Layer"
 grand_parent: "Guides"
 nav_order: 11
 ---
 
 
-# Firefox launches fine standalone but Playwright can't drive it: a packaging gap
+# Firefox launches but Playwright can't drive it: packaging gap
 
 A Firefox build that launches, renders a page, and takes a screenshot from the command
 line looks like a working build. Handing that same binary to Playwright can still fail
@@ -123,6 +123,11 @@ genuinely isn't present in that build's packaged chrome registry.
 launches and renders, which a packaging bug like this one leaves completely intact -
 the failure is specific to the one component a launch-only or screenshot-only gate
 never exercises.
+
+**Does this only break Playwright, or would any driver hit the same failure?** Any
+driver that connects through the browser's automation layer would fail the same way,
+because the missing piece is the layer itself, not anything specific to one client
+library - Playwright is simply the driver that surfaced it first.
 
 **See also:** [why one launch in six was randomly slow](slow-browser-launch-timeout-budget.md)
 and [why a killed test runner leaks Firefox processes on Windows](orphaned-browser-process-windows.md),

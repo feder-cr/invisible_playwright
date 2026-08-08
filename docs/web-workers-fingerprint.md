@@ -1,6 +1,6 @@
 ---
 title: "Web Workers: where page-level fingerprint patches fail"
-description: "A worker is a separate realm with its own navigator, and OffscreenCanvas lets a page fingerprint the canvas from inside one. Patches applied to the document never run there."
+description: "A Web Worker is a separate realm with its own navigator, and OffscreenCanvas fingerprints the canvas from inside one. Page-level stealth patches never run there."
 parent: "Browser Identity"
 grand_parent: "Guides"
 nav_order: 15
@@ -9,10 +9,11 @@ nav_order: 15
 
 # Web Workers: where page-level fingerprint patches fail
 
-If you want to understand why patching the page has a ceiling, workers are the clearest
-demonstration available. A worker is a **separate JavaScript realm**. Your init script ran
-in the document. The worker did not inherit it, cannot see it, and answers every question
-from the browser's own code.
+A Web Worker runs in a **separate JavaScript realm** with its own `navigator`, so a website
+can fingerprint it independently of the page. A stealth patch injected into the document
+never runs inside a worker: the worker did not inherit it, cannot see it, and answers every
+question from the browser's own code. That is why page-level patching has a ceiling, and
+workers are the clearest demonstration of it.
 
 So a page that wants the truth does not have to defeat your patch. It can ask somewhere
 your patch never went.
@@ -22,6 +23,10 @@ entirely, why this is the sharpest case against that layer, what an engine-level
 does differently, and how to check your own.
 
 ## A worker is a separate realm with its own navigator
+
+A worker created from a script or blob URL gets its own `navigator`, populated by the
+browser for that worker rather than copied from the document. Reading it from inside the
+worker shows what the browser decided independently of any page-level patch:
 
 ```js
 const w = new Worker(URL.createObjectURL(new Blob([`
@@ -47,7 +52,7 @@ result rather than a hardware result.
 
 ### What a worker can read
 
-`WorkerNavigator` is a subset of `Navigator`, and the subset is exactly the part that
+[`WorkerNavigator`](https://developer.mozilla.org/en-US/docs/Web/API/WorkerNavigator) is a subset of `Navigator`, and the subset is exactly the part that
 matters here: `userAgent`, `platform`, `language` and `languages`,
 `hardwareConcurrency`, `deviceMemory` where implemented, `onLine`, and the storage
 estimate. Plus `performance.now()` for timing.
@@ -57,10 +62,11 @@ patches do not reach.
 
 ## OffscreenCanvas: the canvas path that bypasses the patch
 
+[`OffscreenCanvas`](https://developer.mozilla.org/en-US/docs/Web/API/OffscreenCanvas) lets a worker create and draw to a canvas with no DOM element involved and
+read the pixels back, which sidesteps any protection that only hooks the HTML canvas element.
 This is the strongest version of the problem, and it is not theoretical.
 
-`OffscreenCanvas` lets a worker create and draw to a canvas with no DOM element involved,
-then read the pixels back:
+Here it is, inside a worker:
 
 ```js
 // inside a worker
@@ -87,8 +93,10 @@ enough that "it is covered" is a claim worth testing rather than assuming.
 
 ## Why this is the sharpest case against page-level patching
 
-Every argument on [the three levels page](playwright-stealth-levels.md) applies here, and
-this is the example that makes it concrete.
+Workers are the sharpest case because covering them is not one patch but an open-ended list
+of patches, each a new surface a page can inspect. Every argument on
+[the three levels of Playwright stealth](playwright-stealth-levels.md) applies here, and this
+is the example that makes it concrete.
 
 A page-level patch is code running in one realm. Workers are additional realms, created on
 demand, as many as the page likes. To cover them a patch would have to:
@@ -191,7 +199,7 @@ whose worker check is this idea applied to one value.
 
 ## Sources
 
-- MDN for `OffscreenCanvas`, `WorkerNavigator` and the worker types.
+- MDN for [`OffscreenCanvas`](https://developer.mozilla.org/en-US/docs/Web/API/OffscreenCanvas), [`WorkerNavigator`](https://developer.mozilla.org/en-US/docs/Web/API/WorkerNavigator) and the worker types.
 - Public reports of canvas protections not applying inside shared and service workers in
   one engine, and Firefox's own tracked OffscreenCanvas gap, for the claim that this is
   actively used.

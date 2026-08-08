@@ -1,13 +1,20 @@
 ---
-title: "Why a killed test runner leaves Firefox processes behind on Windows"
-description: "A clean exit never leaked a browser process. A killed test runner did, every time, because the code path that was supposed to clean up never ran at all - and the first fix for it solved a problem that didn't exist."
+title: "Orphaned Firefox processes on Windows: the killed-runner leak"
+description: "Orphaned Firefox processes on Windows come from a killed test runner, not a broken finally block. The real fix binds the browser to an OS job object."
 parent: "The Automation Layer"
 grand_parent: "Guides"
 nav_order: 10
 ---
 
 
-# Why a killed test runner leaves Firefox processes behind on Windows
+# Orphaned Firefox processes on Windows: the killed-runner leak
+
+Orphaned Firefox processes on Windows almost always come from one specific failure:
+the parent process, usually a test runner, is killed from outside, so no in-process
+cleanup code ever runs. A clean exit never leaks a process, and an exception out of a
+`with` block does not leak one either - Playwright's own teardown handles both. Only a
+killed parent leaks, and the fix cannot live in a `finally` block: it has to be an
+operating-system job object that Windows tears down when the parent dies.
 
 A bug report said orphaned Firefox processes were piling up on a Windows CI box, and
 pointed at "any path where teardown doesn't run cleanly - a timeout, an exception out
@@ -17,7 +24,8 @@ wrong one first is the useful part of this story.
 
 ## The first fix solved a problem that didn't exist
 
-The initial theory: something in the exception path skips cleanup. The fix that
+The exception path does not leak, so the first fix repaired a path that had never been
+broken. The initial theory: something in the exception path skips cleanup. The fix that
 theory produces is a careful one - stamp a token into the browser's environment when
 it launches, reap anything carrying that token in a `finally` block.
 
@@ -42,8 +50,8 @@ what's left running: multiple survivors, consistently, across repeated attempts.
 The reason no amount of code inside the wrapper can fix this: when the parent process
 is killed, `__exit__` never executes. There is no exception to catch, no `finally`
 block that runs, no teardown code path at all, because the process that would have
-run it is already gone. A fix that lives inside `_teardown()` cannot address a
-scenario where `_teardown()` is never called.
+run it is already gone. A fix that lives inside the wrapper's own teardown method
+cannot address a scenario where that method is never called.
 
 ## The fix has to live in the kernel, because that's the only thing still there
 
@@ -61,8 +69,11 @@ Measured after the fix, same external-kill probe: zero survivors.
 
 ## Killing by proof, not by guesswork
 
-A second design question sits underneath the fix: once you're cleaning up
-after a killed process, how do you know which processes are actually yours?
+Each process gets killed only after it proves it's yours: an exact, per-session
+random token stamped into its own browser's environment at launch, never a guess
+based on name or start time. A second design question sits underneath the fix:
+once you're cleaning up after a killed process, how do you know which processes
+are actually yours?
 
 The tempting shortcut - "anything named firefox.exe that showed up after we
 started" - eventually kills a browser that belongs to a different, healthy,
@@ -131,7 +142,9 @@ another case in the automation layer itself rather than anything the target page
 for the same discipline of measuring a claim before trusting it that caught the first,
 unnecessary fix here, and [why one launch in six was randomly slow](slow-browser-launch-timeout-budget.md),
 another reliability bug in the same layer with the same lesson: every piece involved
-can be individually correct and the whole still isn't bounded.
+can be individually correct and the whole still isn't bounded, and
+[why a killed browser process surfaces as TargetClosedError](playwright-targetclosederror-causes.md),
+the error your automation sees when the process it was driving disappears out from under it.
 
 ## Sources
 

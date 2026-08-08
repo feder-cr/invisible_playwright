@@ -189,8 +189,17 @@ one crawl.
 
 Scrapy's proxy middleware does not reach the browser, since the browser makes the
 requests. On route one, pass `proxy` in `PLAYWRIGHT_LAUNCH_OPTIONS` as this package's
-own argument; on route two, as Playwright's. `socks5://` goes through the patched
-proxy path inside the engine, `http(s)://` through Playwright's.
+own argument: `socks5://` and `socks4://` are written into the engine's own
+`network.proxy.*` prefs, credentials included, and `http(s)://` is handed to
+Playwright.
+
+**Route two cannot do authenticated SOCKS at all**, and this page said it could
+until 2026-08-02. Playwright's own `proxy=` reaches Firefox as a browser-level
+proxy whose filter answers with host and port only: the username and password it
+carries are used for an HTTP 407 challenge, and the SOCKS handshake reads its
+credentials from the proxy prefs, which nothing on that route writes. So on route
+two an authenticated SOCKS endpoint fails to connect while an unauthenticated one
+works. Use `http(s)://` there, or take route one.
 
 On route one, leave locale and timezone on `auto` so they follow the exit. On route
 two they cannot follow anything, which is the main reason to prefer route one when a

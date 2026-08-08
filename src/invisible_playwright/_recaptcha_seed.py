@@ -31,6 +31,18 @@ _B64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-
 _HEX_ALPHABET = "0123456789abcdef"
 
 
+def _utc_from(ts: float) -> "datetime.datetime":
+    """UTC datetime for an epoch, without the deprecated constructor.
+
+    `datetime.utcfromtimestamp` has been deprecated since 3.12 and returns a
+    NAIVE datetime, which is the reason it is going away: the value carries no
+    sign of being UTC, so any later arithmetic silently treats it as local.
+    Only `.strftime("%Y%m%d")` is taken from it here, so the two spell the same
+    string - the point is that the CI matrix now runs 3.14.
+    """
+    return datetime.datetime.fromtimestamp(ts, datetime.timezone.utc)
+
+
 def _sub_seed(seed: int, tag: str) -> int:
     """FNV-1a mix → independent PRNG streams per logical bucket from one seed."""
     h = 0xcbf29ce484222325 ^ (seed & 0xFFFFFFFF)
@@ -49,7 +61,7 @@ def _hex_rand(rng: random.Random, length: int) -> str:
 
 
 def _yyyymmdd_utc(ts: int) -> str:
-    return datetime.datetime.utcfromtimestamp(ts).strftime("%Y%m%d")
+    return _utc_from(ts).strftime("%Y%m%d")
 
 
 # IANA timezone -> (country_code, lang) for CONSENT cookie coherence.
@@ -167,7 +179,7 @@ def _cf_bm_cookie(rng: random.Random, now: int, domain: str) -> dict:
 
 def _onetrust_cookie(rng: random.Random, now: int, domain: str) -> dict:
     age_d = rng.randint(7, 365)
-    iso = datetime.datetime.utcfromtimestamp(now - age_d * 86400).strftime(
+    iso = _utc_from(now - age_d * 86400).strftime(
         "%Y-%m-%dT%H:%M:%S.000Z"
     )
     return {"name": "OptanonAlertBoxClosed",

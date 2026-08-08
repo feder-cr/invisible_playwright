@@ -1,6 +1,6 @@
 ---
 title: "Function.prototype.toString and the [native code] check"
-description: "Every JavaScript override is a function, and every function carries its own source. That single fact is the ceiling on page-level stealth, and it explains a whole category of detection rather than one check."
+description: "How sites detect Function.prototype.toString patching with the [native code] check, why toString spoofing fails, and what an engine-level build fixes."
 parent: "The Automation Layer"
 grand_parent: "Guides"
 nav_order: 1
@@ -15,6 +15,10 @@ understanding in detail because it explains a whole category of detection rather
 one check.
 
 ## The check
+
+Sites detect a patched property by calling [`toString()`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function/toString) on its getter: a native getter
+prints `[native code]`, a JavaScript replacement prints the source you wrote. That is the
+entire check, and it is one string comparison.
 
 ```js
 Object.getOwnPropertyDescriptor(Navigator.prototype, 'webdriver').get.toString();
@@ -64,7 +68,7 @@ match on the presence of `at Function.toString` or `at Object.toString` where it
 not belong. The disguise is found by how the disguise behaves, not by what it says.
 
 **Descriptor and prototype walking.** For each API, take
-`Object.getOwnPropertyDescriptor(proto, name)`, check whether the value is unexpectedly
+[`Object.getOwnPropertyDescriptor(proto, name)`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/getOwnPropertyDescriptor), check whether the value is unexpectedly
 `undefined`, pull out the getter, and compare `Object.getPrototypeOf(fn)` against the
 native prototype. An override moved from the prototype to the instance shows up here
 without any cleverness at all.

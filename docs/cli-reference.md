@@ -1,6 +1,6 @@
 ---
 title: "CLI reference"
-description: "The invisible-playwright command line: fetch, path, version, clear-cache and doctor - what each one does and when you actually need it."
+description: "The invisible-playwright command line: two commands, fetch and version, and what each one covers."
 parent: "Documentation"
 nav_order: 5
 ---
@@ -12,45 +12,70 @@ The installed command is `invisible-playwright`, with a hyphen. `python -m
 invisible_playwright` works identically and needs nothing on `PATH`.
 
 ```bash
-invisible-playwright fetch          # download the engine if missing
-invisible-playwright fetch --force  # re-download even if cached
-invisible-playwright path           # absolute path to the cached engine (downloads it if absent)
-invisible-playwright version        # wrapper, core and engine versions
-invisible-playwright clear-cache    # remove cached engine trees
-invisible-playwright doctor         # check every cached engine against the seal
+invisible-playwright fetch    # download the engine if missing, check every cached
+                              # one against the seal, print the path
+invisible-playwright version  # wrapper, core and engine versions, and where the
+                              # engine is cached
 ```
 
 ## `fetch`
 
-Downloads the patched Firefox binary if it is not already cached, verifying it
-against the sha256 shipped inside `invisible-core`. This is the one-time step covered
-in [Installation](installation.md). `fetch --force` re-downloads even if a cached
-copy already passes verification - useful if you suspect a corrupted cache without
-wanting to hunt for the cache directory yourself.
+Makes the engine present and correct, then prints where it is.
 
-## `path`
+It checks every cached engine tree against the seal shipped inside
+`invisible-core` **before** downloading anything. That ordering is the point: a
+tree that no longer matches the seal is the case worth catching, and it is
+invisible to a plain "download if missing" that only looks at whether a file is
+there. Anything that does not match is reported on stderr and left alone; the
+sealed engine is fetched and verified against its sha256.
 
-Prints the absolute path to the cached engine binary, downloading it first if it is
-not present. Useful for pointing another tool - a debugger, a separate script - at
-the exact binary this wrapper would launch.
+The last line on stdout is the absolute path, by itself, so this is the scripting
+form:
+
+```bash
+FIREFOX="$(invisible-playwright fetch)"
+```
+
+which is better than asking for a path separately, because it guarantees the
+thing it names actually exists and matches the seal.
+
+Running it when everything is already correct is cheap and does nothing.
 
 ## `version`
 
-Prints three version numbers together: the wrapper (`invisible-playwright`), the core
-(`invisible-core`), and the engine (the Firefox build itself). All three are meant to
-move together; if you ever see them disagree in a way that looks wrong, `doctor` is
-the next command to run.
+```
+invisible_playwright 0.6.0
+invisible_core       18.12.0   (declared: ==18.12.0)
+engine               firefox-18  Firefox 151.0  build 20260724001949
+seal                 f294a96ae4ec  [.../invisible_core/seal.json]
+cache                /home/you/.cache/invisible-playwright
+```
 
-## `clear-cache`
+This is the output to paste into a bug report. Two lines are worth knowing about:
 
-Removes cached engine trees. Use it to reclaim disk space, or as a clean-slate step
-before `fetch --force` if `doctor` reports a problem `fetch --force` alone did not fix.
+- if the installer's record disagrees with the core that will actually run, a
+  `STALE RECORD` line appears between them. That is the state pip and `pip check`
+  both call healthy, because both read the record and neither reads the files.
+- `cache` is where the engine trees live. Deleting a directory there is how you
+  reclaim the space; there is no subcommand for it, on purpose - see below.
 
-## `doctor`
+## What happened to the other four
 
-Checks every cached engine against its recorded seal - the same integrity check
-`fetch` does at download time, run again against what is already on disk. Run this
-first if a session fails to launch and the error does not point at your own code.
+The command line used to have six entries: `fetch`, `fetch --force`, `path`,
+`version`, `clear-cache`, `doctor`. Each was a step somebody had to know to take,
+in a package whose whole promise is that the browser handles itself. None of the
+behaviour was lost:
+
+| gone | where it went |
+|---|---|
+| `doctor` | `fetch` does it on every run. It was the thing most worth doing and the thing least likely to be typed, which is the worst combination a subcommand can have. |
+| `fetch --force` | unnecessary once every run verifies. A tree is replaced because it does not match the seal, not because a flag was passed. |
+| `path` | `fetch` prints it as its last line, and unlike `path` it guarantees the tree is there and correct. |
+| `clear-cache` | deliberately not folded in. The cache root is shared with `invisible_firefox`, so pruning "trees no seal points at" would delete the other product's engine on a machine running both. `version` prints the location. |
+
+The `tag` argument went with them. The seal decides which engine a given build
+runs, and the engine check refuses anything else, so a tag on the command line
+could only ever name something that would then be rejected.
 
 ## See also
 

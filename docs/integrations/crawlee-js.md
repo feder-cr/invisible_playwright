@@ -54,8 +54,7 @@ crawler is Node. Get them once, at install or deploy time:
 
 ```bash
 pip install invisible-playwright
-invisible-playwright fetch
-invisible-playwright path > .browser-path
+invisible-playwright fetch > .browser-path
 python -c "import json;from invisible_playwright import get_default_stealth_prefs;print(json.dumps(get_default_stealth_prefs(seed=1, humanize=True)))" > prefs.json
 ```
 

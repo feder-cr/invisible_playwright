@@ -1,12 +1,19 @@
 ---
 title: "invisible_playwright vs Camoufox: two patched Firefoxes"
-description: "Both compile Firefox from source and set the fingerprint in C++. The differences are how the identity is produced, how much surface each covers, and whether a failing run can be replayed."
+description: "invisible_playwright vs Camoufox: both patch Firefox in C++. Compare how each builds its fingerprint, the surfaces each covers, and whether a run replays."
 parent: "Comparisons"
 nav_order: 4
 ---
 
 
 # invisible_playwright vs Camoufox: two patched Firefoxes
+
+invisible_playwright and Camoufox both compile Firefox from source and set the fingerprint
+in C++, so neither is stealthier in the abstract. The real difference is how each produces
+the identity: Camoufox rotates a fresh, plausible device per session, while
+invisible_playwright derives every field deterministically from one seed, so a failing run
+can be replayed exactly. Camoufox currently covers more surfaces, notably geolocation and
+`Intl`.
 
 Most comparisons in this space are between things that are not comparable: a page-level
 script against a patched binary, or a Chromium tool against a Firefox one. This one is
@@ -18,6 +25,22 @@ does differently, where each is ahead, and which properties matter for your job.
 
 This page is written from Camoufox's own documentation and from ours. Where I could not
 verify something about their implementation, I say so rather than guessing.
+
+## invisible_playwright vs Camoufox at a glance
+
+Both patch the same engine; the table below is where they diverge. Each row is expanded in
+its own section below.
+
+| Property | invisible_playwright | Camoufox |
+|---|---|---|
+| Approach | Compiles Firefox from source, patches the C++ | Compiles Firefox from source, patches the C++ |
+| Identity model | Derived deterministically from one seed | Rotated per session from a real-world distribution |
+| Optimises for | Reproducibility (replay a failing run) | Variety (a fresh device each time) |
+| Replay a failing run exactly | Yes, rerun the seed | Not the design goal |
+| Geolocation spoofing | No | Yes (documented) |
+| Non-English `Intl` correctness | Known weakness, not closed | Documented `Intl` spoofing |
+| Fonts | Real Windows fonts bundled in the binary, host-independent | Spoofing and masking of the host's fonts |
+| Works with existing Playwright code | Yes | Yes |
 
 ## What the two have in common
 
@@ -183,6 +206,13 @@ for how to settle this yourself.
 
 - Camoufox's own documentation for its stated mechanism and surface list, read
   2026-07-28.
+- [MDN's `Intl` reference](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl)
+  and the [MDN Geolocation API overview](https://developer.mozilla.org/en-US/docs/Web/API/Geolocation_API),
+  for what each documented surface actually covers on the web-platform side.
+- [MDN's `PointerEvent.pointerType`](https://developer.mozilla.org/en-US/docs/Web/API/PointerEvent/pointerType),
+  [`PointerEvent.pressure`](https://developer.mozilla.org/en-US/docs/Web/API/PointerEvent/pressure) and
+  [`Event.isTrusted`](https://developer.mozilla.org/en-US/docs/Web/API/Event/isTrusted) references, for
+  what the input event fields this project sets are specified to carry.
 - This project's patch catalogue for the seeded sampler, the bundled font architecture,
   the input event fields and the four automation-layer fixes.
 - Where a claim about their implementation could not be checked against their source, the

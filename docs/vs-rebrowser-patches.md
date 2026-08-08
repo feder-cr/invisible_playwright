@@ -1,12 +1,19 @@
 ---
-title: "invisible_playwright vs rebrowser-patches: the same CDP fix, arrived at twice"
-description: "rebrowser-patches fixes the Runtime.enable CDP leak on Chromium, independently converging on close to the same technique Patchright uses. Neither reaches Firefox, and neither claims to touch fonts, GPU, canvas or audio."
+title: "invisible_playwright vs rebrowser-patches: the same CDP fix"
+description: "rebrowser-patches fixes the Runtime.enable CDP leak on Chromium, the same way Patchright does. It reaches neither Firefox nor fonts, GPU, canvas or audio."
 parent: "Comparisons"
 nav_order: 11
 ---
 
 
-# invisible_playwright vs rebrowser-patches: the same CDP fix, arrived at twice
+# invisible_playwright vs rebrowser-patches: the same CDP fix
+
+**invisible_playwright and rebrowser-patches do not compete; they work at
+different layers.** rebrowser-patches fixes a Chromium CDP leak (`Runtime.enable`)
+inside Puppeteer and Playwright's own source, while invisible_playwright patches
+Firefox itself at the C++ level. rebrowser-patches does not support Firefox and
+does not claim to touch fonts, GPU, canvas or audio, so the two solve different
+problems rather than the same one differently.
 
 Like the [Patchright comparison](vs-patchright.md), this one is between tools at
 different layers rather than direct competitors. What makes rebrowser-patches worth
@@ -46,7 +53,7 @@ specific leak than it does about either project copying the other.
 
 ## Why this doesn't compete with an engine-level project
 
-Every patch above operates on the CDP session between the driver and a
+Every rebrowser-patches fix operates on the CDP session between the driver and a
 Chromium-family browser. Firefox has no CDP domains to patch in the first place -
 [it speaks Juggler instead](firefox-vs-chromium-antidetect.md), an entirely
 different automation protocol with its own separate leaks, unrelated to anything
@@ -57,15 +64,16 @@ specific patches to apply to.
 rebrowser-patches is also explicit, in its own documentation, about what it
 doesn't touch: proxies, user agent consistency, and canvas/WebGL fingerprinting
 are named directly as separate concerns the patches don't address, alongside a
-warning that page-level JavaScript overrides of browser internals (via `Proxy`
-objects or `Object.defineProperty`) are themselves detectable - the same
+warning that page-level JavaScript overrides of browser internals (via
+[`Proxy`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Proxy)
+objects or [`Object.defineProperty`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/defineProperty)) are themselves detectable - the same
 overwrite-is-a-signal point [made elsewhere on this site](tostring-native-code-detection.md)
 about any page-level patch, regardless of which tool applies it.
 
 ## How to actually choose
 
-- **Need Firefox specifically?** This project or Camoufox. Neither rebrowser-patches
-  nor Patchright reaches this engine at all.
+- **Need Firefox specifically?** This project or [Camoufox](vs-camoufox.md). Neither
+  rebrowser-patches nor Patchright reaches this engine at all.
 - **Committed to Chromium, chasing the `Runtime.enable` leak specifically?**
   Either rebrowser-patches or Patchright fixes it, by close to the same method;
   picking between them is mostly about which project's release cadence and

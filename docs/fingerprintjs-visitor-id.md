@@ -9,17 +9,25 @@ nav_order: 4
 
 # Why a FingerprintJS visitor ID changes
 
+A FingerprintJS visitor ID changes because it is a single hash of roughly forty-one
+browser and device components. If any one of those components reads differently, the
+whole value changes. It is not tracking you more or less; it is being fed different
+input.
+
 People run FingerprintJS, get a `visitorId`, run it again a week later and get a
 different one. Or they run it in two tabs and get the same one and assume it is
 tracking something durable. Both reactions come from not knowing how the value is
-made.
+made: it is a hash, and everything else follows from that one fact.
 
-It is a hash. Everything else follows from that one fact.
-
-Read from source on 2026-07-27 (`fingerprintjs/fingerprintjs`, `src/sources/` and
-`src/agent.ts`).
+Read from the open-source library source on 2026-07-27
+([`fingerprintjs/fingerprintjs`](https://github.com/fingerprintjs/fingerprintjs),
+`src/sources/` and `src/agent.ts`).
 
 ## How the ID is produced
+
+The visitor ID is one hash of a canonical string built from every collected
+component. Nothing is stored per-component and there is no partial match: the whole
+set goes in, one value comes out.
 
 ```ts
 export function hashComponents(components: UnknownComponents): string {
@@ -36,7 +44,9 @@ score, but the ID itself is all or nothing.
 
 ## The components, and which of them move
 
-The full set, from the source directory:
+The components that feed the hash fall into four groups by how often a real person's
+setup changes them: hardware, operating-system settings, installed software, and
+travel. The full set, from the source directory:
 
 ```
 canvas          webgl            audio             audio_base_latency
@@ -60,10 +70,12 @@ explains itself:
 the taskbar moves. [`device_memory`, `hardware_concurrency`](hardware-concurrency-device-memory.md)
 and `architecture` change with the machine.
 
-**Moves with the operating system's own settings.** `forced_colors`,
-`inverted_colors`, `reduced_motion`, `reduced_transparency`, `contrast`,
-`monochrome`, `color_gamut` and `hdr` all read accessibility and display
-preferences. Someone turning on dark mode or reducing motion changes their ID.
+**Moves with the operating system's own settings.**
+[`forced_colors`](https://developer.mozilla.org/en-US/docs/Web/CSS/@media/forced-colors),
+`inverted_colors`, [`reduced_motion`](https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-reduced-motion),
+`reduced_transparency`, `contrast`, `monochrome`, `color_gamut` and `hdr` all read
+accessibility and display preferences exposed as standard CSS media features.
+Someone turning on dark mode or reducing motion changes their ID.
 
 **Moves with ordinary software changes.** `fonts` and `font_preferences` change when
 any application installs a font. `plugins`, `vendor_flavors` and `user_agent_data`

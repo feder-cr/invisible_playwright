@@ -1,6 +1,6 @@
 ---
 title: "Codec fingerprinting: canPlayType and MediaCapabilities"
-description: "What codecs a browser claims to play identifies the build and the platform, and whether decoding is power efficient identifies the machine. A GPU-less server answers differently from a desktop."
+description: "Codec fingerprinting: the formats a browser claims to play reveal its build and platform; whether decoding is power efficient reveals the machine behind it."
 parent: "Browser Identity"
 grand_parent: "Guides"
 nav_order: 7
@@ -9,16 +9,21 @@ nav_order: 7
 
 # Codec fingerprinting: canPlayType and MediaCapabilities
 
-Ask a browser what video formats it can play and the answer is not about the person
-using it. It is about the build, the operating system underneath, and increasingly the
-hardware, which makes it three separate fingerprinting surfaces wearing one API.
+Codec fingerprinting identifies a browser by which media formats it claims it can
+decode, and identifies the machine underneath by how efficiently it decodes them. Ask a
+browser what video formats it can play and the answer is not about the person using it.
+It is about the build, the operating system underneath, and increasingly the hardware,
+which makes it three separate fingerprinting surfaces wearing one API.
 
 It is also one of the surfaces nobody checks after spoofing everything else, which is
 what makes it worth a page.
 
 ## What the two APIs actually return
 
-The old one is deliberately vague:
+Two APIs answer the "what can you play" question, from two different eras of the
+platform: the old `canPlayType()` returns a vague string, the modern
+`mediaCapabilities.decodingInfo()` returns a structured verdict including whether
+decoding is power efficient. The old one is deliberately vague:
 
 ```js
 const v = document.createElement('video');
@@ -68,12 +73,10 @@ the same way: by comparison, not by rarity.
 
 ## powerEfficient is a hardware question, not a codec question
 
-Here is the part that turns this from a browser-identification surface into a machine
-one.
-
-`powerEfficient` reports whether decoding that stream would use hardware acceleration.
-On a desktop with a modern GPU, common formats decode in dedicated silicon and the
-answer is `true`. On a machine with no GPU, everything decodes on the CPU and the
+`powerEfficient` reports whether decoding a given stream would use hardware
+acceleration, which is what turns this from a browser-identification surface into a
+machine one. On a desktop with a modern GPU, common formats decode in dedicated silicon
+and the answer is `true`. On a machine with no GPU, everything decodes on the CPU and the
 answer is `false` for formats a real desktop would accelerate.
 
 So this API answers, in one field, the same question as
@@ -89,7 +92,7 @@ Nobody lists `decodingInfo` in a stealth checklist. It costs one `await`.
 
 ## Why randomising codec support is the wrong instinct
 
-The reflex, having read the above, is to vary the answers per session. That is the same
+The reflex is to vary the answers per session. That is the same
 mistake as
 [randomising WebGL numeric parameters](webgl-parameters-are-identical.md), and it fails
 for the same reason.
@@ -182,7 +185,8 @@ and [Playwright in Docker](playwright-docker-detection.md), which are the rest o
 
 ## Sources
 
-- MDN's references for `HTMLMediaElement.canPlayType` and the Media Capabilities API.
+- MDN, [`HTMLMediaElement.canPlayType`](https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/canPlayType)
+  and the [Media Capabilities API](https://developer.mozilla.org/en-US/docs/Web/API/MediaCapabilities_API).
 - Firefox's own tracking of standardising these answers under resist-fingerprinting.
 - This project's codec profile, sampled jointly with the machine class rather than
   independently, for the reason given above.

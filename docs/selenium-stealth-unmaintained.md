@@ -1,6 +1,6 @@
 ---
 title: "selenium-stealth hasn't been updated since December 2021"
-description: "A package still recommended in current tutorials for hiding Selenium automation has had no commits in over four years. What that means for the specific properties it patches, and for everything it never touched."
+description: "selenium-stealth's last commit was December 2021. What its property patches still do, what four-plus years of silence costs, and what to check today."
 parent: "Comparisons"
 nav_order: 9
 ---
@@ -8,11 +8,17 @@ nav_order: 9
 
 # selenium-stealth hasn't been updated since December 2021
 
-Search for how to stop Selenium from being detected and a package called
-`selenium-stealth` still shows up in the first page of results, in tutorials dated
-well into 2026. Its repository's last commit is from December 2021. That's not a
-minor detail buried in a changelog - it's the single fact that changes how much
-weight the rest of the advice deserves.
+**`selenium-stealth` is effectively unmaintained: its repository's last commit is
+from December 2021.** The JavaScript patches it applies still execute, but the list
+of automation-visible properties it covers stopped growing in late 2021, while the
+browser and the detection methods aimed at automation have moved through four-plus
+years of updates since. That widening gap, not a broken install, is what its
+continued presence in current tutorials obscures.
+
+Search for how to stop Selenium from being detected and `selenium-stealth` still
+shows up on the first page of results, in tutorials dated well into 2026. The last
+commit being from December 2021 is not a minor detail buried in a changelog - it's
+the single fact that changes how much weight the rest of the advice deserves.
 
 ## What it patches, and why that part still runs fine
 
@@ -47,9 +53,9 @@ limit as [`playwright-stealth`](vs-playwright-stealth.md) and
 [`puppeteer-extra-plugin-stealth`](puppeteer-extra-stealth-unmaintained.md): every
 property it changes is overwritten from the page, after the browser's real value
 already existed and after the automation protocol already connected. That overwrite
-is its own signal - a native-looking `Function.prototype.toString` check or a
-descriptor-shape check catches an overwritten property regardless of what value it
-now reports. And CDP's own presence, the automation protocol Selenium and CDP-based
+is its own signal - a [native-looking `Function.prototype.toString` check](tostring-native-code-detection.md)
+or a descriptor-shape check catches an overwritten property regardless of what value
+it now reports. And CDP's own presence, the automation protocol Selenium and CDP-based
 tools rely on to run these patches in the first place, is a signal these patches
 were never designed to hide.
 

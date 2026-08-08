@@ -1,6 +1,6 @@
 ---
 title: "invisible_playwright vs playwright-stealth: page vs engine"
-description: "playwright-stealth injects init scripts before the page loads, in about four lines. That fixes obvious property checks and nothing about the machine. Its own maintainer calls it a proof-of-concept, not a comprehensive fix."
+description: "playwright-stealth patches the page in about four lines; invisible_playwright rebuilds the browser engine. Where each layer works, and where it cannot reach."
 parent: "Comparisons"
 nav_order: 7
 ---
@@ -8,12 +8,17 @@ nav_order: 7
 
 # invisible_playwright vs playwright-stealth: page vs engine
 
+playwright-stealth and invisible_playwright fix bot detection at different layers.
+playwright-stealth injects a few lines of JavaScript into the page to hide the obvious
+automation properties; invisible_playwright patches Firefox's C++ engine and rebuilds the
+browser so the machine-level signals match a real browser too. They are not really
+competing for the same job, and the tool's own maintainer says as much.
+
 This is the widest gap between any two tools on this site's comparison pages, and the
 honest way to frame it is by layer rather than by which one "wins."
 [Three ways to make Playwright undetected](playwright-stealth-levels.md) puts
 `playwright-stealth` at level 1, patching the page. This project sits at level 3,
-patching the engine and rebuilding the browser. They are not really competing for the
-same job, and the tool's own maintainer says as much.
+patching the engine and rebuilding the browser.
 
 ## What playwright-stealth actually does
 
@@ -21,7 +26,7 @@ same job, and the tool's own maintainer says as much.
 ported to Python - [and that original plugin has its own separate maintenance story worth knowing](puppeteer-extra-stealth-unmaintained.md).
 Mechanically it is init scripts: JavaScript injected into the page
 before the site's own code runs, redefining the properties a detector is likely to check.
-`navigator.webdriver`, the plugins array, `navigator.languages`, and similar.
+[`navigator.webdriver`](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/webdriver), the plugins array, `navigator.languages`, and similar.
 
 The appeal is real and worth stating plainly. It is a few lines added to an existing
 Playwright script, no browser fork, no binary to maintain, and it works immediately
@@ -54,9 +59,10 @@ reach on any browser, by construction, not by an oversight anyone could patch ar
 
 ## The tool is honest about this, more than most of its category
 
-Worth stating because it is unusually direct for this space. The maintainer of the
-actively developed Python fork describes it as a proof-of-concept starting point and
-says plainly not to expect it to get past anything but the simplest detection methods.
+playwright-stealth is unusually direct about its own limits for this space. The
+maintainer of the actively developed Python fork describes it as a proof-of-concept
+starting point and says plainly not to expect it to get past anything but the simplest
+detection methods.
 That is not marketing copy undercutting itself, it is an accurate scope statement, and
 taking a tool's own stated limits at face value is the same approach this page took with
 [Camoufox's](vs-camoufox.md), [Patchright's](vs-patchright.md), and
@@ -64,10 +70,10 @@ taking a tool's own stated limits at face value is the same approach this page t
 
 ## When playwright-stealth is actually the right call
 
-Not a rhetorical question. If the thing flagging you is a naive check, `navigator.webdriver`
-being `true`, an empty plugins array, a User-Agent string with `HeadlessChrome` in it,
-four lines of `playwright-stealth` fixes exactly that, today, with no browser to build or
-maintain. Reaching for an engine-level rebuild before confirming the block is not that
+playwright-stealth is the right call when the block is a naive property check. If the
+thing flagging you is `navigator.webdriver` being `true`, an empty plugins array, or a
+User-Agent string with `HeadlessChrome` in it, four lines of `playwright-stealth` fixes
+exactly that, today, with no browser to build or maintain. Reaching for an engine-level rebuild before confirming the block is not that
 simple is solving a problem you may not have.
 [How to actually test which layer you're failing at](how-to-test-bot-detection.md) covers
 how to tell the difference before picking a tool.

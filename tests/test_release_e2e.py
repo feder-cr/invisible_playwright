@@ -259,7 +259,17 @@ def test_fetch_against_live_release(clean_venv: Path, isolated_cache_env: dict):
         RuntimeError: no SHA256 for {asset} in checksums.txt
     """
     out = _run(
-        [str(clean_venv), "-m", "invisible_playwright", "fetch", "--force"],
+        # NOT `fetch --force`: that flag went with four of the six subcommands
+        # in 0.5.0, and this line kept it, so every run of this file exited 2 on
+        # "unrecognized arguments" while the default suite stayed green - the test
+        # is e2e-marked, so only the two workflows that actually run it saw the
+        # red. One stale argument, three red workflows.
+        #
+        # Nothing is lost by dropping it. `fetch` verifies every cached tree
+        # against the seal on every run, which is what --force was for, and this
+        # test builds a fresh venv with an isolated cache root, so there is no
+        # warm tree to force past.
+        [str(clean_venv), "-m", "invisible_playwright", "fetch"],
         env=isolated_cache_env,
         timeout=900,  # 110 MB download + extract on slow connections
     )
@@ -367,7 +377,7 @@ def test_e2e_marker_is_excluded_by_default():
 
 @pytest.mark.e2e
 def test_the_published_version_has_a_github_release():
-    """Every version on the index needs a tag and a release carrying it.
+    """EVERY version on the index needs a tag and a release carrying it.
 
     Added 2026-07-26, when the three packages had been on PyPI for a day with
     ZERO tags and ZERO releases between them. Not cosmetic: the release page is
@@ -375,41 +385,213 @@ def test_the_published_version_has_a_github_release():
     and there is no commit anybody can point at as "this is the source of the
     version you have".
 
+    IT CHECKED ONE VERSION UNTIL 2026-08-02. It read `info.version` - the latest
+    - so the moment a release was published without its page, the next release
+    made the omission invisible: the check moved on to the new version and the
+    old gap stayed behind it. Measured that day: ELEVEN published versions across
+    the three packages had no release, and eight had no tag at all, three of them
+    published AFTER the backfill this test was written to protect. The docstring
+    said "every version" from the first line while the code checked one, which is
+    the same defect this project found three times in two days - a claim written
+    beside the code rather than from it.
+
+    It now walks the whole index. That is one API call per version, ~36 across
+    the three packages, and it runs in the install-e2e job rather than the unit
+    suite for exactly that reason.
+
     NO VENV, deliberately. The first version of this took `clean_venv` and read
     the version out of the installed package, which made it depend on ANOTHER
     test in the same file having installed it first - it passed alone in the one
     repository whose fixture installs, and failed in the two whose fixture does
     not. A test whose result depends on what ran before it is not measuring what
-    it claims. Both facts here are public: the index says what the latest
-    version is, and the releases API says whether it has one.
+    it claims. Both facts here are public: the index says which versions exist,
+    and the releases API says whether each has one.
 
     One-directional on purpose. A release for a version not yet on the index is
     a normal intermediate state during a publish; an index version with no
     release is the thing that gets forgotten, because nothing downstream breaks.
+
+    Yanked versions are skipped: a yanked release is one the project has
+    withdrawn, and demanding a release page for something nobody should install
+    would be asking for the opposite of what the yank said.
     """
     import json
+    import os
     import urllib.error
     import urllib.request
 
     with urllib.request.urlopen(
             "https://pypi.org/pypi/invisible-playwright/json", timeout=30) as resp:
-        version = json.load(resp)["info"]["version"]
+        index = json.load(resp)["releases"]
 
-    url = f"https://api.github.com/repos/feder-cr/invisible_playwright/releases/tags/v{version}"
-    try:
-        with urllib.request.urlopen(url, timeout=30) as resp:
-            payload = json.load(resp)
-    except urllib.error.HTTPError as exc:
-        if exc.code == 404:
-            pytest.fail(
-                f"the index serves invisible-playwright {version} and there is no GitHub "
-                f"release tagged v{version}. Create it at the commit that built "
-                f"that version - not at HEAD, which has moved on")
-        if exc.code in (403, 429):
-            pytest.skip(f"GitHub API rate-limited this check ({exc.code})")
-        raise
-    assert payload.get("draft") is False, (
-        f"the release for v{version} is still a DRAFT, so nobody can see it")
-    assert (payload.get("body") or "").strip(), (
-        f"the release for v{version} has an empty body - a release page with no "
-        f"notes is a tag with extra steps")
+    live = sorted((version for version, files in index.items()
+                   if files and not all(f.get("yanked") for f in files)),
+                  key=lambda v: tuple(int(p) for p in v.split(".")))
+    assert live, "the index serves no usable version of invisible-playwright"
+
+    # Authenticated when a token happens to be around, which on a GitHub runner
+    # it always is. Unauthenticated the API allows 60 calls an hour PER IP, and
+    # this walk wants one per version across three repositories: measured
+    # 2026-08-02, the walk hit 403 on its eleventh call. The token is optional,
+    # never required, and never printed.
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    headers = {"Accept": "application/vnd.github+json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    missing, drafts, empty = [], [], []
+    checked = 0
+    cut_short = None
+    for version in live:
+        url = ("https://api.github.com/repos/feder-cr/invisible_playwright"
+                   f"/releases/tags/v{version}")
+        try:
+            request = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(request, timeout=30) as resp:
+                payload = json.load(resp)
+        except urllib.error.HTTPError as exc:
+            if exc.code == 404:
+                missing.append(version)
+                checked += 1
+                continue
+            if exc.code in (403, 429):
+                # NOT an unconditional skip. The first version of this walk
+                # skipped here, which threw away every violation already in
+                # hand: the mutation that deleted an OLD release passed, because
+                # a rate-limit two versions later abandoned the whole test. A
+                # gate that discards its own findings on an unrelated error is
+                # worse than no gate, because it reports PASS.
+                cut_short = (version, exc.code)
+                break
+            raise
+        checked += 1
+        if payload.get("draft") is not False:
+            drafts.append(version)
+        if not (payload.get("body") or "").strip():
+            empty.append(version)
+
+    problems = []
+    # The LEDGER is the fourth record, and it costs no API call: it is a file in
+    # this repository. `version_gate check` compares it to the index too, but
+    # only on a release - so a version published outside the gate stays invisible
+    # until the NEXT release is refused by it, which is how the gap from
+    # 2026-08-02 was found. Here it surfaces on every run of this job.
+    ledger_path = Path(__file__).resolve().parents[1] / "PUBLISHED.json"
+    recorded = {}
+    if ledger_path.is_file():
+        recorded = {e["version"]: e for e in
+                    json.loads(ledger_path.read_text(encoding="utf-8"))["released"]}
+
+    unrecorded = [v for v in live if recorded and v not in recorded]
+    thin = {v: [k for k in ("published_at", "requires_dist", "wheel_filename",
+                            "sdist_filename", "wheel", "sdist")
+                if k not in recorded[v]]
+            for v in live if v in recorded}
+    thin = {v: missing for v, missing in thin.items() if missing}
+
+    if unrecorded:
+        problems.append(
+            f"on the index and NOT in PUBLISHED.json: {unrecorded}. Those were "
+            f"published outside the gate, so nothing records what shipped under "
+            f"them; back-fill from the artifacts the index serves, never from the "
+            f"tree, which has moved on")
+    if thin:
+        problems.append(f"ledger entries missing fields: {thin}")
+
+    if missing:
+        problems.append(
+            f"on the index with NO release: {missing}. Create each at the commit "
+            f"that built that version - not at HEAD, which has moved on. PyPI's "
+            f"upload_time and the commit carrying the version are how to find it")
+    if drafts:
+        problems.append(f"still a DRAFT, so nobody can see it: {drafts}")
+    if empty:
+        problems.append(f"empty body, which is a tag with extra steps: {empty}")
+
+    assert not problems, (
+        f"invisible-playwright has {len(live)} usable versions on the index, {checked} were "
+        f"checked, and " + "; ".join(problems))
+
+    if cut_short:
+        version, code = cut_short
+        if checked == 0:
+            # "Green because it never ran" is the shape this project met three
+            # times in two days. A skip that reads "all clean so far" after
+            # checking NOTHING is that shape wearing a pass.
+            pytest.skip(f"GitHub API answered {code} on the FIRST call, so NONE "
+                        f"of {len(live)} versions were checked and this proves "
+                        f"nothing. Set GITHUB_TOKEN to raise the rate limit")
+        pytest.skip(f"GitHub API answered {code} at v{version} after {checked} of "
+                    f"{len(live)} versions, clean up to there. Set GITHUB_TOKEN to "
+                    f"raise the rate limit")
+
+
+@pytest.mark.e2e
+def test_the_changelog_documents_every_version_it_claims_to_cover():
+    """A changelog that stops four releases ago is worse than none.
+
+    Found 2026-08-02 with the file sitting at [0.4.7] while 0.4.8, 0.4.9, 0.5.0
+    and 0.6.0 were on the index - and 0.5.0 is the release that cut the CLI from
+    six commands to two, which is the single most breaking change this package
+    has shipped. A reader upgrading across it had nothing to read.
+
+    This is the sibling of the release-page walk above and the same defect
+    shape: a record that is written by hand, consulted by users, and gated by
+    nothing drifts silently, because nothing downstream breaks when it does.
+
+    Bounded from BELOW by the file itself. The changelog does not reach back to
+    the first release and does not need to; what it must not do is stop short of
+    the present. So the rule is: every version on the index at or above the
+    oldest one documented must have a heading, and no heading may name a version
+    the index has never served.
+
+    Dates are compared too, because a heading dated by the person writing it
+    rather than by the upload is a small lie that a reader can check: this file
+    dated 0.6.0 a day late on its first reconstruction, and PyPI is the record
+    that settles it.
+    """
+    import json
+    import re
+    import urllib.request
+
+    changelog = (Path(__file__).resolve().parents[1] / "CHANGELOG.md").read_text(
+        encoding="utf-8")
+    documented = {m.group(1): m.group(2) for m in re.finditer(
+        r"(?m)^##\s*\[(\d+\.\d+\.\d+)\]\s*-\s*(\d{4}-\d{2}-\d{2})\s*$", changelog)}
+    assert documented, "no `## [X.Y.Z] - YYYY-MM-DD` heading found at all"
+
+    with urllib.request.urlopen(
+            "https://pypi.org/pypi/invisible-playwright/json", timeout=30) as resp:
+        releases = json.load(resp)["releases"]
+    published = {v: min(f["upload_time_iso_8601"] for f in files)[:10]
+                 for v, files in releases.items() if files}
+
+    def key(v):
+        return tuple(int(p) for p in v.split("."))
+
+    floor = min(documented, key=key)
+    expected = {v for v in published if key(v) >= key(floor)}
+
+    # A documented version the index never served is not automatically wrong:
+    # this package had nine releases on GitHub before it went to PyPI on
+    # 2026-07-26, and their entries are real history. Only a heading ABOVE the
+    # first published version can be an invention - below it, the index simply
+    # has nothing to say. The first draft of this gate flagged all fifteen.
+    first_published = min(published, key=key)
+    missing = sorted(expected - set(documented), key=key)
+    invented = sorted((v for v in set(documented) - set(published)
+                       if key(v) > key(first_published)), key=key)
+    misdated = sorted((v, documented[v], published[v]) for v in
+                      set(documented) & set(published) if documented[v] != published[v])
+
+    problems = []
+    if missing:
+        problems.append(
+            f"published and undocumented: {missing}. The changelog starts at "
+            f"{floor}, so everything from there up is in scope")
+    if invented:
+        problems.append(f"documented and never published: {invented}")
+    if misdated:
+        problems.append("dated differently from the upload: " + ", ".join(
+            f"{v} says {said} the index says {real}" for v, said, real in misdated))
+    assert not problems, "CHANGELOG.md: " + "; ".join(problems)

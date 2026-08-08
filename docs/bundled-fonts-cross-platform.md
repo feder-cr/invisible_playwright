@@ -1,6 +1,6 @@
 ---
 title: "How to make Linux and macOS report real Windows fonts"
-description: "Filtering a host's font list still leaves the host's rendering underneath. The fix that actually holds is shipping the real font files inside the browser, on all three platforms, from one manifest that keeps three unrelated font backends in agreement."
+description: "To make Linux and macOS report real Windows fonts, bundle the real font files and read only from them. Filtering a list leaves the host's rendering underneath."
 parent: "Canvas, WebGL, Fonts and Audio"
 grand_parent: "Guides"
 nav_order: 6
@@ -9,10 +9,11 @@ nav_order: 6
 
 # How to make Linux and macOS report real Windows fonts
 
-Filtering a host's font list still leaves the host's rendering underneath - the list
-says Windows, the pixels say something else. This page is the fix that actually holds:
-shipping the real font files inside the browser instead, what it took to make that
-hold on three unrelated font backends, and where it still leaks.
+To make Linux and macOS report real Windows fonts, ship the real Windows font files
+inside the browser and read only from that bundle on every platform. Filtering a host's
+font list is not enough: it changes what gets reported, not what gets rendered - the
+list says Windows, the pixels say something else. This page is what it took to make that
+bundle hold on three unrelated font backends, and where it still leaks.
 [Why headless browsers render different fonts](headless-fonts-differ.md) covers the
 detection side of the same problem, if you want that first.
 
@@ -117,7 +118,8 @@ target platform is checking a different, easier question.
 ## What this validates, and what it costs
 
 Validated cross-platform: Windows and Linux expose the identical family set from the
-bundle, zero host fonts leaking through on either, generic CSS families (serif, sans,
+bundle, zero host fonts leaking through on either,
+[generic CSS families](https://www.w3.org/TR/css-fonts-4/) (serif, sans,
 monospace, and the per-script CJK generics) resolving to the same bundled fonts rather
 than collapsing to whatever the host happens to have. The same check on macOS runs in
 CI rather than locally, for the ordinary reason that not every setup has a Mac to test
@@ -134,9 +136,9 @@ might add later. Both are the price of an answer that has no per-platform seams 
 Consistent with treating a suppressed signal as a fail rather than a pass, the honest
 gaps in this approach, found and not yet closed:
 
-- One backend's CSS-`local()` font lookup path isn't wired to the bundle-only mode at
-  all, so a page asking for a font by exact name through that specific CSS feature
-  fails to resolve where a real installation would have. A resolved lookup versus a
+- One backend's [CSS `local()`](https://www.w3.org/TR/css-fonts-4/) font lookup path
+  isn't wired to the bundle-only mode at all, so a page asking for a font by exact name
+  through that specific CSS feature fails to resolve where a real installation would have. A resolved lookup versus a
   failed one is itself a detail a determined check could compare.
 - One backend's fallback for a character outside the bundle's family set reaches
   straight for the real host catalogue rather than staying inside the bundle, so an
@@ -210,8 +212,8 @@ names. It does not by itself stop the browser's normal font backend from also se
 whatever else is on the host, and licensing is a separate problem again.
 
 **Why not just spoof the font list in JavaScript?** There's no enumeration API to
-intercept; detection works by measuring rendered text, and a script cannot change what
-the OS actually draws.
+intercept; [detection works by measuring rendered text](detect-installed-fonts-javascript.md),
+and a script cannot change what the OS actually draws.
 
 **Does this fix cost anything?** A larger binary, and a font list that's frozen at
 build time rather than tracking whatever the real OS might add later.
@@ -232,6 +234,8 @@ different hardware.
   macOS in CI) and the four open gaps listed above.
 - Firefox's own bundled-fonts build mechanism, which this architecture builds on
   rather than replaces.
+- [CSS Fonts Module Level 4](https://www.w3.org/TR/css-fonts-4/) (W3C), for the generic
+  font family keywords and the `local()` src descriptor referenced above.
 
 ---
 

@@ -1,18 +1,18 @@
 ---
-title: "Why you should not set the user agent in Playwright"
-description: "Rotating the user agent does not rotate the browser. Everything else keeps answering honestly, so the string you changed now contradicts the fonts, the GPU, the codecs and the TLS handshake."
+title: "Playwright User Agent: Why You Should Not Set It"
+description: "Setting a Playwright user agent does not change the browser. Fonts, GPU, codecs and the TLS handshake keep answering honestly, contradicting the new string."
 parent: "Browser Identity"
 grand_parent: "Guides"
 nav_order: 5
 ---
 
-
-# Why you should not set the user agent in Playwright
+# Playwright User Agent: Why You Should Not Set It
 
 The standard advice is to set a realistic user agent and rotate it. Search for it and
 every result agrees.
 
-It is close to the worst thing you can do, and the reason is one sentence:
+**No, you should not.** It is close to the worst thing you can do, and the reason is
+one sentence:
 
 > **Rotating the user agent does not rotate the browser.**
 
@@ -26,29 +26,32 @@ correct, and what to do instead.
 
 ## What the user agent has to agree with
 
-Change the string to claim Chrome on Windows, and here is what did not change:
+**Changing `navigator.userAgent` does not touch roughly eight other signals a page can
+read for free** - the platform properties, the font set, the WebGL renderer and its
+numeric parameters, the codec support pattern, the CSS color palette, the audio and
+speech-voice values, and the TLS handshake. Change the string to claim Chrome on Windows,
+and here is what did not change:
 
-- **`navigator.platform`, `navigator.oscpu`, `navigator.appVersion`**, which are separate
-  properties with separate values.
-- **The font set**, which still belongs to the machine you are on.
-  [Which is a comparison, not a count](headless-fonts-differ.md).
-- **The WebGL renderer string**, which on Windows has a specific ANGLE shape that a Linux
-  build does not produce. [The shape matters](webgl-renderer-strings.md).
-- **The WebGL numeric parameters**, which come from the platform's graphics stack.
-  [And are identical across GPUs on Windows](webgl-parameters-are-identical.md).
-- **The codec support pattern**, which differs by build and platform.
-  [Three surfaces in one API](codec-fingerprinting.md).
-- **The CSS system colour palette**, which resolves through the host's own theme.
-  [Readable with one call](css-media-query-fingerprinting.md).
-- **The audio profile**, the speech voice list, the screen relationships.
-- **The TLS handshake**, decided by the network stack before any of this.
-  [A Firefox handshake under a Chrome user agent is decisive](ja3-ja4-tls-fingerprint.md).
+| Signal | Why it still contradicts the claimed string |
+|---|---|
+| `navigator.platform`, `navigator.oscpu`, `navigator.appVersion` | Separate properties with separate values; the user agent string does not touch them. |
+| The font set | Still belongs to the machine you are on. [Which is a comparison, not a count](headless-fonts-differ.md). |
+| The WebGL renderer string | On Windows it has a specific ANGLE shape that a Linux build does not produce. [The shape matters](webgl-renderer-strings.md). |
+| The WebGL numeric parameters | Come from the platform's graphics stack. [And are identical across GPUs on Windows](webgl-parameters-are-identical.md). |
+| The codec support pattern | Differs by build and platform, not by the user agent string. [Three surfaces in one API](codec-fingerprinting.md). |
+| The CSS system colour palette | Resolves through the host's own theme. [Readable with one call](css-media-query-fingerprinting.md). |
+| The audio profile, the speech voice list, the screen relationships | Each comes from its own source, unrelated to the user agent string. |
+| The TLS handshake | Decided by the network stack before any of this. [A Firefox handshake under a Chrome user agent is decisive](ja3-ja4-tls-fingerprint.md). |
 
 Every one of those is cheaper to check than the user agent is to fake. A browser claiming
 Chrome while producing a Firefox handshake and a Linux font set has not disguised itself.
 It has volunteered that it is lying.
 
-## Why rotation makes it worse, not better
+## Why user agent rotation makes it worse, not better
+
+**Rotation does not create several identities: it creates one machine that keeps
+changing its story about which browser it is, while every other value it produces
+stays the same and links the sessions together.**
 
 Rotation is presented as making your traffic look like many users. Think about what it
 actually produces.
@@ -75,21 +78,26 @@ Two identities, each self-consistent, differing in everything rather than in one
 
 ## The Client Hints trap
 
-Specific to Chromium, and it catches people who did everything else carefully.
+**In Chromium, changing the user agent string does not necessarily change the separate
+`Sec-CH-UA` Client Hints headers, so the two can disagree in one request with no
+JavaScript needed to catch it.** Specific to Chromium, and it catches people who did
+everything else carefully.
 
-Modern Chromium sends the `Sec-CH-UA` family of headers, which carry the brand and
+Modern Chromium sends the [`Sec-CH-UA`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Sec-CH-UA) family of headers, which carry the brand and
 version independently of the classic user agent string. Setting `userAgent` in your
 automation tool does not necessarily rewrite them.
 
 The result is a request whose user agent says one version and whose Client Hints say
 another, in the same header set, arriving at the same server. That comparison needs no
 JavaScript and no fingerprinting library. It is two values that do not match.
+[Client Hints and Sec-Fetch: headers that must agree](client-hints-sec-fetch.md) covers
+the full header set, what each carries, and what automation can and cannot control.
 
 Firefox does not send those headers at all, which is its own consistency requirement: a
 browser claiming Chrome and sending no Client Hints is making a claim its own request
 contradicts.
 
-## The one case where you should set it
+## The one case where you should set the user agent
 
 If your build genuinely emits something like `HeadlessChrome` in its default user agent,
 that string is wrong and fixing it is correct. It is a real leak and it costs nothing to
@@ -146,6 +154,11 @@ free check.
 
 **Does `navigator.userAgent` match the HTTP header?** It should. Verify both, because
 tools sometimes change one and not the other.
+
+**How do I set a custom user agent in Playwright anyway?** The [`userAgent`](https://playwright.dev/python/docs/api/class-browser#browser-new-context-option-user-agent) browser
+context option accepts any string and Playwright will send it. Everything above is why
+doing so rarely helps: the option changes that one string and nothing it needs to
+agree with.
 
 **See also:** [navigator.webdriver is not the tell you think it is](navigator-webdriver-explained.md),
 the same argument applied to the other famous value,

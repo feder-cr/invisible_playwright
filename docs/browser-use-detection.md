@@ -1,6 +1,6 @@
 ---
 title: "browser-use gets detected: what you can and cannot change"
-description: "browser-use drives Chrome over CDP, so a Firefox engine cannot be dropped in. What its BrowserProfile actually lets you change, what it cannot reach, and the tell that is specific to AI agents."
+description: "browser-use drives Chrome over CDP. What BrowserProfile lets you change, what stays out of reach on a server, and the timing tell specific to AI agents."
 parent: "AI Agents and Frameworks"
 grand_parent: "Guides"
 nav_order: 2
@@ -19,7 +19,11 @@ about swapping in a different engine.
 
 ## What browser-use gives you to change
 
-Read from `browser_use/browser/profile.py`, which is the configuration surface:
+browser-use's `BrowserProfile` lets you change six things: which browser binary
+launches, its channel, a persistent profile directory, proxy, headless mode, and extra
+command-line arguments. Everything else about the browser and the machine it runs on is
+out of its reach. These fields are read from `browser_use/browser/profile.py`, the
+configuration surface:
 
 | Field | What it does |
 |---|---|
@@ -40,9 +44,9 @@ executable, deriving the Chrome user-data directory from it, enumerating Chrome 
 The channel type is a Chromium channel.
 
 The practical use of that field is pointing at your **real installed Chrome** rather
-than the bundled Chromium. Those are not the same browser: the codec set differs, the
-branding differs, and a real Chrome install is a far more common thing to be than a
-bundled test build.
+than the bundled Chromium. [Those are not the same browser](chromium-is-not-chrome.md):
+the codec set differs, the branding differs, and a real Chrome install is a far more
+common thing to be than a bundled test build.
 
 ### user_data_dir, which is underused
 
@@ -83,10 +87,14 @@ order.
 
 ## The tell that is specific to agent-driven sessions
 
-Here is the part that does not apply to ordinary scraping and does apply to browser-use.
+The tell specific to agent-driven sessions is timing, not fingerprint: an agent pauses to
+think between actions, and those pauses cluster around model latency in a shape that human
+reading never produces. This part does not apply to ordinary scraping and does apply to
+browser-use.
 
 An agent thinks between actions. It reads the page, calls a model, waits for a response,
-then acts. That produces an interaction rhythm with a very particular shape:
+then acts. That produces
+[an interaction rhythm with a very particular shape](ai-agent-timing-signal.md):
 
 - **Long, similar pauses before each action**, clustered around model latency rather than
   around reading speed.
@@ -113,9 +121,10 @@ arguments and Chrome profile handling. A Firefox binary in `executable_path` is 
 drop-in: the driver would be speaking a protocol the browser does not implement.
 
 If you specifically want an engine whose fingerprint is set in its own source, the route
-that works for agents is a different driver. Microsoft's `playwright-mcp` accepts a
-browser and an executable path and speaks MCP, so an agent framework that talks MCP can
-drive a patched Firefox through it.
+that works for agents is a different driver. Microsoft's
+[`playwright-mcp`](https://playwright.dev/docs/getting-started-mcp) accepts a browser
+and an executable path and speaks MCP, so an agent framework that talks MCP can drive a
+patched Firefox through it.
 [That integration is written up here](integrations/playwright-mcp.md).
 
 That is a genuine trade: you give up browser-use's agent loop and get an engine-level
@@ -169,6 +178,9 @@ different engine.
 - `browser_use/browser/profile.py`, which defines the configuration fields listed above,
   and `browser_use/browser/chrome.py`, which is the Chrome executable and profile
   handling. Read 2026-07-27.
+- [Playwright's own MCP documentation](https://playwright.dev/docs/getting-started-mcp),
+  which lists `firefox` among the supported `--browser` values, confirming that route
+  (unlike browser-use) is not Chromium-only. Read 2026-08-06.
 - The machine-level surfaces are each documented on their own page, linked above.
 
 ---

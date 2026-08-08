@@ -1,24 +1,30 @@
 ---
-title: "Why a plain Python requests scraper gets blocked before it sends a header"
-description: "python-requests has its own TLS fingerprint, and it doesn't look like any browser's. A site can reject the connection before your code sends a single header, cookie, or user agent - because none of those exist yet at that point in the handshake."
+title: "Why a Python requests scraper is blocked: TLS fingerprint"
+description: "A Python requests scraper has its own TLS fingerprint, so a site can block the connection at the handshake before any header, cookie, or user agent exists."
 parent: "Network, Proxy and WebRTC"
 grand_parent: "Guides"
 nav_order: 9
 ---
 
 
-# Why a plain Python requests scraper gets blocked before it sends a header
+# Why a Python requests scraper is blocked: TLS fingerprint
 
-A scraper built on `requests` or a similar plain HTTP client sets a convincing user
-agent, adds the right headers, maybe even rotates a clean residential proxy - and
-still gets blocked, sometimes before the response comes back with any content at all.
-The header and the user agent were never the problem. Something earlier decided the
-outcome first.
+A Python `requests` scraper often gets blocked at the TLS handshake, before it sends
+a single header, cookie, or user agent. The TLS library `requests` links against
+produces a ClientHello that no browser produces, and a site can read that mismatch and
+reject the connection while the headers and user agent you set are still waiting to be
+sent.
+
+That is why the usual fixes miss. A scraper built on `requests` or a similar plain HTTP
+client sets a convincing user agent, adds the right headers, maybe even rotates a clean
+residential proxy - and still gets blocked, sometimes before the response comes back
+with any content at all. The header and the user agent were never the problem.
+Something earlier decided the outcome first.
 
 ## What happens before any of that exists
 
 An HTTPS connection opens with a TLS handshake, and the first message in it - the
-ClientHello - is sent before a single byte of the HTTP request exists. No headers, no
+[ClientHello](https://datatracker.ietf.org/doc/html/rfc8446) - is sent before a single byte of the HTTP request exists. No headers, no
 cookies, no user agent string: none of that is part of the connection yet. The
 ClientHello is generated entirely by the TLS library the client links against, and it
 lists the cipher suites, extensions and settings that library supports, in the order
@@ -48,8 +54,9 @@ consequence of which library actually opened the socket.
 ## The two things that genuinely change it
 
 **Impersonate the handshake with a client built for it.** Libraries like `curl_cffi`
-wrap `curl-impersonate`, which reproduces a specific browser's TLS and HTTP/2
-behavior at the connection level rather than Python's own defaults. This closes the
+wrap `curl-impersonate`, which reproduces a specific browser's TLS and
+[HTTP/2 behavior](http2-fingerprint-detection.md) at the connection level rather than
+Python's own defaults. This closes the
 JA3/JA4 mismatch without needing an actual browser, at a fraction of the resource
 cost, for requests that don't need to execute JavaScript or render a page.
 
@@ -85,17 +92,20 @@ or user agent your code sets even exists as part of the connection.
 
 **Does setting a browser-like user agent fix a TLS fingerprint mismatch?** No. The
 user agent is an HTTP header, sent after the handshake the fingerprint is taken from
-has already completed.
+has already completed, so a
+[TLS fingerprint and user agent that disagree](tls-fingerprint-user-agent-mismatch.md)
+is itself a tell.
+
+**Can I fix this without running a full browser?** Sometimes. If the target does not
+execute JavaScript, an HTTP client that impersonates a browser's TLS and HTTP/2
+behavior closes the network-layer mismatch on its own. See
+[HTTP client versus real browser](http-client-vs-real-browser.md) for where that
+tradeoff breaks down.
 
 **What's the difference between JA3 and JA4?** JA4 sorts the fields it hashes before
 hashing them, so it survives the extension-order randomization modern browsers use.
 JA3 doesn't, and has become less reliable as a result, though it's still widely
 checked.
-
-**Do I need a full browser to fix this?** Only if the target also needs JavaScript
-execution or checks something above the network layer. If it's a plain page fetch,
-an HTTP client built to impersonate a browser's TLS behavior is usually the
-proportionate fix.
 
 **See also:** [JA3 and JA4: why a TLS fingerprint cannot be patched](ja3-ja4-tls-fingerprint.md),
 the full technical breakdown this page summarizes for a non-Playwright audience, and
@@ -104,8 +114,9 @@ for the general shape of a capability-based check versus a value-based one.
 
 ## Sources
 
-- The TLS handshake specification (ClientHello ordering and content), for why the
-  fingerprint exists before any HTTP-layer data does.
+- RFC 8446, the TLS 1.3 specification, which defines the ClientHello and its ordering
+  of cipher suites and extensions - the bytes a JA3/JA4 fingerprint is computed from,
+  and the reason the fingerprint exists before any HTTP-layer data does.
 
 ---
 

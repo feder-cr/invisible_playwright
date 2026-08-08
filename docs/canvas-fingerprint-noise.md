@@ -1,6 +1,6 @@
 ---
 title: "Canvas fingerprint noise: why per-call randomising fails"
-description: "Per-call canvas noise beats a detector that reads once and fails a detector that reads twice. The second check almost nobody knows about, and what a consistent alternative has to look like."
+description: "Per-call canvas fingerprint noise fails a detector that reads twice and flags as masking on a second check. What a consistent canvas actually looks like."
 parent: "Canvas, WebGL, Fonts and Audio"
 grand_parent: "Guides"
 nav_order: 1
@@ -8,6 +8,12 @@ nav_order: 1
 
 
 # Canvas fingerprint noise: why per-call randomising fails
+
+Per-call canvas fingerprint noise fails because a detector can read the same canvas
+twice. Real hardware returns an identical result both times; per-call noise returns two
+different ones, which flags the browser as tampering rather than merely unusual. The fix
+is not more noise, it is noise that stays consistent within a session and across sessions
+of the same identity.
 
 The standard advice for canvas fingerprinting is to add a little noise to the pixels so
 your hash is not stable. It is the most widely deployed anti-fingerprinting technique
@@ -19,7 +25,9 @@ consistent alternative has to look like.
 
 ## The check that catches per-call noise
 
-Render the same canvas twice in the same page and compare.
+Render the same canvas twice in the same page with
+[`toDataURL()`](https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/toDataURL)
+and compare.
 
 ```js
 function hash() {
@@ -45,13 +53,15 @@ This is four lines of JavaScript. Assume it is running.
 
 ## The second check, which is subtler
 
-The first one is well known enough that better tools seed their noise, so two reads
-agree. There is another shape, and it is worth understanding because it caught us.
-
 A detector draws a **small canvas filled with a handful of solid reference colours**,
-then reads it back and checks those exact colour values came back unchanged. Not a
-hash, not a comparison between two reads: an assertion that a flat red rectangle is
-still exactly that red.
+then reads it back with
+[`getImageData()`](https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/getImageData)
+and checks those exact colour values came back unchanged. Not a hash, not a comparison
+between two reads: an assertion that a flat red rectangle is still exactly that red.
+
+The first check above is well known enough that better tools already seed their noise,
+so two reads agree. This second shape is subtler, and it is worth understanding because
+it caught us.
 
 Real rendering does not change a solid fill. Any per-pixel noise does, even seeded
 noise, even tiny noise. And a tool that fails this is not scored as "unusual", it is
@@ -70,6 +80,11 @@ form is the same one that appears in audio and everywhere else:
 ## Additive noise versus substitution, and the cost nobody states
 
 There are two ways to make a canvas read return something other than the truth.
+
+| Approach | What it does | Same hash across machines? | Main cost |
+|---|---|---|---|
+| Additive noise | Perturbs each pixel slightly; the image still looks the same, the hash changes | No. The operating system's text stack still shows through the perturbation | The underlying platform signature leaks |
+| Substitution | Replaces pixel values wholesale with seed-derived values | Yes. The hash is a pure function of the seed | Real canvas work (cropping, QR decoding, a video frame) gets the substituted values too |
 
 **Additive.** Perturb each pixel slightly. The image still looks like the image, the
 hash changes. This is what extensions do.
@@ -145,7 +160,8 @@ on whether anything is checking.
 in four lines. That is a statement about the technique, not about any particular tool.
 
 **Why does my canvas hash change on every page load?** Because something is randomising
-per call or per session. No real machine does that.
+per call or per session. No real machine does that; there is
+[a dedicated page on why a canvas fingerprint changes every run](canvas-fingerprint-changes-every-run.md).
 
 **Should the hash be unique to me?** It should be consistent for one identity and
 different between identities. Unique-per-request is not privacy, it is a signature.
@@ -160,8 +176,9 @@ fingerprinting probe.
 
 **See also:** [AudioContext fingerprinting](audiocontext-fingerprinting.md), where the
 same per-call mistake has the same consequence and where our own noise turned out to be
-the thing being detected, and [what sannysoft checks](sannysoft-explained.md), whose
-canvas-in-iframe rows are a consistency test rather than a fingerprint test.
+the thing being detected, [what sannysoft checks](sannysoft-explained.md), whose
+canvas-in-iframe rows are a consistency test rather than a fingerprint test, and
+[how BrowserLeaks reports the canvas and WebGL hash](browserleaks-canvas-webgl-hash.md).
 
 ---
 

@@ -1,6 +1,6 @@
 ---
 title: "speechSynthesis.getVoices() returns an empty array"
-description: "An empty speechSynthesis.getVoices() is two unrelated problems wearing the same symptom: an async timing gotcha that hits every browser, and a voice list that describes the wrong operating system."
+description: "An empty speechSynthesis.getVoices() is two problems: an async timing gotcha in every browser, and a voice list that names the wrong operating system."
 parent: "Browser Identity"
 grand_parent: "Guides"
 nav_order: 11
@@ -20,13 +20,20 @@ nothing to do with each other.
 
 ## Problem one: the async gotcha
 
+An empty first call is a timing problem, not a bug.
+[`getVoices()`](https://developer.mozilla.org/en-US/docs/Web/API/SpeechSynthesis/getVoices)
+populates asynchronously, so a call made during page load can arrive before the list is
+ready. This happens in every browser, on every machine, and the fix is an event listener.
+
 ```js
 const voices = speechSynthesis.getVoices();
 console.log(voices.length);   // 0
 ```
 
 The voice list is populated asynchronously. Call `getVoices()` during page load and
-you can easily get there first. The fix is the `voiceschanged` event:
+you can easily get there first. The fix is the
+[`voiceschanged`](https://developer.mozilla.org/en-US/docs/Web/API/SpeechSynthesis/voiceschanged_event)
+event:
 
 ```js
 function whenVoicesReady() {
@@ -55,7 +62,7 @@ a CI runner, the listener will not save you, because there is nothing to wait fo
 speech engine is installed, so the list is empty and stays empty. That is the second
 problem.
 
-## Problem two: the list is a statement about your machine
+## Problem two: getVoices() is a statement about your machine
 
 `getVoices()` does not return a list defined by the browser. It returns the speech
 voices installed in the **operating system**, which means the array is a description
@@ -92,7 +99,12 @@ Three tells, in order of how obvious they are:
 - **A Windows voice list on a machine that is wrong about it in some other way.**
   Which brings us to the interesting failure.
 
-## Why filtering the list does not work
+## Why filtering the getVoices() list does not work
+
+Filtering the OS voice list down to a plausible Windows set works on Windows and
+breaks everywhere else. On a host with no Microsoft voices to keep, the filter
+removes everything and returns an empty array, which is the strongest possible
+tell rather than a safe fallback.
 
 The obvious implementation is to take whatever the OS registry hands back and filter
 it down to a plausible Windows set. We looked at that approach, and it has a problem
@@ -118,6 +130,10 @@ flag, and the accessors read those fields back out of it. There is no path where
 the answer depends on what happens to be installed on the machine.
 
 ## What to check
+
+Read the voice list after it is ready, then compare it field by field against a
+real machine of the platform you claim to be. The names, count, `localService`
+flag, `default` flag and languages should all describe one operating system.
 
 ```js
 const voices = await whenVoicesReady();
@@ -171,7 +187,8 @@ one.
 because it is an OS-level list that most people never think to align with the rest of
 their fingerprint.
 
-**See also:** [why headless browsers render different fonts](headless-fonts-differ.md),
+**See also:** [speechSynthesis voices as a cross-platform fingerprint](speech-synthesis-voices-fingerprint.md)
+for the detector's-eye view of the same signal, [why headless browsers render different fonts](headless-fonts-differ.md),
 the same "the OS answers, not the browser" problem on a much more commonly checked
 surface, and [WebGL renderer strings](webgl-renderer-strings.md).
 

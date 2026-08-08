@@ -49,7 +49,6 @@ Get the two values first, the same way for all four:
 ```bash
 pip install invisible-playwright
 invisible-playwright fetch
-invisible-playwright path
 python -c "import json;from invisible_playwright import get_default_stealth_prefs;print(json.dumps(get_default_stealth_prefs(seed=1, humanize=True)))" > prefs.json
 ```
 
@@ -80,7 +79,7 @@ module.exports = defineConfig({
 ```
 
 ```bash
-npx cypress run --browser /absolute/path/from/invisible-playwright path
+npx cypress run --browser /absolute/path/from/invisible-playwright fetch
 ```
 
 **The Cypress-specific trap:** do not set `userAgent` in the config. Cypress reads it
@@ -106,7 +105,7 @@ exports.config = {
   capabilities: [{
     browserName: 'firefox',
     'moz:firefoxOptions': {
-      binary: '/absolute/path/from/invisible-playwright path',
+      binary: '/absolute/path/from/invisible-playwright fetch',
       prefs,
       args: ['-headless'],
     },
@@ -123,7 +122,7 @@ behaving as expected, that merge is the first place to look rather than the prof
 TestCafe can run any browser given a path, through its `path:` provider:
 
 ```bash
-npx testcafe "path:/absolute/path/from/invisible-playwright path" tests/
+npx testcafe "path:/absolute/path/from/invisible-playwright fetch" tests/
 ```
 
 **This carries the engine and not the identity.** A search of the TestCafe source
@@ -160,7 +159,7 @@ module.exports = {
         'moz:firefoxOptions': { prefs, args: ['-headless'] },
       },
       webdriver: {
-        firefox_binary: '/absolute/path/from/invisible-playwright path',
+        firefox_binary: '/absolute/path/from/invisible-playwright fetch',
       },
     },
   },

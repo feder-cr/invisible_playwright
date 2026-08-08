@@ -1,6 +1,6 @@
 ---
 title: "CSS fingerprinting: what media queries reveal"
-description: "Media features and CSS system colours identify a machine with no script at all, which puts them out of reach of every page-level stealth layer. What they expose, and the two consistency traps."
+description: "Media queries and CSS system colours fingerprint a machine with no JavaScript, beyond page-level stealth. What they expose, and the two consistency traps."
 parent: "Browser Identity"
 grand_parent: "Guides"
 nav_order: 9
@@ -9,8 +9,16 @@ nav_order: 9
 
 # CSS fingerprinting: what media queries reveal
 
-Almost everything written about browser fingerprinting assumes JavaScript. Disable it,
-block it, patch it, and the discussion is about what a script can read.
+**CSS fingerprinting identifies a machine using only stylesheet media queries and system
+colours, with no JavaScript at all.** Media queries reveal the pointer type, the
+operating-system dark-mode setting, display resolution and colour gamut, the screen size,
+and accessibility preferences; CSS system colours reveal the operating system itself. Each
+is read by loading a different resource per branch, so the server learns the answer from
+which request arrives.
+
+Almost everything written about [what a browser fingerprint is](what-is-a-browser-fingerprint.md)
+assumes JavaScript. Disable it, block it, patch it, and the discussion is about what a
+script can read.
 
 CSS does not need a script. A stylesheet can ask what kind of pointer you have, whether
 your system is in dark mode, how many colours your display shows, and how large it is,
@@ -23,7 +31,9 @@ and what a consistent answer looks like.
 
 ## How a stylesheet exfiltrates without a script
 
-The mechanism is a few lines and it has been known for years:
+**A stylesheet exfiltrates data with no JavaScript at all by loading a different image
+per media-query branch, so the browser that requests one image rather than another has
+answered the query.** The pattern is a few lines of CSS and has been known for years:
 
 ```css
 @media (pointer: fine)   { body { background-image: url("/p?fine"); } }
@@ -48,19 +58,35 @@ It is that these values are *free* to collect and are rarely part of anyone's ch
 
 ## The media features that actually carry information
 
-Not all of them are interesting. These are:
+Not every media feature carries useful entropy. The ones that identify a machine fall into
+five groups: pointer and hover capabilities, colour scheme, display characteristics,
+accessibility preferences, and size.
 
-**Pointer and hover.** `pointer`, `any-pointer`, `hover`, `any-hover`. A desktop with a
+| Media feature | What it reveals |
+|---|---|
+| `pointer`, `any-pointer`, `hover`, `any-hover` | Input devices: mouse vs touch, and whether the device has both |
+| `prefers-color-scheme` | OS dark-mode setting, close to a coin flip across real users |
+| `resolution`, `color-gamut` | Display panel class (`p3` marks a modern, wide-gamut display) |
+| `prefers-reduced-motion`, `prefers-contrast`, `forced-colors`, `inverted-colors` | Accessibility preferences; a non-default value is rare and identifying |
+| `width`, `height`, `device-width`, `device-height` | Screen and viewport size, and the CSS/JavaScript consistency trap below |
+
+**Pointer and hover.**
+[`pointer`](https://developer.mozilla.org/en-US/docs/Web/CSS/@media/pointer),
+`any-pointer`, `hover`, `any-hover`. A desktop with a
 mouse reports `fine` and `hover`. A phone reports `coarse` and `none`. A touchscreen
 laptop reports both, through the `any-` variants, which is how a device with two input
 methods is distinguished from one with a single method.
 
-**Colour scheme.** `prefers-color-scheme` is the operating system's dark mode setting,
+**Colour scheme.**
+[`prefers-color-scheme`](https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-color-scheme)
+is the operating system's dark mode setting,
 and it is close to a coin flip across real users, so it is a genuine bit rather than a
 constant.
 
 **Display characteristics.** `resolution` and `color-gamut` describe the panel.
-`color-gamut: p3` says a modern, better-than-average display.
+`color-gamut: p3` says a modern, better-than-average display; see
+[color-gamut as a display fingerprint](color-gamut-hdr-media-query-fingerprint.md) for how
+that one media query alone narrows the field.
 
 **Accessibility preferences.** `prefers-reduced-motion`, `prefers-contrast`,
 `forced-colors`, `inverted-colors`. Almost everyone leaves these at the default, which
@@ -71,14 +97,13 @@ is exactly why a non-default value is informative: it is rare.
 
 ## Trap one: CSS and JavaScript can disagree about the screen
 
-This is the mistake that is specific to spoofing, and it is invisible unless you look
-for it.
+**In Firefox, the size a media query resolves against and the size `screen.width`
+reports come from different code inside the browser** - two separate paths to the same
+physical fact. Patch only the JavaScript side and the two disagree about the same
+machine; this is a mistake specific to spoofing, and it is invisible unless you look
+for it directly.
 
-In Firefox, the size a media query resolves against and the size
-`screen.width` reports **come from different code inside the browser**. They are two
-separate paths to the same physical fact.
-
-Spoof only the JavaScript side and you get a browser where:
+Concretely, spoofing only the JavaScript side produces a browser where:
 
 ```js
 screen.width                                  // 1920
@@ -109,12 +134,11 @@ If the second line is `false`, something is spoofing one side only.
 
 ## Trap two: CSS system colours give away the operating system
 
-This one is genuinely obscure and it is checked in production.
-
-CSS has keywords that resolve to the operating system's own interface palette:
+**[CSS system colour keywords](https://developer.mozilla.org/en-US/docs/Web/CSS/system-color) -
 `ButtonFace`, `ButtonText`, `Canvas`, `CanvasText`, `Highlight`, `HighlightText`,
-`Menu`, `Field`, and a few dozen more. A page can read them with no permission and no
-script beyond one call:
+`Menu`, `Field`, and a few dozen more - resolve to the operating system's own interface
+palette, readable with no permission and one function call.** This surface is
+genuinely obscure, and it is checked in production:
 
 ```js
 const d = document.createElement('div');
@@ -190,8 +214,8 @@ platform tell that no script controls, and
 
 ## Sources
 
-- MDN's reference for the `@media` at-rule and the individual media features named
-  above.
+- MDN's [reference for the `@media` at-rule](https://developer.mozilla.org/en-US/docs/Web/CSS/@media)
+  and the individual media features named above.
 - Published work on CSS-based fingerprinting, which is where the load-an-image-per-branch
   technique is described.
 - This project's own media-feature and system-colour handling, and the reason the palette

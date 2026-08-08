@@ -154,8 +154,40 @@ def test_persistent_context_kwargs_omits_timezone_when_empty_string():
 # ─── Mocked __enter__ flow - confirms the right Playwright call is made ── #
 
 
+@pytest.fixture
+def no_geo_lookup(monkeypatch):
+    """`__enter__` resolves the timezone from the EGRESS, over the network.
+
+    The four tests below drive `__enter__` with Playwright mocked to assert which
+    call it makes, and they were marked `unit` while making a real HTTP request
+    each: slow on a good day, red on a runner without egress, and a different
+    answer depending on where the runner sits. What they assert has nothing to do
+    with geo.
+
+    Deliberately NOT autouse: a test that means to exercise the geo path should
+    have to say so.
+    """
+    from invisible_core._geo import SessionGeo
+
+    monkeypatch.setattr("invisible_playwright.launcher.prepare_session_geo",
+                        lambda tz, proxy: SessionGeo("America/New_York", "198.51.100.4"))
+    # BOTH lookups. `locale="auto"` is the default, and `resolve_session_locale`
+    # is imported INSIDE __enter__ from invisible_core, so it has to be patched
+    # on the core module - patching the launcher's namespace does nothing for a
+    # name that is not in it. Stubbing only the first one left the four tests at
+    # 34 seconds, which is how the second one was found.
+    monkeypatch.setattr("invisible_core.resolve_session_locale",
+                        lambda ip, proxy: "en-US")
+    # And the lifetime guard. `bind` waits for the browser tree to APPEAR -
+    # correct on a real launch, and here Playwright is a MagicMock so no process
+    # ever comes, and each of these four tests sat out the whole 10s deadline.
+    # The guard has its own tests in the core (test_process_guard.py); these
+    # assert which Playwright call the launcher makes.
+    monkeypatch.setattr(InvisiblePlaywright, "_bind_process_tree", lambda self: None)
+
+
 @pytest.mark.unit
-def test_enter_with_profile_dir_calls_launch_persistent_context(tmp_path, monkeypatch):
+def test_enter_with_profile_dir_calls_launch_persistent_context(tmp_path, monkeypatch, no_geo_lookup):
     """When profile_dir is set, __enter__ must call
     `firefox.launch_persistent_context(user_data_dir=...)` and NOT
     `firefox.launch(...)`. This is the structural test that the persistent
@@ -198,7 +230,7 @@ def test_enter_with_profile_dir_calls_launch_persistent_context(tmp_path, monkey
 
 
 @pytest.mark.unit
-def test_enter_without_profile_dir_calls_launch_not_persistent(tmp_path, monkeypatch):
+def test_enter_without_profile_dir_calls_launch_not_persistent(tmp_path, monkeypatch, no_geo_lookup):
     """Default path: profile_dir=None → firefox.launch, not
     launch_persistent_context. Sentinel that the non-persistent flow
     isn't accidentally rerouted."""
@@ -227,7 +259,7 @@ def test_enter_without_profile_dir_calls_launch_not_persistent(tmp_path, monkeyp
 
 
 @pytest.mark.unit
-def test_persistent_context_user_data_dir_is_created_if_missing(tmp_path, monkeypatch):
+def test_persistent_context_user_data_dir_is_created_if_missing(tmp_path, monkeypatch, no_geo_lookup):
     """First-run scenario: the directory the user names doesn't exist yet.
     __enter__ must mkdir -p it (Playwright won't, and would crash with
     'user_data_dir does not exist')."""
@@ -250,7 +282,7 @@ def test_persistent_context_user_data_dir_is_created_if_missing(tmp_path, monkey
 
 
 @pytest.mark.unit
-def test_teardown_closes_persistent_context(tmp_path, monkeypatch):
+def test_teardown_closes_persistent_context(tmp_path, monkeypatch, no_geo_lookup):
     """The teardown must close the persistent context. Forgetting this
     leaves Firefox + Playwright running until the parent process exits,
     which on long-running tools (job orchestrators, MCP servers) leaks

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import secrets
 from pathlib import Path
+import time as _time
 from typing import Any, Dict, Optional, Union
 
 from playwright.sync_api import Browser, BrowserContext, Playwright, sync_playwright
@@ -11,18 +12,22 @@ from . import _session
 from ._cursor import (
     ENGINE_PYTHON,
     enable_for as _enable_cursor_engine,
-    humanize_prefs as _humanize_prefs,
     max_seconds_for as _cursor_max_seconds,
     resolve_cursor_engine,
 )
 from invisible_core._fpforge import Profile, generate_profile
 from invisible_core import forced_gpu_class
 from invisible_core import prepare_session_geo
-from invisible_core import cloak_prefs, make_virtual_display
+from invisible_core import make_virtual_display
 from ._engine import assert_wire_version, resolve_executable
 from invisible_core import configure_proxy as _configure_proxy_shared
 from ._reaper import SessionToken, guard_for
-from invisible_core import translate_profile_to_prefs
+
+
+#: Settle after a tab is created, in seconds. Named and module-level because
+#: `browser.new_page()` needs the same wait and a second literal is a second
+#: value: the two drifted apart for as long as one of them did not exist.
+_NEWTAB_SETTLE = 0.4
 
 
 def _patch_sync_new_page_sleep(ctx: Any) -> None:
@@ -33,12 +38,11 @@ def _patch_sync_new_page_sleep(ctx: Any) -> None:
     navigation and raises "Navigation interrupted by about:newtab".  A short
     sleep breaks the race without requiring every call-site to know about it.
     """
-    import time as _time
     original_new_page = ctx.new_page
 
     def patched_new_page(**kw):
         page = original_new_page(**kw)
-        _time.sleep(0.4)
+        _time.sleep(_NEWTAB_SETTLE)
         return page
 
     ctx.new_page = patched_new_page  # type: ignore[assignment]
@@ -328,9 +332,27 @@ class InvisiblePlaywright:
         return self._default_context_kwargs()
 
     def _patch_new_context_defaults(self, browser: Browser) -> None:
-        """Wrap ``browser.new_context`` so its defaults derive from the
-        profile (viewport, screen, DPR, color-scheme). Users get a
-        coherent context for free; explicit kwargs still override.
+        """Wrap ``browser.new_context`` AND ``browser.new_page`` so their
+        defaults derive from the profile (viewport, screen, DPR, color-scheme,
+        locale, timezone). Users get a coherent context for free; explicit
+        kwargs still override.
+
+        BOTH, because ``new_page`` does not go through the patched
+        ``new_context``. Playwright's sync ``Browser.new_page`` forwards to the
+        IMPLEMENTATION object, whose own ``new_page`` calls ``self.new_context``
+        - itself, the impl - so a wrapper installed on the sync-api object is
+        never consulted. Read on the installed Playwright, and it is the call in
+        this package's own README and docstring: ``browser.new_page()`` was
+        opening a page with Playwright's stock 1280x720 viewport, the host's
+        colour scheme and no locale or timezone override, against a fingerprint
+        claiming the profile's screen. A viewport that contradicts
+        ``screen.width`` is not a missing feature, it is an inconsistency, which
+        is the one thing this package exists to avoid.
+
+        Written through the public ``new_page`` rather than by reaching into the
+        impl: that keeps Playwright's own ownership wiring (closing the page
+        closes the context it owns) instead of reimplementing it against private
+        attributes.
         """
         original = browser.new_context
         defaults = self._default_context_kwargs()
@@ -349,6 +371,25 @@ class InvisiblePlaywright:
             return ctx
 
         browser.new_context = patched  # type: ignore[assignment]
+
+        original_page = browser.new_page
+
+        def patched_page(**kw):
+            merged = dict(defaults)
+            merged.update(kw)  # user-supplied wins, same rule as new_context
+            page = original_page(**merged)
+            ctx = page.context
+            # The settle new_context installs for later tabs, applied to THIS
+            # tab too: it is the same about:newtab race, and browser.new_page()
+            # creates a tab the caller is about to goto() immediately.
+            _time.sleep(_NEWTAB_SETTLE)
+            _patch_sync_new_page_sleep(ctx)
+            if prep:
+                from ._recaptcha_seed import seed_recaptcha_cookies_sync
+                seed_recaptcha_cookies_sync(ctx, profile, timezone=tz)
+            return page
+
+        browser.new_page = patched_page  # type: ignore[assignment]
 
     def _default_context_kwargs(self) -> Dict[str, Any]:
         p = self._profile

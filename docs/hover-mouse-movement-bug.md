@@ -1,6 +1,6 @@
 ---
 title: "Why humanized mouse movement can fail on hover()"
-description: "A Bezier curve measured on page.mouse.move() and a Bezier curve measured on page.hover() are not the same feature. On the call almost every script actually makes, the humanization can collapse to three events - a teleport with two extra samples on it."
+description: "Humanized mouse movement can fail on hover() when a hit-target check moves the pointer first, collapsing the humanized path to a near-teleport. The cause and fix."
 parent: "The Automation Layer"
 grand_parent: "Guides"
 nav_order: 8
@@ -8,6 +8,13 @@ nav_order: 8
 
 
 # Why humanized mouse movement can fail on hover()
+
+Humanized mouse movement can fail on `hover()` because `hover()` runs a hit-target
+check that moves the pointer first, and when the humanized path is generated inside that
+same step the check consumes the distance before the path ever runs. The stroke collapses
+to a near-teleport with a couple of samples on it, while the identical code driving
+`page.mouse.move()` directly still looks fully human. In short: the humanization had been
+validating itself against the one call almost no real script makes.
 
 Every guide to human-like mouse movement measures the same thing: draw a curve, add
 jitter, check that the shape looks plausible. [The curve is the easy half](human-mouse-movement.md).
@@ -19,9 +26,10 @@ whole time.
 ## The measurement that changed everything
 
 `page.mouse.move()` and `page.hover()` both move the pointer. They are not the same
-call underneath. `hover()` runs a hit-target check first - it needs to confirm the
-element is actually there before it decides where the pointer should end up - and
-that check itself moves the pointer, before the humanized path ever starts.
+call underneath. `hover()` runs a [hit-target check](https://playwright.dev/docs/actionability#receives-events)
+first - it needs to confirm the element is actually there before it decides where the
+pointer should end up - and that check itself moves the pointer, before the humanized
+path ever starts.
 
 Driving the identical 570px displacement two ways, interleaved, same page, same
 settings, made the gap impossible to miss:
@@ -87,9 +95,10 @@ an order of magnitude, once measurement moved from the planned path to the wire.
 Not every problem here has a fix yet, and the honest thing is to say which one.
 
 A cursor that only ever moves in a perfect curve directly toward the next click, and
-sits motionless the rest of the time, has a shape at the macro level regardless of how
-good any single stroke is: idle time with a suspiciously narrow distribution, and every
-movement terminating on something clickable. Neither is specific to any one
+sits motionless the rest of the time, has a shape at
+[the level behavioural biometrics actually score](mouse-dynamics-behavioural-biometrics.md)
+regardless of how good any single stroke is: idle time with a suspiciously narrow
+distribution, and every movement terminating on something clickable. Neither is specific to any one
 implementation - it's a property of driving a page by clicking things in sequence
 rather than by moving a mouse around the way a person actually does, including toward
 things that are not buttons. Closing that gap is a different, larger piece of work
@@ -123,13 +132,17 @@ listener. They can disagree, and the listener is what any real detection code wo
 also be reading.
 
 **See also:** [Bezier curves are the easy half](human-mouse-movement.md), for the
-pointer-event-field argument this page's fix depends on; and
+pointer-event-field argument this page's fix depends on;
+[ghost-cursor and shared trajectory code](ghost-cursor-human-mouse.md), on why constants
+shared across installs are their own fingerprint; and
 [why an attached debugger makes automation detectable](debugger-timing-detection.md),
 for another case where the automation layer itself, not the fingerprint, was the
 actual problem.
 
 ## Sources
 
+- [Playwright's actionability documentation, "Receives Events"](https://playwright.dev/docs/actionability#receives-events) -
+  the documented hit-target check this page's whole argument rests on.
 - This project's own cursor-generation rework and its before/after measurements,
   including the interleaved A/B methodology (same binary, same page, arms differing
   only by which engine generated the path) and the reproduction against a hover

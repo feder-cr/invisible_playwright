@@ -1,6 +1,6 @@
 ---
 title: "invisible_playwright vs nodriver and undetected-chromedriver"
-description: "Both are Chrome-only tools with their own API, not Playwright forks. One patches a chromedriver binary, the successor drops the binary and speaks CDP directly. Neither claims to touch fingerprinting or your IP, and both say so themselves."
+description: "nodriver and undetected-chromedriver are Chrome-only tools, not Playwright forks. Neither hides your IP or fingerprint, by their own docs. How to choose."
 parent: "Comparisons"
 nav_order: 6
 ---
@@ -8,10 +8,16 @@ nav_order: 6
 
 # invisible_playwright vs nodriver and undetected-chromedriver
 
+nodriver and undetected-chromedriver are Chrome-only automation tools with their
+own API, not Playwright forks, and neither claims to hide your IP or change your
+browser fingerprint. Choosing between them and a Playwright-based stealth setup is
+really one decision: whether you are willing to leave the Playwright ecosystem at all.
+
 These two are one lineage, not two separate comparisons. `undetected-chromedriver` patched
 Selenium's chromedriver binary to stop Chrome announcing itself as automated.
 `nodriver`, from the same author, is its successor: it removes the chromedriver binary
-and the WebDriver protocol entirely, and speaks the Chrome DevTools Protocol directly.
+and the [WebDriver protocol](https://www.w3.org/TR/webdriver2/) entirely, and speaks the
+Chrome DevTools Protocol directly.
 
 The comparison with this project is unusual for a reason worth stating up front: these
 are not Playwright tools. They have their own API. That changes what "choosing between

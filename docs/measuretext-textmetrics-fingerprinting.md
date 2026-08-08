@@ -1,6 +1,6 @@
 ---
 title: "measureText and TextMetrics as a fingerprinting surface"
-description: "Canvas gets the attention, but measureText is read far more often and needs no permission. What the ten-plus TextMetrics fields expose, why naive per-glyph noise backfired on us, and why the vertical fields need a different fix than the horizontal ones."
+description: "measureText and TextMetrics leak font and platform data with no permission prompt. What the fields expose, why per-glyph noise backfires, and how we fixed it."
 parent: "Canvas, WebGL, Fonts and Audio"
 grand_parent: "Guides"
 nav_order: 7
@@ -9,14 +9,19 @@ nav_order: 7
 
 # measureText and TextMetrics as a fingerprinting surface
 
-`CanvasRenderingContext2D.measureText()` gets a fraction of the attention canvas image
-fingerprinting does, which is backwards from how often it is actually used. It needs no
-permission prompt, no pixel readback, and no `getImageData()` call a privacy extension
-might flag. It is one line, it is fast, and it is a genuine font and platform signal.
+[`CanvasRenderingContext2D.measureText()`](https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/measureText) is a fingerprinting surface: it returns a
+[`TextMetrics`](https://developer.mozilla.org/en-US/docs/Web/API/TextMetrics) object whose ten-plus numbers depend on the exact font file, shaping engine
+and rendering backend, so the same probe string measures differently across platforms and
+font sets. It gets a fraction of the attention canvas image fingerprinting does, which is
+backwards from how often it is actually used. It needs no permission prompt, no pixel
+readback, and no `getImageData()` call a privacy extension might flag. It is one line, it
+is fast, and it is a genuine font and platform signal.
 
 ## What measureText actually returns
 
-Calling it on a string returns more than a width:
+Calling `measureText()` on a string returns more than a width: a `TextMetrics`
+object carrying ten-plus numeric fields covering width, bounding box, and baseline
+offsets.
 
 ```js
 const m = ctx.measureText("some probe string")

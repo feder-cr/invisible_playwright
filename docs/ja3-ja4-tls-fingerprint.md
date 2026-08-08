@@ -1,6 +1,6 @@
 ---
 title: "JA3 and JA4: why a TLS fingerprint cannot be patched"
-description: "A TLS fingerprint is decided before your code runs and before a single header is sent, which is why no stealth plugin touches it. What JA3 and JA4 measure, why JA3 decayed, and the two things that change the answer."
+description: "JA3 and JA4 are set by the TLS library before your code runs, so no stealth plugin can patch them. What they measure, why JA3 decayed, and the two real fixes."
 parent: "Network, Proxy and WebRTC"
 grand_parent: "Guides"
 nav_order: 6
@@ -19,7 +19,7 @@ answer.
 
 ## What is being fingerprinted
 
-When a client opens an HTTPS connection it sends a **ClientHello**: the TLS version it
+When a client opens an HTTPS connection it sends a **[ClientHello](https://datatracker.ietf.org/doc/html/rfc8446)**: the TLS version it
 proposes, the cipher suites it supports and in what order, the extensions it offers, the
 elliptic curves, the point formats. That message is sent in the clear, and it is
 entirely determined by the TLS library and how it was configured.
@@ -33,20 +33,21 @@ MD5. One 32-character string that says which stack you are.
 
 **JA4** is the successor, and the readable one. Instead of a single opaque hash it
 produces a string with parts you can inspect, for example the protocol, the number of
-ciphers and extensions, and the ALPN value, followed by truncated hashes of the sorted
-lists.
+ciphers and extensions, and the **[ALPN](https://datatracker.ietf.org/doc/html/rfc7301)**
+value, followed by truncated hashes of the sorted lists.
 
 The `d` in a JA4 string being a `d` rather than something else tells an analyst
 something. An MD5 hash tells them nothing until they look it up.
 
 ## Why JA3 stopped being dependable
 
-This is the part most guides are behind on.
+JA3 stopped being dependable because modern browsers now **randomise the order of TLS
+extensions on every connection**, and extension order is one of the five fields JA3
+hashes. The same browser therefore produces a different JA3 hash on every connection.
+This is the part most guides are still behind on.
 
-Modern browsers **randomise the order of TLS extensions on every connection**. Chrome
-introduced this deliberately, to stop servers hardcoding assumptions about client
-behaviour. Since extension order is one of the five JA3 fields, the same browser
-produces a different JA3 hash on every connection.
+Chrome introduced the randomisation deliberately, to stop servers hardcoding assumptions
+about client behaviour.
 
 That has two consequences worth understanding:
 
@@ -71,8 +72,8 @@ worth naming the difference. `navigator.webdriver` is a value the browser report
 the program that opened the connection**. You cannot report it differently, because you
 are not the one reporting it.
 
-The same is true of HTTP/2 settings frames and header ordering, which travel with it and
-are checked alongside.
+The same is true of **[HTTP/2 settings frames](https://datatracker.ietf.org/doc/html/rfc9113)**
+and header ordering, which travel with it and are checked alongside.
 
 ## The two things that actually change it
 

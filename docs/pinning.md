@@ -1,6 +1,6 @@
 ---
 title: "Pinning fingerprint fields"
-description: "Every fingerprint field is sampled from a seed by default. pin lets you force specific fields, like a GPU model or a screen size, while leaving the rest of the identity seed-derived."
+description: "Force specific fingerprint fields like GPU model or screen size while the rest stays seed-derived. Control exactly what stays random and what stays fixed."
 parent: "Documentation"
 nav_order: 4
 ---
@@ -8,9 +8,9 @@ nav_order: 4
 
 # Pinning fingerprint fields
 
-By default, every field of the fingerprint is sampled from a Bayesian network of real-world Firefox telemetry, seeded by an integer. Pass the same `seed` and you get the same fingerprint; omit it and each session is fresh.
+`pin` lets you **force specific fingerprint fields** to a fixed value while everything else stays seed-derived. Use it to replicate a known device (e.g. an NVIDIA 1080p laptop), test a specific GPU/screen combo, or hold down just one noisy signal that a target site weighs heavily.
 
-`pin` lets you **force specific fields** while letting the rest stay seed-derived. Useful when you need to replicate a known device (e.g. an NVIDIA 1080p laptop), test a specific GPU/screen combo, or pin just one noisy signal that a target site weighs heavily.
+By default, every field of the fingerprint is sampled from a Bayesian network of real-world Firefox telemetry, seeded by an integer. Pass the same `seed` and you get the same fingerprint; omit it and each session is fresh. `pin` sits on top of that: it overrides individual fields without giving up the seed for the rest.
 
 ```python
 from invisible_playwright import InvisiblePlaywright
@@ -29,6 +29,8 @@ with InvisiblePlaywright(
 ```
 
 ## How sampling + pinning interact
+
+Pinning a field skips the sampler only for that field - every other field still draws from its own conditional distribution, using the parent's original posterior rather than the value you just pinned. A pinned value does not pull correlated fields along with it.
 
 The generator is a Bayesian network: every field has a probability distribution **conditioned on its parents**. For example `gpu_class_tier` conditions `screen.tier`, `hardware.concurrency` and `webgl.msaa_samples`. A high-end GPU will tend to pair with a 2560x1440+ screen and 16+ cores.
 
@@ -51,7 +53,7 @@ Keys are dotted paths. All values are optional - omitted keys fall back to the s
 |-----|------|---------|-------|
 | `gpu.class_tier` | str | `"high_end"` | The **root** of the Bayesian network. One of `"low_end"`, `"mid_range"`, `"high_end"`, `"integrated_old"`, `"integrated_modern"`. Pin this alone to steer the whole profile (screen, concurrency, MSAA, ...) toward a coherent tier without having to name each sub-field. |
 | `gpu.vendor` | str | `"Google Inc. (NVIDIA)"` | Must exactly match the renderer vendor prefix, otherwise detectors catch the mismatch. |
-| `gpu.renderer` | str | `"ANGLE (NVIDIA, NVIDIA GeForce RTX 4090 Direct3D11)"` | Windows ANGLE string. Used by WebGL `UNMASKED_RENDERER_WEBGL`. |
+| `gpu.renderer` | str | `"ANGLE (NVIDIA, NVIDIA GeForce RTX 4090 Direct3D11)"` | Windows ANGLE string. Used by WebGL's [`UNMASKED_RENDERER_WEBGL`](https://developer.mozilla.org/en-US/docs/Web/API/WEBGL_debug_renderer_info). |
 
 **Why `class_tier` is pinnable separately from `renderer`.** They live at different levels of abstraction:
 
@@ -75,8 +77,8 @@ In practice most users should pin `class_tier` alone, or pin `renderer`+`vendor`
 
 | Key | Type | Example | Notes |
 |-----|------|---------|-------|
-| `hardware.concurrency` | int | `16` | `navigator.hardwareConcurrency`. |
-| `hardware.storage_quota_mb` | int | `10_000` | `navigator.storage.estimate().quota / 1024²`. |
+| `hardware.concurrency` | int | `16` | [`navigator.hardwareConcurrency`](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/hardwareConcurrency). |
+| `hardware.storage_quota_mb` | int | `10_000` | `navigator.storage.estimate().quota / 1024**2`. |
 
 ### `audio.*`
 
@@ -106,7 +108,7 @@ In practice most users should pin `class_tier` alone, or pin `renderer`+`vendor`
 
 | Key | Type | Example | Notes |
 |-----|------|---------|-------|
-| `dark_theme` | bool | `False` | `prefers-color-scheme: dark`. Real traffic is ~85% light, 15% dark. |
+| `dark_theme` | bool | `False` | [`prefers-color-scheme: dark`](https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-color-scheme). Real traffic is ~85% light, 15% dark. |
 
 `dark_theme` is the ONLY top-level key. Anything else raises `ValueError: pin key
 '...' is not valid`.
@@ -142,7 +144,7 @@ with sf as browser:
 
 ### Mimic a specific real device
 
-Pin the whole visible tuple - GPU, screen, concurrency, fonts, audio:
+Pin the whole visible tuple - GPU, screen, concurrency, audio:
 
 ```python
 pin = {
@@ -171,7 +173,7 @@ pin = {"gpu.class_tier": "low_end"}
 while everything else stays derived from the seed.
 
 **Why pin instead of just choosing a seed?** A seed gives you one whole machine.
-Pinning lets you hold one attribute steady, a locale or a screen size for example,
+Pinning lets you hold one attribute steady, a GPU model or a screen size for example,
 while the rest still varies.
 
 **Can I pin anything I like?** No. Some fields are refused deliberately, because
@@ -185,3 +187,8 @@ actually need.
 **What happens when I upgrade?** The rest of the profile can move with the engine while
 pinned fields stay put. Keep a note of what you pinned and why, or a future mismatch is
 hard to explain.
+
+**See also:** [giving an agent a reproducible browser identity via `seed`](reproducible-agent-browser-identity-seed.md),
+[what the WebGL renderer strings mean](webgl-renderer-strings.md), [hardwareConcurrency,
+deviceMemory and storage quota](hardware-concurrency-device-memory.md), and
+[why fonts are bundled rather than sampled per profile](bundled-fonts-cross-platform.md).

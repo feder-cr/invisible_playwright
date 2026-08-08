@@ -30,6 +30,15 @@ on:
 permissions:
   contents: read
 
+# One run of this workflow per branch at a time. A newer push cancels the older
+# in-flight run as a whole, cleanly, instead of leaving its queued jobs to be
+# cancelled one by one - which left the run marked failed even though nothing
+# had actually failed. Keyed by workflow + ref so tests and e2e never cancel
+# each other; only an older run of THIS workflow on the same branch is replaced.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # The install below resolves `invisible-core==N.M.0` from the package index,
   # and the core is published BEFORE this package. This gate answers whether it
@@ -63,4 +72,12 @@ jobs:
       - name: Fetch the published firefox binary
         run: echo "FF=$(python -m invisible_playwright fetch | tail -1)" >> "$GITHUB_ENV"
       - name: Run the full e2e suite under a virtual display
-        run: xvfb-run -a python scripts/run_e2e.py "$FF"
+        # PYTHONUNBUFFERED, and it is not a nicety. Without it Python block-buffers
+        # stdout when it is a pipe, and this step printed NOTHING for 39 minutes
+        # before the 40-minute timeout killed it on 2026-08-04: a run with no
+        # verdict and no way to tell where it went. The variable is inherited by
+        # the pytest subprocess run_e2e.py spawns, which is where the output
+        # actually comes from.
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: xvfb-run -a python -u scripts/run_e2e.py "$FF"

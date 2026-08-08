@@ -1,6 +1,6 @@
 ---
 title: "AudioContext fingerprinting, and why adding noise backfired"
-description: "Audio fingerprinting is usually beaten by adding noise. We shipped that defence, measured it, and found it made sessions easier to detect, not harder. What the seven audio values are and why noise fails."
+description: "AudioContext fingerprinting is usually beaten with noise. We shipped that defence, measured it, and it made sessions easier to detect. The seven values and why."
 parent: "Canvas, WebGL, Fonts and Audio"
 grand_parent: "Guides"
 nav_order: 8
@@ -19,7 +19,10 @@ page is what the measurements said.
 
 ## What is actually being measured
 
-Almost every guide says "audio fingerprinting hashes how your device processes sound",
+Audio fingerprinting collects seven values from the [Web Audio
+API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API), a rendered
+sample buffer plus six device and analyser readings, and checks that they agree with
+each other. Almost every guide stops at "it hashes how your device processes sound",
 which is true and useless. Here is the concrete shape.
 
 A fingerprinting script builds a short offline audio graph, usually an oscillator into
@@ -89,12 +92,10 @@ have to recognise your noise. It only has to ask a question whose correct answer
 
 ### The defence was the signal
 
-Then the part we did not expect.
-
-With the noise correctly guarded and passing the silence checks, a commercial
-fingerprinting service still scored the browser as tampered. We isolated the audio
-noise with a kill switch and ran it both ways on the same machine and the same
-identity:
+The second problem was not expected: with the noise correctly guarded and passing the
+silence checks, a commercial fingerprinting service still scored the browser as
+tampered. We isolated the audio noise with a kill switch and ran it both ways on the
+same machine and the same identity:
 
 | Audio noise | tampering score |
 |---|---|
@@ -150,9 +151,10 @@ ctx.close();
 - **`sampleRate` is 44100 or 48000.** Anything else is rare enough to be interesting.
 - **The three device values describe one plausible device.** A 5.1 channel count with a
   laptop latency is two devices in one answer.
-- **`outputLatency` is not zero and not identical across machines.** A container with no
-  sound device is a real tell here, in the same way that [a machine with no GPU is one
-  for WebGL](webgl-renderer-strings.md).
+- **[`outputLatency`](https://developer.mozilla.org/en-US/docs/Web/API/AudioContext/outputLatency)
+  is not zero and not identical across machines.** A container with no sound device is
+  a real tell here, in the same way that [a machine with no GPU is one for
+  WebGL](webgl-renderer-strings.md).
 - **Read the rendered sum twice in one session.** It must match. If it does not, your
   noise is per-call, and that is the single cheapest tampering check there is.
 - **Render a silent buffer and confirm it is silent.**

@@ -57,7 +57,24 @@ def test_an_engine_reporting_another_version_is_refused_after_launch(sealed):
         _engine.assert_wire_version(FakeBrowser("Firefox/150.0.1"))
     msg = str(exc.value)
     assert "150.0.1" in msg and "151.0" in msg, msg
-    assert "fetch --force" in msg, msg
+    # The remedy must be a command that EXISTS. This asserted `fetch --force`
+    # until 2026-08-01, three days after the flag was removed with four of the
+    # six subcommands - the message survived the removal because nothing links
+    # the CLI's surface to the strings that tell a user what to type.
+    assert "fetch" in msg and "--force" not in msg, msg
+    from invisible_playwright import cli
+    import argparse
+
+    sub = next(a for a in cli.build_parser()._actions
+               if isinstance(a, argparse._SubParsersAction))
+    named = [line.split(":", 1)[1].strip() for line in msg.splitlines()
+             if line.strip().startswith("fix")]
+    assert named, msg
+    for word in named[0].split():
+        if word.startswith("-") and word not in ("-m",):
+            raise AssertionError(f"the fix line offers a flag: {named[0]!r}")
+    assert any(c in named[0] for c in sub.choices), (
+        f"the fix line names no command this CLI has ({sorted(sub.choices)}): {named[0]!r}")
 
 
 def test_no_browser_is_not_an_error(sealed):

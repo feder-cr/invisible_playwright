@@ -1,6 +1,6 @@
 ---
 title: "reCAPTCHA v3 score: why a fresh browser scores badly"
-description: "reCAPTCHA v3 returns a number instead of a puzzle, and a clean fresh browser tends to score low anyway. The reason is not the fingerprint, it is that the score is mostly about history, and a new profile has none."
+description: "reCAPTCHA v3 gives sites a 0.0-1.0 score, and a fresh automated browser scores low even with a clean fingerprint. The reason is history, not detection."
 parent: "Detectors, Explained"
 grand_parent: "Guides"
 nav_order: 5
@@ -32,7 +32,9 @@ past is genuinely unusual, and the score is measuring exactly that.
 
 ## What a browser that has been used actually carries
 
-Three groups, and they are not interchangeable:
+A browser that has actually been used carries three groups of cookies a fresh profile
+lacks: Google's own, third-party analytics/advertising cookies, and consent-manager
+cookies. They are not interchangeable.
 
 **Google's own cookies.** A browser that has loaded anything Google, which in practice
 is every browser, carries a set of them on `.google.com`: a visitor identifier, a
@@ -52,7 +54,8 @@ second looks like a week of normal use.
 
 ## The trap: an anachronism is worse than an absence
 
-This is the part that is genuinely easy to get wrong, and we did.
+A stale cookie is a stronger signal against you than a missing one, and it is the part
+that is genuinely easy to get wrong - we did.
 
 Google **deprecated one of its long-standing cookies in 2022**. If you seed a profile
 from an article written before that, or from a capture taken years ago, your browser
@@ -119,6 +122,10 @@ document.cookie;                       // first-party only
 // and in devtools: Application, Cookies, look across domains
 ```
 
+From automation, you can inspect the full jar with
+[read and set cookies on a Playwright context](read-set-cookies-playwright-context.md),
+which sees the third-party cookies `document.cookie` hides.
+
 What to look at:
 
 - Cookies exist on more than one domain, and on Google's.
@@ -131,28 +138,32 @@ What to look at:
 
 **Why is my reCAPTCHA v3 score low even though I pass every bot test?** Because the
 score is weighted toward history and reputation, and a fresh profile has neither. Bot
-tests measure the browser, the score measures the session.
+tests measure the browser, the score measures the session. It behaves like a
+[browser trust score](browser-trust-score-explained.md), not a pass/fail check.
 
 **Does a good fingerprint raise the score?** It stops the fingerprint from lowering it.
 That is not the same thing.
 
-**Should I keep a persistent profile?** For this, yes. A profile that accumulates real
-usage beats any seeded approximation, and it is the one approach that improves on its
-own over time.
+**Should I keep a persistent profile?** For this, yes. A
+[persistent profile](persistent-profiles.md) that accumulates real usage beats any
+seeded approximation, and it is the one approach that improves on its own over time.
 
 **Do cookies alone fix it?** No. They remove one reason to distrust the session.
 
 **Is it the proxy?** It contributes, and it is checked alongside everything else. If
-your address is shared by many sessions at once, that will show.
+your address is shared by many sessions at once, that will show. See
+[how ASN and IP reputation feed bot detection](asn-and-ip-reputation-in-bot-detection.md)
+for what an address carries on its own.
 
 **Can I test my score safely?** Test against real production pages rather than demo
 keys. A demo key is configured for demonstrations and its risk model is not the one you
 care about.
 
 **See also:** [the checklist for being detected on one site](playwright-detected-as-bot.md),
-where behaviour is step five and the address is step seven, and
+where behaviour is step five and the address is step seven;
 [when the timezone does not match the proxy](timezone-proxy-mismatch.md), which is the
-consistency argument in its clearest form.
+consistency argument in its clearest form; and
+[whether Playwright itself trips reCAPTCHA](does-playwright-trigger-recaptcha.md).
 
 ---
 

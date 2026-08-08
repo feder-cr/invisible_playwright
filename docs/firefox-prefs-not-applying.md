@@ -1,6 +1,6 @@
 ---
 title: "Firefox preferences that silently do nothing"
-description: "A preference you set is silently ignored, with no error and nothing in the log. The full list of reasons, in the order they actually happen, from a project that delivers its entire fingerprint through preferences."
+description: "A Firefox preference you set can be silently ignored, with no error or log entry. The reasons it happens, in order, and how to confirm which one you hit."
 parent: "Testing and Troubleshooting"
 grand_parent: "Guides"
 nav_order: 3
@@ -16,9 +16,28 @@ actually happen.
 It matters here because this project delivers its entire fingerprint through
 preferences. Every failure mode below is one we have hit.
 
+## The six reasons a Firefox preference silently does nothing
+
+A Firefox preference set with no visible effect almost always falls into one of six
+cases: the name is not one that build reads, the value is compiled in at build time,
+it was written to the wrong file, an enterprise policy locked it, another layer
+overrides it, or it was set in the parent process and never crossed into the content
+process. The single confirmation step for all of them is the same: read the value back
+from the page, not from the profile.
+
+| # | Reason | What you see | How to confirm |
+|---|---|---|---|
+| 1 | Name not read by this build | Value stored in `about:config`, page unchanged | Read it back from the page |
+| 2 | Compiled in at build time | Same name behaves differently across builds | Compare a patched build with a stock one |
+| 3 | Wrong file (`prefs.js` vs `user.js`) | Value reverts after a restart | Put it in `user.js` |
+| 4 | Enterprise policy lock | Value cannot be changed at all | Look for a `policies.json` |
+| 5 | Another layer is louder | Pref applied, behaviour still differs | Check for injected scripts or extensions |
+| 6 | Parent set, content process empty | Empty string in the page, no error | Read it in the realm that needs it |
+
 ## 1. The preference does not exist in that build
 
-This is the big one, and it is silent by design.
+A preference name the build never reads is the most common cause of this, and it is
+silent by design.
 
 Firefox has no schema for preferences. `about:config` will happily let you create
 `my.invented.pref` and store a value, and so will an automation tool. Nothing reads
@@ -36,7 +55,10 @@ test that checks a preference was *set* is not testing anything; the check has t
 that the browser's observable behaviour changed.
 
 The way to catch it is to read the value back from the page instead of from the
-profile:
+profile, with a real page-visible API such as
+[`navigator.hardwareConcurrency`](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/hardwareConcurrency)
+or
+[`Intl.DateTimeFormat().resolvedOptions()`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/DateTimeFormat/resolvedOptions):
 
 ```js
 // what the page sees is the only thing that counts
@@ -69,14 +91,14 @@ running profile. Put it in `user.js` instead and it wins on every launch.
 
 Automation tools that accept a preference dictionary generally build one of these
 for you, which is why the two-file distinction only bites when you are hand-editing a
-persistent profile.
+[persistent profile](persistent-profiles.md).
 
 ## 4. Enterprise policy overrides everything
 
 A `policies.json` next to the binary, or an OS-level policy on a managed machine,
 takes precedence over both files and can lock a preference so nothing can change it.
-This is rare on a developer machine and common on a corporate one, and it produces
-exactly the symptom in the title.
+This is rare on a developer machine and common on a corporate one, and it produces a
+value that looks set in `about:config` while the browser silently ignores it.
 
 ## 5. The preference works and something else is louder
 
@@ -88,7 +110,7 @@ reported the value. Two mechanisms setting the same thing is
 
 ## 6. It works in the parent process and is empty in the content process
 
-The one that costs the most time to find, because it produces no error anywhere.
+This failure mode costs the most time to find, because it produces no error anywhere.
 
 Firefox runs as a tree of processes - one parent, one content process per
 site-isolated origin, plus a handful of others - and a preference set in the parent
@@ -100,8 +122,9 @@ was never explicitly allowed through gets back an empty string - not an error, n
 fallback to a default, just silence, so this is easy to spend a long time on before
 noticing the value never crosses the process boundary at all.
 
-This matters most for exactly the values people reach for at runtime: a GPU vendor
-string, a spoofed identifier, anything that is text rather than a number or a flag.
+This matters most for exactly the values people reach for at runtime: a
+[GPU vendor and renderer string](renderer-string-vs-render.md), a spoofed identifier,
+anything that is text rather than a number or a flag.
 If the string travels through the same static-preference mechanism as a number (with
 a declared default), it gets the same free propagation. If it's read as a plain
 dynamic string preference instead, it needs to be explicitly allowed through, or every

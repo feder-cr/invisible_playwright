@@ -1,10 +1,15 @@
 """This suite tests the wrapper. Coverage for the core belongs to the core.
 
-WHAT WENT WRONG. Ten modules here are four-line back-compat shims that alias a
+WHAT WENT WRONG. EIGHT modules here are four-line back-compat shims that alias a
 module in `invisible_core` - `prefs`, `download`, `constants`, `_geo`, `_proxy`,
-`_headless`, `_webgl_personas`, `config`, `sync_api`, `__main__`. Because
-importing them works, 198 tests covering core behaviour ended up in this suite,
-and the core's own suite never grew them.
+`_headless`, `_webgl_personas`, `config`. Because importing them works, 198 tests
+covering core behaviour ended up in this suite, and the core's own suite never
+grew them.
+
+(This paragraph said TEN and named `sync_api` and `__main__` until 2026-08-01.
+Neither rebinds `sys.modules[__name__]`, so neither is a shim by this file's own
+derivation - the prose had drifted from the rule three lines below it, which is
+the exact failure the rule exists to prevent. Re-derived rather than re-counted.)
 
 That was not academic. Measured 2026-07-27, one realistic one-line break per
 module, run against each suite separately:

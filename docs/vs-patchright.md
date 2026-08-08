@@ -1,6 +1,6 @@
 ---
 title: "invisible_playwright vs Patchright: driver vs engine"
-description: "Patchright patches the Playwright driver and stays on Chromium. This project patches Firefox itself. They fix different tells at different layers, and for some jobs the honest answer is both, on different engines."
+description: "Patchright patches the Playwright driver on Chromium; this project patches Firefox itself. They fix different tells at different layers, often you need both."
 parent: "Comparisons"
 nav_order: 5
 ---
@@ -8,13 +8,15 @@ nav_order: 5
 
 # invisible_playwright vs Patchright: driver vs engine
 
-This comparison looks different from most on this site, because these two tools do not
-compete for the same job. [Three ways to make Playwright undetected](playwright-stealth-levels.md)
-puts them on different rungs: Patchright patches the **driver**, this project patches the
-**engine**. Same automation problem, two layers apart.
+Patchright and invisible_playwright do not compete: Patchright patches the Playwright
+**driver** and runs only on Chromium, while this project patches the Firefox **engine**
+itself in C++. They fix different tells at different layers, so the useful question is not
+which is better but which engine your job needs and which tells you are chasing.
 
-That makes "which is better" the wrong question. The useful one is which tells live at
-which layer, and what each tool leaves for you to solve elsewhere.
+[Three ways to make Playwright undetected](playwright-stealth-levels.md) puts the two on
+different rungs: same automation problem, two layers apart. That is why "which is better"
+is the wrong question. The useful one is which tells live at which layer, and what each
+tool leaves for you to solve elsewhere.
 
 ## What Patchright actually changes
 
@@ -25,8 +27,8 @@ checked CDP artifacts, by executing JavaScript through isolated execution contex
 instead; it disables `Console.enable` outright, at the cost of console functionality not
 working under Patchright at all; and it changes the default launch flags, adding
 `--disable-blink-features=AutomationControlled` and dropping `--enable-automation`, so
-`navigator.webdriver` is never set to begin with rather than being set and then patched
-back to false.
+[`navigator.webdriver`](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/webdriver)
+is never set to begin with rather than being set and then patched back to false.
 
 That last distinction is the entire case for driver-level patching, and it is worth
 stating precisely because [the levels page](playwright-stealth-levels.md) makes the same
@@ -52,11 +54,12 @@ either, because it does not arise on this engine.
 
 ## What Patchright fixes that we never had to
 
-Worth naming concretely, because it shows how CDP-specific the whole category is.
-`Runtime.enable` and `Console.enable` are CDP domain calls; Firefox has no CDP domains to
-enable. The automation-controlled blink feature flag is a Chromium build flag; Firefox
-has nothing named after it. None of these three fixes has a Firefox equivalent to patch,
-because the surface they patch does not exist here.
+Every tell Patchright fixes is a CDP-session artifact that Firefox cannot have, which
+shows how CDP-specific the whole category is. `Runtime.enable` and `Console.enable` are
+CDP domain calls; Firefox has no CDP domains to enable. The automation-controlled blink
+feature flag is a Chromium build flag; Firefox has nothing named after it. None of these
+three fixes has a Firefox equivalent to patch, because the surface they patch does not
+exist here.
 
 That does not mean Firefox has no automation-layer tells of its own. It has different
 ones, and we found four in the driver layer of our own stack rather than the engine:
@@ -89,7 +92,10 @@ but not the Widevine one - unless you also set `channel="chrome"` yourself.
 [That remaining gap is not a driver-level problem](chromium-is-not-chrome.md) and patching
 the driver does not close it. It is worth keeping the two concerns separate when evaluating
 any Chromium-based stealth tool: driver-level patches fix automation tells, they do not fix
-DRM tells, and nothing in Patchright's README claims they do.
+DRM tells, and nothing in Patchright's README claims they do. The
+[`channel="chrome"`](https://playwright.dev/docs/api/class-browsertype#browser-type-launch-option-channel)
+launch option is Playwright's own documented setting for opting into a branded browser,
+unrelated to anything a driver fork patches.
 
 ## How to actually choose
 
@@ -151,6 +157,10 @@ project that independently converged on close to the same `Runtime.enable` fix.
   Playwright test suite).
 - This project's own patch catalogue and `debugger-timing-detection.md` for the
   equivalent Firefox-side automation-layer fixes.
+- [MDN, `navigator.webdriver`](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/webdriver),
+  read 2026-08-06, for what the property indicates and when a browser sets it.
+- [Playwright's own `BrowserType.launch()` docs, `channel` option](https://playwright.dev/docs/api/class-browsertype#browser-type-launch-option-channel),
+  read 2026-08-06, for the `channel="chrome"` launch setting.
 - Where a claim about Patchright's internals could not be checked beyond its own
   documentation, this page does not assert one.
 

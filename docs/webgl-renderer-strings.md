@@ -1,15 +1,14 @@
 ---
 title: "Firefox WebGL renderer strings: what ANGLE reports"
-description: "What Firefox's UNMASKED_VENDOR_WEBGL and UNMASKED_RENDERER_WEBGL actually report on each platform, why Windows says ANGLE and Google Inc., and why a software renderer is the hardest string here to explain away."
+description: "What Firefox WebGL renderer strings report per platform, why Windows says ANGLE and Google Inc., and why a software renderer is hardest to explain away."
 parent: "Canvas, WebGL, Fonts and Audio"
 grand_parent: "Guides"
 nav_order: 2
 ---
 
-
 # Firefox WebGL renderer strings: what ANGLE reports
 
-`UNMASKED_VENDOR_WEBGL` and `UNMASKED_RENDERER_WEBGL` name your graphics hardware in
+[`UNMASKED_VENDOR_WEBGL` and `UNMASKED_RENDERER_WEBGL`](https://developer.mozilla.org/en-US/docs/Web/API/WEBGL_debug_renderer_info) name your graphics hardware in
 plain text, and they decide more than people expect. This is what Firefox reports on
 each platform, why it says ANGLE and Google Inc. on Windows, and why a software
 renderer is the hardest thing on this list to explain away.
@@ -75,29 +74,31 @@ anything in a fingerprint does, and no amount of patching elsewhere hides it, be
 it is not a lie you told: it is the truth about where you are.
 
 That is the part people miss. Most fingerprinting advice is about hiding
-automation. This is about hiding a *server*, and the two need different fixes.
+automation. This is about
+[hiding a server](can-a-website-tell-you-are-on-a-server.md), and the two need
+different fixes.
 
 ## How a real one gets into a fake profile, from our own logs
 
 A cautionary tale, because we shipped this.
 
-This project generates its fingerprint by sampling from pools built out of real
-telemetry, on the theory that values seen in the wild are the safest values to claim.
-Real telemetry, from real users, includes people running Windows on virtual machines.
-So the software rasterizer was in the pool, sampled at its true real-world frequency,
-and about **1.4% of seeds drew it**: 21 out of 1,500 sampled.
+This project builds its fingerprints from real-world data, on the theory that values
+seen in the wild are the safest values to claim. Real-world data, from real users,
+includes people running Windows on virtual machines, where the GPU is a software
+rasterizer. So for a while a small minority of generated identities drew exactly
+that - a real GPU string over software-rendered pixels.
 
-Sampling faithfully from reality had reproduced reality's worst case.
+Aiming faithfully at reality had reproduced reality's worst case.
 
-It was worse than 1.4% suggests, because seed 42 was one of the 21, and seed 42 was
-the example seed in the class docstring. Anyone copying the quickstart got a browser
-announcing it had no GPU.
+It was worse than that minority suggests, because seed 42 - the example seed in the
+quickstart that people copy - was one of the affected ones. Anyone copying the
+quickstart got a browser announcing it had no GPU.
 
-The fix was to replace that entry in place instead of deleting it, so only the seeds
-that drew it changed and every other identity stayed stable. It is now zero out of
-1,500, and the share it held moved to an ordinary Intel integrated GPU.
+The fix changed only the affected identities and left every other one stable. No
+generated identity reports a software rasterizer now; the share that did moved to an
+ordinary Intel integrated GPU.
 
-The general lesson, if you build one of these: **a pool sampled from real data still
+The general lesson, if you build one of these: **aiming for real-world realism still
 needs a rule about what is disqualifying**. "Real users have this" and "you should
 claim this" are different questions.
 
@@ -124,10 +125,15 @@ and believes the answer.
 
 It does not survive much else. The override is a function whose source can be
 printed, and its result can be cross-checked against things that are harder to fake:
-the actual rendering of a canvas, the set of supported extensions, the reported
-maximum texture size, the shader precision ranges. A claimed NVIDIA card whose
-extension list belongs to a software rasterizer has answered the same question twice
-and given different answers.
+the actual rendering of a canvas, the
+[set of supported extensions](https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/getSupportedExtensions),
+the reported maximum texture size,
+[the shader precision ranges](webgl-shader-precision-fingerprint.md).
+A claimed NVIDIA card whose extension list belongs to a software rasterizer has
+answered the same question twice and given different answers. That gap between what
+the string claims and what the GPU actually draws is not theoretical: it is
+[how a renderer string that said NVIDIA, while the pixels said software, got one of our
+own profiles flagged](renderer-string-vs-render.md).
 
 Setting these values in the browser's own source avoids that, since there is no
 override to find and the derived values can be made to agree by construction. It is
@@ -161,5 +167,5 @@ shader model plausible for its generation, and consistent with the platform you 
 ---
 
 *From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
-a Firefox patched at the C++ level. The 1.4% above is our own measurement, of our own
+a Firefox patched at the C++ level. The share above is our own measurement, of our own
 mistake.*

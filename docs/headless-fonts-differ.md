@@ -1,20 +1,23 @@
 ---
 title: "Why headless browsers render different fonts"
-description: "Headless and headful Firefox render the same page with different fonts, for three causes that also drive canvas fingerprints. Why more fonts is not the fix, and what a self-contained font stack changes."
+description: "Headless and headful Firefox render different fonts because of OS font configuration and rasterising - the same causes behind canvas fingerprints."
 parent: "Canvas, WebGL, Fonts and Audio"
 grand_parent: "Guides"
 nav_order: 5
 ---
 
-
 # Why headless browsers render different fonts
 
-Run the same page headless and headful on the same machine and the text is not
-identical. Different widths, different antialiasing, sometimes a different typeface
-entirely. Screenshot tests that pass locally fail in CI for this reason, and the same
-difference is a fingerprinting signal.
+Headless and headful Firefox render the same page with different fonts because font
+rendering comes from the operating system's font configuration and rasteriser
+settings, not from the browser - and a headless environment usually has less of both.
+Run the same page both ways on the same machine and the text is not identical:
+different widths, different antialiasing, sometimes a different typeface entirely.
+Screenshot tests that pass locally fail in CI for this reason, and the same difference
+is a fingerprinting signal.
 
-Both problems have the same three causes.
+Both problems - flaky screenshots and a fingerprinting tell - trace back to the same
+three causes.
 
 ## Cause one: headless has no font configuration, not no fonts
 
@@ -45,8 +48,10 @@ identical font list. The list is not the whole story: the rendering is.
 
 ## Cause three: measurement differs from rendering
 
-Font detection on the web is mostly indirect. You cannot enumerate installed fonts
-from JavaScript in a modern browser, so scripts measure instead: render a string in a
+Font detection on the web is mostly indirect. You cannot [enumerate installed
+fonts](https://developer.mozilla.org/en-US/docs/Web/API/Local_Font_Access_API) from
+JavaScript in a modern browser without an explicit, per-site permission grant that
+detection scripts never trigger, so scripts measure instead: render a string in a
 candidate font with a known fallback, compare the width, and if it differs the font
 exists.
 
@@ -70,7 +75,8 @@ nothing was overridden: the fonts really are the fonts, and the measurement real
 does measure them.
 
 This is the same shape as [the WebGL renderer string](webgl-renderer-strings.md), and the software WebGL renderer problem. It is not an
-automation tell. It is a *this is a server* tell, and the two need different fixes.
+automation tell. It is a *this is a server* tell, and [the same distinction runs across
+every headless signal](headless-vs-headful.md), not just fonts.
 
 ## What the enumeration actually does, and what each platform's set looks like
 
@@ -93,17 +99,12 @@ fingerprint.
 Which means the answer is decided by what is installed, and installed sets are
 strongly platform-shaped:
 
-- **Windows** ships Segoe UI, Calibri, Cambria, Candara, Consolas, Constantia,
-  Corbel, Tahoma, Verdana, Georgia, Trebuchet MS, Impact, Comic Sans MS, Franklin
-  Gothic, plus a large CJK set. Office adds a further block that most Windows
-  machines have and most non-Windows machines do not.
-- **macOS** ships San Francisco, Helvetica Neue, Menlo, Monaco, Optima, Palatino,
-  Avenir, Geneva, Lucida Grande.
-- **A typical Linux desktop** ships DejaVu, Liberation, Noto and often Ubuntu or
-  Cantarell, and almost none of the above.
-- **A container** frequently ships DejaVu and nothing else, or literally no fonts,
-  in which case every probe returns the fallback width and the detected set is
-  empty. An empty font set is its own strong signal, because no real desktop has one.
+| Platform | Typical detected font set |
+|---|---|
+| Windows | Segoe UI, Calibri, Cambria, Candara, Consolas, Constantia, Corbel, Tahoma, Verdana, Georgia, Trebuchet MS, Impact, Comic Sans MS, Franklin Gothic, plus a large CJK set. Office adds a further block that most Windows machines have and most non-Windows machines do not. |
+| macOS | San Francisco, Helvetica Neue, Menlo, Monaco, Optima, Palatino, Avenir, Geneva, Lucida Grande. |
+| A typical Linux desktop | DejaVu, Liberation, Noto and often Ubuntu or Cantarell, and almost none of the Windows or macOS set. |
+| A container | Frequently DejaVu and nothing else, or literally no fonts, in which case every probe returns the fallback width and the detected set is empty. An empty font set is its own strong signal, because no real desktop has one. |
 
 So a browser claiming Windows in its user agent, on a machine whose detected set is
 DejaVu and Liberation, has been caught by a comparison instead of by any single
@@ -135,7 +136,8 @@ For fingerprint consistency, the options are worse than people expect:
   entirely, on all three platforms, so the answer is the same whether the machine
   underneath is Windows, Linux or a container with no fonts at all. It is also the
   most work of the three by a wide margin, since each operating system has its own
-  font backend to intercept.
+  font backend to intercept - [the manifest that keeps those three backends in
+  agreement](bundled-fonts-cross-platform.md) is its own story.
 
 The short summary is that fonts are cheap to check and expensive to get right, which
 is exactly why detectors like them.

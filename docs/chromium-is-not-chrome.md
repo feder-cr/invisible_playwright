@@ -1,12 +1,18 @@
 ---
 title: "Chromium is not Chrome, and detectors know the difference"
-description: "Playwright's default browser closed its codec gap in 2026 and kept its Widevine one. Checked directly: H.264 plays, Widevine still rejects. That remaining gap is a compiled-in capability no JavaScript patch can fill."
+description: "Chrome for Testing, Playwright's default since 1.57, plays H.264 but still fails the Widevine DRM check - a compiled-in gap that no JavaScript patch can close."
 parent: "Comparisons"
 nav_order: 3
 ---
 
 
 # Chromium is not Chrome, and detectors know the difference
+
+**Short answer:** no, they are not the same, and the gap moved in 2026 rather than closing.
+Playwright's default Chromium - Chrome for Testing since v1.57 - now plays the same
+H.264/AAC codecs as real Chrome, checked directly in a live session. It still fails
+Chrome's [Widevine DRM check](https://developer.mozilla.org/en-US/docs/Web/API/Encrypted_Media_Extensions_API), and that part cannot be patched from JavaScript because it is
+a compiled-in capability, not a value a page reads off a string.
 
 Every stealth guide for Chromium-based automation quietly assumes "Chromium" and "Chrome"
 mean the same thing, or that the gap between them is fixed and permanent. Neither is true.
@@ -21,7 +27,7 @@ better, and why Firefox has no equivalent gap.
 
 Playwright's own browser documentation used to be the whole answer: the default managed
 Chromium was an open-source build, missing the proprietary parts Google adds on top. As of
-Playwright 1.57, that changed. The default managed binary - launched with no `channel` set
+[Playwright 1.57](https://playwright.dev/docs/release-notes), that changed. The default managed binary - launched with no `channel` set
 at all - is now **Chrome for Testing**, Google's own dedicated distribution for automated
 testing, pinned to the Playwright version rather than auto-updating.
 
@@ -32,7 +38,7 @@ both play. The codec half of this page's original argument no longer holds for a
 default Playwright launch - it holds for whatever version you're actually pinned to, and it
 is worth checking your own rather than assuming either answer.
 
-## What still doesn't survive the switch
+## The Widevine gap that survives the switch
 
 Checked in the same session: Widevine still rejects.
 
@@ -67,9 +73,9 @@ surviving instance of it, even after the part that used to accompany it closed.
 
 ## Almost nobody browses with a Widevine-less build
 
-Look at who is on the other side of the check.
+Almost nobody outside development, CI and automation runs a browser without Widevine.
 
-Real people use Chrome, Edge, Brave, Opera, Vivaldi. Every one of those ships Widevine,
+Real people use Chrome, Edge, Brave, Opera, Vivaldi, and every one of those ships Widevine,
 because a browser that cannot play protected video from a mainstream streaming service is
 not a browser anybody keeps as their daily one. A build that answers "no" to the Widevine
 check is a developer artefact, a CI image, or automation - not a real visitor's machine.
@@ -83,7 +89,8 @@ capability check with a yes or no answer.
 
 ## Spoofing the user agent makes this worse
 
-Here is where it turns from a weak signal into a contradiction.
+Setting the user agent to claim Chrome does not close the Widevine gap - it turns a merely
+missing capability into a contradiction the page can check directly.
 
 A stealth tool sets the user agent to claim Google Chrome. On a current, default Playwright
 launch the codec set now agrees with that claim - that particular contradiction closed along
@@ -128,10 +135,11 @@ traded one.
 
 ## Firefox has no equivalent gap
 
-This is the structural point, and it is the reason it belongs in a comparison rather than
-in a list of tips.
+Firefox has no capability gap like Widevine to exploit, because it has no proprietary-versus-open
+split of this kind in the first place - which is the structural reason this belongs in a
+comparison rather than a list of tips.
 
-Firefox has no proprietary-versus-open split of this kind. There is no "Firefox" and
+There is no "Firefox" and
 "Firefox-without-the-codecs" pair where one is what people run and the other is what
 automation runs. The build Mozilla ships and a build compiled from the same source with
 the release configuration have the same feature set.
@@ -145,7 +153,16 @@ That is not an argument that Firefox wins overall.
 and it is serious. But on this specific axis the two engines are not in comparable
 positions, and most comparisons never mention it.
 
-## Checking your own
+## Codec and DRM support, by build
+
+| Build | H.264 / AAC playback | Widevine DRM | What it actually is |
+|---|---|---|---|
+| Bare open-source Chromium (pre-1.57 default, or an explicit unbranded build) | No | No | Missing the proprietary codec and DRM additions Google adds on top of open-source Chromium |
+| Chrome for Testing (Playwright's default since 1.57, no `channel` set) | Yes | No | Google's own automation distribution - Chrome's codecs, not Chrome's DRM licensing |
+| Real Chrome, launched via `channel="chrome"` | Yes | Yes | The actual installed browser, with the update and install costs described above |
+| Firefox, patched at the C++ level | N/A - no split | N/A - no split | One build, not two: there is no stripped variant that only automation runs |
+
+## How to check your own build for the gap
 
 Run this in whatever browser your automation actually launches:
 
@@ -227,13 +244,13 @@ in both directions.
 
 ## Sources
 
-- Playwright's browsers documentation, current as of the 1.57 release notes, on the switch
+- [Playwright's release notes](https://playwright.dev/docs/release-notes), on the switch
   from custom-compiled open-source Chromium to Chrome for Testing as the default managed
   binary.
 - Direct capability checks run in a live Playwright session, 2026-07-30: H.264 and AAC
   playable, Widevine (`com.widevine.alpha`) rejected with `NotSupportedError`, on the
   default managed binary with no `channel` argument set.
-- The Encrypted Media Extensions API, for the Widevine capability check above.
+- [The Encrypted Media Extensions API](https://developer.mozilla.org/en-US/docs/Web/API/Encrypted_Media_Extensions_API), for the Widevine capability check above.
 
 ---
 
