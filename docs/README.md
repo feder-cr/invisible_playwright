@@ -8,9 +8,8 @@ sitemap: false
 
 # docs/ source folder
 
-This is the Jekyll source for invisible_playwright's documentation. Read it as a real
-site, with search and navigation, at
-**[feder-cr.github.io/invisible_playwright](https://feder-cr.github.io/invisible_playwright/)**.
+This folder is the source the wiki is rendered from. Read it with search and
+navigation in **[the wiki](https://github.com/feder-cr/invisible_playwright/wiki)**.
 
 `index.md` is what the site root actually serves. This file exists so the folder
 still shows something sensible when browsed directly on github.com.

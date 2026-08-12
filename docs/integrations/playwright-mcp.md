@@ -5,32 +5,6 @@ parent: "Integrations"
 nav_order: 7
 ---
 
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "BreadcrumbList",
-  "itemListElement": [
-    {
-      "@type": "ListItem",
-      "position": 1,
-      "name": "Home",
-      "item": "https://feder-cr.github.io/invisible_playwright/"
-    },
-    {
-      "@type": "ListItem",
-      "position": 2,
-      "name": "Integrations",
-      "item": "https://feder-cr.github.io/invisible_playwright/integrations/README.html"
-    },
-    {
-      "@type": "ListItem",
-      "position": 3,
-      "name": "Using invisible_playwright with Microsoft's Playwright MCP"
-    }
-  ]
-}
-</script>
-
 # Using invisible_playwright with Microsoft's Playwright MCP
 
 You do not need a separate MCP server. Microsoft's own `playwright-mcp` takes a

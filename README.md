@@ -174,8 +174,8 @@ invisible-playwright version  # wrapper, core and engine versions, and where the
 
 ## Documentation, guides and comparisons
 
-All of it reads better, and is searchable, at
-**[feder-cr.github.io/invisible_playwright](https://feder-cr.github.io/invisible_playwright/)**,
+All of it reads better, and is searchable, in
+**[the wiki](https://github.com/feder-cr/invisible_playwright/wiki)**,
 organised into four sections instead of one flat list:
 
 - **[Documentation](docs/documentation.md)** -
