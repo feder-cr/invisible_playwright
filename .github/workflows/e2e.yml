@@ -102,8 +102,32 @@ jobs:
       # job risultava `cancelled` e i passi successivi non partivano affatto. Con
       # `--timeout 420 --timeout-method thread` il processo muore a 7 minuti e il
       # passo fallisce NORMALMENTE, quindi da qui le prove escono.
+      # Uno strumento che non si vede e' indistinguibile da uno che non c'e'.
+      # L'annuncio che il cane da guardia stampa all'apertura del file finisce
+      # dentro `pytest_runtest_setup`, che pytest CATTURA: nel log del job non
+      # compare, quindi da qui non si poteva distinguere "armato" da "inerte".
+      # Questo passo glielo chiede al file, che e' l'unica prova che esista.
+      - name: Il cane da guardia era armato?
+        if: always()
+        run: |
+          f="${RUNNER_TEMP}/e2e-watchdog.log"
+          if [ -s "$f" ]; then
+            # `|| true` e non e' cosmetico: `grep -c` che conta ZERO esce 1, e
+            # GitHub lancia i blocchi `run:` con `bash -e`. Senza, questo passo
+            # moriva esattamente sulle corse SANE - quelle con zero stack - cioe'
+            # avrebbe fatto fallire ogni e2e verde. Trovato eseguendo il blocco
+            # estratto dallo YAML nei quattro stati, non rileggendolo.
+            sorvegliati=$(grep -ac '^---' "$f" || true)
+            stack=$(grep -ac 'Timeout' "$f" || true)
+            echo "armato: ${sorvegliati} test sorvegliati, ${stack} stack scritti"
+          else
+            echo "::warning::il file del cane da guardia e' assente o vuoto: lo strumento NON era armato, e un impiccamento non lascerebbe niente"
+          fi
+
+      # `always()` e non `failure()`: il file serve anche quando la corsa e'
+      # verde, perche' e' l'unica prova che lo strumento funzioni.
       - name: Portare fuori le prove dell'impiccamento
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: e2e-watchdog-${{ github.run_id }}-${{ github.run_attempt }}
