@@ -7,9 +7,18 @@
 # vederne uno: aspettare che succeda da solo su una PR significa aspettare giorni
 # e bruciare il tempo di qualcun altro ogni volta.
 #
-# E perche' QUI e non in locale. Il difetto si manifesta su Linux sotto xvfb. Una
-# caccia sulla macchina di sviluppo (Windows) puo' benissimo non riprodurlo mai, e
-# un negativo li' non direbbe niente su questo ambiente.
+# E perche' QUI e non in locale, per DUE ragioni diverse a seconda dell'input `os`.
+#
+#   ubuntu-24.04 - l'impiccamento del job viveva li'. CHIUSO il 2026-08-13 con 36
+#   giri (due cacce da 18): zero impiccamenti, zero ritentativi. Resta come
+#   controllo di non-regressione.
+#
+#   windows-latest - una domanda diversa e ancora aperta: sulla macchina di
+#   sviluppo i test di interazione producono ritentativi (41 su 17 giri) e su
+#   Linux nemmeno uno in 36. Ma quella macchina non era ferma - chi misurava ci
+#   girava sopra, e piu' tardi ci e' tornato il proprietario - quindi il confronto
+#   e' CONFUSO fra piattaforma e contesa. Un runner Windows dedicato separa le due
+#   cose senza chiedere a nessuno di stare fermo sei ore.
 #
 # Non parte da solo: solo `workflow_dispatch`. Non e' un cancello, e' uno
 # strumento di indagine, e non deve entrare fra i contesti richiesti.
@@ -23,6 +32,14 @@ on:
         description: "Quanti giri al massimo (al 12% ne servono ~18 per il 90%)"
         required: false
         default: "18"
+      os:
+        description: "Dove cacciare. windows-latest risponde a una domanda DIVERSA: i ritentativi dell'interazione visti sulla macchina di sviluppo sono il prodotto o la contesa?"
+        required: false
+        default: "ubuntu-24.04"
+        type: choice
+        options:
+          - ubuntu-24.04
+          - windows-latest
 
 permissions:
   contents: read
@@ -33,8 +50,8 @@ concurrency:
 
 jobs:
   hunt:
-    name: caccia (linux, xvfb)
-    runs-on: ubuntu-24.04
+    name: caccia (${{ inputs.os }})
+    runs-on: ${{ inputs.os }}
     # 18 giri da ~6 minuti piu' l'installazione. Generoso di proposito: il tetto
     # qui non deve MAI essere la cosa che ferma la caccia, altrimenti torniamo a
     # un job ucciso che non spiega niente, che e' il difetto di partenza.
@@ -49,7 +66,10 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install ".[dev]"
           python -m pip install "playwright==$(cat scripts/playwright_pin.txt)"
+      # Solo Linux: su Windows il browser si lancia sul desktop del runner, e
+      # `firefox-launch-matrix.yml` dimostra da mesi che li' parte davvero.
       - name: System deps (xvfb + Firefox runtime libs)
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y xvfb
@@ -60,17 +80,21 @@ jobs:
       - name: Ciclo finche' non cattura
         env:
           PYTHONUNBUFFERED: "1"
-          INVPW_TEST_WATCHDOG_FILE: ${{ runner.temp }}/e2e-watchdog.log
+          INVPW_TEST_WATCHDOG_FILE: prove/e2e-watchdog.log
         run: |
           set -u
           giri="${{ inputs.giri }}"
-          mkdir -p "${RUNNER_TEMP}/giri"
+          mkdir -p prove/giri
+          # `prove/` dentro lo spazio di lavoro, non RUNNER_TEMP: su Windows quella
+          # variabile contiene backslash e non attraversa bash in modo affidabile.
+          # xvfb solo dove esiste; su Windows il browser va sul desktop del runner.
+          if [ "$RUNNER_OS" = "Linux" ]; then PRE="xvfb-run -a"; else PRE=""; fi
           catturato=0
           for n in $(seq 1 "$giri"); do
-            log="${RUNNER_TEMP}/giri/giro_$(printf '%02d' "$n").log"
+            log="prove/giri/giro_$(printf '%02d' "$n").log"
             t0=$(date +%s)
             set +e
-            xvfb-run -a python -u scripts/run_e2e.py "$FF" > "$log" 2>&1
+            $PRE python -u scripts/run_e2e.py "$FF" > "$log" 2>&1
             code=$?
             set -e
             dur=$(( $(date +%s) - t0 ))
@@ -101,9 +125,9 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: e2e-hunt-${{ github.run_id }}-${{ github.run_attempt }}
+          name: e2e-hunt-${{ inputs.os }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            ${{ runner.temp }}/giri
-            ${{ runner.temp }}/e2e-watchdog.log
+            prove/giri
+            prove/e2e-watchdog.log
           if-no-files-found: warn
           retention-days: 14
