@@ -55,6 +55,24 @@ def main() -> int:
         "-o", "addopts=",            # override the default 'not e2e' deselection
         "--reruns", "2", "--reruns-delay", "1",
         "--only-rerun", _RERUN_SIGNATURES,
+        # A DEADLINE is not a flake, and retrying one multiplies it by three.
+        # `Timeout` in the signatures above was written for Playwright's
+        # TimeoutError, but it also matches `subprocess.TimeoutExpired` -
+        # measured, 2 tests produced 4 reruns - and the release/upgrade e2e
+        # spend their time in `pip install` calls whose timeouts run to 300s
+        # each. Retried twice that is 900s for one test, and the two files sum
+        # to 10050s of timeout budget against a 2400s job. That is how the job
+        # was killed at 40 minutes twice with nothing to show for it.
+        "--rerun-except", "TimeoutExpired",   # a subprocess deadline
+        "--rerun-except", "Timeout >",        # pytest-timeout's own deadline
+        # And a per-test deadline, so a hang FAILS WITH A NAME instead of eating
+        # the job. 420s is 4.5x the slowest legitimate test measured on CI
+        # (test_webgl_readpixels_no_masking_signature, 94.4s; the second slowest
+        # is 11.4s and the whole suite is 318s), and 1/6 of the job budget.
+        # On Linux this interrupts the test and the suite carries on; on Windows
+        # pytest-timeout falls back to the thread method, which dumps the stack
+        # of the hung test and ends the run - less graceful, still named.
+        "--timeout", "420",
         "-p", "no:cacheprovider",
         # -v, not -q, and the reason is a hang we could not name twice.
         # Under -q pytest emits one character per test and the line only
