@@ -56,7 +56,18 @@ def main() -> int:
         "--reruns", "2", "--reruns-delay", "1",
         "--only-rerun", _RERUN_SIGNATURES,
         "-p", "no:cacheprovider",
-        "-q", "--tb=short",
+        # -v, not -q, and the reason is a hang we could not name twice.
+        # Under -q pytest emits one character per test and the line only
+        # reaches the log when it is full, so a run that dies mid-line says
+        # nothing about where it died. Measured 2026-08-12 on two runs of the
+        # SAME commit: both printed the identical `.s....[ 50%]` line at 78
+        # seconds, one then finished in 4:47 and the other was killed by the
+        # 40-minute timeout with no second line - so the hang was somewhere in
+        # tests 73-141 and that is as close as the log could get. Same symptom
+        # on 2026-08-04. PYTHONUNBUFFERED was already set and is not the
+        # missing piece: the output does stream, the GRANULARITY was wrong.
+        # One line per test costs 141 lines and names the last one that ran.
+        "-v", "--tb=short",
     ] + sys.argv[2:]
     print(f"[run_e2e] binary={binary}")
     print(f"[run_e2e] {' '.join(cmd)}")

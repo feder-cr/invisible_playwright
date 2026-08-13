@@ -25,6 +25,14 @@ on:
       - 'LICENSE'
   pull_request:
     branches: [main]
+    # The same filter as `push` above, which had it and this one did not. A
+    # docs-only PR (#54, deleting the Pages site) therefore spun up the full
+    # browser bench, hung, and burned the whole 40-minute timeout on a change no
+    # test can observe. The filter belongs on BOTH triggers or it is not a filter.
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
   workflow_dispatch:
 
 permissions:
