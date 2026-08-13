@@ -56,6 +56,15 @@ jobs:
     # qui non deve MAI essere la cosa che ferma la caccia, altrimenti torniamo a
     # un job ucciso che non spiega niente, che e' il difetto di partenza.
     timeout-minutes: 300
+    # Su Windows GitHub esegue i blocchi `run:` con POWERSHELL, non con bash, e
+    # il primo lancio su windows-latest e' morto in 5 minuti con un ParserError
+    # sulla riga `if [ "$RUNNER_OS" = "Linux" ]`. Il blocco era stato eseguito
+    # prima di spedirlo, come vuole la regola - ma in bash, sulla macchina di chi
+    # scriveva, cioe' con un interprete diverso da quello del bersaglio.
+    # Eseguire il blocco non basta: va eseguito con la SHELL del runner.
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with: { fetch-depth: 1 }
