@@ -69,10 +69,18 @@ def main() -> int:
         # the job. 420s is 4.5x the slowest legitimate test measured on CI
         # (test_webgl_readpixels_no_masking_signature, 94.4s; the second slowest
         # is 11.4s and the whole suite is 318s), and 1/6 of the job budget.
-        # On Linux this interrupts the test and the suite carries on; on Windows
-        # pytest-timeout falls back to the thread method, which dumps the stack
-        # of the hung test and ends the run - less graceful, still named.
+        # METHOD=thread, not the signal default, and that is the whole point.
+        # Measured 2026-08-13 on the run of this very change: the suite wedged in
+        # `test_hover_triggers_mouseenter` and the 420s signal deadline came and
+        # went with NOTHING at 19.3 minutes, 21 minutes, 40. SIGALRM is delivered
+        # to the main thread and Python runs the handler at the next bytecode
+        # boundary; Playwright's sync API is blocked in a greenlet waiting on the
+        # driver socket, so that boundary never arrives. A watchdog THREAD does
+        # not need the hung thread to cooperate: it dumps every thread's stack
+        # and ends the process. The suite does not carry on, which is the price,
+        # and in exchange a hang stops being anonymous.
         "--timeout", "420",
+        "--timeout-method", "thread",
         "-p", "no:cacheprovider",
         # -v, not -q, and the reason is a hang we could not name twice.
         # Under -q pytest emits one character per test and the line only
