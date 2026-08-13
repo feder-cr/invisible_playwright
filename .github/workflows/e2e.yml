@@ -88,4 +88,25 @@ jobs:
         # actually comes from.
         env:
           PYTHONUNBUFFERED: "1"
+          # Il cane da guardia di tests/conftest.py: a 150s dentro UN test scrive
+          # QUI lo stack di ogni thread, e lo ripete. Due stack identici dicono
+          # bloccato, due diversi dicono lento - diagnosi opposte che nessun altro
+          # strumento distingue. Su FILE e non su stderr perche' pytest redirige i
+          # descrittori a livello di sistema: cio' che e' catturato si perde
+          # quando il processo viene ucciso, cioe' nel caso per cui esiste.
+          INVPW_TEST_WATCHDOG_FILE: ${{ runner.temp }}/e2e-watchdog.log
         run: xvfb-run -a python -u scripts/run_e2e.py "$FF"
+
+      # Gira SOLO se il passo sopra fallisce, e prima del 2026-08-13 non poteva
+      # esistere: l'impiccamento veniva ucciso dal tetto dei 40 minuti, quindi il
+      # job risultava `cancelled` e i passi successivi non partivano affatto. Con
+      # `--timeout 420 --timeout-method thread` il processo muore a 7 minuti e il
+      # passo fallisce NORMALMENTE, quindi da qui le prove escono.
+      - name: Portare fuori le prove dell'impiccamento
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: e2e-watchdog-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/e2e-watchdog.log
+          if-no-files-found: warn
+          retention-days: 14

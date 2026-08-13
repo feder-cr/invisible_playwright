@@ -1,0 +1,109 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# e2e-hunt.yml - gira la suite e2e in CICLO finche' non cattura un impiccamento.
+#
+# Perche' esiste. Il job e2e si impicca nel 12% delle corse (4 su 33 fra il
+# 2026-08-01 e il 08-13) e uccide il job al tetto dei 40 minuti. Al 12% una corsa
+# verde non dimostra niente e servono ~18 giri per avere il 90% di probabilita' di
+# vederne uno: aspettare che succeda da solo su una PR significa aspettare giorni
+# e bruciare il tempo di qualcun altro ogni volta.
+#
+# E perche' QUI e non in locale. Il difetto si manifesta su Linux sotto xvfb. Una
+# caccia sulla macchina di sviluppo (Windows) puo' benissimo non riprodurlo mai, e
+# un negativo li' non direbbe niente su questo ambiente.
+#
+# Non parte da solo: solo `workflow_dispatch`. Non e' un cancello, e' uno
+# strumento di indagine, e non deve entrare fra i contesti richiesti.
+# ─────────────────────────────────────────────────────────────────────────────
+name: e2e hunt
+
+on:
+  workflow_dispatch:
+    inputs:
+      giri:
+        description: "Quanti giri al massimo (al 12% ne servono ~18 per il 90%)"
+        required: false
+        default: "18"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  hunt:
+    name: caccia (linux, xvfb)
+    runs-on: ubuntu-24.04
+    # 18 giri da ~6 minuti piu' l'installazione. Generoso di proposito: il tetto
+    # qui non deve MAI essere la cosa che ferma la caccia, altrimenti torniamo a
+    # un job ucciso che non spiega niente, che e' il difetto di partenza.
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with: { fetch-depth: 1 }
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: { python-version: '3.11' }
+      - name: Install wrapper + test deps (+ pinned Playwright)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ".[dev]"
+          python -m pip install "playwright==$(cat scripts/playwright_pin.txt)"
+      - name: System deps (xvfb + Firefox runtime libs)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+          sudo "$(which python)" -m playwright install-deps firefox
+      - name: Fetch the published firefox binary
+        run: echo "FF=$(python -m invisible_playwright fetch | tail -1)" >> "$GITHUB_ENV"
+
+      - name: Ciclo finche' non cattura
+        env:
+          PYTHONUNBUFFERED: "1"
+          INVPW_TEST_WATCHDOG_FILE: ${{ runner.temp }}/e2e-watchdog.log
+        run: |
+          set -u
+          giri="${{ inputs.giri }}"
+          mkdir -p "${RUNNER_TEMP}/giri"
+          catturato=0
+          for n in $(seq 1 "$giri"); do
+            log="${RUNNER_TEMP}/giri/giro_$(printf '%02d' "$n").log"
+            t0=$(date +%s)
+            set +e
+            xvfb-run -a python -u scripts/run_e2e.py "$FF" > "$log" 2>&1
+            code=$?
+            set -e
+            dur=$(( $(date +%s) - t0 ))
+            # Un impiccamento adesso NON e' piu' un job ucciso: la scadenza per
+            # test lo trasforma in un fallimento, e il banner lo nomina.
+            if grep -aq "Timeout" "$log" && grep -aq "Stack of" "$log"; then
+              echo "::error::giro $n: IMPICCAMENTO CATTURATO dopo ${dur}s"
+              echo "--- l'ultimo test che ha parlato ---"
+              grep -aE "::.*(PASSED|SKIPPED|FAILED)" "$log" | tail -3
+              echo "--- lo stack ---"
+              sed -n '/Timeout/,$p' "$log" | head -60
+              catturato=1
+              break
+            fi
+            echo "giro $n/$giri: exit=$code, ${dur}s"
+          done
+          if [ "$catturato" = "0" ]; then
+            echo "::warning::$giri giri, nessun impiccamento catturato."
+            echo "Se il tasso qui e' lo stesso del 12%, la probabilita' di questo"
+            echo "esito e' $(python -c "print(round(100*0.88**$giri))")%, quindi non e' una prova"
+            echo "che il difetto non ci sia: e' una misura del tasso con questo campione."
+          fi
+          # Il passo fallisce SOLO se ha catturato: cosi' il rosso significa
+          # "trovato", non "rotto", ed e' il rosso che si va a leggere.
+          exit "$catturato"
+
+      - name: Portare fuori tutte le prove
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: e2e-hunt-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/giri
+            ${{ runner.temp }}/e2e-watchdog.log
+          if-no-files-found: warn
+          retention-days: 14
