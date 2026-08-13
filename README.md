@@ -40,8 +40,6 @@ Driven by the standard Playwright API. Full breakdown: [feder-cr/firefox_antidet
 ## Still seeing captchas or anti-bot? It's the proxy.
 Once the browser is handled it stops being the variable. If you are still getting challenged, the tell is no longer the browser, it is the IP you come from. Around 90% of proxies are public: anyone can rent the same address, so it is already known and sits on the blocked-IP lists sites check. A perfect browser on a known IP still loses.
 
-> The fix is the clean 10%, residential IPs that aren't already known. For those we recommend [sx.org](https://sx.org/?c=invisible_playwright), who filter for and serve only IPs that aren't already on those lists.
-
 ---
 
 ## Install
@@ -120,8 +118,6 @@ with InvisiblePlaywright(proxy=proxy) as browser:
 ```
 
 Schemes supported: `socks5`, `socks4`, `http`, `https`. DNS is routed through the proxy by default, no local leak.
-
-Around 90% of proxies are public, so their IPs are already known and blocked. For the clean 10%, residential IPs that aren't already known, we recommend [sx.org](https://sx.org/?c=invisible_playwright), who filter for and serve only IPs that aren't already on those lists.
 
 ### Timezone
 
