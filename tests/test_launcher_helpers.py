@@ -271,12 +271,14 @@ def test_build_env_no_font_keys_when_absent():
 #
 # ⛔ Perche' questi test esistono. Rilanciare un profilo persistente su Windows
 # riusciva 2 volte su 8 (misurato 2026-08-14; il ciclo del proprietario riportava
-# 83% di fallimento per tentativo su 282 sessioni). La causa e' in
-# `awaitViewportDimensions` di juggler, che risolve solo su uguaglianza esatta di
-# innerWidth/innerHeight, non ha timeout, e riesegue il proprio controllo solo su
-# un evento `resize`: al rilancio la finestra riapre alla geometria salvata in
-# `xulstore.json`, quindi il resize correttivo ha delta nullo e l'evento non
-# arriva mai. Dopo la correzione: 6/6, e da 12-63s a ~7s per rilancio.
+# 83% di fallimento per tentativo su 282 sessioni).
+#
+# La CAUSA non e' nota. Cio' che e' misurato e' la correlazione: togliendo le
+# chiavi di geometria il tasso passa da 5/14 a 12/12 e i tempi da 20-155s a ~7s.
+# Una prima versione di questo commento accusava `awaitViewportDimensions` di
+# juggler, ed e' stata FALSIFICATA con una sonda dentro quel controllo: nei giri
+# riusciti combacia al primo colpo, nei bloccati non viene mai raggiunto. Lo
+# stallo e' prima. Vedi 70-known-bugs.md [B150].
 #
 # I casi sono quelli provati a mano prima di scriverla, compreso l'input REALE
 # (1942x1043 @112,0, la geometria che un profilo vero aveva su disco).

@@ -42,32 +42,32 @@ def _drop_persisted_window_geometry(profile_dir: Path) -> None:
     (measured 2026-08-14; the owner's own loop reported 83% failure per attempt
     and 45% of sessions dead after six retries, over 282 sessions).
 
-    THE CAUSE, so nobody has to find it twice. `awaitViewportDimensions` in
-    `juggler/content/main.js` resolves only when
-    ``innerWidth === width && innerHeight === height`` - exact equality, no
-    timeout - and re-runs its check ONLY from a `resize` or
-    `navigationcommitted` event. On a relaunch Firefox restores the chrome window
-    from this profile's `xulstore.json` (measured: 1942x1043 and 2903x1611 for a
-    1920x947 target), so the corrective ``resizeBy`` computes a null delta, no
-    `resize` is emitted, and the check is never re-evaluated. The wait is
-    infinite. The FIRST launch never hits it because the window starts at
-    Firefox's default size, far from the target, so the resize certainly fires.
-    Our own `TargetRegistry.js` line that skips RDM while the stealth screen
-    prefs are active - added because ``inRDMPane=true`` hung Pixelscan - removes
-    the one mechanism that would make `innerWidth` equal the requested value
-    regardless of the real window.
+    ⛔ WHAT IS MEASURED, AND WHAT IS NOT. The correlation is solid and was
+    reproduced on two separate benches: **12 relaunches out of 12** succeed with
+    the geometry keys removed, against **5 out of 14** with them kept, and the
+    successful ones dropped from 20-155s to ~7s. That is why this call is here.
 
-    CONFIRMED by experiment, same binary and same profile with one difference:
-    keeping the geometry gave **3/6**, deleting it **6/6**, and the successful
-    relaunches went from 20-155s to 7-10s. Forgetting the geometry is therefore
-    not only more reliable, it is faster.
+    **The CAUSE is not known.** An earlier version of this docstring blamed
+    `awaitViewportDimensions` in `juggler/content/main.js` - it resolves only on
+    exact equality of innerWidth/innerHeight, has no timeout, and re-checks only
+    from a `resize` event - and that attribution was FALSIFIED the same day by a
+    `dump()` probe inside that very check, with this remedy disabled so the defect
+    would reappear: over 8 relaunches, the 6 that worked ran the check twice and
+    matched exactly on the first try every time, and **the 2 that hung never
+    reached it at all**. So the stall happens BEFORE a target exists, and that
+    wait is not it. Our `TargetRegistry.js` line that skips RDM is likewise not
+    implicated: if it were, the viewport numbers would diverge, and they do not.
 
-    ⛔ AND IT IS DECLARED AS PARTIAL, per the project's rule on fixing at the
-    origin. The origin is the unbounded wait in juggler, not this file: a check
-    that only re-runs on an event which may never arrive. Repairing that means
-    patching engine code that is re-synced from upstream at every rebase, plus a
-    rebuild and the full canonical set. This acts on the TRIGGER, deliberately,
-    and the trigger is enough to make the product usable today.
+    ⛔ SO THIS IS A DECLARED PATCH, not a fix, and worse than the patch it was
+    first written as: then the cause seemed known and the refactor merely
+    deferred; now the cause is unknown and this removes a trigger without
+    explaining it. A real effect does not prove a mechanism - deleting a file also
+    changes timing, and on a startup race a timing perturbation produces a genuine
+    improvement for the wrong reason.
+
+    The next step is not more code reading: it is probing several points of the
+    launch sequence and looking at the LAST one reached in a hung run. Full
+    account: `70-known-bugs.md` [B150].
 
     Not a fingerprint change: what a page reads is the DECLARED geometry, and it
     was measured unchanged after this - ``inner=[1920,947] outer=[1920,1032]``
