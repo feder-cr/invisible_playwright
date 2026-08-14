@@ -1,6 +1,7 @@
 """Sync Playwright launcher for invisible_playwright."""
 from __future__ import annotations
 
+import json
 import secrets
 from pathlib import Path
 import time as _time
@@ -28,6 +29,76 @@ from ._reaper import SessionToken, guard_for
 #: `browser.new_page()` needs the same wait and a second literal is a second
 #: value: the two drifted apart for as long as one of them did not exist.
 _NEWTAB_SETTLE = 0.4
+
+#: The chrome window whose remembered geometry breaks a persistent relaunch.
+_XULSTORE_WINDOW = "chrome://browser/content/browser.xhtml"
+
+
+def _drop_persisted_window_geometry(profile_dir: Path) -> None:
+    """Forget the chrome window's size/position before a persistent relaunch.
+
+    ⛔ THE DEFECT THIS FIXES, and it made the most common use case unusable:
+    relaunching a persistent profile on Windows succeeded **2 times out of 8**
+    (measured 2026-08-14; the owner's own loop reported 83% failure per attempt
+    and 45% of sessions dead after six retries, over 282 sessions).
+
+    THE CAUSE, so nobody has to find it twice. `awaitViewportDimensions` in
+    `juggler/content/main.js` resolves only when
+    ``innerWidth === width && innerHeight === height`` - exact equality, no
+    timeout - and re-runs its check ONLY from a `resize` or
+    `navigationcommitted` event. On a relaunch Firefox restores the chrome window
+    from this profile's `xulstore.json` (measured: 1942x1043 and 2903x1611 for a
+    1920x947 target), so the corrective ``resizeBy`` computes a null delta, no
+    `resize` is emitted, and the check is never re-evaluated. The wait is
+    infinite. The FIRST launch never hits it because the window starts at
+    Firefox's default size, far from the target, so the resize certainly fires.
+    Our own `TargetRegistry.js` line that skips RDM while the stealth screen
+    prefs are active - added because ``inRDMPane=true`` hung Pixelscan - removes
+    the one mechanism that would make `innerWidth` equal the requested value
+    regardless of the real window.
+
+    CONFIRMED by experiment, same binary and same profile with one difference:
+    keeping the geometry gave **3/6**, deleting it **6/6**, and the successful
+    relaunches went from 20-155s to 7-10s. Forgetting the geometry is therefore
+    not only more reliable, it is faster.
+
+    ⛔ AND IT IS DECLARED AS PARTIAL, per the project's rule on fixing at the
+    origin. The origin is the unbounded wait in juggler, not this file: a check
+    that only re-runs on an event which may never arrive. Repairing that means
+    patching engine code that is re-synced from upstream at every rebase, plus a
+    rebuild and the full canonical set. This acts on the TRIGGER, deliberately,
+    and the trigger is enough to make the product usable today.
+
+    Not a fingerprint change: what a page reads is the DECLARED geometry, and it
+    was measured unchanged after this - ``inner=[1920,947] outer=[1920,1032]``
+    and ``outerWidth-innerWidth, outerHeight-innerHeight = [0, 85]``, exactly the
+    declared model. The remembered CHROME window size is an internal artifact no
+    page can see.
+    """
+    percorso = profile_dir / "xulstore.json"
+    if not percorso.is_file():
+        return
+    try:
+        dati = json.loads(percorso.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        # Un xulstore illeggibile non e' un motivo per non lanciare: Firefox lo
+        # rigenera. Si esce zitti invece di sollevare.
+        return
+    finestra = (dati.get(_XULSTORE_WINDOW) or {}).get("main-window")
+    if not isinstance(finestra, dict):
+        return
+    # Si togliono SOLO le chiavi della geometria, non il file: il resto di
+    # xulstore e' stato dell'interfaccia che non c'entra con questo difetto, e
+    # cancellare piu' del necessario e' come non sapere cosa si sta correggendo.
+    prima = len(finestra)
+    for chiave in ("width", "height", "screenX", "screenY", "sizemode"):
+        finestra.pop(chiave, None)
+    if len(finestra) == prima:
+        return
+    try:
+        percorso.write_bytes(json.dumps(dati).encode("utf-8"))
+    except OSError:
+        return
 
 
 def _patch_sync_new_page_sleep(ctx: Any) -> None:
@@ -247,11 +318,31 @@ class InvisiblePlaywright:
             self._pw = sync_playwright().start()
             if self._profile_dir is not None:
                 # Persistent context - cookies / localStorage / extensions /
-                # prefs all live on disk between runs. Stealth prefs are
-                # re-injected via firefox_user_prefs on every launch (Playwright
-                # writes them to user.js, which overrides anything in
-                # prefs.js inside the persistent dir).
+                # prefs all live on disk between runs.
+                #
+                # ⛔ The line that used to be here said the stealth prefs are
+                # "re-injected via firefox_user_prefs on every launch (Playwright
+                # writes them to user.js, which overrides anything in prefs.js)".
+                # That is FALSE on the Juggler path, and the false belief is what
+                # made the first-launch/second-launch asymmetry look impossible.
+                # Verified 2026-08-14 in the bundled driver: writePreferences(),
+                # the function that creates user.js, lives in
+                # server/bidi/third_party/firefoxPrefs.ts and is called only by
+                # BidiFirefox.prepareUserDataDir; the BASE prepareUserDataDir is
+                # empty and the Juggler Firefox type does not override it. The
+                # prefs travel over the protocol instead: Browser.enable applies
+                # them with Services.prefs.setBoolPref / setStringPref /
+                # setIntPref - USER-branch setters - after
+                # `await this._startCompletePromise`, so Firefox persists them
+                # into prefs.js. Measured: 39 zoom.stealth prefs in prefs.js after
+                # the first launch, and no user.js on disk at all.
+                #
+                # Consequence, and it is the whole reason the next block exists:
+                # launch 1 initialises gfx/fonts with the DEFAULTS, launch 2+ with
+                # the stealth prefs already active. Two different code paths, and
+                # every gate in this project starts from a fresh profile.
                 self._profile_dir.mkdir(parents=True, exist_ok=True)
+                _drop_persisted_window_geometry(self._profile_dir)
                 self._persistent_context = self._pw.firefox.launch_persistent_context(
                     user_data_dir=str(self._profile_dir),
                     executable_path=str(executable),

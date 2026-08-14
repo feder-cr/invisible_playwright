@@ -263,3 +263,88 @@ def test_build_env_no_font_keys_when_absent():
     env = ip._build_env({})
     assert "STEALTHFOX_FONTLIST" not in env
     assert "STEALTHFOX_SYSTEMUI" not in env
+
+
+# ---------------------------------------------------------------------------
+# _drop_persisted_window_geometry: il rilancio di un profilo persistente
+# ---------------------------------------------------------------------------
+#
+# ⛔ Perche' questi test esistono. Rilanciare un profilo persistente su Windows
+# riusciva 2 volte su 8 (misurato 2026-08-14; il ciclo del proprietario riportava
+# 83% di fallimento per tentativo su 282 sessioni). La causa e' in
+# `awaitViewportDimensions` di juggler, che risolve solo su uguaglianza esatta di
+# innerWidth/innerHeight, non ha timeout, e riesegue il proprio controllo solo su
+# un evento `resize`: al rilancio la finestra riapre alla geometria salvata in
+# `xulstore.json`, quindi il resize correttivo ha delta nullo e l'evento non
+# arriva mai. Dopo la correzione: 6/6, e da 12-63s a ~7s per rilancio.
+#
+# I casi sono quelli provati a mano prima di scriverla, compreso l'input REALE
+# (1942x1043 @112,0, la geometria che un profilo vero aveva su disco).
+
+
+def _scrivi_xulstore(d, contenuto):
+    import json
+    (d / "xulstore.json").write_text(json.dumps(contenuto), encoding="utf-8")
+
+
+def test_geometria_persistita_viene_tolta_dal_caso_reale(tmp_path):
+    import json
+    from invisible_playwright.launcher import (
+        _XULSTORE_WINDOW, _drop_persisted_window_geometry)
+    _scrivi_xulstore(tmp_path, {_XULSTORE_WINDOW: {
+        "main-window": {"sizemode": "normal", "width": "1942",
+                         "height": "1043", "screenX": "112", "screenY": "0"},
+        "sidebar-title": {"value": "-moz-missing"}}})
+
+    _drop_persisted_window_geometry(tmp_path)
+
+    dati = json.loads((tmp_path / "xulstore.json").read_text(encoding="utf-8"))
+    assert dati[_XULSTORE_WINDOW]["main-window"] == {}, (
+        "la geometria della finestra deve sparire, o il rilancio riapre alla "
+        "dimensione salvata e l'attesa di uguaglianza esatta non si chiude mai")
+    # Si toglie SOLO la geometria: cancellare tutto xulstore butterebbe stato
+    # dell'interfaccia che non c'entra con questo difetto.
+    assert dati[_XULSTORE_WINDOW]["sidebar-title"] == {"value": "-moz-missing"}
+
+
+def test_xulstore_assente_non_solleva(tmp_path):
+    from invisible_playwright.launcher import _drop_persisted_window_geometry
+    _drop_persisted_window_geometry(tmp_path)          # il primo lancio e' questo
+    assert not (tmp_path / "xulstore.json").exists()
+
+
+def test_xulstore_illeggibile_non_solleva_e_non_tocca(tmp_path):
+    from invisible_playwright.launcher import _drop_persisted_window_geometry
+    (tmp_path / "xulstore.json").write_text("{non json", encoding="utf-8")
+
+    _drop_persisted_window_geometry(tmp_path)
+
+    # Un xulstore corrotto non e' un motivo per non lanciare: Firefox lo
+    # rigenera. E non lo si riscrive, perche' non si e' capito cosa contiene.
+    assert (tmp_path / "xulstore.json").read_text(encoding="utf-8") == "{non json"
+
+
+def test_chiamarla_due_volte_non_cambia_niente(tmp_path):
+    import json
+    from invisible_playwright.launcher import (
+        _XULSTORE_WINDOW, _drop_persisted_window_geometry)
+    _scrivi_xulstore(tmp_path, {_XULSTORE_WINDOW: {
+        "main-window": {"width": "1942", "height": "1043"}}})
+
+    _drop_persisted_window_geometry(tmp_path)
+    primo = (tmp_path / "xulstore.json").read_bytes()
+    _drop_persisted_window_geometry(tmp_path)
+
+    assert (tmp_path / "xulstore.json").read_bytes() == primo
+
+
+def test_una_finestra_diversa_non_viene_toccata(tmp_path):
+    import json
+    from invisible_playwright.launcher import _drop_persisted_window_geometry
+    altra = {"chrome://altro/content/x.xhtml": {
+        "main-window": {"width": "800", "height": "600"}}}
+    _scrivi_xulstore(tmp_path, altra)
+
+    _drop_persisted_window_geometry(tmp_path)
+
+    assert json.loads((tmp_path / "xulstore.json").read_text(encoding="utf-8")) == altra

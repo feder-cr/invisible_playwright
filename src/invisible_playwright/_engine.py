@@ -18,8 +18,21 @@ from invisible_core.seal import EngineMismatch, active_seal, verify_engine
 
 
 def resolve_executable(binary_path: Optional[Union[str, Path]]) -> Path:
-    """binary_path= and INVPW_BINARY_PATH skip the download path entirely, so
-    the guard sits on the resolved executable, not inside the fetcher."""
+    """``binary_path=`` skips the download path entirely, so the guard sits on the
+    resolved executable rather than inside the fetcher.
+
+    ⛔ This used to say "binary_path= and INVPW_BINARY_PATH", and the second half
+    was false: nothing here reads that variable. It is translated into
+    ``binary_path=`` by the test scripts and by ``run_e2e.py``, so it is a
+    convention of this repo's harness and not a feature of the library. Corrected
+    2026-08-14 - a docstring that promises an env var the code never reads sends
+    the reader looking for a bug in the wrong function.
+
+    Driving an engine the packaged seal does not describe is done with
+    ``binary_path=`` plus ``INVISIBLE_SEAL_FILE`` pointing at a seal generated for
+    it; without that, ``verify_engine`` refuses, and refusing is correct - the
+    prefs and the spoofed User-Agent describe the sealed build.
+    """
     seal = active_seal()
     if binary_path:
         return verify_engine(Path(binary_path), seal, source=f"binary_path={binary_path}")
