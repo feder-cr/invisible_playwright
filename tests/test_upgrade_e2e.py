@@ -37,6 +37,39 @@ import subprocess
 
 import pytest
 
+# Le variabili che NON devono attraversare un venv costruito qui, e la copia di
+# `_clean_env` accanto a loro.
+#
+# **La duplicazione con `test_release_e2e.py` e' voluta e c'e' un gate che la
+# pretende**: `test_no_install_e2e_file_imports_a_package_the_runner_does_not_have`
+# nel core parsa questi file e rifiuta ogni import di modulo che non sia stdlib,
+# pytest, packaging o pip, con il messaggio "Keep the helpers local in these
+# files - the duplication is the point". Un modulo condiviso qui sarebbe un
+# errore di RACCOLTA sul runner, cioe' un job rosso che non ha testato niente.
+# Fattorizzare e' la mossa giusta ovunque tranne che in questi due file.
+#
+# Misurato 2026-08-11: `PYTHONPATH` verso i sorgenti del banco fa importare al
+# venv il core del banco invece di quello installato (2 fallimenti qui, 5
+# nell'altro file); `INVISIBLE_SEAL_FILE` verso un sigillo locale fa fallire i
+# test che scaricano la release pubblicata. Sedici rossi in un giorno, nessuno
+# del prodotto - e il verso pericoloso e' l'altro: un verde da un ambiente che
+# nessun utente ha.
+_NON_ERMETICHE = ("PYTHONPATH", "INVISIBLE_SEAL_FILE", "PYTHONHOME")
+
+
+def _clean_env(base=None):
+    """L'ambiente per un sottoprocesso, senza le variabili che filtrano.
+
+    Torna anche cosa ha tolto: una variabile rimossa in silenzio e' la stessa
+    classe di difetto di una ereditata in silenzio, col segno cambiato.
+    """
+    env = dict(os.environ if base is None else base)
+    tolte = [k for k in _NON_ERMETICHE if k in env]
+    for k in tolte:
+        env.pop(k, None)
+    return env, tolte
+
+
 # ── venv mechanics, LOCAL ON PURPOSE ────────────────────────────────────────
 # These three live in `invisible_core.testing` and every other suite in the
 # three repos imports them from there. NOT this file. The job that runs it
@@ -51,14 +84,24 @@ import pytest
 # the path. The core's suite now parses these files and refuses the import, so
 # the rule does not depend on this comment being read.
 def _run(cmd, *, timeout: int = 600, check: bool = True, env=None, cwd=None):
+    # `env=None` significava EREDITA, che e' il difetto. Adesso il default e'
+    # l'ambiente ripulito, e anche un `env=` esplicito viene ripulito, perche'
+    # chi ne costruisce uno parte quasi sempre da `os.environ`.
+    env, tolte = _clean_env(env)
     r = subprocess.run([str(c) for c in cmd], capture_output=True, text=True,
                        timeout=timeout, env=env,
                        cwd=str(cwd) if cwd is not None else None)
     if check and r.returncode != 0:
+        nota = ""
+        if tolte:
+            nota = ("\n--- ambiente ---\nrimosse prima di lanciare: {}\n"
+                    "(sono le variabili che entrerebbero nel venv e gli farebbero "
+                    "misurare qualcosa che non e' cio' che riceve un utente)"
+                    .format(", ".join(tolte)))
         raise AssertionError(
-            "{} exited {}\n--- stdout ---\n{}\n--- stderr ---\n{}".format(
+            "{} exited {}\n--- stdout ---\n{}\n--- stderr ---\n{}{}".format(
                 " ".join(str(c) for c in cmd), r.returncode,
-                r.stdout[-3000:], r.stderr[-3000:]))
+                r.stdout[-3000:], r.stderr[-3000:], nota))
     return r
 
 

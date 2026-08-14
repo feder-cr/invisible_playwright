@@ -41,6 +41,47 @@ import sys
 
 import pytest
 
+# The variables that must NOT cross into a venv this file builds.
+#
+# A venv inherits the environment, and these two walk straight through it into
+# the thing under test. Measured 2026-08-11:
+#
+#   PYTHONPATH           pointing at the workbench sources makes the venv import
+#                        the workbench core instead of the installed one. 5
+#                        failures here and 2 in test_upgrade_e2e.py on Linux,
+#                        every one of them "requires invisible-core==18.13.0 /
+#                        installed 18.14.0". The product was not involved.
+#   INVISIBLE_SEAL_FILE  pointing at a LOCAL seal makes the four tests that
+#                        download the published release fail with "the active
+#                        seal is a LOCAL seal with no published assets". 4
+#                        failures, on Windows AND Linux, that went away by
+#                        re-running the same file without it: 9 of 9 passed.
+#   PYTHONHOME           same mechanism as PYTHONPATH and worse - it redirects
+#                        the standard library, so the venv python is broken
+#                        before it runs a line. Not measured here; added because
+#                        it cannot be right and would be unreadable if it hit.
+#
+# Sixteen failures in one day, none of them the product. And the dangerous
+# direction is the other one: a GREEN that comes from an environment no user
+# has. These tests are the only thing that checks the install path, so their
+# verdict must not depend on the shell that launched them.
+_NON_ERMETICHE = ("PYTHONPATH", "INVISIBLE_SEAL_FILE", "PYTHONHOME")
+
+
+def _clean_env(base=None):
+    """L'ambiente da passare a un sottoprocesso, senza le variabili che filtrano.
+
+    Torna anche cosa ha tolto, cosi' il messaggio di errore puo' dirlo: una
+    variabile rimossa in silenzio e' la stessa classe di difetto di una
+    ereditata in silenzio, solo con il segno cambiato.
+    """
+    env = dict(os.environ if base is None else base)
+    tolte = [k for k in _NON_ERMETICHE if k in env]
+    for k in tolte:
+        env.pop(k, None)
+    return env, tolte
+
+
 # ── venv mechanics, LOCAL ON PURPOSE ────────────────────────────────────────
 # These three live in `invisible_core.testing` and every other suite in the
 # three repos imports them from there. NOT this file. The job that runs it
@@ -55,14 +96,25 @@ import pytest
 # the path. The core's suite now parses these files and refuses the import, so
 # the rule does not depend on this comment being read.
 def _run(cmd, *, timeout: int = 600, check: bool = True, env=None, cwd=None):
+    # `env=None` significava EREDITA, che e' esattamente il difetto. Adesso il
+    # default e' l'ambiente ripulito; passare `env=` esplicitamente lo ripulisce
+    # comunque, perche' un chiamante che costruisce un ambiente parte quasi
+    # sempre da `os.environ`.
+    env, tolte = _clean_env(env)
     r = subprocess.run([str(c) for c in cmd], capture_output=True, text=True,
                        timeout=timeout, env=env,
                        cwd=str(cwd) if cwd is not None else None)
     if check and r.returncode != 0:
+        nota = ""
+        if tolte:
+            nota = ("\n--- ambiente ---\nrimosse prima di lanciare: {}\n"
+                    "(sono le variabili che entrerebbero nel venv e lo farebbero "
+                    "misurare qualcosa che non e' cio' che riceve un utente)"
+                    .format(", ".join(tolte)))
         raise AssertionError(
-            "{} exited {}\n--- stdout ---\n{}\n--- stderr ---\n{}".format(
+            "{} exited {}\n--- stdout ---\n{}\n--- stderr ---\n{}{}".format(
                 " ".join(str(c) for c in cmd), r.returncode,
-                r.stdout[-3000:], r.stderr[-3000:]))
+                r.stdout[-3000:], r.stderr[-3000:], nota))
     return r
 
 
@@ -98,10 +150,13 @@ make_venv = _make_venv
 # Reading it from the VENV is also the more honest question: what a user gets
 # is what the installed package says, not what this checkout says.
 def _upstream_version(py: Path) -> str:
+    # `_clean_env()` e non l'ambiente ereditato: questa e' la lettura che decide
+    # quale COPIA del pacchetto risponde, ed e' proprio quella che `PYTHONPATH`
+    # dirotta sui sorgenti del banco.
     out = subprocess.run(
         [str(py), "-c",
          "from invisible_playwright.constants import FIREFOX_UPSTREAM_VERSION as v; print(v)"],
-        capture_output=True, text=True, timeout=60)
+        capture_output=True, text=True, timeout=60, env=_clean_env()[0])
     assert out.returncode == 0, (
         "could not read FIREFOX_UPSTREAM_VERSION from the installed package: "
         + (out.stdout or "") + " " + (out.stderr or ""))
@@ -309,8 +364,13 @@ def test_binary_executes_after_fetch(clean_venv: Path, isolated_cache_env: dict)
         # Linux binary path on Windows host - skip launch, the previous
         # ensure_binary() already proved cache landed correctly.
         pytest.skip("Cross-platform binary launch from Windows requires WSL.")
+    # Anche qui `_clean_env()`, e non perche' Firefox legga `PYTHONPATH`: non lo
+    # legge. Perche' cosi' in questo file NON c'e' un solo sottoprocesso lanciato
+    # con l'ambiente ereditato, quindi non c'e' un'eccezione da ricordare ne' un
+    # esempio da ricopiare. Costa niente.
     r = subprocess.run([str(binary_path), "--version"],
-                       capture_output=True, text=True, timeout=30)
+                       capture_output=True, text=True, timeout=30,
+                       env=_clean_env()[0])
     text = (r.stdout + r.stderr).lower()
     upstream = _upstream_version(clean_venv)
     assert "firefox" in text and upstream in text, (
