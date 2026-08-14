@@ -183,25 +183,49 @@ jobs:
           fi
           # The direct push CANNOT succeed while the branch requires status
           # checks: a required check cannot have passed on a commit that does
-          # not exist yet, and this token has no bypass where a maintainer
-          # push does. Measured 2026-08-05 - every publish run on all three
-          # repos ended in failure with GH006, on releases that had shipped.
-          # So the push is tried, and when declined the entry goes to a branch
-          # and a pull request rather than nowhere. Green when it is
-          # preserved, red only when it is lost.
+          # not exist yet, and since 2026-08-13 `enforce_admins` is TRUE, so
+          # not even a maintainer push has a bypass. Measured 2026-08-05 -
+          # every publish run on all three repos ended in failure with GH006,
+          # on releases that had shipped. So the push is tried, and when
+          # declined the entry goes to a branch and a pull request rather than
+          # nowhere. Green when it is preserved, red only when it is LOST.
+          #
+          # THE FALLBACK HAD NEVER RUN ONCE - repaired 2026-08-14, the same fix
+          # in all three repos. Two defects, and the first hid the second:
+          #
+          #   1. `HEAD:$LEDGER_BRANCH` cannot work from the detached HEAD a tag
+          #      build checks out: the destination branch does not exist yet and
+          #      the source is a commit object, so git cannot tell a branch from
+          #      a tag and refuses with "The destination you provided is not a
+          #      full refname". Under `bash -e` that aborts the step, so the
+          #      pull request below was never even attempted and neither
+          #      `::error::` was ever printed - which is why no `ledger/*`
+          #      branch and no pull request has ever existed on any of the three
+          #      repos, across four red runs on releases that had shipped.
+          #   2. Creating the pull request also needs "Allow GitHub Actions to
+          #      create and approve pull requests" ON THE REPOSITORY, which is
+          #      off on all three. The job's own `pull-requests: write` is
+          #      necessary and not sufficient. So the pull request is BEST
+          #      EFFORT: once the branch push lands the entry is safe, and the
+          #      run does not go red over a convenience that a repository
+          #      setting can withdraw.
           VERSION=$(python -c "import json;print(json.load(open('PUBLISHED.json'))['released'][-1]['version'])")
           git config user.name "feder-cr"
           git config user.email "85809106+feder-cr@users.noreply.github.com"
           git add PUBLISHED.json
           git commit -m "record $VERSION as published"
           BRANCH="${{ github.event.repository.default_branch }}"
-          if git push origin "HEAD:$BRANCH"; then
+          if git push origin "HEAD:refs/heads/$BRANCH"; then
             echo "::notice::ledger entry for $VERSION committed to $BRANCH"
             exit 0
           fi
-          echo "the direct push was declined; falling back to a pull request"
+          echo "the direct push was declined; falling back to a branch and a pull request"
           LEDGER_BRANCH="ledger/$VERSION"
-          git push -f origin "HEAD:$LEDGER_BRANCH"
+          if ! git push -f origin "HEAD:refs/heads/$LEDGER_BRANCH"; then
+            echo "::error::the ledger entry for $VERSION reached NEITHER $BRANCH NOR a branch of its own. It exists only in this run. Back-fill it by hand from the artifacts the index serves, or the next release is refused over a missing entry."
+            exit 1
+          fi
+          echo "::notice::the ledger entry for $VERSION is preserved on branch $LEDGER_BRANCH"
           CODE=$(curl -s -o /tmp/pr.json -w '%{http_code}' -X POST \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             -H "Accept: application/vnd.github+json" \
@@ -209,7 +233,67 @@ jobs:
             -d "{\"title\":\"record $VERSION as published\",\"head\":\"$LEDGER_BRANCH\",\"base\":\"$BRANCH\",\"body\":\"The upload succeeded and the ledger could not be pushed to $BRANCH directly: branch protection declines this token, which has no bypass. Merging this keeps the next release from being refused over a missing entry.\"}")
           if [ "$CODE" = "201" ] || [ "$CODE" = "422" ]; then
             echo "::error::the ledger for $VERSION is NOT on $BRANCH. Branch $LEDGER_BRANCH carries it and a pull request is open (HTTP $CODE; 422 means one already exists). Merge it before the next release."
+          else
+            echo "::error::the ledger for $VERSION is NOT on $BRANCH. Branch $LEDGER_BRANCH carries it and the pull request could NOT be created (HTTP $CODE - 403 means the repository forbids Actions from creating pull requests). Open and merge it by hand before the next release."
+          fi
+          exit 0
+      - name: create the release page for this tag
+        # Measured 2026-08-11: after pushing three tags, FOUR versions out of four
+        # had no release page, and it was this repo's own gate
+        # (`test_the_published_version_has_a_github_release`, in
+        # `test_release_e2e.py`) that found them AFTER publication. A tag with no
+        # release page is not cosmetic: that gate walks EVERY version on the
+        # index, so one omission refuses a later run for a version nobody is
+        # releasing that day.
+        #
+        # Runs only on the tag path - `workflow_dispatch` has no tag to describe.
+        # Idempotent on purpose: a re-pushed tag, a re-run, or a page created by
+        # hand must all be a no-op rather than a failure, which is the same rule
+        # `already-published` follows one job up.
+        #
+        # The body comes from CHANGELOG.md when the repo keeps one (only this one
+        # does) and is generated otherwise. One step, both cases, so the three
+        # repos carry the same text instead of three variants that drift.
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          VERSION="${TAG#v}"
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "::notice::the release page for $TAG already exists - nothing to do"
             exit 0
           fi
-          echo "::error::the ledger entry for $VERSION could not be pushed OR turned into a pull request (HTTP $CODE). It exists only in this run. Back-fill it by hand from the artifacts the index serves."
+          if [ -f CHANGELOG.md ]; then
+            awk -v v="$VERSION" '
+              $0 ~ ("^## \\[" v "\\]") { p = 1; next }
+              p && /^## \[/ { exit }
+              p { print }
+            ' CHANGELOG.md > /tmp/notes.md
+          else
+            : > /tmp/notes.md
+          fi
+          # A body that is only whitespace reads as a page nobody wrote. Say what
+          # is true instead: the version, and where the artifacts actually are.
+          #
+          # The PyPI name is the repository name with hyphens: the repo is
+          # `invisible_playwright` and the project is `invisible-playwright`.
+          # PyPI redirects the underscore form, so getting this wrong would have
+          # produced a link that works and is still wrong to read. And no
+          # backticks in the body - they would be command substitution inside a
+          # double-quoted shell string, which is how fourteen quoted terms once
+          # became empty strings.
+          PKG=$(printf '%s' "${{ github.event.repository.name }}" | tr '_' '-')
+          if [ -z "$(tr -d '[:space:]' < /tmp/notes.md)" ]; then
+            printf '%s\n' \
+              "$PKG $VERSION is on PyPI." \
+              "" \
+              "Artifacts and checksums: https://pypi.org/project/$PKG/$VERSION/" \
+              > /tmp/notes.md
+          fi
+          if gh release create "$TAG" --title "$TAG" --notes-file /tmp/notes.md; then
+            echo "::notice::release page created for $TAG"
+            exit 0
+          fi
+          echo "::error::the release page for $TAG could not be created. The package IS published; create the page by hand or a later run of the release gate will refuse over it."
           exit 1
