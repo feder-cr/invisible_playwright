@@ -36,11 +36,30 @@ from ._cursor import (
 
 __all__ = ["build_prefs", "true_headless_requested", "TRUE_HEADLESS_ENV"]
 
-#: Opt-in to real headless. The default headful+cloak path intermittently hangs
-#: `launch_persistent_context` on Windows (~40%, a window/compositor race with a
-#: persistent profile); true headless applies the IDENTICAL fingerprint prefs and
-#: is reliable. Read HERE rather than in one of the two classes, because reading
-#: it in one of them is exactly how it came to work on the async API only.
+#: Opt-in to real headless. Read HERE rather than in one of the two classes,
+#: because reading it in one of them is exactly how it came to work on the async
+#: API only.
+#:
+#: ⛔ THE REASON THIS USED TO BE A WORKAROUND IS NOW KNOWN, AND FIXED. This
+#: comment said: "the default headful+cloak path intermittently hangs
+#: launch_persistent_context on Windows (~40%, a window/compositor race with a
+#: persistent profile); true headless ... is reliable". It had the right
+#: neighbourhood - window and compositor - and no mechanism, so it stood as an
+#: escape hatch for months.
+#:
+#: The mechanism, measured 2026-08-14: Windows declared the chrome window FULLY
+#: OCCLUDED and in the hanging runs the verdict was never revoked
+#: (`nsWindow::NotifyOcclusionState() mIsFullyOccluded 1` with no later 0). An
+#: inactive BrowsingContext never paints, so delayed startup never finishes,
+#: `browser-delayed-startup-finished` never fires, no target is created and the
+#: launch times out at 180 s. True headless was reliable for a reason nobody had
+#: named: there is no window to occlude.
+#:
+#: Fixed by `widget.windows.window_occlusion_tracking.enabled=false`, applied to
+#: EVERY session by invisible_core - 24 relaunches out of 24 against 6 hangs in 9.
+#: So this variable is no longer a workaround for that hang; it remains as a
+#: deliberate choice of a different rendering path. Full account:
+#: `71-bug-archive.md` [B150].
 TRUE_HEADLESS_ENV = "INVPW_TRUE_HEADLESS"
 
 

@@ -17,9 +17,12 @@ import pytest
 
 from invisible_playwright import InvisiblePlaywright
 
+# Occlusion tracking is no longer part of the cloak: it is applied to EVERY
+# session by invisible_core (see prefs.compose_session_prefs), because a window treated as
+# backgrounded is readable by a page - rAF at 1 Hz, timers clamped to 1000 ms,
+# visibilityState hidden, enumerateDevices that never resolves.
 CLOAK_PREFS = {
     "zoom.stealth.cloak_windows": True,
-    "widget.windows.window_occlusion_tracking.enabled": False,
 }
 
 _WEBGL_RENDERER = """() => {

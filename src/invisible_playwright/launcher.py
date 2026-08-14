@@ -30,77 +30,6 @@ from ._reaper import SessionToken, guard_for
 #: value: the two drifted apart for as long as one of them did not exist.
 _NEWTAB_SETTLE = 0.4
 
-#: The chrome window whose remembered geometry breaks a persistent relaunch.
-_XULSTORE_WINDOW = "chrome://browser/content/browser.xhtml"
-
-
-def _drop_persisted_window_geometry(profile_dir: Path) -> None:
-    """Forget the chrome window's size/position before a persistent relaunch.
-
-    ⛔ THE DEFECT THIS FIXES, and it made the most common use case unusable:
-    relaunching a persistent profile on Windows succeeded **2 times out of 8**
-    (measured 2026-08-14; the owner's own loop reported 83% failure per attempt
-    and 45% of sessions dead after six retries, over 282 sessions).
-
-    ⛔ WHAT IS MEASURED, AND WHAT IS NOT. The correlation is solid and was
-    reproduced on two separate benches: **12 relaunches out of 12** succeed with
-    the geometry keys removed, against **5 out of 14** with them kept, and the
-    successful ones dropped from 20-155s to ~7s. That is why this call is here.
-
-    **The CAUSE is not known.** An earlier version of this docstring blamed
-    `awaitViewportDimensions` in `juggler/content/main.js` - it resolves only on
-    exact equality of innerWidth/innerHeight, has no timeout, and re-checks only
-    from a `resize` event - and that attribution was FALSIFIED the same day by a
-    `dump()` probe inside that very check, with this remedy disabled so the defect
-    would reappear: over 8 relaunches, the 6 that worked ran the check twice and
-    matched exactly on the first try every time, and **the 2 that hung never
-    reached it at all**. So the stall happens BEFORE a target exists, and that
-    wait is not it. Our `TargetRegistry.js` line that skips RDM is likewise not
-    implicated: if it were, the viewport numbers would diverge, and they do not.
-
-    ⛔ SO THIS IS A DECLARED PATCH, not a fix, and worse than the patch it was
-    first written as: then the cause seemed known and the refactor merely
-    deferred; now the cause is unknown and this removes a trigger without
-    explaining it. A real effect does not prove a mechanism - deleting a file also
-    changes timing, and on a startup race a timing perturbation produces a genuine
-    improvement for the wrong reason.
-
-    The next step is not more code reading: it is probing several points of the
-    launch sequence and looking at the LAST one reached in a hung run. Full
-    account: `70-known-bugs.md` [B150].
-
-    Not a fingerprint change: what a page reads is the DECLARED geometry, and it
-    was measured unchanged after this - ``inner=[1920,947] outer=[1920,1032]``
-    and ``outerWidth-innerWidth, outerHeight-innerHeight = [0, 85]``, exactly the
-    declared model. The remembered CHROME window size is an internal artifact no
-    page can see.
-    """
-    percorso = profile_dir / "xulstore.json"
-    if not percorso.is_file():
-        return
-    try:
-        dati = json.loads(percorso.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        # Un xulstore illeggibile non e' un motivo per non lanciare: Firefox lo
-        # rigenera. Si esce zitti invece di sollevare.
-        return
-    finestra = (dati.get(_XULSTORE_WINDOW) or {}).get("main-window")
-    if not isinstance(finestra, dict):
-        return
-    # Si togliono SOLO le chiavi della geometria, non il file: il resto di
-    # xulstore e' stato dell'interfaccia che non c'entra con questo difetto, e
-    # cancellare piu' del necessario e' come non sapere cosa si sta correggendo.
-    prima = len(finestra)
-    for chiave in ("width", "height", "screenX", "screenY", "sizemode"):
-        finestra.pop(chiave, None)
-    if len(finestra) == prima:
-        return
-    try:
-        percorso.write_bytes(json.dumps(dati).encode("utf-8"))
-    except OSError:
-        return
-
-
 def _patch_sync_new_page_sleep(ctx: Any) -> None:
     """Wrap ctx.new_page() to add a brief settle after tab creation.
 
@@ -337,12 +266,16 @@ class InvisiblePlaywright:
                 # into prefs.js. Measured: 39 zoom.stealth prefs in prefs.js after
                 # the first launch, and no user.js on disk at all.
                 #
-                # Consequence, and it is the whole reason the next block exists:
-                # launch 1 initialises gfx/fonts with the DEFAULTS, launch 2+ with
-                # the stealth prefs already active. Two different code paths, and
-                # every gate in this project starts from a fresh profile.
+                # Consequence: launch 1 initialises gfx/fonts with the
+                # DEFAULTS, launch 2+ with the stealth prefs already active. Two
+                # different code paths, and every gate in this project starts from
+                # a fresh profile - which is how the relaunch hang lived unseen.
+                # Cause and fix: `70-known-bugs.md` [B150]. The fix is a pref
+                # applied by invisible_core to every session, not code here: a
+                # geometry-scrubbing remedy lived in this file for a few hours and
+                # was REMOVED once the origin was found, so that only one place
+                # knows the fact.
                 self._profile_dir.mkdir(parents=True, exist_ok=True)
-                _drop_persisted_window_geometry(self._profile_dir)
                 self._persistent_context = self._pw.firefox.launch_persistent_context(
                     user_data_dir=str(self._profile_dir),
                     executable_path=str(executable),
