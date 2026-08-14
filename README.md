@@ -256,5 +256,5 @@ This project is for educational purposes only. It is provided as-is, with no war
   <a href="https://www.python.org/downloads/"><img src="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/badges/python.svg" alt="Python 3.11+"></a>
   <a href="https://github.com/feder-cr/firefox_antidetect_patch/releases"><img src="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/badges/firefox.svg" alt="Firefox 151.0"></a>
   <a href="https://github.com/feder-cr/invisible_playwright/stargazers"><img src="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/badges/stars.svg" alt="GitHub stars"></a>
-  <a href="https://github.com/feder-cr/invisible_firefox/releases/tag/usage-counter"><img src="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/badges/launches.svg" alt="browser launches"></a>
+  <a href="https://github.com/feder-cr/invisible_firefox/releases/tag/usage-counter"><img src="https://raw.githubusercontent.com/feder-cr/invisible_playwright/badges/docs/badges/launches.svg" alt="browser launches"></a>
 </p>
