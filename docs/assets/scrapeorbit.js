@@ -13,7 +13,7 @@
   // Paste your free Brandfetch client id here. It is a PUBLISHABLE key meant to
   // live in front-end code (rate-limited by referrer), not a secret. Empty =
   // the scanner runs on the bundled local index only.
-  var BRANDFETCH_CLIENT_ID = "";
+  var BRANDFETCH_CLIENT_ID = "1idtjBhyeyJB_2lvvCA";
   var BRANDFETCH_SEARCH = "https://api.brandfetch.io/v2/search/";
   var BRANDFETCH_CDN = "https://cdn.brandfetch.io/";
 

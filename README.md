@@ -1,9 +1,14 @@
 <p align="center">
-  <a href="https://feder-cr.github.io/invisible_playwright/"><img src="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/scrapeorbit-banner.png" alt="ScrapeOrbit - find and scrape any company on Earth" width="760"></a>
+  <a href="https://feder-cr.github.io/invisible_playwright/"><img src="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/scrapeorbit-demo.gif" alt="ScrapeOrbit - find and scrape any company on Earth" width="760"></a>
 </p>
 <p align="center">
-  <b>Find and scrape any company on Earth.</b> No login, no signup. Just search and scrape.<br>
-  <a href="https://feder-cr.github.io/invisible_playwright/">Open ScrapeOrbit</a>
+  <b>Find and scrape any company on Earth.</b> No login, no signup.
+</p>
+<p align="center">
+  <a href="https://feder-cr.github.io/invisible_playwright/"><img src="https://img.shields.io/badge/%E2%96%B6_Try_it_live-38f0c8?style=for-the-badge" alt="Try it live"></a>
+  <a href="https://pypi.org/project/invisible-playwright/"><img src="https://img.shields.io/pypi/v/invisible-playwright?style=for-the-badge&labelColor=0a0d18&color=7c5cff" alt="PyPI version"></a>
+  <a href="https://pepy.tech/project/invisible-playwright"><img src="https://img.shields.io/pepy/dt/invisible-playwright?style=for-the-badge&labelColor=0a0d18&color=38f0c8" alt="Downloads"></a>
+  <a href="https://github.com/feder-cr/invisible_playwright/blob/main/LICENSE"><img src="https://img.shields.io/pypi/l/invisible-playwright?style=for-the-badge&labelColor=0a0d18&color=8b93a6" alt="License"></a>
 </p>
 
 <h2></h2>
