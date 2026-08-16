@@ -42,7 +42,33 @@ def main() -> int:
         print(f"ERROR: binary not found: {binary}", file=sys.stderr)
         return 2
 
-    env = dict(os.environ)
+    # An escape hatch in the environment is not neutral here: one e2e ASSERTS
+    # the behaviour it disables.
+    #
+    # `INVISIBLE_CORE_PIN=allow` tells the core to run a mismatched pair instead
+    # of repairing it. It is the normal way to drive a locally built engine, so
+    # it is often already exported in the shell that starts this run - and it is
+    # INHERITED by the venv subprocess that
+    # `test_the_mismatch_repairs_itself_at_import_without_a_restart` spawns.
+    # That test deliberately breaks an environment and requires importing the
+    # wrapper to fix it. With the variable set, the repair correctly declines,
+    # the version does not move, and the test fails for a reason that has
+    # nothing to do with the binary under test.
+    #
+    # Measured 2026-08-16: 1 failed / 143 passed in 14 minutes, and the same
+    # file re-run with the variable unset gave 4 passed in 2 minutes. Refusing
+    # up front costs a second; discovering it costs the whole run plus the time
+    # spent believing the product was broken.
+    #
+    # It is stripped, not merely warned about: a warning at the top of a
+    # 14-minute run scrolls away long before the failure appears.
+    env = {k: v for k, v in os.environ.items() if k != "INVISIBLE_CORE_PIN"}
+    if "INVISIBLE_CORE_PIN" in os.environ:
+        print("[run_e2e] INVISIBLE_CORE_PIN is set in this shell and has been "
+              "STRIPPED for the run: one e2e asserts the pin repair that the "
+              "variable disables, and it would fail for that reason alone.",
+              file=sys.stderr)
+
     # One setting drives the whole suite: conftest's firefox_binary fixture and
     # the webrtc e2e both resolve from these.
     env["INVPW_BINARY_PATH"] = binary
