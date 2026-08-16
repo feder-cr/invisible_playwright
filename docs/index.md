@@ -2,6 +2,7 @@
 title: "Browser fingerprinting and bot detection, from the source"
 description: "Documentation and standalone explainers for invisible_playwright, an undetected Playwright wrapper on a stealth-patched Firefox. Each page is checked against the current source of the thing it describes."
 nav_order: 1
+permalink: /overview.html
 ---
 
 # Browser fingerprinting and bot detection, from the source

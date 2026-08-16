@@ -1,9 +1,9 @@
 <p align="center">
-  <b>Trouble with captchas - reCAPTCHA, hCaptcha, Turnstile? With proxies? Is your headless browser detected every time?</b><br>
-  <sub>Join the group and ask. Someone in there has already solved it.</sub>
+  <a href="https://feder-cr.github.io/invisible_playwright/"><img src="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/scrapeorbit-banner.png" alt="ScrapeOrbit - find and scrape any company on Earth" width="760"></a>
 </p>
 <p align="center">
-  <a href="https://t.me/scrapingtheweb"><img src="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/badges/telegram.svg" alt="Join on Telegram" height="38"></a>
+  <b>Find and scrape any company on Earth.</b> No login, no signup. Just search and scrape.<br>
+  <a href="https://feder-cr.github.io/invisible_playwright/">Open ScrapeOrbit</a>
 </p>
 
 <h2></h2>
