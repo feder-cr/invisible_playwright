@@ -115,13 +115,29 @@ def test_the_family_list_in_the_gate_matches_the_core_manifest():
                 if r.startswith("F|")]
     dal_gate = _expected_dal_gate()
 
-    assert dal_gate == dal_core, (
-        "la lista delle famiglie dentro scripts/ci_font_gate.py non e' piu' "
-        "quella che invisible_core dichiara." + chr(10) +
-        "  nel core e non nel gate: %s" + chr(10) +
-        "  nel gate e non nel core: %s" + chr(10) +
-        "Il gate NON diventerebbe rosso da solo: le famiglie che mancano da "
-        "EXPECTED smettono di essere sondate, quindi stamperebbe OK restando "
-        "cieco su di loro. Riallinea il letterale."
-        % (sorted(set(dal_core) - set(dal_gate)),
-           sorted(set(dal_gate) - set(dal_core))))
+    # ⛔ NESSUN `%` in questo messaggio, e non e' uno stile: la prima stesura lo
+    # usava dopo una concatenazione con `+`, cosi' il `%` finale si legava SOLO
+    # all'ultimo gruppo di letterali adiacenti - quello senza segnaposti - e
+    # alzava `TypeError: not all arguments converted`. Un messaggio di asserzione
+    # viene valutato solo QUANDO l'asserzione fallisce, quindi il difetto si
+    # manifesta esattamente nell'istante in cui serve la spiegazione: in CI si e'
+    # visto un TypeError al posto della differenza fra le due liste. Concatenare
+    # valori gia' resi con `repr` non ha questo modo di sbagliare.
+    if dal_gate != dal_core:
+        nel_core = sorted(set(dal_core) - set(dal_gate))
+        nel_gate = sorted(set(dal_gate) - set(dal_core))
+        raise AssertionError(
+            "la lista delle famiglie dentro scripts/ci_font_gate.py non e' "
+            "quella che invisible_core dichiara." + chr(10)
+            + "  nel core e non nel gate: " + repr(nel_core) + chr(10)
+            + "  nel gate e non nel core: " + repr(nel_gate) + chr(10)
+            + "  famiglie: gate " + str(len(dal_gate))
+            + ", core " + str(len(dal_core)) + chr(10)
+            + "Il gate NON diventerebbe rosso da solo: le famiglie che mancano "
+            "da EXPECTED smettono di essere sondate, quindi stamperebbe OK "
+            "restando cieco su di loro." + chr(10)
+            + "Se questo scatta in CI durante un rilascio, guarda l'ORDINE: la "
+            "CI installa il core PUBBLICATO, non quello dell'albero, quindi un "
+            "gate aggiornato prima che il core sia sull'indice vede il manifest "
+            "vecchio. Si pubblica il core, poi si sposta il pin, poi si usa la "
+            "lista nuova.")
