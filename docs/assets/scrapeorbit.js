@@ -298,7 +298,7 @@
     if (timer) clearTimeout(timer);
     if (q.length < 2) {
       results.innerHTML = "";
-      setStatus("Start typing to search the live index.");
+      setStatus("");
       return;
     }
     timer = setTimeout(function () { runSearch(q); }, 240);
