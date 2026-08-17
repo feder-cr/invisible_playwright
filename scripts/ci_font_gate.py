@@ -32,35 +32,53 @@ import sys
 
 # The canonical Windows-11 family set the bundle exposes. Verified byte-for-byte
 # identical on Windows/DWrite and Linux/fontconfig; macOS/CoreText must match it
-# too. Keep this sorted and in sync with the bundle (browser/fonts/moz.build).
+# too. Questi sono i record `F|` che `invisible_core` dichiara.
+#
+# ⛔ E' UN LETTERALE, e il motivo NON e' pigrizia: verificato il 2026-08-17
+# leggendo il workflow che lo esegue. Il font gate gira dentro `release.yml`
+# del repo SORGENTE, in un job che fa il checkout di QUESTO repo ma installa
+# soltanto `playwright==...` e niente altro. Farlo derivare da `invisible_core`
+# e' la forma che la regola 16 chiede, e' stata scritta e provata, funziona in
+# locale, e fa morire di ImportError OGNI rilascio.
+#
+# E c'e' una seconda ragione, che sopravvive anche se un giorno quel job
+# installasse il core: quando la pipeline gira, il core PUBBLICATO e' ancora
+# quello del rilascio precedente, perche' il core si pubblica DOPO che il
+# binario esiste (17-release-seal-spec.md §9). Derivare da li' misurerebbe il
+# binario nuovo contro la dichiarazione vecchia.
+#
+# Cio' che rende sicuro il letterale non e' l'attenzione di chi lo edita: e'
+# `test_the_family_list_in_the_gate_matches_the_core_manifest`, in
+# `tests/test_ci_font_gate_declaration.py` di questo repo, dove il core C'E'.
+# Quel test non esisteva: era DOCUMENTATO come esistente e basta, ed e'
+# esattamente per questo che la lista ha potuto restare a 68 mentre il manifest
+# passava a 71 (le due Segoe di icone piu' Twemoji Mozilla).
+#
+# ⛔ E LA DERIVA NON DA' UN ROSSO, DA' UN VERDE: misurato il 2026-08-17 sul
+# binario vero. La sonda interroga `EXPECTED + HOST_MUST_BE_ABSENT` e nient'
+# altro, quindi una famiglia tolta di qui smette anche di essere CERCATA: con
+# le tre mancanti il gate ha stampato `detected 68 families (expected 68)` e
+# `FONT GATE OK`, uscita 0, su un binario che ne espone 71. Un gate d'accordo
+# con se' stesso non vede la propria deriva.
 EXPECTED = [
-    # 68, not 72, since 2026-08-07. Arial Black, Franklin Gothic Medium, Segoe
-    # Fluent Icons and Segoe MDL2 Assets were removed from the bundle because a
-    # REAL Windows Firefox does not expose them as family names to a page -
-    # measured by driving the retail 152.0.6 installed on the machine, with a
-    # throwaway profile and no build of ours in the loop. We were answering
-    # "present" where a real browser answers "absent", on four names a
-    # font-probing detector asks about.
-    #
-    # This list is a hand-kept copy of the manifest's F| records and the docs
-    # already flag that as a drift risk. It went stale the moment the four were
-    # dropped and would have failed this gate on the next run - found by an
-    # audit, not by the gate itself.
-    "Arial", "Bahnschrift", "Calibri", "Cambria", "Cambria Math",
-    "Candara", "Comic Sans MS", "Consolas", "Constantia", "Corbel",
-    "Courier New", "Ebrima", "Franklin Gothic", "Gabriola", "Gadugi", "Georgia", "Impact", "Ink Free", "Javanese Text",
-    "Leelawadee", "Leelawadee UI", "Lucida Console", "Lucida Sans Unicode",
-    "MS Gothic", "MS PGothic", "MS UI Gothic", "MV Boli", "Malgun Gothic",
-    "Marlett", "Microsoft Himalaya", "Microsoft JhengHei",
-    "Microsoft JhengHei UI", "Microsoft New Tai Lue", "Microsoft PhagsPa",
-    "Microsoft Sans Serif", "Microsoft Tai Le", "Microsoft Uighur",
-    "Microsoft YaHei", "Microsoft YaHei UI", "Microsoft Yi Baiti",
-    "MingLiU-ExtB", "Mongolian Baiti", "Myanmar Text", "NSimSun", "Nirmala UI",
-    "PMingLiU-ExtB", "Palatino Linotype", "Segoe Print", "Segoe Script", "Segoe UI",
+    "Arial", "Bahnschrift", "Calibri", "Cambria", "Cambria Math", "Candara",
+    "Comic Sans MS", "Consolas", "Constantia", "Corbel", "Courier New",
+    "Ebrima", "Franklin Gothic", "Gabriola", "Gadugi", "Georgia", "Impact",
+    "Ink Free", "Javanese Text", "Leelawadee", "Leelawadee UI",
+    "Lucida Console", "Lucida Sans Unicode", "MS Gothic", "MS PGothic",
+    "MS UI Gothic", "MV Boli", "Malgun Gothic", "Marlett",
+    "Microsoft Himalaya", "Microsoft JhengHei", "Microsoft JhengHei UI",
+    "Microsoft New Tai Lue", "Microsoft PhagsPa", "Microsoft Sans Serif",
+    "Microsoft Tai Le", "Microsoft Uighur", "Microsoft YaHei",
+    "Microsoft YaHei UI", "Microsoft Yi Baiti", "MingLiU-ExtB",
+    "Mongolian Baiti", "Myanmar Text", "NSimSun", "Nirmala UI",
+    "PMingLiU-ExtB", "Palatino Linotype", "Segoe Fluent Icons",
+    "Segoe MDL2 Assets", "Segoe Print", "Segoe Script", "Segoe UI",
     "Segoe UI Emoji", "Segoe UI Historic", "Segoe UI Symbol", "SimSun",
     "SimSun-ExtB", "Sitka Small", "Sylfaen", "Symbol", "Tahoma",
-    "Times New Roman", "Trebuchet MS", "Verdana", "Webdings", "Wingdings",
-    "Wingdings 2", "Wingdings 3", "Yu Gothic", "Yu Gothic UI",
+    "Times New Roman", "Trebuchet MS", "Twemoji Mozilla", "Verdana",
+    "Webdings", "Wingdings", "Wingdings 2", "Wingdings 3", "Yu Gothic",
+    "Yu Gothic UI",
 ]
 
 # Host families that must NEVER be visible - one per backend. Their presence is a
