@@ -33,12 +33,11 @@
     .then(function (data) { if (Array.isArray(data)) fallback = data; })
     .catch(function () {});
 
-  /* ---- Scrape chat: a ChatGPT-style lead capture. The company is already set
-     from the clicked result; we ask for an email, then what to scrape, then
-     hand the request to Web3Forms. It collects a request and promises a
-     follow-up - it does not pretend to be a live AI returning data. ---- */
-
-  var chat = null; // { company, domain, email, step } while a chat is open
+  /* ---- Scrape instructions: a smart, single-panel lead capture. The company
+     is already set from the clicked result; the user writes what to pull in
+     plain English (with quick suggestions) plus an email, and we hand it to
+     Web3Forms. This is an instruction form, not a chat. It collects a request
+     and promises a follow-up - it does not return live data. ---- */
 
   function makeEl(tag, cls, html) {
     var e = document.createElement(tag);
@@ -50,129 +49,84 @@
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s).trim());
   }
   var ARROW = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
+  var SPARK = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.7 6.3 6.3 1.7-6.3 1.7L12 18l-1.7-6.3L4 10l6.3-1.7z"/></svg>';
+  var CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>';
 
   function openScrapeChat(item) {
     var domain = cleanDomain(item.desc) || cleanDomain(item.name);
-    chat = { company: item.name, domain: domain, email: "", step: "email" };
 
-    var overlay = makeEl("div", "chat-overlay");
-    overlay.id = "chat-overlay";
+    var overlay = makeEl("div", "sp-overlay");
+    overlay.id = "sp-overlay";
     overlay.innerHTML =
-      '<div class="chat-panel" role="dialog" aria-modal="true" aria-label="Scrape request">' +
-        '<div class="chat-head">' +
-          '<span class="chat-glyph" id="chat-glyph">' + escapeHtml(initial(item.name)) + '</span>' +
-          '<div class="chat-head-body">' +
-            '<div class="chat-co">' + escapeHtml(item.name) + '</div>' +
-            '<div class="chat-dom">' + escapeHtml(domain) + '</div>' +
+      '<div class="sp-panel" role="dialog" aria-modal="true" aria-label="Scrape instructions">' +
+        '<div class="sp-head">' +
+          '<span class="sp-glyph" id="sp-glyph">' + escapeHtml(initial(item.name)) + '</span>' +
+          '<div class="sp-head-body">' +
+            '<div class="sp-co">' + escapeHtml(item.name) + '</div>' +
+            '<div class="sp-dom">' + escapeHtml(domain) + '</div>' +
           '</div>' +
-          '<button class="chat-close" id="chat-close" aria-label="Close">&#215;</button>' +
+          '<button class="sp-close" id="sp-close" aria-label="Close">&#215;</button>' +
         '</div>' +
-        '<div class="chat-body" id="chat-body"></div>' +
-        '<form class="chat-input" id="chat-form">' +
-          '<input id="chat-field" type="text" autocomplete="off" placeholder="Your email" aria-label="Message">' +
-          '<button class="chat-send" type="submit" aria-label="Send">' + ARROW + '</button>' +
+        '<form class="sp-body" id="sp-form">' +
+          '<label class="sp-label" for="sp-instruct"><span class="sp-spark">' + SPARK + '</span>Scrape instructions</label>' +
+          '<textarea id="sp-instruct" class="sp-instruct" rows="4" placeholder="Describe what to pull from ' + escapeHtml(domain) + ' in plain English"></textarea>' +
+          '<label class="sp-label" for="sp-email">Send the results to</label>' +
+          '<input id="sp-email" class="sp-email" type="email" autocomplete="email" placeholder="you@company.com">' +
+          '<p class="sp-note">Plain English is fine. We read your instructions and pull the exact fields.</p>' +
+          '<button class="sp-submit" id="sp-submit" type="submit">Send instructions ' + ARROW + '</button>' +
         '</form>' +
       '</div>';
     document.body.appendChild(overlay);
     document.body.style.overflow = "hidden";
 
-    loadInto(overlay.querySelector("#chat-glyph"), [item.logo, item.logoFallback].filter(Boolean));
-    overlay.querySelector("#chat-close").addEventListener("click", closeChat);
-    overlay.addEventListener("mousedown", function (e) { if (e.target === overlay) closeChat(); });
-    document.addEventListener("keydown", chatEsc);
-    overlay.querySelector("#chat-form").addEventListener("submit", onChatSubmit);
+    loadInto(overlay.querySelector("#sp-glyph"), [item.logo, item.logoFallback].filter(Boolean));
 
-    botSay("Nice pick. Where should we send your <b>" + escapeHtml(domain) + "</b> data?", function () {
-      field().focus();
+    overlay.querySelector("#sp-close").addEventListener("click", closeScrapeChat);
+    overlay.addEventListener("mousedown", function (e) { if (e.target === overlay) closeScrapeChat(); });
+    document.addEventListener("keydown", spEsc);
+    overlay.querySelector("#sp-form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      submitScrape(item.name, domain);
     });
+    document.getElementById("sp-instruct").focus();
   }
 
-  function chatEsc(e) { if (e.key === "Escape") closeChat(); }
-  function closeChat() {
-    var o = document.getElementById("chat-overlay");
+  function spEsc(e) { if (e.key === "Escape") closeScrapeChat(); }
+  function closeScrapeChat() {
+    var o = document.getElementById("sp-overlay");
     if (o) o.parentNode.removeChild(o);
     document.body.style.overflow = "";
-    document.removeEventListener("keydown", chatEsc);
-    chat = null;
-  }
-  function body() { return document.getElementById("chat-body"); }
-  function field() { return document.getElementById("chat-field"); }
-  function scrollDown() { var b = body(); if (b) b.scrollTop = b.scrollHeight; }
-  function addMsg(cls, html) {
-    var b = body(); if (!b) return null;
-    var m = makeEl("div", "msg " + cls, html);
-    b.appendChild(m); scrollDown(); return m;
-  }
-  function userSay(text) { addMsg("user", escapeHtml(text)); }
-  function botSay(html, done) {
-    var t = addMsg("bot typing", '<span class="dots"><i></i><i></i><i></i></span>');
-    setTimeout(function () {
-      if (!t || !t.parentNode) return;
-      t.classList.remove("typing");
-      t.innerHTML = html;
-      scrollDown();
-      if (done) done();
-    }, 650);
-  }
-  function offerChips(list) {
-    var b = body(); if (!b) return;
-    var wrap = makeEl("div", "chips");
-    list.forEach(function (c) {
-      var chip = makeEl("button", "chip", escapeHtml(c));
-      chip.type = "button";
-      chip.addEventListener("click", function () {
-        if (wrap.parentNode) wrap.parentNode.removeChild(wrap);
-        sendRequest(c);
-      });
-      wrap.appendChild(chip);
-    });
-    b.appendChild(wrap); scrollDown();
+    document.removeEventListener("keydown", spEsc);
   }
 
-  function onChatSubmit(e) {
-    e.preventDefault();
-    if (!chat) return;
-    var fld = field();
-    var val = fld ? fld.value.trim() : "";
-    if (!val) { if (fld) fld.focus(); return; }
-
-    if (chat.step === "email") {
-      userSay(val);
-      fld.value = "";
-      if (!validEmail(val)) {
-        botSay("Hmm, that doesn't look like an email. Mind trying again?", function () { fld.focus(); });
-        return;
-      }
-      chat.email = val;
-      chat.step = "request";
-      botSay("Perfect. What do you want to scrape from <b>" + escapeHtml(chat.domain) + "</b>?", function () {
-        fld.placeholder = "e.g. all product prices and titles";
-        offerChips(["Prices and titles", "Reviews and ratings", "Product images", "Contact info"]);
-        fld.focus();
-      });
-      return;
-    }
-    if (chat.step === "request") { sendRequest(val); }
+  function resetSubmit(btn) { btn.disabled = false; btn.innerHTML = "Send instructions " + ARROW; }
+  function clearSpError() { var e = document.querySelector(".sp-error"); if (e) e.parentNode.removeChild(e); }
+  function showSpError(msg) {
+    var form = document.getElementById("sp-form"); if (!form) return;
+    clearSpError();
+    form.appendChild(makeEl("p", "sp-error", escapeHtml(msg)));
   }
 
-  function sendRequest(reqText) {
-    if (!chat || chat.step === "sending" || chat.step === "done") return;
-    var fld = field();
-    if (fld) fld.value = "";
-    userSay(reqText);
-    chat.step = "sending";
-    if (fld) fld.placeholder = "Sending...";
-    var t = addMsg("bot typing", '<span class="dots"><i></i><i></i><i></i></span>');
+  function submitScrape(company, domain) {
+    var ta = document.getElementById("sp-instruct");
+    var em = document.getElementById("sp-email");
+    var btn = document.getElementById("sp-submit");
+    if (!ta || !em || !btn) return;
+    var instr = ta.value.trim(), email = em.value.trim();
+    ta.classList.remove("err"); em.classList.remove("err"); clearSpError();
+    if (!instr) { ta.classList.add("err"); ta.focus(); return; }
+    if (!validEmail(email)) { em.classList.add("err"); em.focus(); return; }
 
+    btn.disabled = true; btn.innerHTML = "Sending...";
     var payload = {
       access_key: WEB3FORMS_KEY,
-      subject: "ScrapeOrbit request: " + chat.company + " (" + chat.domain + ")",
+      subject: "ScrapeOrbit request: " + company + " (" + domain + ")",
       from_name: "ScrapeOrbit",
-      company: chat.company,
-      website: chat.domain,
-      email: chat.email,
-      replyto: chat.email,
-      scrape_request: reqText,
+      company: company,
+      website: domain,
+      email: email,
+      replyto: email,
+      scrape_request: instr,
       botcheck: ""
     };
     fetch(WEB3FORMS_URL, {
@@ -180,25 +134,23 @@
       headers: { "Content-Type": "application/json", "Accept": "application/json" },
       body: JSON.stringify(payload)
     }).then(function (r) { return r.json(); }).then(function (data) {
-      if (t && t.parentNode) t.parentNode.removeChild(t);
-      if (data && data.success) {
-        chat.step = "done";
-        botSay("On it. We'll email your <b>" + escapeHtml(chat.domain) + "</b> data to <b>" + escapeHtml(chat.email) + "</b> shortly.", lockInput);
-      } else {
-        chat.step = "request";
-        botSay("Something went wrong sending that. Try again in a moment?", function () { if (fld) { fld.placeholder = "Tell us what to scrape"; fld.focus(); } });
-      }
+      if (data && data.success) { showScrapeDone(domain, email); }
+      else { resetSubmit(btn); showSpError("Something went wrong sending that. Try again in a moment."); }
     }).catch(function () {
-      if (t && t.parentNode) t.parentNode.removeChild(t);
-      chat.step = "request";
-      botSay("Couldn't reach the server. Check your connection and try again.", function () { if (fld) { fld.placeholder = "Tell us what to scrape"; fld.focus(); } });
+      resetSubmit(btn); showSpError("Couldn't reach the server. Check your connection and try again.");
     });
   }
 
-  function lockInput() {
-    var fld = field(), send = document.querySelector(".chat-send");
-    if (fld) { fld.disabled = true; fld.placeholder = "Request sent"; }
-    if (send) send.disabled = true;
+  function showScrapeDone(domain, email) {
+    var form = document.getElementById("sp-form"); if (!form) return;
+    var done = makeEl("div", "sp-done",
+      '<div class="sp-check">' + CHECK + '</div>' +
+      '<div class="sp-done-t">Instructions sent</div>' +
+      '<div class="sp-done-s">We\'ll email your <b>' + escapeHtml(domain) + '</b> data to <b>' + escapeHtml(email) + '</b>.</div>' +
+      '<button class="sp-submit" id="sp-done-btn" type="button">Done</button>');
+    form.parentNode.replaceChild(done, form);
+    var db = document.getElementById("sp-done-btn");
+    if (db) db.addEventListener("click", closeScrapeChat);
   }
 
   function setStatus(text, kind) {
