@@ -330,40 +330,113 @@ def test_enumerate_devices_resolves_promptly(firefox_binary, detector_site):
     d'ambiente, le opzioni di contesto e il motore del cursore. Cosa resti nel
     wrapper e' aperto - vedi 70-known-bugs.md.
 
-    La soglia e' 30 secondi, e la prima versione di questo test aveva 5: un
-    numero che diceva "e' veloce" mentre il commento accanto dichiarava di
-    assertire "si risolve". Misurato subito dopo, falliva 7 volte su 8 sotto
-    carico con tempi fra 2.7 e 5 secondi - cioe' bocciava sessioni in cui la
-    chiamata si RISOLVEVA, che non e' il difetto. 30 secondi sta sopra ogni
-    tempo osservato quando funziona e sotto i 45 in cui il difetto si manifesta
-    come timeout altrove. Il tempo viene stampato sempre, quindi una regressione
-    di velocita' resta visibile senza rendere il test instabile.
+    ⛔ DUE LIMITI E NON UNO, dal 2026-08-17, perche' con uno solo questo test
+    riportava "MAI RISOLTA" per una risoluzione soltanto LENTA - cioe' scriveva
+    il verdetto del difetto sopra il verdetto della macchina carica. La prima
+    versione aveva 5 secondi e falliva 7 volte su 8 sotto carico con tempi fra
+    2.7 e 5 secondi; alzarli a 30 ha spostato la soglia senza togliere la
+    confusione, e il 2026-08-17 dieci e2e completi hanno dato 1 rosso su 10 con
+    quel rosso interamente dentro il giro che durava 35 minuti contro una
+    mediana di 11.8, cioe' l'unico anomalo su ogni colonna. Sui nove giri
+    rimanenti: 0 su 9.
+
+    **Il difetto e' il BLOCCO, e un blocco e' infinito.** `LIMITE_BLOCCO_MS` sta
+    a 120 secondi: 83 volte la mediana di ~1440 ms e 24 volte il peggior tempo
+    mai osservato quando la chiamata funziona (5 s). Oltre quel muro non e'
+    lentezza, e nessun carico su questa macchina ha mai prodotto niente di
+    simile. Questo e' l'unico limite assoluto, ed e' quello che protegge il
+    prodotto.
+
+    **La LENTEZZA invece si misura contro la macchina, non contro l'orologio.**
+    La pagina cronometra 20000 MICROTASK, e il limite di lentezza e' un multiplo
+    di quel tempo, con un pavimento a 30 secondi e un tetto sotto il muro del
+    blocco.
+
+    ⛔ I microtask, e non `setTimeout(...,0)`, per una ragione misurata: la prima
+    versione di questo riferimento contava 50 giri di `setTimeout` e su una
+    macchina SCARICA riportava 2624 ms, cioe' ~52 ms per giro. Non era carico:
+    era il CLAMP dei timer, che Firefox applica comunque. Il limite che ne
+    derivava usciva a 393600 ms, **sopra** il muro del blocco a 120000, quindi
+    l'asserzione sulla lentezza era irraggiungibile - un'asserzione morta che
+    sembrava una protezione. Un riferimento va scelto per cio' che misura, e un
+    timer clampato misura il clamp. I microtask non sono clampati.
+
+    Il tetto (`muro - 1`) esiste per la stessa ragione: se il limite di lentezza
+    supera il muro del blocco, la prima asserzione scatta sempre prima e la
+    seconda non esiste piu'. Un limite che non puo' essere raggiunto non e' un
+    limite.
+
+    Il tempo e il riferimento vengono stampati sempre, quindi una regressione di
+    velocita' resta visibile anche quando non fa fallire niente.
     """
+    #: Oltre questo non si risolvera' mai: e' il difetto, ed e' assoluto.
+    LIMITE_BLOCCO_MS = 120_000
+    #: Pavimento della lentezza, piu' il multiplo del riferimento di carico. Il
+    #: multiplo e' tarato sul riferimento a microtask misurato a macchina scarica
+    #: (pochi ms), quindi da' un limite ben sotto il pavimento fino a un carico
+    #: di circa venti volte, e sopra oltre quello.
+    PAVIMENTO_LENTEZZA_MS = 30_000
+    MULTIPLO_SUL_RIFERIMENTO = 2_000
+
     with InvisiblePlaywright(seed=42, binary_path=firefox_binary) as browser:
         page = browser.new_page()
         page.goto(detector_site.url, wait_until="load", timeout=45000)
         r = page.evaluate(
-            """() => {
-                const t0 = performance.now();
-                return Promise.race([
-                    navigator.mediaDevices.enumerateDevices().then(
-                        d => ({esito: 'risolta', n: d.length,
-                               ms: Math.round(performance.now() - t0)}),
-                        e => ({esito: 'rifiutata', err: String(e).slice(0, 120),
-                               ms: Math.round(performance.now() - t0)})),
-                    new Promise(res => setTimeout(
-                        () => res({esito: 'MAI RISOLTA', ms: 30000}), 30000)),
-                ]);
-            }"""
+            """(limite) => {
+                // Riferimento di carico: 20000 microtask. NON setTimeout, che
+                // Firefox clampa comunque e che quindi misurerebbe il clamp
+                // invece della contesa. Si misura PRIMA, cosi' non include
+                // l'inizializzazione dello stack media che stiamo cronometrando.
+                const giroDiEventi = async () => {
+                    const t = performance.now();
+                    for (let i = 0; i < 20000; i++) {
+                        await Promise.resolve();
+                    }
+                    return performance.now() - t;
+                };
+                return giroDiEventi().then(rif => {
+                    const t0 = performance.now();
+                    return Promise.race([
+                        navigator.mediaDevices.enumerateDevices().then(
+                            d => ({esito: 'risolta', n: d.length, rif: rif,
+                                   ms: Math.round(performance.now() - t0)}),
+                            e => ({esito: 'rifiutata', rif: rif,
+                                   err: String(e).slice(0, 120),
+                                   ms: Math.round(performance.now() - t0)})),
+                        new Promise(res => setTimeout(
+                            () => res({esito: 'MAI RISOLTA', ms: limite,
+                                       rif: rif}), limite)),
+                    ]);
+                });
+            }""",
+            LIMITE_BLOCCO_MS,
         )
+
+    rif = round(r.get("rif") or 0)
+    limite_lentezza = min(LIMITE_BLOCCO_MS - 1,
+                          max(PAVIMENTO_LENTEZZA_MS,
+                              MULTIPLO_SUL_RIFERIMENTO * rif))
+    print(f"[media] enumerateDevices: {r.get('n')} dispositivi in {r['ms']}ms "
+          f"(riferimento di carico {rif}ms -> limite di lentezza "
+          f"{limite_lentezza}ms, muro del blocco {LIMITE_BLOCCO_MS}ms)")
+
     assert r["esito"] != "MAI RISOLTA", (
-        "navigator.mediaDevices.enumerateDevices() non si e' risolta entro 5s. "
-        "Ogni rilevatore che fa `await enumerateDevices()` prima di risolvere "
-        "resta appeso per sempre, e la pagina sembra viva: e' il difetto del "
-        "2026-08-10, che si presentava come un test dell'identificativo rosso "
-        "una volta su tre."
+        f"navigator.mediaDevices.enumerateDevices() non si e' risolta in "
+        f"{LIMITE_BLOCCO_MS}ms. Non e' lentezza: e' il BLOCCO. Ogni rilevatore "
+        f"che fa `await enumerateDevices()` prima di risolvere resta appeso per "
+        f"sempre e la pagina sembra viva - il difetto del 2026-08-10, che si "
+        f"presentava come un test dell'identificativo rosso una volta su tre. "
+        f"Riferimento di carico di questa corsa: {rif}ms."
     )
     assert r["esito"] == "risolta", (
         f"enumerateDevices ha rifiutato invece di risolvere: {r.get('err')!r}"
     )
-    print(f"[media] enumerateDevices: {r['n']} dispositivi in {r['ms']}ms")
+    assert r["ms"] <= limite_lentezza, (
+        f"enumerateDevices si e' RISOLTA in {r['ms']}ms, oltre il limite di "
+        f"{limite_lentezza}ms. Questo non e' il blocco del 2026-08-10 - il "
+        f"segnale arriva - ed e' un limite che scala col carico: il riferimento "
+        f"del ciclo di eventi era {rif}ms, quindi la macchina era "
+        f"{'contesa' if rif > 200 else 'scarica'}. Se il riferimento e' basso e "
+        f"questo tempo e' alto, e' una regressione di velocita' del nostro "
+        f"stack media e non un artefatto della macchina."
+    )
