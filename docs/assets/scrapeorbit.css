@@ -515,7 +515,7 @@ a { color: inherit; text-decoration: none; }
 .sp-spark { display: inline-flex; color: var(--accent); filter: drop-shadow(0 0 5px rgba(56, 240, 200, 0.6)); }
 .sp-spark svg { width: 14px; height: 14px; }
 .sp-instruct,
-.sp-email {
+.sp-contact {
   margin-top: 9px;
   background: #06090e;
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -530,12 +530,12 @@ a { color: inherit; text-decoration: none; }
 }
 .sp-instruct { resize: none; line-height: 1.55; }
 .sp-instruct:focus,
-.sp-email:focus {
+.sp-contact:focus {
   border-color: rgba(56, 240, 200, 0.55);
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35), 0 0 0 3px rgba(56, 240, 200, 0.14);
 }
-.sp-instruct::placeholder, .sp-email::placeholder { color: #6b7488; }
-.sp-instruct.err, .sp-email.err {
+.sp-instruct::placeholder, .sp-contact::placeholder { color: #6b7488; }
+.sp-instruct.err, .sp-contact.err {
   border-color: #ff8f6b;
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35), 0 0 0 3px rgba(255, 143, 107, 0.16);
 }

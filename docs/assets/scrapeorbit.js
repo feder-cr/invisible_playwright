@@ -45,8 +45,11 @@
     if (html != null) e.innerHTML = html;
     return e;
   }
-  function validEmail(s) {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s).trim());
+  function cleanHandle(s) {
+    return String(s).trim().replace(/^https?:\/\//i, "").replace(/^t\.me\//i, "").replace(/^@/, "");
+  }
+  function validTelegram(s) {
+    return /^[a-zA-Z0-9_]{5,32}$/.test(cleanHandle(s));
   }
   var ARROW = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
   var SPARK = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.7 6.3 6.3 1.7-6.3 1.7L12 18l-1.7-6.3L4 10l6.3-1.7z"/></svg>';
@@ -70,8 +73,8 @@
         '<form class="sp-body" id="sp-form">' +
           '<label class="sp-label" for="sp-instruct"><span class="sp-spark">' + SPARK + '</span>Scrape instructions</label>' +
           '<textarea id="sp-instruct" class="sp-instruct" rows="4" placeholder="Describe what to pull from ' + escapeHtml(domain) + ' in plain English"></textarea>' +
-          '<label class="sp-label" for="sp-email">Send the results to</label>' +
-          '<input id="sp-email" class="sp-email" type="email" autocomplete="email" placeholder="you@company.com">' +
+          '<label class="sp-label" for="sp-contact">Your Telegram</label>' +
+          '<input id="sp-contact" class="sp-contact" type="text" autocomplete="off" placeholder="@yourusername">' +
           '<p class="sp-note">Plain English is fine. We read your instructions and pull the exact fields.</p>' +
           '<button class="sp-submit" id="sp-submit" type="submit">Send instructions ' + ARROW + '</button>' +
         '</form>' +
@@ -109,13 +112,13 @@
 
   function submitScrape(company, domain) {
     var ta = document.getElementById("sp-instruct");
-    var em = document.getElementById("sp-email");
+    var contact = document.getElementById("sp-contact");
     var btn = document.getElementById("sp-submit");
-    if (!ta || !em || !btn) return;
-    var instr = ta.value.trim(), email = em.value.trim();
-    ta.classList.remove("err"); em.classList.remove("err"); clearSpError();
+    if (!ta || !contact || !btn) return;
+    var instr = ta.value.trim(), handle = "@" + cleanHandle(contact.value);
+    ta.classList.remove("err"); contact.classList.remove("err"); clearSpError();
     if (!instr) { ta.classList.add("err"); ta.focus(); return; }
-    if (!validEmail(email)) { em.classList.add("err"); em.focus(); return; }
+    if (!validTelegram(contact.value)) { contact.classList.add("err"); contact.focus(); return; }
 
     btn.disabled = true; btn.innerHTML = "Sending...";
     var payload = {
@@ -124,8 +127,7 @@
       from_name: "ScrapeOrbit",
       company: company,
       website: domain,
-      email: email,
-      replyto: email,
+      telegram: handle,
       scrape_request: instr,
       botcheck: ""
     };
@@ -134,19 +136,19 @@
       headers: { "Content-Type": "application/json", "Accept": "application/json" },
       body: JSON.stringify(payload)
     }).then(function (r) { return r.json(); }).then(function (data) {
-      if (data && data.success) { showScrapeDone(domain, email); }
+      if (data && data.success) { showScrapeDone(domain, handle); }
       else { resetSubmit(btn); showSpError("Something went wrong sending that. Try again in a moment."); }
     }).catch(function () {
       resetSubmit(btn); showSpError("Couldn't reach the server. Check your connection and try again.");
     });
   }
 
-  function showScrapeDone(domain, email) {
+  function showScrapeDone(domain, contact) {
     var form = document.getElementById("sp-form"); if (!form) return;
     var done = makeEl("div", "sp-done",
       '<div class="sp-check">' + CHECK + '</div>' +
       '<div class="sp-done-t">Instructions sent</div>' +
-      '<div class="sp-done-s">We\'ll email your <b>' + escapeHtml(domain) + '</b> data to <b>' + escapeHtml(email) + '</b>.</div>' +
+      '<div class="sp-done-s">We\'ll message you on Telegram at <b>' + escapeHtml(contact) + '</b> with your <b>' + escapeHtml(domain) + '</b> data.</div>' +
       '<button class="sp-submit" id="sp-done-btn" type="button">Done</button>');
     form.parentNode.replaceChild(done, form);
     var db = document.getElementById("sp-done-btn");
