@@ -544,7 +544,30 @@ def test_the_published_version_has_a_github_release():
         recorded = {e["version"]: e for e in
                     json.loads(ledger_path.read_text(encoding="utf-8"))["released"]}
 
-    unrecorded = [v for v in live if recorded and v not in recorded]
+    # ⛔ LA VERSIONE CHE QUESTO ALBERO DICHIARA E' ESENTE, e solo lei.
+    #
+    # Il registro non puo' arrivare su main insieme alla pubblicazione: publish.yml
+    # pubblica su PyPI e POI prova a spingere PUBLISHED.json, ma main e' protetto e
+    # la spinta diretta viene rifiutata sempre, per costruzione. La voce finisce su
+    # un ramo ledger/<versione> la cui PR resta bloccata da sola ([B136]), quindi
+    # fra la pubblicazione e il merge a mano l'indice ha la versione e il registro
+    # no. Senza questa riga il caso e' ROSSO su un rilascio andato a buon fine, ed
+    # e' la QUARTA occorrenza della stessa forma trovata il 2026-08-18: un
+    # controllo scritto guardando lo stato a regime che diventa rosso esattamente
+    # quando serve.
+    #
+    # L'esenzione non apre un buco permanente, e la ragione e' che si richiude da
+    # sola. Se quel ramo del registro non viene mai unito, al rilascio successivo
+    # la versione rimasta indietro non e' piu' quella dichiarata dall'albero:
+    # ricade in unrecorded e il caso torna rosso. E' lo stesso modello che il
+    # commento qui sopra descrive per version_gate - una pubblicazione fuori dal
+    # cancello resta invisibile fino al rilascio dopo, che la rifiuta.
+    import tomllib
+    in_volo = tomllib.loads(
+        (Path(__file__).resolve().parents[1] / "pyproject.toml")
+        .read_text(encoding="utf-8"))["project"]["version"]
+
+    unrecorded = [v for v in live if recorded and v not in recorded and v != in_volo]
     thin = {v: [k for k in ("published_at", "requires_dist", "wheel_filename",
                             "sdist_filename", "wheel", "sdist")
                 if k not in recorded[v]]
