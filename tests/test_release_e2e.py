@@ -640,9 +640,26 @@ def test_the_changelog_documents_every_version_it_claims_to_cover():
     # first published version can be an invention - below it, the index simply
     # has nothing to say. The first draft of this gate flagged all fifteen.
     first_published = min(published, key=key)
+
+    # La versione che QUESTO albero dichiara e' il rilascio IN CORSO, non
+    # un'invenzione. Senza questa riga il gate rendeva impossibile una PR di
+    # rilascio verde: la voce del changelog deve stare nel commit che alza la
+    # versione, l'indice non la serve ancora, e il gate la chiamava inventata.
+    # Misurato il 2026-08-18 sulla PR #80, dove era l'UNICO rosso rimasto e
+    # nessuna sequenza di passi poteva evitarlo. Togliere la voce per far tacere
+    # il gate avrebbe ricreato esattamente il buco che questo gate esiste per
+    # impedire, e che aveva gia' lasciato 0.7.1 senza voce per un giorno.
+    # Ogni ALTRA versione documentata e mai pubblicata resta un errore, e le
+    # date restano confrontate: quando il rilascio atterra, la sua data deve
+    # coincidere con quella dell'upload come per tutte le altre.
+    import tomllib
+    in_volo = tomllib.loads(
+        (Path(__file__).resolve().parents[1] / "pyproject.toml")
+        .read_text(encoding="utf-8"))["project"]["version"]
+
     missing = sorted(expected - set(documented), key=key)
     invented = sorted((v for v in set(documented) - set(published)
-                       if key(v) > key(first_published)), key=key)
+                       if key(v) > key(first_published) and v != in_volo), key=key)
     misdated = sorted((v, documented[v], published[v]) for v in
                       set(documented) & set(published) if documented[v] != published[v])
 
