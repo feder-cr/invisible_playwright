@@ -401,8 +401,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Linux x86_64 and Windows x86_64 binary support.
 
 [0.4.3]: https://github.com/feder-cr/invisible_playwright/releases/tag/v0.4.3
-[0.1.1]: https://github.com/feder-cr/invisible_playwright/compare/v0.1.0...v0.1.1
-[0.1.0]: https://github.com/feder-cr/invisible_playwright/releases/tag/v0.1.0
+> Le due voci piu' vecchie puntano a COMMIT e non a tag: 0.1.0 e 0.1.1
+> precedono l'arrivo su PyPI (l'indice parte da 0.3.5) e non hanno mai
+> avuto un tag. Crearne uno oggi non e' innocuo: `publish.yml` si innesca
+> su `v*`, e per una versione che l'indice non serve `already-published`
+> non corto-circuita, quindi un tag nuovo puo' far partire un tentativo di
+> pubblicazione. Il commit e' la stessa informazione senza quel rischio.
+
+[0.1.1]: https://github.com/feder-cr/invisible_playwright/compare/7a983e99c53fa1ec1a443651a4dd9de42258dc61...589c848e07a67c459969a2ddfb79851f48b10eff
+[0.1.0]: https://github.com/feder-cr/invisible_playwright/commit/7a983e99c53fa1ec1a443651a4dd9de42258dc61
 [0.4.4]: https://github.com/feder-cr/invisible_playwright/releases/tag/v0.4.4
 [0.4.5]: https://github.com/feder-cr/invisible_playwright/releases/tag/v0.4.5
 [0.4.6]: https://github.com/feder-cr/invisible_playwright/releases/tag/v0.4.6
