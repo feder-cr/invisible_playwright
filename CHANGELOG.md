@@ -4,6 +4,33 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.2] - 2026-08-18
+
+### Fixed
+
+- Pins `invisible-core` 20.15.0, which carries a fix for a defect that lived in
+  17 published core versions. An `http://` or `https://` proxy handed to
+  `build_launch_plan` produced NO proxy preference at all: `configure_proxy`
+  returns a non-SOCKS endpoint to its caller, because only Playwright can answer
+  a proxy's 407, and that path launches the binary with `subprocess` and had
+  nowhere to put it. The browser then went out on the machine's own address
+  while the geo layer had already resolved timezone, locale and egress THROUGH
+  the proxy, so the session announced one country and connected from another.
+
+  **This wrapper was never affected and needs no change on your side.** It hands
+  the endpoint to Playwright, and that was measured: the same exit IP as curl
+  through the same proxy, in http and in socks5. The fix matters if you also use
+  `invisible_core.launch.build_launch_plan` directly.
+
+### Removed
+
+- The `browser launches` badge. The counter behind it was a release asset hosted
+  on a repository that was deleted on 2026-08-18, so the series is frozen on its
+  last real value and the renderer would have redrawn that number every morning.
+  A frozen figure presented as current is worse than no figure. The history is
+  untouched and the SVG on the `badges` branch stays, because already-published
+  PyPI pages are serving it.
+
 ## [0.7.1] - 2026-08-17
 
 ### Changed
