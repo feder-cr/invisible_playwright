@@ -40,9 +40,12 @@ def test_the_cli_offers_exactly_two_commands():
     line, which is what `path` did with the added guarantee that the thing it
     names exists.
 
-    `clear-cache` is the one deliberately NOT folded in: the cache root is shared
-    with invisible_firefox, so pruning trees no seal points at would delete the
-    other product's engine. `version` prints the location instead.
+    `clear-cache` is the one deliberately NOT folded in: the cache root belongs
+    to invisible_core, so pruning trees no seal points at would delete an engine
+    this package did not put there. It was written for invisible_firefox, whose
+    repository was deleted on 2026-08-18 while the package stayed on the index;
+    the reason holds for anything else built on the core. `version` prints the
+    location instead.
 
     Asserted as an exact set, not a subset. A subset check passes while the
     surface grows back one convenience at a time, which is how it got to six.

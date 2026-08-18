@@ -72,10 +72,12 @@ jobs:
       - name: arm the pre-push gates
         # A fresh clone has no core.hooksPath, and the suite says so - the
         # reminder moved into `invisible_core.testing` on 2026-07-28 and all
-        # three repos make the assertion now, but only the core's CI had this
-        # step, so both consumers went red on it. Do here what a developer does
-        # once. It also means install_hooks.py is exercised on every runner
-        # instead of only on the one machine that ever ran it by hand.
+        # three repos that existed then made the assertion (two now, since
+        # invisible_firefox was deleted on 2026-08-18), but only the core's CI
+        # had this step, so both consumers went red on it. Do here what a
+        # developer does once. It also means install_hooks.py is exercised on
+        # every runner instead of only on the one machine that ever ran it by
+        # hand.
         run: python scripts/install_hooks.py
 
       - name: undefined names and duplicate definitions

@@ -18,9 +18,13 @@ their behaviour, they lost their command:
                `$(invisible-playwright fetch)` is the scripting form and it also
                guarantees the thing it names actually exists. `path` promised a
                path and could hand back one to a tree that was wrong.
-  clear-cache  deliberately NOT folded in. The cache root is shared with
-               invisible_firefox, so pruning "trees no seal points at" would
-               delete the other product's engine on a machine running both.
+  clear-cache  deliberately NOT folded in. The cache root belongs to
+               invisible_core and not to this package, so pruning "trees no
+               seal points at" would delete an engine this package did not put
+               there. It was written for invisible_firefox, whose repository
+               was deleted on 2026-08-18 while the package stayed on the index,
+               so an installed copy still shares that root - and the reason
+               holds for anything else built on the core.
                `version` prints the cache location; removing a directory is a
                thing a person can do without a subcommand for it.
 

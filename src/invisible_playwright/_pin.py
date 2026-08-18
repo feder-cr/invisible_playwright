@@ -1,12 +1,14 @@
 """Prelude for the core-pin assertion, then delegation to the core.
 
 THE COMPARISON IS NOT HERE. It lives in invisible_core.pin, because the other
-consumer of the core (the profile manager) asks the same question and two copies
-of the answer drift: the day the two products disagree about why an environment
-is broken, the check has stopped being a diagnosis. This module is the small
-part that genuinely cannot be delegated, plus name-bound wrappers so the rest of
-this package can keep calling the functions without repeating our own
-distribution name.
+consumer of the core (the profile manager) asked the same question and two
+copies of the answer drift: the day the two products disagree about why an
+environment is broken, the check has stopped being a diagnosis. That repository
+was deleted on 2026-08-18 and the comparison stays where it is - the core is
+what owns the pin, and it is installed on its own by anybody who wants it.
+This module is the small part that genuinely cannot be delegated, plus
+name-bound wrappers so the rest of this package can keep calling the functions
+without repeating our own distribution name.
 
 WHAT CANNOT BE DELEGATED. A module inside invisible_core cannot report that
 invisible_core is absent, unimportable, or so damaged that it cannot derive its

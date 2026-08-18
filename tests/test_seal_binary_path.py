@@ -126,11 +126,15 @@ def test_refusal_names_the_remedy(tmp_path, active):
 
     The remedy is the CORE's own command on purpose. It used to be
     `python -m invisible_playwright fetch --force`, written inside
-    invisible_core.seal - a module the profile manager also imports, while not
+    invisible_core.seal - a module the profile manager also imported, while not
     depending on this package at all. Half the readers of that refusal were
     handed a command they could not run. `doctor --fix` clears the cached tree
     and re-fetches the sealed one, and it exists wherever this message can be
-    printed, so it is the only remedy that is true for both consumers.
+    printed, so it is the only remedy that is true for every reader of it.
+
+    The profile manager's repository was deleted on 2026-08-18 and the property
+    does not depend on it: invisible_core is published on its own, so this
+    refusal still reaches anybody who installed the core without this package.
     """
     entry = build_tree(tmp_path / "old2", version=OLD_VERSION, build_id=OLD_BUILD)
     with pytest.raises(EngineMismatch) as exc:
@@ -139,7 +143,7 @@ def test_refusal_names_the_remedy(tmp_path, active):
     assert "invisible_core doctor --fix" in msg, msg
     assert "invisible_playwright" not in msg, (
         "the shared core is naming a consumer's CLI again: this message also "
-        "reaches invisible-firefox users, who do not have that package.\n" + msg)
+        "reaches anybody who installed invisible-core without this package.\n" + msg)
     assert "INVISIBLE_SEAL_FILE" in msg, msg
 
 

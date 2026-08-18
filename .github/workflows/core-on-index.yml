@@ -13,7 +13,8 @@
 # this repo now has to RESOLVE that dependency from the index.
 #
 # The publish order is fixed and non-negotiable: invisible-core is uploaded
-# FIRST, the two consumers after it. So there is a window - from the first push
+# FIRST, its consumers after it - two until invisible_firefox was deleted on
+# 2026-08-18, this package since. So there is a window - from the first push
 # of this repo to GitHub until the core's first upload - in which every install
 # step here cannot possibly succeed, for a reason nobody can fix from inside
 # this repository.

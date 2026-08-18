@@ -3,15 +3,17 @@
 THE COMPARISON IS NOT TESTED HERE ANY MORE. It moved into invisible_core.pin,
 where it is exercised against real site-packages layouts built under tmp_path
 (invisible_core/tests/test_pin.py). That move is the point: the profile manager
-consumes the same core and asks the same question, and two copies of the answer
-drift until the two products disagree about why an environment is broken.
+consumed the same core and asked the same question, and two copies of the answer
+drift until the two products disagree about why an environment is broken. That
+repository was deleted on 2026-08-18; the comparison stays in the core, which is
+the package that owns the pin and is installable on its own.
 
 What is left in this package, and what this file tests:
   * the prelude - the few lines that can still run when invisible_core cannot be
     imported at all, which is the one state a module inside the core can never
     report on. Tested in a subprocess against a stub core;
   * the name binding - every call from this package asks about
-    invisible-playwright and never about the other consumer;
+    invisible-playwright by name, never about whatever else consumes the core;
   * that no second copy of the comparison grew back here;
   * that the expected core version is written in pyproject and nowhere else.
 
@@ -152,8 +154,10 @@ def test_this_package_declares_no_requirement_regex_of_its_own():
 
 
 def test_the_wrapper_asks_about_its_own_distribution(monkeypatch):
-    """Not the manager's. The two consumers share a core and each has its own
-    Requires-Dist; asking with the wrong name reads the wrong pin."""
+    """Not the manager's. Written when two consumers shared the core and each
+    had its own Requires-Dist; asking with the wrong name reads the wrong pin.
+    The manager's repository is gone since 2026-08-18 and the assertion stays:
+    the core takes a distribution name and answers about whatever it is given."""
     asked = []
     monkeypatch.setattr(_pin, "_assert_core_pin", lambda name: asked.append(name))
     _pin.assert_core_pin()

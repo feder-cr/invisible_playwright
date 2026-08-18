@@ -4,6 +4,28 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] - 2026-08-17
+
+### Changed
+
+- Pins `invisible-core` 20.14.0, which seals firefox-20. The engine release is
+  the memory one: the same fingerprint at the same seed, the same detector
+  verdicts, less RAM and less CPU. The font faces stopped being copied twice on
+  their way into the shadow list, the bundle is opened by path instead of being
+  held in the heap, and the `.ttc` accounting now counts the faces we DECLARE
+  rather than every face the file happens to carry.
+
+### Fixed
+
+- This entry itself was missing until 2026-08-18. 0.7.1 shipped to the index on
+  2026-08-17 and the changelog stopped at 0.7.0, so for a day the released
+  version was undocumented. It was not caught by the release: the guard that
+  compares the index against this file, `test_the_changelog_documents_every_
+  version_it_claims_to_cover` in `tests/test_release_e2e.py`, is marked `e2e`
+  and the default selection deselects it. It fired on the first full e2e run
+  after the release, which is the run that happens for a reason unrelated to
+  releasing.
+
 ## [0.7.0] - 2026-08-11
 
 ### Changed

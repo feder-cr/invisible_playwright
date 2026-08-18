@@ -71,7 +71,7 @@ behaviour was lost:
 | `doctor` | `fetch` does it on every run. It was the thing most worth doing and the thing least likely to be typed, which is the worst combination a subcommand can have. |
 | `fetch --force` | unnecessary once every run verifies. A tree is replaced because it does not match the seal, not because a flag was passed. |
 | `path` | `fetch` prints it as its last line, and unlike `path` it guarantees the tree is there and correct. |
-| `clear-cache` | deliberately not folded in. The cache root is shared with `invisible_firefox`, so pruning "trees no seal points at" would delete the other product's engine on a machine running both. `version` prints the location. |
+| `clear-cache` | deliberately not folded in. The cache root belongs to `invisible_core`, not to this package, so pruning "trees no seal points at" would delete an engine this package did not put there. `version` prints the location. |
 
 The `tag` argument went with them. The seal decides which engine a given build
 runs, and the engine check refuses anything else, so a tag on the command line

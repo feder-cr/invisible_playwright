@@ -34,8 +34,10 @@ previous behaviour, where the browser drew the path instead.
 # the core, and the repair refuses itself if the snapshot says otherwise. Every
 # failure of the repair falls back to the message it replaced.
 #
-# The comparison and the repair both live in invisible_core.pin, shared with the
-# profile manager so both products diagnose and fix an environment the same way.
+# The comparison and the repair both live in invisible_core.pin. They were put
+# there to be shared with the profile manager, so both products would diagnose
+# and fix an environment the same way; that repository was deleted 2026-08-18
+# and they stay in the core, which is the package that owns the pin.
 # Our _pin.py is the floor: it owns the three states a module inside the core
 # cannot report on (core absent, core present but unimportable, core present but
 # too damaged to derive its own version) and delegates everything else.

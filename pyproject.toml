@@ -40,7 +40,8 @@ dependencies = [
     # ground truth lies exactly when it matters.
     #
     # Cost, accepted knowingly: the pin literal now moves on every engine release,
-    # so a firefox-N bump is a three-repo release instead of a core-only push.
+    # so a firefox-N bump is a two-repo release instead of a core-only push (it
+    # was three until invisible_firefox was deleted on 2026-08-18).
     # invisible-core must be live on the index BEFORE this package is published,
     # or a cold install fails to resolve.
     #
@@ -75,8 +76,11 @@ dev = ["pytest>=7", "build>=1", "ruff>=0.6", "pytest-rerunfailures>=14", "pytest
 
 [tool.pytest.ini_options]
 markers = [
-    # ONE VOCABULARY FOR ALL THREE REPOSITORIES. Aligned 2026-07-27; before
-    # that the same word meant different things and selected different sets.
+    # ONE VOCABULARY FOR EVERY REPOSITORY THAT SHARES THE CORE. Aligned
+    # 2026-07-27 across the three that existed then; invisible_firefox was
+    # deleted on 2026-08-18, so today that is this repo and invisible_core.
+    # Before the alignment the same word meant different things and selected
+    # different sets.
     #
     #   `integration` was "multi-module tests, no browser" in invisible_core and
     #   invisible_playwright, and "launches the real patched Firefox binary" in

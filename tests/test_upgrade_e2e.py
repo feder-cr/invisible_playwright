@@ -71,11 +71,13 @@ def _clean_env(base=None):
 
 
 # ── venv mechanics, LOCAL ON PURPOSE ────────────────────────────────────────
-# These three live in `invisible_core.testing` and every other suite in the
-# three repos imports them from there. NOT this file. The job that runs it
-# installs pytest on the runner and nothing else, deliberately: what is being
-# tested is what a stranger gets from the index, and a second copy of anything
-# on the runner's path would mean the assertions read the wrong one.
+# These three live in `invisible_core.testing` and every other suite that
+# shares the core imports them from there - three repos when this was written,
+# two (this package and invisible_core) since invisible_firefox was deleted on
+# 2026-08-18. NOT this file. The job that runs it installs pytest on the
+# runner and nothing else, deliberately: what is being tested is what a
+# stranger gets from the index, and a second copy of anything on the runner's
+# path would mean the assertions read the wrong one.
 #
 # So `from invisible_core.testing import ...` here is a COLLECTION error -
 # ModuleNotFoundError, whole job red, nothing tested. It happened on every leg

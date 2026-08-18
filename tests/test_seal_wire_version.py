@@ -11,8 +11,9 @@ hand-edited application.ini, because it comes from the running engine rather
 than from a text file next to it.
 
 No browser is launched: the check reads one attribute, so a stub object with a
-`version` is the whole input. The manager arm has no equivalent, which section 8
-of the spec records as an accepted asymmetry.
+`version` is the whole input. The manager arm had no equivalent, which section 8
+of the spec recorded as an accepted asymmetry; that repository was deleted on
+2026-08-18, so this is the only arm left.
 """
 from __future__ import annotations
 

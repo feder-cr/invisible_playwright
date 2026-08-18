@@ -6,8 +6,9 @@ reached the index built from a tree that predated the fix it was meant to carry.
 A PyPI filename is never re-uploaded, so that artifact is wrong forever and the
 only remedy was another version.
 
-The gate lives in `invisible_core.release` - one implementation for all three
-packages, importable because this package pins the core exactly. What makes it
+The gate lives in `invisible_core.release` - one implementation for every
+package that publishes off it (three until invisible_firefox was deleted on
+2026-08-18), importable because this package pins the core exactly. What makes it
 work is not the digests or the ledger: it is that `publish` builds and uploads
 WHAT IT JUST BUILT, so a stale directory cannot be the thing that ships.
 
@@ -38,8 +39,8 @@ def test_the_gate_is_importable_from_the_pinned_core():
 
 
 def test_the_gate_recognises_THIS_project_and_not_the_core():
-    """One gate, three projects: the identity comes from our pyproject. Reading
-    the core's would gate the wrong package and pass every time."""
+    """One gate, several projects: the identity comes from our pyproject.
+    Reading the core's would gate the wrong package and pass every time."""
     from invisible_core.release import resolve_project_identity
 
     dist, pkg = resolve_project_identity(_REPO)
@@ -61,7 +62,7 @@ def test_the_pre_push_hook_gates_release_tags():
     The helper pushes a release tag through the real policy with a recording
     runner and checks the gate was invoked FOR THIS PROJECT, then pushes a
     branch and checks it was not. Its write-up lives once, in the core, because
-    all three repos make the same claim.
+    every repo that runs the hook makes the same claim.
     """
     from invisible_core.testing import assert_pre_push_policy_is_wired
 

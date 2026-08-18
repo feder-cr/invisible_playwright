@@ -1,9 +1,11 @@
 """Make the browser tree die when this process does.
 
 THIS MODULE IS NOW A RE-EXPORT. The implementation lives in
-``invisible_core.process``, shared with the profile manager, which launches the
-same browser and had exactly the same bug - and had it a day longer, because the
-fix was in this repository.
+``invisible_core.process``. It went there to be shared with the profile manager,
+which launched the same browser and had exactly the same bug - and had it a day
+longer, because the fix was in this repository. That repository was deleted on
+2026-08-18; the implementation stays in the core, where this package imports it
+from.
 
 Keeping the module rather than deleting it is deliberate: the names below are
 imported by `launcher`, by `async_api` and by `tests/test_reaper.py`, and the
