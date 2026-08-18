@@ -26,6 +26,7 @@ Marked `e2e`: builds venvs and talks to the index.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import sys
 import tempfile
@@ -159,6 +160,26 @@ def _versions(py: Path) -> dict:
     return json.loads(out.strip().splitlines()[-1])
 
 
+def _pinned_core(py: Path) -> str:
+    """La versione del core che il wrapper INSTALLATO dichiara di volere.
+
+    Si legge dal Requires-Dist della distribuzione installata, che e' la sola
+    fonte che non dipende da quante versioni ci siano sull'indice ne' dal loro
+    ordine. Il pin e' un `==` esatto per contratto, quindi qui c'e' una versione
+    e una sola.
+    """
+    out = _run([str(py), "-c",
+                "from importlib.metadata import metadata;"
+                "print([r for r in (metadata('invisible-playwright')"
+                ".get_all('Requires-Dist') or []) if 'invisible' in r and 'core' in r])"],
+               timeout=180)
+    testo = out.stdout.strip()
+    m = re.search(r"invisible[-_]core\s*==\s*([0-9][^'\"\s,\]]*)", testo)
+    if not m:
+        pytest.skip(f"nessun pin esatto del core nella metadata installata: {testo[:200]}")
+    return m.group(1)
+
+
 def _released_versions(py: Path, dist: str) -> list[str]:
     """Versions the index will serve, newest last. Read from pip itself so the
     test does not carry a hardcoded list that goes stale on the next release."""
@@ -267,7 +288,31 @@ def test_a_hand_pinned_old_core_is_reported_by_pip_check(workspace: Path):
     cores = _released_versions(py, CORE)
     if len(cores) < 2:
         pytest.skip("only one core release on the index")
-    older = cores[-2]
+
+    # ⛔ LA VERSIONE SBAGLIATA SI SCEGLIE DA CIO' CHE IL WRAPPER INSTALLATO
+    # PRETENDE, NON DALLA POSIZIONE SULL'INDICE.
+    #
+    # Prima era `cores[-2]`, la penultima pubblicata, con l'assunzione implicita
+    # che la piu' recente fosse quella che il wrapper pinna. Quella assunzione
+    # CADE per tutta la durata di un rilascio fatto nell'ordine che il progetto
+    # impone: si pubblica il core PRIMA del consumatore, quindi fra i due
+    # momenti la piu' recente sull'indice e' una che nessun wrapper pubblicato
+    # pinna ancora, e `cores[-2]` diventa esattamente la versione GIUSTA.
+    #
+    # Misurato il 2026-08-18: pubblicato il core 20.15.0, il wrapper sull'indice
+    # era ancora 0.7.1 che pinna 20.14.0, e questo caso ha installato 20.14.0
+    # chiamandola "older". `pip check` ha risposto pulito perche' l'ambiente era
+    # corretto, e il test ha letto quel pulito come una cecita' del pin. Rosso su
+    # un prodotto sano, dentro la finestra in cui il rilascio e' a meta'.
+    # E dentro quella finestra la versione diversa dal pin e' piu' NUOVA, non
+    # piu' vecchia: il nome del caso dice "old" perche' quello e' lo scenario
+    # d'uso che descrive, ma cio' che il meccanismo deve vedere e' un
+    # DISACCORDO, e un disaccordo verso l'alto e' un disaccordo uguale. Il nome
+    # resta com'e' perche' i documenti lo citano e un gate lo verifica.
+    atteso = _pinned_core(py)
+    older = next((v for v in reversed(cores) if v != atteso), None)
+    if older is None:
+        pytest.skip(f"the index serves only {atteso}, which is the pinned one")
 
     _run([str(py), "-m", "pip", "install", "--no-cache-dir", "--no-deps",
           "--force-reinstall", f"{CORE}=={older}"], timeout=600)
