@@ -10,11 +10,71 @@ _Sidebar.md for navigation. This converter, for every docs/*.md:
   - names the page by its slug (stable URLs matching the docs site), except
     index.md -> Home.md (the wiki landing page),
 and then generates _Sidebar.md mirroring the parent/has_children/nav_order tree.
+
+With WIKI_VIEW_PIXEL set it also ends every page with an image whose URL carries
+that page's name - see the VIEW PIXEL block below for what those counts are and,
+more importantly, what they are not.
 """
 import os, re, sys
+from urllib.parse import quote
 
 DOCS = sys.argv[1]
 OUT = sys.argv[2]
+
+# ─── VIEW PIXEL ──────────────────────────────────────────────────────────────
+# GitHub publishes no per-page numbers for a wiki. The Traffic API counts the
+# REPOSITORY - `/traffic/views` is clones-and-visits, `/traffic/popular/paths`
+# is the top ten paths over fourteen days - so with 300+ pages here it can tell
+# you that the wiki is read and never which page. There is no wiki equivalent,
+# and the wiki engine that would have one (Gollum, which GitHub open-sourced and
+# whose fork serves these pages) is not the code running on github.com.
+#
+# What a wiki page CAN do is reference an image. So each page ends with one
+# whose URL carries the page name, and whatever serves that URL does the
+# counting. The endpoint is not this script's business: it is a URL template.
+#
+# OFF unless WIKI_VIEW_PIXEL is set, and there is deliberately no default. A URL
+# baked in here would point every reader of every fork at a third party nobody
+# in that fork chose, and it would do it silently, from a docs build. The
+# workflow passes the value in from a repository VARIABLE, so switching this on
+# or off is a settings change rather than a commit.
+#
+# WHAT THE NUMBERS ARE WORTH. A wiki page never reaches the reader's browser
+# with your URL in it: GitHub rewrites every external image to
+# camo.githubusercontent.com and serves it from its own cache. A "hit" is
+# therefore "camo fetched this page's pixel", which collapses repeat readers
+# behind a warm cache entry and counts crawlers as readers. It ranks pages
+# against each other; it is not a visitor count, and nothing downstream should
+# present it as one.
+#
+# `_Sidebar.md` gets no pixel on purpose. It renders on every page, so its
+# single URL would be one bucket for the whole wiki AND the most cached object
+# on it - the least informative counter available.
+PIXEL = os.environ.get("WIKI_VIEW_PIXEL", "").strip()
+if PIXEL and "{page}" not in PIXEL:
+    raise SystemExit(
+        "WIKI_VIEW_PIXEL has no {page} placeholder: %r. Every page would fetch "
+        "the same URL, so the counter would have one bucket for the whole wiki "
+        "- which is the failure this is meant to fix, arrived at quietly. Put "
+        "{page} where the page name belongs, e.g. "
+        "https://example.com/wiki/{page}.svg" % PIXEL)
+if PIXEL and not PIXEL.startswith("https://"):
+    raise SystemExit(
+        "WIKI_VIEW_PIXEL must be https:// - got %r. GitHub will not load a "
+        "plain-http image into a wiki page, so the pixel would be a broken "
+        "image on 300+ pages and count nothing." % PIXEL)
+
+def pixel(name):
+    """The image line closing page `name`, or "" when the feature is off.
+
+    Empty alt text: this is a decorative pixel, and a screen reader announcing
+    a filename at the end of every page is worse than silence. An endpoint that
+    serves a VISIBLE badge instead should be given a caption here.
+    """
+    if not PIXEL:
+        return ""
+    return "\n![](%s)\n" % PIXEL.replace("{page}", quote(name, safe=""))
+
 
 def parse(path):
     t = open(path, encoding="utf-8").read()
@@ -94,7 +154,12 @@ os.makedirs(OUT, exist_ok=True)
 written = 0
 for slug, (fm, body) in pages.items():
     name = "Home" if slug == "index" else slug
-    open(os.path.join(OUT, name + ".md"), "w", encoding="utf-8", newline="\n").write(rewrite(body) + "\n")
+    # The pixel is appended AFTER rewrite(): its URL is absolute and rewrite()
+    # only matches bare relative targets, but a link rewriter is exactly the
+    # kind of thing that grows a case later, and this ordering means it can
+    # never reach the one URL on the page that must survive verbatim.
+    open(os.path.join(OUT, name + ".md"), "w", encoding="utf-8", newline="\n").write(
+        rewrite(body) + "\n" + pixel(name))
     written += 1
 
 def title_of(slug):
@@ -125,4 +190,5 @@ for slug, fm in toplevel:
     lines.append("")
 open(os.path.join(OUT, "_Sidebar.md"), "w", encoding="utf-8", newline="\n").write("\n".join(lines) + "\n")
 
-print("wrote %d pages + _Sidebar.md to %s" % (written, OUT))
+print("wrote %d pages + _Sidebar.md to %s%s"
+      % (written, OUT, " (with view pixel)" if PIXEL else ""))
