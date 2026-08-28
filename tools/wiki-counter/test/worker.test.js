@@ -230,6 +230,27 @@ test("STATS_KEY, when set, is required", async () => {
   assert.equal((await hit(env, "/w/Home.gif")).status, 200);
 });
 
+test("the entry module exports only what workerd accepts", async () => {
+  // workerd refuses to START a worker whose entry module has a named export
+  // that is not a function or a handler:
+  //
+  //   Uncaught TypeError: Incorrect type for map entry 'SQL_RANK': the
+  //   provided value is not of type 'function or ExportedHandler'
+  //
+  // which is what `export const SQL_RANK = "SELECT ..."` here did, until it was
+  // moved into src/sql.js. Node imports a string export perfectly happily, and
+  // the fake D1 never parses SQL, so NEITHER suite could see it - it took a
+  // `wrangler dev`. This is the cheap standing guard for that rule.
+  const mod = await import("../src/worker.js");
+  for (const [name, value] of Object.entries(mod)) {
+    if (name === "default") {
+      assert.equal(typeof value.fetch, "function");
+      continue;
+    }
+    assert.equal(typeof value, "function", `export ${name} must be a function`);
+  }
+});
+
 test("the URL documented in README.md is the URL this worker routes", async () => {
   const readme = readFileSync(README, "utf8");
   const m = /WIKI_VIEW_PIXEL\s*=\s*(\S+)/.exec(readme);

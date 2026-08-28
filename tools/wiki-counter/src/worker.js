@@ -32,6 +32,8 @@
  * and /stats says so on the page rather than leaving it to be assumed.
  */
 
+import { SQL_RANK, SQL_RECORD } from "./sql.js";
+
 /** 1x1 fully transparent GIF89a. The smallest thing that is unambiguously an
  *  image to camo, which checks the content type of what it proxies. */
 const PIXEL = new Uint8Array([
@@ -99,12 +101,7 @@ export function utcDay(now = new Date()) {
 
 async function record(env, page, source) {
   if (!env || !env.DB) return; // unconfigured: serve the pixel, count nothing
-  await env.DB.prepare(
-    "INSERT INTO hits (page, day, source, n) VALUES (?, ?, ?, 1) " +
-      "ON CONFLICT(page, day, source) DO UPDATE SET n = n + 1",
-  )
-    .bind(page, utcDay(), source)
-    .run();
+  await env.DB.prepare(SQL_RECORD).bind(page, utcDay(), source).run();
 }
 
 function pixelResponse(status = 200, body = PIXEL) {
@@ -132,13 +129,7 @@ async function stats(env, url) {
   }
   const days = Math.min(Math.max(parseInt(url.searchParams.get("days") || "30", 10) || 30, 1), 365);
   const since = utcDay(new Date(Date.now() - days * 86400000));
-  const { results } = await env.DB.prepare(
-    "SELECT page, SUM(n) AS total, " +
-      "SUM(CASE WHEN source = 'camo' THEN n ELSE 0 END) AS camo " +
-      "FROM hits WHERE day >= ? GROUP BY page ORDER BY total DESC LIMIT 500",
-  )
-    .bind(since)
-    .all();
+  const { results } = await env.DB.prepare(SQL_RANK).bind(since).all();
   return { days, since, rows: results || [] };
 }
 

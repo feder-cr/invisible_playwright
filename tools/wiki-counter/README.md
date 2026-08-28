@@ -79,6 +79,21 @@ Once it has run for a couple of weeks, compare its totals against the
 repository's own Insights -> Traffic over the same window. If the two curves
 move together, the ranking underneath is trustworthy.
 
+## Running it locally
+
+```bash
+npx wrangler d1 execute wiki_counter --local --file=schema.sql
+npx wrangler dev
+```
+
+No Cloudflare account needed: these run the real workerd runtime against a
+local SQLite D1. **Do this before every deploy.** It is the only check that
+sees runtime-level errors, and it has already caught one that both test suites
+missed: workerd refuses to start a worker whose entry module has a named export
+that is not a function, so the SQL constants had to move into `src/sql.js`.
+Node imports a string export happily and the fake D1 never parses SQL, so both
+suites were green on a worker that could not boot.
+
 ## Tests
 
 `node --test test/` - no dependencies, the worker is a plain ES module and
