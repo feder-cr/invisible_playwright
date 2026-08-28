@@ -1,0 +1,14 @@
+# Deploy config for the wiki view counter. See README.md for the four commands.
+name = "wiki-counter"
+main = "src/worker.js"
+compatibility_date = "2026-08-28"
+
+# No npm dependencies, so no build step and nothing to keep up to date.
+
+[[d1_databases]]
+binding = "DB"
+database_name = "wiki_counter"
+# `wrangler d1 create wiki_counter` prints this - paste it here. Left as a
+# placeholder rather than blank so a forgotten step fails the deploy with a
+# message about this line instead of deploying a worker that counts nothing.
+database_id = "PASTE_THE_ID_FROM_wrangler_d1_create"
