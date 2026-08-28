@@ -234,6 +234,9 @@ returning visitor and not a new random machine every morning, and pace it so the
 itself does not give you away. The structured markup gives you clean data; the stable real
 browser keeps the endpoint willing to hand it over across a long, repetitive sweep.
 
+The same listing-versus-record problem shows up in academic catalogs, where the row is
+the section: [how to scrape course catalogs with Playwright](how-to-scrape-course-catalogs-playwright.md).
+
 ## Short answers to the questions that lead here
 
 **Why does the URL not change when I filter a job board?** Because the filters live in

@@ -222,6 +222,9 @@ Python before you navigate, never after, because a handle held across a page tur
 already dead and the failure is silent when it is not loud. Get those two right and a
 forty-page table comes back whole and a failing run replays exactly.
 
+When the table is a schedule rather than a grid, the row is not the visible line: see
+[how to scrape course catalogs with Playwright](how-to-scrape-course-catalogs-playwright.md).
+
 ## Short answers to the questions that lead here
 
 **What is the fastest way to scrape a table with Playwright?** `locator.evaluate_all` over

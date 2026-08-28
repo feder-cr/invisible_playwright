@@ -166,6 +166,9 @@ one mechanism the whole widget is built around and comes back empty. Do the per-
 character version and you get both the data and, because the cadence is right, a
 session that keeps its shape across a long run of lookups.
 
+Catalog search boxes behave the same way and hide a four-level tree behind them: see
+[how to scrape course catalogs with Playwright](how-to-scrape-course-catalogs-playwright.md).
+
 ## Short answers to the questions that lead here
 
 **Why does fill() leave the autocomplete dropdown empty?** Because `fill()` sets the

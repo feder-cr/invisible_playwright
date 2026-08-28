@@ -204,6 +204,9 @@ to finish before you read the next page. When the page number is in the URL, pre
 browser, pass a fixed seed so a forty-page crawl is one visitor reading forty pages rather
 than forty visitors reading one each.
 
+A catalog is the same pagination problem with a tree under it: see
+[how to scrape course catalogs with Playwright](how-to-scrape-course-catalogs-playwright.md).
+
 ## Short answers to the questions that lead here
 
 **Why does my Playwright pagination loop crash with "Execution context was destroyed"?**
