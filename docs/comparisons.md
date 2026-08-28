@@ -18,6 +18,35 @@ Start with [Three ways to make Playwright undetected](playwright-stealth-levels.
 if you want the map before the individual matchups - it's the frame every comparison
 below sits inside.
 
+## The tools at a glance
+
+Three columns decide most of the question: which browser the tool drives, which layer it
+patches, and whether that layer is readable from inside the page. A page-level patch is a
+script a detector can find. A driver-level patch is outside the page but still above the
+browser. An engine-level patch changed the binary, so there is no lie left to read back.
+
+| Tool | Browser | Patch layer | Language |
+|---|---|---|---|
+| invisible_playwright | Firefox | engine (C++) | Python |
+| [Camoufox](vs-camoufox.md) | Firefox | engine (C++) | Python |
+| [Patchright](vs-patchright.md) | Chromium | driver | Python, Node |
+| [rebrowser-patches](vs-rebrowser-patches.md) | Chromium | driver (CDP `Runtime.enable`) | Node |
+| [undetected-playwright](vs-undetected-playwright.md) | Chromium | driver | Python |
+| [nodriver](vs-nodriver.md) | Chrome | driverless CDP | Python |
+| [undetected-chromedriver](vs-undetected-chromedriver.md) | Chrome | driver | Python |
+| [pydoll](vs-pydoll.md) | Chrome | driverless CDP | Python |
+| [zendriver](vs-zendriver.md) | Chrome | driverless CDP | Python |
+| [selenium-driverless](vs-selenium-driverless.md) | Chrome | raw CDP | Python |
+| [playwright-stealth](vs-playwright-stealth.md) | any | page (injected JS) | Python |
+| [playwright-extra stealth](vs-playwright-extra-stealth.md) | Chromium | page (injected JS) | Node |
+| [fingerprint-suite](vs-fingerprint-suite.md) | any | page (injection) | Node |
+| [curl-cffi](vs-curl-cffi.md) | none, HTTP client | TLS only | Python |
+
+The layer is not a ranking. A driver-level patch on Chromium reaches things a Firefox
+build cannot, because it is on the browser most of the web is tuned for, and an HTTP
+client with a real TLS fingerprint beats every browser on cost when the page does not
+need rendering. Each page below states where the other tool covers more.
+
 ## Concepts and the map
 
 - [Three ways to make Playwright undetected](playwright-stealth-levels.md) - The three levels stealth tools work at - page, driver, engine - and what each reaches.
