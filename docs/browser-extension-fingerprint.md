@@ -109,9 +109,11 @@ and machine disagree about how long it has existed.
 ## Checking what yours is exposing
 
 ```js
-// does a known resource resolve?
-fetch('moz-extension://<id>/manifest.json').then(r => console.log('present', r.status))
-                                           .catch(() => console.log('not found'));
+// does a known resource resolve? only a path your manifest lists under
+// web_accessible_resources will ever answer; manifest.json itself is not one by default
+fetch('moz-extension://<id>/<file>')
+  .then(r => console.log('present', r.status))
+  .catch(() => console.log('not found'));
 
 // did something remove my bait element?
 const bait = document.createElement('div');
@@ -123,6 +125,16 @@ setTimeout(() => console.log('blocked:', bait.offsetHeight === 0), 100);
 
 Then run the same checks with no extensions loaded and compare. Anything that differs
 is what the extension is telling the page about you.
+
+## Conclusion
+
+An installed extension is not a neutral addition to a profile. It exposes packaged
+resources at a URL carrying its own identifier, it changes whatever the page touches
+when it modifies the DOM, and it leaves the same override traces as any other script
+that runs before the page does. None of that makes an extension unsafe to run. It means
+treating one like any other fingerprint surface: know what it changes, check it against
+a clean profile, and never stack a stealth extension on an engine that already decides
+the same values for you.
 
 ## Short answers to the questions that lead here
 
@@ -146,6 +158,19 @@ each launch unless you pass a persistent one.
 **Are extension IDs the same everywhere?** In Firefox they are typically per-profile,
 which limits blind scanning. Do not rely on that as protection; extensions that need
 page access tend to expose predictable resources anyway.
+
+## Sources
+
+- MDN Web Docs, [`web_accessible_resources`](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/web_accessible_resources),
+  retrieved 2026-08-28, for how a packaged resource gets a URL containing the
+  extension's own identifier, which is the first of the three detection paths above,
+  and for that identifier being generated per browser instance rather than reused
+  from the extension's own ID, which is what limits the scan in the first place.
+- Mozilla Bugzilla, [bug 1372288, a meta bug titled "WebExtensions can be used as
+  user fingerprint"](https://bugzilla.mozilla.org/show_bug.cgi?id=1372288), retrieved
+  2026-08-28, Mozilla's own tracking report for the problem this page describes,
+  still open, which is the primary evidence that an installed extension is a
+  recognised fingerprint surface rather than a hypothetical one.
 
 **See also:** [Function.prototype.toString and the native code check](tostring-native-code-detection.md),
 which is what a page-level extension runs into, and

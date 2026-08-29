@@ -185,8 +185,10 @@ stability pull against each other.
 
 ## Sources
 
-- FingerprintJS's own documentation of the visitor ID as a hash of many components,
-  reported alongside a confidence score, read from its published description rather than
+- Fingerprint's own documentation, [Identification, accuracy, and confidence
+  score](https://docs.fingerprint.com/docs/identification-accuracy-and-confidence),
+  retrieved 2026-08-28, for the visitor ID as a hash of many components reported
+  alongside a confidence score, read from its published description rather than
   its rendered output.
 - This project's release gates, which assert that a value read twice in one session
   matches, and that the same seed reproduces the same identity across sessions.

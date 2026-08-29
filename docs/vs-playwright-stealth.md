@@ -127,9 +127,10 @@ injection layer with a considerably more sophisticated generation model behind i
 
 ## Sources
 
-- The actively maintained Python fork's own GitHub documentation, read 2026-07-28, for
-  its stated scope ("a proof-of-concept starting point," not expected to bypass anything
-  but the simplest detection) and its init-script mechanism.
+- The actively developed Python fork's own GitHub repository,
+  [Mattwmaster58/playwright_stealth](https://github.com/Mattwmaster58/playwright_stealth),
+  read 2026-08-29, for its stated scope ("a proof-of-concept starting point," not
+  expected to bypass anything but the simplest detection) and its init-script mechanism.
 - This project's own patch catalogue for the engine-level surfaces an init script cannot
   reach.
 

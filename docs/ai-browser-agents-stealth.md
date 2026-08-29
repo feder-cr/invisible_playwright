@@ -62,7 +62,7 @@ Three others that come up in these searches are not Playwright tools at all:
 `agent-browser` and `obscura` are written in Rust, and `BrowserOS` has no Playwright
 dependency in its manifest. Star count does not tell you what a project drives.
 
-### browser-use
+## browser-use
 
 The configuration is real: `executable_path`, `channel`, `user_data_dir`, `proxy`, `args`
 and `headless` on `BrowserProfile`. The surrounding code is Chrome executable discovery
@@ -72,7 +72,7 @@ The useful move there is pointing `executable_path` at your **real installed Chr
 rather than the bundled Chromium, and pointing `user_data_dir` at a profile that has been
 used. [The full version is here](browser-use-detection.md).
 
-### Stagehand
+## Stagehand
 
 Exposes `executablePath` and documents it, which is more than most. The rest of the
 codebase is CDP: local CDP discovery, CDP tailing, a CDP client. Chromium references
@@ -81,12 +81,12 @@ schema and a client for someone else's API rather than in a launch path.
 
 So the option exists and it expects a Chromium build.
 
-### Skyvern
+## Skyvern
 
 CDP throughout. There is no exposed way to point at a different binary, and the protocol
 would not match if there were.
 
-### crawl4ai
+## crawl4ai
 
 The only one of these built on Playwright with Firefox genuinely selectable, through
 `browser_type="firefox"`. What is missing is any field naming a binary, so you get
@@ -94,7 +94,7 @@ Playwright's managed build. Its own stealth mode applies `playwright-stealth`, w
 documentation notes does not support Firefox, so that combination is largely inert.
 [The full version is here](crawl4ai-stealth-custom-browser.md).
 
-### Maxun
+## Maxun
 
 Playwright is in the manifest and no executable path is exposed. As a no-code platform
 that is a coherent product decision rather than an oversight.
@@ -142,26 +142,36 @@ rhythm has a shape no person produces.
 This explains blocks that arrive **after** a few interactions rather than at first load,
 and that timing is the cheapest diagnostic you have.
 [Human-like pointer motion](human-mouse-movement.md) covers what can be done about the
-mechanical half, and it is honest that the deliberation pattern is a different problem.
+mechanical half, and [the cadence between actions gets a page of its own](ai-agent-timing-signal.md),
+because smoothing a single click's path does not smooth the gaps between clicks.
 
 ## This stopped being a theoretical concern in 2026
 
 Agent-driven browsing used to be rare enough that most detection stacks didn't bother
-building a dedicated signal for it. That changed this year. Fingerprint, the
-commercial fingerprinting vendor behind FingerprintJS, shipped a product in early
-2026 specifically aimed at classifying AI agent traffic - not bot detection in
-general, agent detection as its own category, with its own signal set. Academic
-research published in the same period has been measuring the same target directly:
-building multi-layer fingerprints specifically to separate an LLM-driven browsing
-session from a human one, using exactly the rhythm-based signals described above
-plus whatever else the page surface gives away.
+building a dedicated signal for it. That changed this year, and it changed from two
+directions that solve the problem in opposite ways. Fingerprint, the commercial
+fingerprinting vendor behind FingerprintJS, shipped a product in early 2026 that treats
+"is this an authorized AI agent" as its own question: it verifies agents from partner
+providers such as OpenAI, AWS AgentCore and Browserbase through a cryptographic
+signature on their HTTP requests, not by scoring how they behave.
 
-The practical upshot for anyone running an agent against a real site: the timing
-and pointer-behavior signal in the previous section is not a corner case anymore.
-It is an active, funded area of detection work, aimed specifically at the traffic
-pattern an agent loop produces, independent of whatever engine sits underneath it.
-Fixing the browser's fingerprint and fixing the agent's behavior are now both live
-requirements, not one obvious fix and one theoretical afterthought.
+Academic research published the same year took the opposite route. A large-scale study
+deployed honeysites behind several real anti-bot mechanisms, ran six LLM-based web
+agents against them, and found every agent distinguishable from a human, and from each
+other, using network, HTTP and browser-level fingerprinting alone, with no behaviour
+involved. The finding that matters most for this page is a third one: the stealth
+features some of those agents carried often made them easier to single out, not harder.
+
+The practical upshot for anyone running an agent against a real site: "is this an
+agent" now has a funded answer on the fingerprint side and on the authentication side
+alike, independent of whatever engine sits underneath.
+
+Neither 2026 development actually measures the timing and pointer-behaviour signal from
+the previous section, so treat that signal as resting on its own reasoning, not on
+outside confirmation. What both developments do confirm is that an agent's technical
+identity, not just its behaviour, is now something sites are actively paid to notice,
+which raises the cost of getting either the engine's fingerprint or the loop's rhythm
+wrong.
 
 ## The route that does accept a different engine
 
@@ -216,11 +226,39 @@ Playwright MCP server, which takes a browser and an executable path.
 
 ## Sources
 
-- `browser_use/browser/profile.py` and `chrome.py`; Stagehand's
-  `packages/core/lib/v3/launch/local.ts` and its browser configuration docs; Skyvern's
-  CDP client; `crawl4ai/async_configs.py`; Maxun's package manifest. All read
+- `browser_use/browser/profile.py` and `chrome.py`, from browser-use's own repository,
+  [`browser-use/browser-use`](https://github.com/browser-use/browser-use); Stagehand's
+  `packages/core/lib/v3/launch/local.ts` and its browser configuration docs, from
+  [`browserbase/stagehand`](https://github.com/browserbase/stagehand); Skyvern's CDP
+  client, from [`Skyvern-AI/skyvern`](https://github.com/Skyvern-AI/skyvern);
+  `crawl4ai/async_configs.py`, from
+  [`unclecode/crawl4ai`](https://github.com/unclecode/crawl4ai); Maxun's package
+  manifest, from [`getmaxun/maxun`](https://github.com/getmaxun/maxun). All read
   2026-07-27 and 2026-07-28.
 - Star counts from the GitHub API on the same dates.
+- The three tools named as not built on Playwright: Vercel's
+  [`agent-browser`](https://github.com/vercel-labs/agent-browser), Obscura's own
+  repository at [`h4ckf0r0day/obscura`](https://github.com/h4ckf0r0day/obscura), and
+  BrowserOS's own repository at
+  [`browseros-ai/BrowserOS`](https://github.com/browseros-ai/BrowserOS), each checked
+  for its implementation language and its manifest's dependencies.
+- [crawl4ai's own documentation for stealth
+  mode](https://docs.crawl4ai.com/advanced/advanced-features/), and the
+  [`playwright-stealth`](https://github.com/Mattwmaster58/playwright_stealth) package it
+  applies, including crawl4ai's own statement that the underlying evasion modules do not
+  support Firefox.
+- Microsoft's own [`playwright-mcp`](https://github.com/microsoft/playwright-mcp), for
+  the browser and executable-path options it accepts over MCP.
+- Fingerprint's own product announcement,
+  [Identifying authorized AI agents vs bots on the web](https://fingerprint.com/blog/product-update-ai-agent-detection/),
+  retrieved 2026-08-28, for the cryptographic-signature verification product it shipped
+  in early 2026.
+- The academic paper, ["On the Internet, Nobody Knows You're an LLM Bot: Unmasking Web
+  Agents with Multi-Layer Fingerprinting"](https://arxiv.org/abs/2606.30119), retrieved
+  2026-08-28, for the network, HTTP and browser-level fingerprinting work that
+  distinguishes six LLM-based web agents from humans and from each other, and for its
+  finding that stealth features often increased their detectability instead of reducing
+  it.
 - The machine-level surfaces are each documented on their own page, linked above.
 
 ---

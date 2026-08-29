@@ -1,6 +1,6 @@
 ---
 title: "What BotD actually detects, and what it does not"
-description: "What BotD's twenty detectors actually check, read from its own source: mostly whether a browser is telling the truth about which engine it is, not automation."
+description: "What BotD's nineteen detectors actually check, read from its own source: mostly whether a browser is telling the truth about which engine it is, not automation."
 parent: "Detectors, Explained"
 grand_parent: "Guides"
 nav_order: 3
@@ -11,14 +11,14 @@ nav_order: 3
 
 BotD is the open-source bot detector from the FingerprintJS team. It is small, it is
 readable, and reading it changes how you think about this problem, because most of
-its twenty detectors are not looking for automation at all.
+its nineteen detectors are not looking for automation at all.
 
 They are checking whether your browser is telling the truth about **which browser it
 is**.
 
-Read from source on 2026-07-27 (`fingerprintjs/BotD`, `src/detectors/`).
+Read from source on 2026-08-29 ([`fingerprintjs/BotD`](https://github.com/fingerprintjs/BotD), `src/detectors/` and `src/sources/`).
 
-## The twenty detectors
+## The nineteen detectors
 
 ```
 app_version              distinctive_properties   document_element_keys
@@ -37,20 +37,24 @@ specific named tools. The rest are engine identity and internal consistency.
 | Detector group | The question it asks | Examples named here |
 |---|---|---|
 | The one everyone knows | Is the automation flag set? | `webdriver` |
-| Engine identity | Does the browser behave like the engine its user agent claims? | `eval_length`, `product_sub`, `error_trace`, `window_external` |
-| Internal consistency | Do two views of the same fact agree, and does a real machine and window exist? | `languages_inconsistency`, `mime_types_consistence`, `plugins_inconsistency`, `rtt`, `window_size` |
+| Engine identity | Does the browser behave like the engine its user agent claims? | `eval_length`, `product_sub` |
+| Named tool fingerprint | Does a value the engine reveals name a specific automation tool? | `error_trace`, `function_bind`, `window_external`, `app_version` |
+| Internal consistency | Does a value a real browser always produces show up, intact and correctly typed? | `languages_inconsistency`, `mime_types_consistence`, `plugins_inconsistency`, `rtt`, `window_size` |
 
 ## The interesting group: what engine are you really?
 
 Some values are decided by the JavaScript engine and cannot be changed from
-JavaScript without being obvious. BotD reads them, works out which engine you must
-be, and compares that against what your user agent claims.
+JavaScript without being obvious. Two of them, BotD computes and checks against what
+your user agent claims. A handful of others read that same kind of engine-only value
+and test it for one named tool's leftover fingerprint, regardless of what the user
+agent says.
 
 **`eval_length`.** `eval.toString().length` is a fixed number per engine, the same
 category of leak as [any other native function's own source](tostring-native-code-detection.md).
-The check is literally: if the length is 37 and the engine kind is not WebKit or Gecko,
-that is a bot. A Chromium build claiming to be Firefox fails here on a value nobody thinks
-to spoof.
+The check compares that number against the engine your user agent claims: 37 must come
+from WebKit or Gecko, 39 from Internet Explorer, 33 from Chromium, and any other pairing
+is a bot. A Chromium engine claiming to be Firefox still reports 33, the length the check
+reserves for Chromium, and fails on a value nobody thinks to spoof.
 
 **`product_sub`.** If the browser claims to be Chrome, Safari, Opera or WeChat, then
 [`navigator.productSub`](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/productSub)
@@ -58,23 +62,30 @@ must be `20030107`. Firefox reports `20100101`. One
 comparison, no ambiguity ([why a real Firefox reports `20100101`](navigator-vendor-productsub-firefox.md)).
 
 **`error_trace`.** Stack traces are formatted differently by different engines, and
-the detector matches the string for known tool signatures, PhantomJS among them.
+the detector tests the string against a single named signature: PhantomJS.
 
-**`function_bind`**, **`window_external`**, **`app_version`**: the same idea on other
-surfaces. `window_external` matches `window.external.toString()` against a known
-commercial crawler's signature.
+**`function_bind`** checks whether `Function.prototype.bind` exists as a real
+function at all, not what it returns; PhantomJS is the one that fails this, so a
+missing bind reads as the same tool `error_trace` looks for. **`window_external`**
+matches `window.external.toString()` against the name of a specific commercial
+scraping platform, Sequentum. **`app_version`** tests that same kind of version
+string for three more names: headless, Electron, SlimerJS.
 
 None of these are secret. They are just values a spoofing layer does not think about,
 because they are not on the list of "things bots are known for".
 
 ## The second group: does your story hold together?
 
-This group never asks whether a value is unusual. It asks whether two values that
-must agree actually do, and whether a real machine and window are behind them.
+This group mostly asks whether a value a real browser always produces is missing,
+empty, or malformed, not whether a value looks unusual on its own.
 
-**`languages_inconsistency`**, **`mime_types_consistence`**,
-**`plugins_inconsistency`**: the same fact asked in two ways, with the answers
-compared. Not "is this value unusual" but "do these two agree".
+**`languages_inconsistency`** fires when `navigator.language` and its older fallbacks
+are all undefined, something a real browser never leaves empty.
+**`plugins_inconsistency`** fires when a browser claiming to be desktop Chrome reports
+zero plugins, when even a stock install ships the built-in PDF viewer.
+**`mime_types_consistence`** checks that `navigator.mimeTypes` and each of its entries
+carry the real `MimeTypeArray` and `MimeType` prototypes, not a plain object standing
+in for them.
 
 **`rtt`**, **`window_size`**: values a real machine and a real window have, and a
 container often does not.
@@ -101,7 +112,7 @@ Firefox reporting Firefox has the right `productSub`, the right `eval` length, t
 right stack format and the right plugin array, because they are not claims, they are
 the engine. There is nothing to keep consistent because nothing was changed.
 
-**The remaining risk moves elsewhere.** Passing every one of these twenty says
+**The remaining risk moves elsewhere.** Passing every one of these nineteen says
 nothing about whether [your GPU string is plausible](webgl-renderer-strings.md), your
 fonts match your platform, or [your timezone agrees with your IP](timezone-proxy-mismatch.md).
 Those are the ones that decide modern outcomes and BotD does not look at them.
@@ -112,9 +123,10 @@ BotD is on npm and takes about four lines to run. Do it on the machine that will
 the work instead of your laptop, and read which detectors fired rather than the
 verdict.
 
-If any of the engine-identity group fires, stop and fix that first: it means the
-browser you are presenting is not the browser you are running, and no amount of work
-on the other surfaces compensates for that.
+If any of the engine-identity or named-tool-fingerprint groups fire, stop and fix
+that first: it means either the browser you are presenting is not the browser you
+are running, or a specific automation tool's own fingerprint just showed up, and no
+amount of work on the other surfaces compensates for that.
 
 ## Short answers to the questions that lead here
 
@@ -130,11 +142,27 @@ browser engine you really are, by testing behaviours that differ between engines
 browser claiming one engine and behaving like another is the finding.
 
 **Can I pass it by setting `navigator.webdriver` to undefined?** No. That is
-[one detector out of roughly twenty](navigator-webdriver-explained.md).
+[one detector out of nineteen](navigator-webdriver-explained.md).
 
 **Does passing BotD mean I am undetected?** It means one open-source detector found
 nothing. Commercial systems combine far more, including things no in-page script can
 see.
+
+## Sources
+
+- BotD's own GitHub repository, [`fingerprintjs/BotD`](https://github.com/fingerprintjs/BotD),
+  `src/detectors/` and `src/sources/`, read 2026-08-29, for the nineteen detector names and
+  the values each one compares.
+- [MDN: `Navigator.webdriver`](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/webdriver),
+  retrieved 2026-08-29, for the one detector everybody already knows.
+- [MDN: `Navigator.productSub`](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/productSub),
+  retrieved 2026-08-29, for the fixed value Firefox reports that the `product_sub`
+  detector checks against.
+- [PhantomJS](https://github.com/ariya/phantomjs), read 2026-08-29, the named signature
+  the `error_trace` detector matches against in a stack trace, and the tool a missing
+  `Function.prototype.bind` reads as under `function_bind`.
+- This project's own detection gates, which run BotD against the product before every
+  release and read which detectors fired rather than only the verdict.
 
 **See also:** [what sannysoft checks](sannysoft-explained.md), which is the older
 list of the same kind, and [how CreepJS detects tampering](creepjs-explained.md),

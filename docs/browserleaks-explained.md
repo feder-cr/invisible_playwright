@@ -12,7 +12,7 @@ nav_order: 7
 BrowserLeaks is the tool people reach for when they want to see a number rather than
 read a verdict. It prints the raw value of each browser surface - the canvas hash, the
 WebGL parameter block, the WebRTC candidate addresses, the installed font list, the
-ClientRects geometry - each on its own page, roughly fifteen of them.
+ClientRects geometry - each on its own page.
 
 That design is its strength and the source of most of the panic it causes. It shows you
 everything and scores none of it. So the panel that lights up red and says "unique" is
@@ -41,7 +41,7 @@ renderer that no Windows machine ships on another, side by side, both green, and
 nothing - because it has no page that reads both. The contradiction is on screen. The
 tool just is not looking for it.
 
-## The fifteen pages, surface by surface
+## Five pages, surface by surface
 
 Each page answers one narrow question. Using them as if they were interchangeable is
 most of why people get confused.
@@ -149,19 +149,19 @@ with InvisiblePlaywright(seed=42) as browser:
     #    so these two hashes must be identical. If they differ, something is
     #    adding per-call noise, which is a tell in its own right.
     page.goto("https://browserleaks.com/canvas")
-    first = page.locator("#crc").inner_text()
+    first = page.locator("#canvas-hash").inner_text()
     page.reload()
-    second = page.locator("#crc").inner_text()
+    second = page.locator("#canvas-hash").inner_text()
     assert first == second, "canvas hash changed between reads - per-call noise"
 
     # 2. Coherence: pull the WebGL renderer string and the font list, then check
     #    they tell the same story about one machine.
     page.goto("https://browserleaks.com/webgl")
-    renderer = page.locator("#webgl-unmasked-renderer").inner_text()
+    renderer = page.locator("#UNMASKED_RENDERER_WEBGL").inner_text()
     print("WebGL renderer:", renderer)
 
     page.goto("https://browserleaks.com/fonts")
-    print("fonts detected:", page.locator("#font-count").inner_text())
+    print("fonts detected:", page.locator("#fonts-metrics-report").inner_text())
 ```
 
 Two rules turn that from a screenshot into a test.
@@ -221,12 +221,23 @@ datacenter. You want a stable, hardware-shaped, unique value, not a popular one.
 
 ## Sources
 
-- The BrowserLeaks surfaces named above, each read from its own page rather than from a
-  summary score.
+- BrowserLeaks' own test pages named above, retrieved 2026-08-28:
+  [browserleaks.com/canvas](https://browserleaks.com/canvas),
+  [browserleaks.com/webgl](https://browserleaks.com/webgl),
+  [browserleaks.com/webrtc](https://browserleaks.com/webrtc),
+  [browserleaks.com/fonts](https://browserleaks.com/fonts),
+  [browserleaks.com/rects](https://browserleaks.com/rects) (ClientRects),
+  [browserleaks.com/tls](https://browserleaks.com/tls),
+  [browserleaks.com/ip](https://browserleaks.com/ip) (HTTP headers),
+  [browserleaks.com/geo](https://browserleaks.com/geo), and
+  [browserleaks.com/dns](https://browserleaks.com/dns), each read from its own page
+  rather than from a summary score.
 - This project's release gates, including the WebRTC gate whose absence-only assertions
   passed a feature that returned nothing, and the seed-derived canvas readback checked for
   stability across reads.
-- The companion detector pages in this set, read from each tool's own behaviour.
+- [CreepJS's own source](https://github.com/abrahamjuliot/creepjs), for the cross-surface
+  trust score this page contrasts against BrowserLeaks' page-by-page raw values; the rest
+  of the companion detector pages in this set, read from each tool's own behaviour.
 
 **See also:** [how CreepJS scores the cross-surface consistency BrowserLeaks skips](creepjs-explained.md),
 [what the canvas and WebGL hash actually measures](browserleaks-canvas-webgl-hash.md), and

@@ -228,13 +228,16 @@ connection and re-opens HTTP/2 itself would replace the fingerprint with its own
 
 ## Sources
 
-- The HTTP/2 framing described here is the ordinary session-opening exchange defined by
-  the protocol: SETTINGS, WINDOW_UPDATE, stream priority and the request pseudo-headers.
+- RFC 9113, the HTTP/2 specification, [retrieved 2026-08-28](https://datatracker.ietf.org/doc/html/rfc9113),
+  for the SETTINGS frame parameters (section 6.5.2), the WINDOW_UPDATE frame and the
+  request pseudo-headers (section 8.3.1) described above.
 - This project's own network-layer parity work, including the closed cipher-suite delta
   measured against a stock build of the same version and re-checked until the handshake
   fingerprints matched byte for byte.
-- Public HTTP/2 and TLS fingerprint checking endpoints, read from the frames they echo
-  back rather than from a rendered score.
+- pagpeter's TrackMe, the open-source server behind the public tls.peet.ws fingerprint
+  checker, [retrieved 2026-08-28](https://github.com/pagpeter/TrackMe), for how a public
+  endpoint reads back the SETTINGS values, window update and pseudo-header order a
+  connection actually sent.
 
 **See also:** [why a TLS fingerprint cannot be patched](ja3-ja4-tls-fingerprint.md) for
 the layer directly beneath this one, [why a plain requests scraper is blocked before it

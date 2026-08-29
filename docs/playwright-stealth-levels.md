@@ -165,6 +165,20 @@ argue with each other, and the disagreement is easier to detect than either one 
 **Which level do I actually need?** Whichever one clears your target. Test before
 choosing, because the honest answer is usually lower than the marketing suggests.
 
+## Sources
+
+- `playwright-stealth`'s own GitHub repository,
+  [Granitosaurus/playwright-stealth](https://github.com/Granitosaurus/playwright-stealth),
+  read 2026-08-28, for its scope and its lineage from the Puppeteer stealth plugin.
+- `puppeteer-extra-plugin-stealth`'s own GitHub repository,
+  [berstend/puppeteer-extra](https://github.com/berstend/puppeteer-extra/tree/master/packages/puppeteer-extra-plugin-stealth),
+  read 2026-08-28, for its evasion module list.
+- Patchright, rebrowser-playwright, Camoufox, CreepJS, BotD and sannysoft, all named
+  above, are each sourced on their own linked comparison or explainer page in this
+  docs set rather than repeated here.
+- This project's own early fingerprint data, where the software-renderer GPU string
+  mistake described above was found.
+
 **See also:** [how CreepJS detects tampering](creepjs-explained.md), which explains why level one has a ceiling, and [WebGL renderer strings](webgl-renderer-strings.md) for a surface no level reaches by lying.
 
 ---

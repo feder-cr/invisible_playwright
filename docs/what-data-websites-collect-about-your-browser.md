@@ -18,8 +18,8 @@ wrong.
 
 This page enumerates the concrete surface a site can read from JavaScript, adds
 the passive fingerprint the server sees before any script runs, and marks which
-of them a real engine normalises to real values and which one it does not touch
-at all. If you want the reverse angle - how to prove any of this on your own
+of them a real engine normalises to real values, plus the two things that sit
+outside a browser fingerprint entirely. If you want the reverse angle - how to prove any of this on your own
 setup - [how to test whether your browser is detected](how-to-test-bot-detection.md)
 is the companion page.
 
@@ -117,7 +117,8 @@ hand. The TLS and HTTP/2 fingerprint read as a genuine Firefox because the
 request is made by a genuine Firefox.
 
 Reading that surface is a two-line switch from plain Playwright, and the object
-you get back is a real Playwright `Browser` with every standard method:
+you get back is a real Playwright [`Browser`](https://playwright.dev/python/docs/api/class-browser)
+with every standard method:
 
 ```python
 from invisible_playwright import InvisiblePlaywright
@@ -223,6 +224,17 @@ separate requirement you supply yourself.
 - This project's release gates, which compare each surface against a stock
   Firefox on the same machine field by field, and which separate IP and session
   noise from the fingerprint delta.
+- MDN Web API references for the surfaces named above:
+  [CanvasRenderingContext2D.getImageData()](https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/getImageData),
+  [WebGLRenderingContext.getParameter()](https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/getParameter),
+  [the Web Audio API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API), and
+  [Intl.DateTimeFormat()](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/DateTimeFormat),
+  retrieved 2026-08-28.
+- [RFC 8446](https://datatracker.ietf.org/doc/html/rfc8446), the TLS 1.3 handshake, and
+  [RFC 9113 section 6.5.2](https://datatracker.ietf.org/doc/html/rfc9113#section-6.5.2), the
+  HTTP/2 settings frame, retrieved 2026-08-28.
+- [CreepJS](https://github.com/abrahamjuliot/creepjs), the auditing suite named above,
+  retrieved 2026-08-28.
 
 **See also:** [how to test whether your browser is detected](how-to-test-bot-detection.md)
 to prove any of this on your own setup, and

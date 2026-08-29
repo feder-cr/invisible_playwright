@@ -99,7 +99,7 @@ until something removes it.
 Both change what the Permissions API reports, but only the profile grant follows you into
 future sessions.
 
-### The grant that turns off something else
+## The grant that turns off something else
 
 This is the part worth knowing even if you never think about permissions.
 
@@ -191,19 +191,21 @@ Profile-level grants persist, including into future sessions on a reused profile
 **Can a page enumerate my permissions?** It can query the names it knows, which in
 practice is the same thing.
 
+## Sources
+
+- MDN, [Permissions: query() method](https://developer.mozilla.org/en-US/docs/Web/API/Permissions/query)
+  and [Notification: permission static property](https://developer.mozilla.org/en-US/docs/Web/API/Notification/permission_static),
+  retrieved 2026-08-28.
+- The long-standing headless detection suites that compare the two, where this check has
+  lived for years.
+- Firefox's conditioning of `default_address_only` and `obfuscate_host_addresses` on
+  active-or-permitted capture, which is the mechanism behind the grant described above.
+
 **See also:** [what a persistent profile fixes and breaks](persistent-profiles.md),
 [the same pair read as a bot-detection signal](notification-permission-detection.md),
 [WebRTC leak with a proxy](webrtc-leak-proxy.md), and
 [what sannysoft actually checks](sannysoft-explained.md), whose permissions row is this
 check.
-
-## Sources
-
-- MDN for `Permissions.query()` and `Notification.permission`.
-- The long-standing headless detection suites that compare the two, where this check has
-  lived for years.
-- Firefox's conditioning of `default_address_only` and `obfuscate_host_addresses` on
-  active-or-permitted capture, which is the mechanism behind the grant described above.
 
 ---
 

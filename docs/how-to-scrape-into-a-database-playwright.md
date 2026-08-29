@@ -250,8 +250,10 @@ client fetching a whole catalog on a fixed schedule, so pace the requests separa
 
 ## Sources
 
-- SQLite documentation on `ON CONFLICT` upsert semantics and transaction behaviour, and
-  the WAL journal mode used above.
+- SQLite documentation, [UPSERT](https://sqlite.org/lang_upsert.html) for the
+  `ON CONFLICT` clause, [Transaction](https://sqlite.org/lang_transaction.html) for the
+  commit and rollback behaviour above, and [Write-Ahead Logging](https://sqlite.org/wal.html)
+  for the WAL journal mode, retrieved 2026-08-28.
 - This project's own API: the seed-to-identity round-trip from the quickstart, verified
   against the reproducible-fingerprint behaviour where one seed yields a byte-identical
   fingerprint on a later run.

@@ -173,8 +173,10 @@ which is the entire point.
   identity surface field by field against a stock browser rather than reading a single
   string.
 - The public detection suites this documentation set covers page by page, including
-  CreepJS, BotD, FingerprintJS, sannysoft and BrowserLeaks, each of which cross-checks
-  self-reported values against measured ones.
+  [CreepJS](https://github.com/abrahamjuliot/creepjs), [BotD](https://github.com/fingerprintjs/BotD),
+  [FingerprintJS](https://github.com/fingerprintjs/fingerprintjs), [sannysoft](https://bot.sannysoft.com/)
+  and [BrowserLeaks](https://browserleaks.com/), retrieved 2026-08-28, each of which
+  cross-checks self-reported values against measured ones.
 
 **See also:** [why you should not set the user agent in Playwright](playwright-user-agent.md),
 [the TLS handshake versus the user agent claim](tls-fingerprint-user-agent-mismatch.md),

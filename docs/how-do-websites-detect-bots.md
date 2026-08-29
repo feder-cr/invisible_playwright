@@ -200,9 +200,11 @@ in layer one rather than hiding anything.
 - This project's own detection gates and field-by-field comparisons against a stock
   Firefox on the same machine, which is how the four-layer split was measured rather
   than assumed.
-- The public detection suites named in these notes (CreepJS, BotD, sannysoft,
-  FingerprintJS, BrowserLeaks), each read from its own source, and the per-layer pages
-  linked throughout this set.
+- The public detection suites named in these notes, each read from its own source and
+  given its own page in this set: [CreepJS](https://github.com/abrahamjuliot/creepjs),
+  [BotD](https://github.com/fingerprintjs/BotD), [sannysoft](https://bot.sannysoft.com/),
+  [FingerprintJS](https://github.com/fingerprintjs/fingerprintjs), and
+  [BrowserLeaks](https://browserleaks.com/), retrieved 2026-08-28.
 
 **See also:** [the checklist for a site that blocks you](playwright-detected-as-bot.md)
 for working the layers in order, [what the webdriver flag really proves](navigator-webdriver-explained.md)

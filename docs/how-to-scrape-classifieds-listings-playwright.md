@@ -229,10 +229,15 @@ risk-scored request, so space the clicks out instead of machine-gunning the feed
 
 ## Sources
 
+- Playwright documentation, [Mouse.wheel()](https://playwright.dev/python/docs/api/class-mouse#mouse-wheel),
+  retrieved 2026-08-28, for the wheel-based scroll the harvest loop drives.
+- Playwright documentation, [ElementHandle.screenshot()](https://playwright.dev/python/docs/api/class-elementhandle#element-handle-screenshot),
+  retrieved 2026-08-28, for capturing the image bytes an OCR step reads.
+- [FingerprintJS](https://github.com/fingerprintjs/fingerprintjs), the open-source library
+  this project's consistency gate runs against when it asserts that one seed produces one
+  identical visitor ID across runs.
 - This project's quickstart and configuration pages for the real launch API, the proxy
   dict, and the timezone that auto-derives from the egress IP.
-- This project's fingerprint-consistency gate, which asserts that one seed produces one
-  identical visitor ID across runs.
 - The behavioural notes in this set on trusted events and pointer motion, which are why a
   reveal click on a real engine reads differently from a synthetic one.
 

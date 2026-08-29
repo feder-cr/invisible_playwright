@@ -36,7 +36,7 @@ Puppeteer needs leaves a trace a page can probe for, which is one of the
 fingerprint value you can edit. It is a property of how the driver connects, not of
 what you set.
 
-Puppeteer has added experimental Firefox support through WebDriver BiDi, so "Puppeteer
+Puppeteer has added stable Firefox support through WebDriver BiDi, so "Puppeteer
 is Chromium only" is no longer strictly true. But the mature, default path is still
 Chromium over CDP, and neither path hands you a patched engine. You get whichever
 stock browser you launch, with its stock fingerprint.
@@ -59,8 +59,8 @@ The names shift from camelCase to snake_case in Python, and Playwright leans on
 locators and auto-waiting where Puppeteer leans on explicit waits, but the operation
 you were performing has a direct equivalent. Nothing about the task changes. What
 changes is that Playwright can target
-[Firefox as a first-class engine](https://playwright.dev/python/docs/browsers), not an
-experimental one, which is the door the rest of this page walks through. For the
+[Firefox as a first-class engine](https://playwright.dev/python/docs/browsers), not a
+partial one, which is the door the rest of this page walks through. For the
 broader engine comparison see
 [Firefox versus Chromium for anti-detect work](firefox-vs-chromium-antidetect.md).
 
@@ -168,7 +168,7 @@ failure points, and leaves your IP, quotas and behaviour exactly where they were
 Chromium or Chrome. The fingerprint is produced by that rendering pipeline, so a script
 can relabel properties but cannot change what the pipeline actually draws.
 
-**Can Puppeteer drive Firefox?** It has experimental Firefox support through WebDriver
+**Can Puppeteer drive Firefox?** It has stable Firefox support through WebDriver
 BiDi, but the default and mature path is Chromium over CDP, and neither path gives you
 a patched engine.
 
@@ -186,9 +186,9 @@ Fingerprint is one layer; network and behaviour are separate layers you supply.
 
 ## Sources
 
-- Puppeteer's own documentation on its supported browsers and protocols, read for the
-  Chromium-over-CDP default and the experimental WebDriver BiDi Firefox path, rather
-  than from second-hand summaries.
+- Puppeteer documentation, [Supported browsers](https://pptr.dev/supported-browsers) and
+  [WebDriver BiDi support](https://pptr.dev/webdriver-bidi), read for the Chromium-over-CDP
+  default and the stable Firefox path, retrieved 2026-08-28.
 - This project's fingerprint and driver-layer gates, which compare a patched Firefox
   field by field against a stock browser on the same machine, described in
   [how to test bot detection without a false pass](how-to-test-bot-detection.md).

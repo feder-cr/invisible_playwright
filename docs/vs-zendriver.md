@@ -184,9 +184,10 @@ whether the surfaces are consistent and the driver layer is clean, which is a
 
 ## Sources
 
-- zendriver's own repository and README, read from source, for its status as a
-  maintained async nodriver fork, its CDP-over-Chrome architecture, and its
-  removal of the WebDriver and chromedriver layers.
+- [zendriver's own GitHub repository and README](https://github.com/cdpdriver/zendriver),
+  read 2026-08-29, for its status as an actively maintained fork of nodriver,
+  its CDP-over-Chrome architecture, and its removal of the WebDriver and
+  chromedriver layers.
 - This project's release gates and fingerprint-consistency checks, for the
   cross-surface behaviour described above.
 - The public detection suites named on the [testing page](how-to-test-bot-detection.md),

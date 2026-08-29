@@ -163,11 +163,14 @@ string, the font list behind it, the audio device and the screen values
 all come from the seeded profile rather than from what the container
 actually has, which is the gap [the container detection
 page](playwright-docker-detection.md) describes as the one thing a stock
-setup cannot fix without help. A fingerprinting test page such as CreepJS
-or BrowserLeaks will show the same thing from the outside: the same seed
-renders the same panel whether the browser sits on your laptop or inside
-this container, because the font set travels with the engine rather than
-being read off the box it happens to be running on.
+setup cannot fix without help.
+
+A fingerprinting test page such as [CreepJS](creepjs-explained.md) or
+[BrowserLeaks](browserleaks-explained.md) will show the same thing from
+the outside: the same seed renders the same panel whether the browser
+sits on your laptop or inside this container, because the font set
+travels with the engine rather than being read off the box it happens to
+be running on.
 
 The one thing this does not fix, and will not: a container with no
 graphics hardware still renders in software. The renderer string is
@@ -232,6 +235,13 @@ is a rendering-quality question, not a detection one.
   for the exact `fetch` behaviour and environment variables used above.
 - [Configuration](configuration.md) for `INVISIBLE_PLAYWRIGHT_CACHE_DIR`,
   `INVPW_BINARY_PATH` and `STEALTHFOX_GITHUB_TOKEN`.
+- Playwright documentation, [Docker](https://playwright.dev/python/docs/docker), for the
+  base image and its version tags, retrieved 2026-08-28.
+- Docker Engine reference, [`docker run`](https://docs.docker.com/engine/reference/run/),
+  for the 64 MB default size of `/dev/shm` and the `--shm-size` flag, retrieved 2026-08-28.
+- [CreepJS](https://github.com/abrahamjuliot/creepjs) and
+  [BrowserLeaks](https://browserleaks.com/), the fingerprinting test pages named above,
+  retrieved 2026-08-28.
 
 **See also:** [How to scrape without getting
 blocked](how-to-scrape-without-getting-blocked.md) for the wider order of

@@ -84,8 +84,9 @@ with InvisiblePlaywright(seed=42, proxy=proxy) as browser:
     print("browser timezone:", tz)   # e.g. America/Chicago for a US exit
 ```
 
-The `browser` object is a real Playwright `Browser`, so every method works as documented
-upstream. Nothing about the timezone path changes the API surface.
+The `browser` object is a real Playwright [`Browser`](https://playwright.dev/python/docs/api/class-browser),
+so every method works as documented upstream. Nothing about the timezone path changes the
+API surface.
 
 If you already know the zone you want, pass an explicit IANA identifier and the resolution
 step is skipped entirely. This is the right choice when the exit is fixed and you would
@@ -242,6 +243,9 @@ leaves a foreign exit is the exact disagreement detectors look for.
   above.
 - The development harness's earlier online-lookup approach, kept for the harness and
   deliberately not shipped in the wrapper.
+- IANA, [Time Zone Database](https://www.iana.org/time-zones), retrieved 2026-08-28
+- MDN, [Intl.DateTimeFormat.prototype.resolvedOptions()](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/DateTimeFormat/resolvedOptions), retrieved 2026-08-28
+- MDN, [Date.prototype.getTimezoneOffset()](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Date/getTimezoneOffset), retrieved 2026-08-28
 
 **See also:** [when the timezone does not match the proxy](timezone-proxy-mismatch.md) for
 everything that has to agree, and [rotating proxies across sessions](how-to-rotate-proxies-playwright.md)

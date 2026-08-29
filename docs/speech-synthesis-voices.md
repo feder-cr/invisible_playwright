@@ -187,6 +187,17 @@ one.
 because it is an OS-level list that most people never think to align with the rest of
 their fingerprint.
 
+## Sources
+
+- MDN Web Docs, [SpeechSynthesis: getVoices() method](https://developer.mozilla.org/en-US/docs/Web/API/SpeechSynthesis/getVoices),
+  retrieved 2026-08-28, for the asynchronous population behaviour described in problem
+  one.
+- MDN Web Docs, [SpeechSynthesis: voiceschanged event](https://developer.mozilla.org/en-US/docs/Web/API/SpeechSynthesis/voiceschanged_event),
+  retrieved 2026-08-28, for the event this page's workaround listens for.
+- This project's own implementation, which fabricates the voice list from a preference
+  instead of filtering the OS registry, for the claim that a synthetic, URI-encoded
+  voice list removes the host as a dependency.
+
 **See also:** [speechSynthesis voices as a cross-platform fingerprint](speech-synthesis-voices-fingerprint.md)
 for the detector's-eye view of the same signal, [why headless browsers render different fonts](headless-fonts-differ.md),
 the same "the OS answers, not the browser" problem on a much more commonly checked

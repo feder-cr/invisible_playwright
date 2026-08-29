@@ -37,10 +37,10 @@ On a plain Playwright launch of the same engine that prints `True`. The value ab
 comes back `False`, and the rest of this page is about why the difference between those
 two lines is not one character of JavaScript.
 
-A clean, human-driven browser reports `false` here. Note that this is different from the
-Chromium story, where an untouched browser reports `undefined` and a hand-set `false` is
-itself an anomaly. On Firefox the honest value is a plain `false`, which is what this
-engine returns.
+A clean, human-driven browser reports `false` here. Chromium used to differ: before
+Chrome 89 shipped in 2021, an untouched browser left the property `undefined`, and a
+hand-set `false` was itself an anomaly. Chrome has reported a plain `false` ever since,
+matching Firefox and the spec, which is what this engine returns.
 
 ## Why that boolean is such an old tell
 
@@ -179,8 +179,9 @@ property lands on the wrong object, so you have added two tells to remove one.
 `Function.prototype.toString`, and by walking the prototype chain to see that the
 property moved onto the instance.
 
-**What should a clean Firefox report?** A plain `false`. That is different from Chromium,
-where an untouched browser reports `undefined` and a hand-set `false` is itself odd.
+**What should a clean Firefox report?** A plain `false`. Chromium reported `undefined`
+here before Chrome 89 in 2021; every version since reports `false` too, matching Firefox
+and the spec.
 
 **Does invisible_playwright fake the value?** No. It returns `false` from the browser's
 own native code path, so there is no JavaScript getter to inspect and no own property to
@@ -192,10 +193,16 @@ of which you still have to supply.
 
 ## Sources
 
-- The WebDriver specification, which defines `navigator.webdriver` and requires an
+- The W3C WebDriver specification, [WebDriver](https://www.w3.org/TR/webdriver2/),
+  retrieved 2026-08-28, which defines `navigator.webdriver` and requires an
   automated user agent to expose it as `true`.
-- `Function.prototype.toString`, whose `[native code]` behaviour for builtins is the
+- MDN Web Docs, [`Function.prototype.toString`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function/toString),
+  retrieved 2026-08-28, whose `[native code]` behaviour for builtins is the
   standard mechanism behind the getter-source check.
+- The Chromium project's own record of the change,
+  [Intent to Ship: navigator.webdriver === false when automation is not enabled](https://groups.google.com/a/chromium.org/g/blink-dev/c/h-5nQQLs2QU/m/iRVKU4LhAgAJ),
+  retrieved 2026-08-28, which documents Chrome exposing the property as
+  `undefined` before Chrome 89 and as a plain `false` in every version since.
 - This project's own driver-layer checks, comparing a native `false` against a
   JavaScript override on the same engine.
 

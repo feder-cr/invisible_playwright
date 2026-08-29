@@ -9,6 +9,12 @@ nav_order: 73
 
 # Scrape a multi-step wizard flow with Playwright
 
+To scrape a multi-step wizard flow with Playwright, complete each step in the order the
+server expects instead of deep-linking to a later one, read and carry the per-step token
+or hidden field the server hands you at each transition, re-query the DOM after every step
+rather than holding a stale reference, and run the whole flow in one context on one
+seed-derived identity so the fingerprint stays constant from the first step to the last.
+
 A wizard is not a set of pages you can visit. It is a state machine wearing a set of
 URLs. Each step is gated behind the previous one's server-side state, so the address bar
 alone does not get you in, and the thing that trips most scrapers is treating step three
@@ -232,6 +238,11 @@ site changing from your session changing.
 - The real product API as documented on the [quickstart](quickstart.md) and
   [configuration](configuration.md) pages: `InvisiblePlaywright(seed=...)` returns a stock
   Playwright `Browser`, and every method used above is standard Playwright.
+- Playwright documentation, [`wait_for_selector`](https://playwright.dev/python/docs/api/class-page#page-wait-for-selector)
+  and [`get_attribute`](https://playwright.dev/python/docs/api/class-page#page-get-attribute),
+  retrieved 2026-08-28: the `state` argument and the token-reading pattern used above are
+  exactly the documented upstream behavior, including the docs' own note that both are now
+  secondary to the Locator equivalents for new code.
 - This project's own gates on identity stability across a session, which assert that
   seed-derived fingerprint fields are equal at the start and end of a flow rather than
   merely present.

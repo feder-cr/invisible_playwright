@@ -97,10 +97,9 @@ DOM property you did or did not spoof. Perfecting your canvas hash does not move
 number that was never reading your canvas.
 
 This is the honest caveat the other two numbers do not carry: a stable, consistent,
-non-lying fingerprint is necessary and not sufficient here. It removes the reasons to
-distrust you; it does not manufacture the past you do not have. That part is warmed-up
-profiles, realistic behaviour and a reputable exit, none of which a fingerprint layer
-can supply.
+non-lying fingerprint does nothing for this one. It does not manufacture the past you
+do not have. That part is warmed-up profiles, realistic behaviour and a reputable exit,
+none of which a fingerprint layer can supply.
 
 ## Why passing one says nothing about the others
 
@@ -115,7 +114,7 @@ other two. Put them side by side and the independence is obvious:
 - You can pass reCAPTCHA v3 on a warmed profile and fail CreepJS, because behavioural
   reputation says nothing about whether a descriptor was patched.
 
-They cross-cut. Each of the [four detector deep-dives in this set](how-to-test-bot-detection.md)
+They cross-cut. Each of the [five detector deep-dives in this set](how-to-test-bot-detection.md)
 measures a different axis, and a green on one axis is not a green on the others. The
 practical rule is to name which number you are looking at before you react to it,
 because the fix for a low CreepJS trust (consistency) is not the fix for a low
@@ -123,9 +122,10 @@ reCAPTCHA v3 score (history), and applying one to the other wastes days.
 
 ## A blocked probe lowers the score, it does not hide from it
 
-One instinct makes all three numbers worse at once: suppressing a signal. Blocking
-canvas, returning an empty font list, refusing WebRTC, randomising a value per call so
-nothing can pin it.
+One instinct makes two of the three numbers worse at once: suppressing a signal.
+Blocking canvas, returning an empty font list, refusing WebRTC, randomising a value per
+call so nothing can pin it. reCAPTCHA v3 does not read any of those surfaces, so there
+is nothing here for it to punish.
 
 Every one of those is counted against you, not for you:
 
@@ -140,12 +140,12 @@ seed-derived identity, where every surface is drawn from one seed and stays put,
 better than any suppression strategy: it answers every probe with a coherent value
 instead of a refusal.
 
-## Measure all three from one seeded session
+## Measure two of the three from one seeded session
 
 The way to stop guessing which number moved is to make the identity reproducible, so a
 change in a score is a change you made rather than a change in the draw. The wrapper is
 stock Playwright with a seeded fingerprint, so the `browser` you get back is a real
-Playwright `Browser` and every method is the one you already know:
+Playwright [`Browser`](https://playwright.dev/python/docs/api/class-browser) and every method is the one you already know:
 
 ```python
 from invisible_playwright import InvisiblePlaywright
@@ -160,7 +160,8 @@ def read_canvas(page):
         return c.toDataURL();
     }""")
 
-with InvisiblePlaywright(seed=42) as browser:
+sf = InvisiblePlaywright(seed=42)
+with sf as browser:
     page = browser.new_page()
     page.goto("https://example.com")
     first = read_canvas(page)
@@ -207,10 +208,10 @@ matter how clean the fingerprint is.
 Three numbers, three axes. CreepJS trust counts contradictions and lies, a
 FingerprintJS ID and its confidence measure whether you are the same visitor as before,
 and a reCAPTCHA v3 score estimates risk from behaviour and history. Passing one is not
-passing another, suppressing a signal lowers all three rather than hiding from any of
-them, and the only way to tell which number your last change actually moved is to hold
-the identity still with a seed and compare. Name the axis before you react to the
-number, and the contradictory results stop being contradictory.
+passing another, suppressing a signal lowers the two that read the DOM rather than
+hiding from either, and the only way to tell which number your last change actually
+moved is to hold the identity still with a seed and compare. Name the axis before you
+react to the number, and the contradictory results stop being contradictory.
 
 ## Short answers to the questions that lead here
 
@@ -225,7 +226,7 @@ match, not about whether the browser looks automated.
 
 **I pass CreepJS but still get a low reCAPTCHA score, why?** Because reCAPTCHA v3 is
 mostly reading history and behaviour, and a fresh profile has neither. A clean
-fingerprint removes reasons to distrust you; it does not supply a past.
+fingerprint does not supply a past, and past is what this score is missing.
 
 **Does a rare fingerprint lower my trust score?** No. CreepJS trust is about
 consistency, not rarity. An unusual but coherent identity can score perfectly; a common
@@ -243,8 +244,10 @@ change.
 ## Sources
 
 - The three detectors named above, each with its own page in this set, read from their
-  own source rather than from a rendered verdict: CreepJS on tampering, FingerprintJS on
-  the hashed visitor ID and its confidence, and reCAPTCHA v3 on the behavioural score.
+  own source rather than from a rendered verdict: [CreepJS](https://github.com/abrahamjuliot/creepjs)
+  on tampering, [FingerprintJS](https://github.com/fingerprintjs/fingerprintjs) on
+  the hashed visitor ID and its confidence, and [reCAPTCHA v3](https://developers.google.com/recaptcha/docs/v3)
+  on the behavioural score, retrieved 2026-08-28.
 - This project's own reproducibility measurements: identical seed reproduces
   byte-identical canvas output within and across sessions, which is the property a
   consistency check rewards.

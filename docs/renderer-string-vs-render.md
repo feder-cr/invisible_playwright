@@ -140,6 +140,15 @@ are imperfect and the first is the only easy one.
 at a time, and include the host operating system as an axis. That is what took us from
 the wrong answer to the right one.
 
+## Sources
+
+- This project's own testing: the ten-seed sweep, the two-engine-build A/B, and the
+  same-build cross-OS comparison that isolated the software rasterizer as the cause
+  described above.
+- This project's own release gates, which read fingerprint values for a long time
+  before this class of mismatch surfaced, and the velocity flag that turned out to be
+  the test harness rather than the browser.
+
 **See also:** [WebGL renderer strings](webgl-renderer-strings.md), for what those
 strings encode and why a software rasterizer is a giveaway,
 and [why headless renders different fonts](headless-fonts-differ.md), which is the

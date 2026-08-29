@@ -21,12 +21,11 @@ and what that generalises to.
 The check looks like this:
 
 ```js
-Object.getOwnPropertyNames(document).find(k => k.startsWith('cdc_'))
+Object.getOwnPropertyNames(window).find(k => k.startsWith('cdc_'))
 ```
 
-or the same thing scanning `window`. It is a two-line test, it is in every
-bot-detection script, and understanding why it works explains a lot about how this
-whole category of tell comes to exist.
+It is a one-line test, it is in every bot-detection script, and understanding why it
+works explains a lot about how this whole category of tell comes to exist.
 
 ## What the variable is
 
@@ -51,23 +50,31 @@ in order to function.
 
 ## Why the usual fix is a rename
 
-The well-known remedy, and what [`undetected-chromedriver`](vs-undetected-chromedriver.md)
-does, is to patch the binary and replace that literal with a different random-looking
-string of the same length. Same length matters: it is an in-place patch of a compiled file, so the
-replacement has to fit.
+Some guides describe a manual version of the fix: edit the compiled ChromeDriver binary
+directly and replace the `cdc_` literal with a different random-looking string of the
+same length, since it is an in-place patch of a compiled file and the replacement has to
+fit exactly where the original sat.
 
-That works against the check at the top of this page, because the check greps for
-`cdc_`. It does not work against a slightly better one.
+That defeats the check at the top of this page, because the check greps for `cdc_`. It
+does not defeat a slightly better one. The variables are still there, still a set of
+related names appearing together under a common stem, still matching a shape no page
+author would produce. A detector that looks for *the pattern* instead of the prefix,
+several own properties on `window` sharing a random-looking stem and typed suffixes,
+finds them again under the new name.
 
-The variables are still there, still on `document`, still a set of three related
-names appearing together, still matching a shape no page author would produce. A
-detector that looks for *the pattern* instead of the prefix, three own properties on
-`document` with a common random-looking stem and typed suffixes, finds them again.
-And because the patch has to preserve length, the shape of the replacement is
-constrained in ways that make it recognisable.
+[`undetected-chromedriver`](vs-undetected-chromedriver.md) goes further than a rename.
+Its patcher finds the exact statement that assigns the `cdc_` properties inside the
+compiled driver binary and overwrites it in place with a fixed, harmless statement of the
+same byte length, so the assignment never runs and no `cdc_`-prefixed property lands on
+`window` at all. That closes the specific check this page opened with. It does not close
+the general one: the same fixed replacement ships in every copy of the patched driver,
+and the browser it drives is still a stock, unpatched Chromium underneath, reporting
+whatever canvas, font and WebGL values the host machine actually has.
 
-So: renaming raises the bar, it does not remove the surface. That distinction is the
-whole point of this page, and it applies far beyond this one variable.
+So: a rename raises the bar without removing the surface, and overwriting the assignment
+outright removes one named check without touching the fact that a driver is attached at
+all. That distinction is the whole point of this page, and it applies far beyond this one
+variable.
 
 ## The general shape of the problem
 
@@ -110,7 +117,7 @@ it.
 If you are debugging a detection problem on a Chromium-based stack, check in this
 order:
 
-1. `Object.getOwnPropertyNames(document)` and the same for `window`, looking for
+1. `Object.getOwnPropertyNames(window)` and the same for `document`, looking for
    groups of related unfamiliar names, not one specific prefix.
 2. `navigator.webdriver`, remembering that `false` is not the same answer as
    `undefined`, and a clean browser gives the latter.
@@ -123,18 +130,33 @@ order:
 Number four catches more sessions than one to three combined, and it is the one
 nobody checks first.
 
+## Conclusion
+
+The `cdc_` variable is not an oversight. It is working state a driver needs to run its
+own code inside the page, which is why a naive fix does not make it disappear. A rename
+defeats a check that matches a prefix, but not one that matches a shape, because the
+properties are still sitting on `window` under a different label. Overwriting the
+assignment outright, which is what a tool like undetected-chromedriver actually does,
+closes that specific hole without changing anything else a driver or the stock browser
+underneath still reveals. The lesson generalises past this one variable: any tool that
+keeps state on page objects is one enumeration away from being found, and the only fix
+that removes the surface instead of raising the bar is keeping that state off the page in
+the first place.
+
 ## Short answers to the questions that lead here
 
-**What is the `cdc_` variable?** A property ChromeDriver injects into the document,
-whose name starts with `cdc_` followed by a random-looking string. Its presence is a
-one-line check for Selenium automation.
+**What is the `cdc_` variable?** A property ChromeDriver injects into `window`, whose
+name starts with `cdc_` followed by a random-looking string. Its presence is a one-line
+check for Selenium automation.
 
-**Does renaming it in the binary work?** Against a check that greps for the exact
-prefix, yes. Against a check looking for the *pattern*, three unexpected own properties
-on `document`, no, because renaming does not remove them.
+**Does patching it out in the binary work?** A rename defeats a check that greps for the
+exact prefix, but not one looking for the *pattern*, several unexpected own properties on
+`window` sharing a stem. Overwriting the assignment outright, which is what
+undetected-chromedriver actually does, removes the property entirely, but the driver and
+the stock browser underneath are otherwise unchanged.
 
-**How do I find it?** Enumerate `document`'s own properties and look for entries no
-normal document has.
+**How do I find it?** Enumerate `window`'s own properties and look for entries no normal
+page has.
 
 **Does Playwright have an equivalent?** Not this one, because it does not use
 ChromeDriver, and not a comparable global either - checked directly, enumerating
@@ -149,6 +171,30 @@ only that this specific one does not appear to be real.
 
 **What is the real fix?** Do not add the properties at all, which means the automation
 layer has to be built differently rather than patched afterwards.
+
+## Sources
+
+- Chrome for Developers, [What is ChromeDriver?](https://developer.chrome.com/docs/chromedriver),
+  retrieved 2026-08-28, for ChromeDriver's role as the binary Selenium talks to and the
+  driver-side state it needs to run its own JavaScript in the page.
+- Chromium source, [call_function.js](https://chromium.googlesource.com/chromium/src/+/main/chrome/test/chromedriver/js/call_function.js),
+  retrieved 2026-08-29, for the `cdc_adoQpoasnfa76pfcZLmcfl_` prefix and the `_Array`,
+  `_Promise` and `_Symbol` suffixes quoted earlier on this page.
+- [undetected-chromedriver's GitHub repository](https://github.com/ultrafunkamsterdam/undetected-chromedriver),
+  retrieved 2026-08-29, for its documented approach of downloading and patching the
+  ChromeDriver binary.
+- [undetected-chromedriver's `patcher.py`](https://github.com/ultrafunkamsterdam/undetected-chromedriver/blob/master/undetected_chromedriver/patcher.py),
+  retrieved 2026-08-29, for the `patch_exe` function that locates the injected `cdc_`
+  assignment inside the compiled binary and overwrites it with a fixed placeholder of
+  the same byte length.
+- Selenium, [WebDriver documentation](https://www.selenium.dev/documentation/webdriver/),
+  retrieved 2026-08-28, for the driver-to-browser relationship ChromeDriver implements.
+- The [WebDriver specification](https://www.w3.org/TR/webdriver2/), retrieved 2026-08-28,
+  which requires a conforming browser to set `navigator.webdriver` to `true` under
+  automation control.
+- This project's own sessions, enumerating every own property on `window` in a live
+  Playwright-driven Chromium session, for the claim that Playwright has no comparable
+  `cdc_`-style global.
 
 **See also:** [why setting `navigator.webdriver` to false is worse than leaving it alone](navigator-webdriver-explained.md), [the three levels a stealth tool can work at](playwright-stealth-levels.md), since where the state lives is a level-two decision, and [selenium-stealth's actual maintenance status](selenium-stealth-unmaintained.md), for the popular package that patches properties next to this one.
 

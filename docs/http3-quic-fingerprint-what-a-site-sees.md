@@ -209,12 +209,16 @@ separate and untouched by it.
 
 ## Sources
 
-- The QUIC transport-parameter model and initial-packet handshake as defined by the HTTP/3
-  and QUIC specifications, read from the standards rather than from a single implementation.
+- The QUIC transport-parameter model and initial-packet handshake as defined by
+  [RFC 9114 (HTTP/3)](https://datatracker.ietf.org/doc/html/rfc9114) and
+  [RFC 9000 (QUIC)](https://datatracker.ietf.org/doc/html/rfc9000), read from the standards
+  rather than from a single implementation, retrieved 2026-08-28.
 - This project's network-layer parity checks, which compare a session's negotiated
   protocol and handshake against a stock build of the same Firefox version.
-- The Web Performance `nextHopProtocol` value, a standard browser API used above to confirm
-  the negotiated protocol from inside the page.
+- The Web Performance
+  [`nextHopProtocol`](https://developer.mozilla.org/en-US/docs/Web/API/PerformanceResourceTiming/nextHopProtocol)
+  value, a standard browser API used above to confirm the negotiated protocol from inside
+  the page, retrieved 2026-08-28.
 
 **See also:** [the HTTP/2 fingerprint one layer down](http2-fingerprint-detection.md),
 [the JA3/JA4 TLS fingerprint below that](ja3-ja4-tls-fingerprint.md), and

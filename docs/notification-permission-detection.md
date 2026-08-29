@@ -220,12 +220,12 @@ the browser side; the IP and the behaviour are still yours to supply.
 
 ## Sources
 
-- The Notification API and the Permissions API as specified: the `"default"`/`"granted"`/
-  `"denied"` string and the `"prompt"`/`"granted"`/`"denied"` status, and the mapping
-  between them.
-- This project's own realness gates, which read permission state as one field among the
-  roughly four hundred cross-checked against a stock Firefox rather than as a standalone
-  pass.
+- The [Notification API](https://notifications.spec.whatwg.org/) and the
+  [Permissions API](https://www.w3.org/TR/permissions/) as specified: the
+  `"default"`/`"granted"`/`"denied"` string and the `"prompt"`/`"granted"`/`"denied"`
+  status, and the mapping between them.
+- This project's own realness gates, which read permission state as one field among many
+  cross-checked against a stock Firefox rather than as a standalone pass.
 
 **See also:** [how CreepJS decides you are lying](creepjs-explained.md) for the same
 truth-versus-report logic at scale, [resist fingerprinting the honest way](resist-fingerprinting.md)

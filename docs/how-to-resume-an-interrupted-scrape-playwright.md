@@ -265,6 +265,11 @@ persist the profile alongside the checkpoint.
   FingerprintJS visitor ID before and after a relaunch and confirming it matches.
 - This project's own debugging practice of pinning the identity across runs so a failure is
   replayable rather than a fresh random draw each time.
+- FingerprintJS's own open-source library, [`fingerprintjs/fingerprintjs`](https://github.com/fingerprintjs/fingerprintjs)
+  on GitHub, retrieved 2026-08-28, the visitor-ID check read in the verification example
+  above.
+- Playwright's own documentation, [`Page.wait_for_function()`](https://playwright.dev/python/docs/api/class-page),
+  retrieved 2026-08-28, used to poll for the visitor ID before reading it.
 
 **See also:** [retrying failed requests without restarting the run](how-to-retry-failed-requests-playwright.md),
 [persistent profiles on disk](persistent-profiles.md), and

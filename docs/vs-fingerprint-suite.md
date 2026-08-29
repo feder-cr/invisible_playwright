@@ -140,9 +140,10 @@ the same injection layer sourcing its values from a remote service instead.
 
 ## Sources
 
-- `fingerprint-suite`'s own repository and README, read directly, for its module
-  breakdown, its Bayesian-network generation approach, and its Playwright/Puppeteer
-  injection API.
+- [`apify/fingerprint-suite`](https://github.com/apify/fingerprint-suite), its own
+  repository and README, read directly, for its module breakdown, its
+  Bayesian-network generation approach, and its Playwright/Puppeteer injection API,
+  retrieved 2026-08-28.
 
 ---
 

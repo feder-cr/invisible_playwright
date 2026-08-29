@@ -237,7 +237,8 @@ is the exempted path.
   substitution, and the before/after verification on the released binary at a
   fixed seed.
 - The engine's own canvas fingerprinting protection, whose privileged-context
-  exemption this fix reuses rather than reinvents.
+  exemption this fix reuses rather than reinvents. Mozilla documents the
+  underlying system-principal check in the [resistFingerprinting implementation notes](https://firefox-source-docs.mozilla.org/toolkit/components/resistfingerprinting/resistfingerprinting/implementation.html), retrieved 2026-08-28.
 
 **See also:** [canvas fingerprint noise](canvas-fingerprint-noise.md) for what
 the substitution is protecting against, [canvas and WebGL cross-platform

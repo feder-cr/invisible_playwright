@@ -32,10 +32,13 @@ thread, which matters below.
 
 **[`deviceMemory`](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/deviceMemory)**
 is RAM in gibibytes, deliberately coarse. The
-[Device Memory specification](https://www.w3.org/TR/device-memory/) rounds to a small
-set of values, so you will see 0.5, 1, 2, 4 and 8, and 8 is the cap. A machine with
-64 GB reports 8. It is a Chromium API; Firefox does not implement it, which is itself a
-signal in the other direction if something claims Chrome and returns `undefined`.
+[Device Memory specification](https://www.w3.org/TR/device-memory/) rounds to the
+nearest power of two and clamps the result to bounds each browser sets itself, so you
+will see values like 0.5, 1, 2, 4 and 8. Chrome held that ceiling at 8 for years, so a
+16 GB laptop and a 64 GB workstation answered identically; a change in current desktop
+Chrome raises it to 16 or 32, so do not assume every high-memory machine still reads 8.
+It is a Chromium API; Firefox does not implement it, which is itself a signal in the
+other direction if something claims Chrome and returns `undefined`.
 
 **[`storage.estimate().quota`](https://developer.mozilla.org/en-US/docs/Web/API/StorageManager/estimate)**
 is how much the origin is allowed to store, and browsers derive it from free disk space. That makes it a rough, noisy proxy for the size of the
@@ -95,8 +98,10 @@ Aim for a machine somebody bought:
 
 - **Cores** 4, 8, 12 or 16. Two is a small VM. Anything above 32 is a workstation and
   should come with everything else that implies.
-- **Device memory** 4 or 8 for a modern desktop. Remember it is capped at 8, so 8 means
-  "8 or more" and is the common answer.
+- **Device memory** 4 or 8 for a modern desktop. Most Chrome installs still cap this at
+  8, so 8 remains the safe default; only go to 16 or 32 if the rest of the profile is
+  genuinely a high-end desktop, since most Chrome releases in the wild cannot report
+  those values at all.
 - **Quota** in the tens or low hundreds of gigabytes for a normal machine with a normal
   amount of free space. Suspiciously round or suspiciously enormous both stand out.
 - All three consistent with the GPU, the screen and the platform you claim.
@@ -136,8 +141,11 @@ the change survives being asked from a worker depends entirely on where you chan
 which do not implement it. If something claiming to be Chrome returns `undefined`, that
 is the contradiction rather than the value.
 
-**Why is `deviceMemory` 8 on a machine with 64 GB?** The specification caps it at 8 and
-rounds, deliberately, to reduce its value as an identifier.
+**Why is `deviceMemory` 8 on a machine with 64 GB?** Chrome rounds to a power of two and
+clamps the result, and for most of the API's life that ceiling sat at 8 regardless of
+real RAM, deliberately, to reduce its value as an identifier. Current desktop Chrome can
+clamp higher, to 16 or 32, so treat 8 as the long-standing common answer, not a hard
+limit.
 
 **Is `storage.estimate()` used for fingerprinting?** Yes. It approximates free disk
 space, which distinguishes a container from a personal machine quite well.
@@ -147,6 +155,25 @@ held stable. Rarity is the problem, not the number.
 
 **Does randomising these help?** Not if it happens per call. A machine whose core count
 changes between two reads is a stronger finding than any specific count.
+
+## Sources
+
+- MDN Web Docs, [`Navigator.hardwareConcurrency`](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/hardwareConcurrency),
+  retrieved 2026-08-28.
+- MDN Web Docs, [`Navigator.deviceMemory`](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/deviceMemory),
+  retrieved 2026-08-28.
+- W3C, [Device Memory specification](https://www.w3.org/TR/device-memory/), retrieved
+  2026-08-28, for the power-of-two rounding; the upper bound itself is left to each
+  browser, which is why it has moved.
+- Castle, [how navigator.deviceMemory can be used for fingerprinting and bot
+  detection](https://blog.castle.io/deep-dive-how-navigator-devicememory-can-be-used-for-fingerprinting-and-bot-detection/),
+  retrieved 2026-08-29, for the change that let current desktop Chrome report 16 or 32
+  instead of capping at 8.
+- MDN Web Docs, [`StorageManager.estimate()`](https://developer.mozilla.org/en-US/docs/Web/API/StorageManager/estimate),
+  retrieved 2026-08-28.
+- This project's own seeded-profile generation and fingerprint parity checks, for how
+  the three values are conditioned on each other and set at the engine level rather
+  than sampled independently.
 
 **See also:** [screen size and viewport tells](screen-size-headless-tells.md) and
 [Playwright in Docker](playwright-docker-detection.md), which are the same "what the

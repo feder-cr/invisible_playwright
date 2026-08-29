@@ -168,12 +168,13 @@ side channel in another place.
 
 ## Sources
 
-- Browser documentation on storage partitioning in Chromium, and WebKit's tracking
-  prevention write-ups, for the partitioning model and its history.
-- Published measurement work on evasion of partitioned storage, for the residual gaps
-  named above.
-- Playwright's context option for blocking service workers, and the stacks that set it by
-  default.
+- [Chrome for Developers' storage partitioning documentation](https://privacysandbox.google.com/3pcd/storage-partitioning),
+  and [WebKit's tracking prevention write-up](https://webkit.org/tracking-prevention/), for the
+  partitioning model and its history, retrieved 2026-08-28.
+- [Trackers Bounce Back: Measuring Evasion of Partitioned Storage in the Wild](https://arxiv.org/abs/2203.10188),
+  published measurement work on the residual gaps named above, retrieved 2026-08-28.
+- Playwright's [context option for blocking service workers](https://playwright.dev/python/docs/api/class-browser#browser-new-context-option-service-workers),
+  and the stacks that set it by default, retrieved 2026-08-28.
 
 ---
 

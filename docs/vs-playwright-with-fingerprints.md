@@ -139,9 +139,10 @@ for why an engine version pin is worth checking rather than assuming is harmless
 
 ## Sources
 
-- `bablosoft/playwright-with-fingerprints`'s own repository and README, read
-  directly, for the platform restriction, the pinned engine version, the beta
-  status, and the remote-service dependency.
+- [`bablosoft/playwright-with-fingerprints`](https://github.com/bablosoft/playwright-with-fingerprints),
+  its own repository and README, read directly, for the platform restriction, the
+  pinned engine version, the beta status, and the remote-service dependency,
+  retrieved 2026-08-29.
 
 ---
 

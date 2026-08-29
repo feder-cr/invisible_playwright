@@ -224,9 +224,12 @@ still be blocked.
 
 ## Sources
 
-- The Splash repository, read at its own source: default-branch last push dated
-  2024-08-02, roughly 4,200 stars, not archived, described as a scriptable browser as a
-  service rendering with the Qt5 toolkit.
+- The Splash repository, read at its own source rather than assumed from its continued
+  recommendation in older tutorials: [scrapinghub/splash](https://github.com/scrapinghub/splash),
+  retrieved 2026-08-28. Default-branch last push dated 2024-08-02, roughly 4,200 stars, not
+  archived, described as a scriptable browser as a service rendering with the Qt5 toolkit.
+- QtWebKit itself, the WebKit port for the Qt toolkit that Splash renders with, read at its
+  own source: [qt/qtwebkit](https://github.com/qt/qtwebkit), retrieved 2026-08-28.
 - This project's own testing notes on why an engine-level surface cannot be reached by a
   header or a page-level override, and why a stable value read twice is the cheapest
   tampering check.

@@ -198,8 +198,9 @@ still loses.
 ## Sources
 
 - The Web Speech API `SpeechSynthesis.getVoices()` and the `SpeechSynthesisVoice`
-  interface (`name`, `lang`, `default`, `localService`), read from the public
-  specification and Firefox's implementation behaviour.
+  interface (`name`, `lang`, `default`, `localService`), read from the
+  [public specification](https://webaudio.github.io/web-speech-api/) and Firefox's
+  implementation behaviour.
 - This project's platform-consistency gates, which compare enumerated OS surfaces
   (voices, fonts, audio) against the claimed platform rather than reading any one
   in isolation.

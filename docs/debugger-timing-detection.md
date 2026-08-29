@@ -162,6 +162,20 @@ For the third one the absolute number means nothing. Run it in your automated br
 and in a normal browser on the same machine and compare the ratio. A large gap is the
 JIT being off, and no property-level fix addresses it.
 
+## Conclusion
+
+An attached debugger is not a value on the page. It is a change in how the engine
+behaves. That change produced four separate leaks: the timing cost of debug mode, stack
+frames and eval labels naming the automation layer, a garbage-collection and allocation
+side channel left active even with debug mode off, and a helper that touched the page's
+own prototypes before the page existed.
+
+A related leak in the same file made every evaluated script announce a user gesture
+nobody made. The fourth was the one that mattered: a controlled experiment showed it was
+the difference between being blocked and not, with everything else held constant. None
+of this is readable as a property. It shows up only when you time the same code against
+a stock browser and read what the stack says about itself.
+
 ## Short answers to the questions that lead here
 
 **Why does a fingerprinting service report devtools when nothing is open?** Because an
@@ -186,6 +200,23 @@ page's world before the page has the same class of problem.
 **How would I have found this myself?** By comparing against a stock browser on the same
 machine, on timing and on stack contents, rather than on values. Every one of these was
 invisible in a property dump.
+
+## Sources
+
+- This project's own comparison against a stock Firefox on the same machine, on timing
+  and on stack contents, which is how all four leaks on this page were found and closed.
+- SpiderMonkey source: [`Realm::setIsDebuggee()`](https://searchfox.org/mozilla-central/source/js/src/vm/Realm.cpp)
+  and [`Realm::hasDebuggers()`](https://searchfox.org/mozilla-central/source/js/src/vm/Realm.h),
+  retrieved 2026-08-28, for the debuggee flag fix one clears and the debugger-list
+  check fix three found still set.
+- Mozilla's [`Debugger.Frame.prototype.eval` reference](https://firefox-source-docs.mozilla.org/devtools-user/debugger-api/debugger.frame/index.html)
+  and the [`Debugger.Source` introduction-type list](https://searchfox.org/mozilla-central/source/js/src/doc/Debugger/Debugger.Source.md),
+  retrieved 2026-08-28, for the `debugger eval code` label and the `debugger eval`
+  introduction type described in fix two.
+- [MDN: `Error.stack`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Error/stack),
+  for the stack-trace leaks described in fix two.
+- [MDN: the `UserActivation` interface](https://developer.mozilla.org/en-US/docs/Web/API/UserActivation),
+  for `isActive` and `hasBeenActive`, the properties the injected user gesture set.
 
 **See also:** [Function.prototype.toString and the native code check](tostring-native-code-detection.md),
 for the property-level half of the same story, and

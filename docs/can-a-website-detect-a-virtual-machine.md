@@ -25,13 +25,14 @@ and the parts that a browser fingerprint does not and cannot touch.
 A page runs JavaScript. JavaScript can read the values the browser chooses to expose,
 and nothing below that line. It cannot read the CPUID leaf that says "hypervisor
 present", it cannot query the BIOS vendor string, it cannot see the virtual disk
-controller. Those are the classic VM tells, and they belong to native malware analysis,
-not to a web page.
+controller. Those are the classic VM tells that a tool like
+[Pafish](https://github.com/a0rtega/pafish) checks for, and they belong to native
+malware analysis, not to a web page.
 
 What a page can do is infer. Every value below is individually plausible and, taken
 together, describes a machine. A physical desktop and a headless cloud instance answer
-these questions differently, and a detector that has scored a few million real browsers
-knows what the physical desktop looks like.
+these questions differently, and a detector that has scored a large number of real
+browsers knows what the physical desktop looks like.
 
 - The GPU vendor and renderer string.
 - The number of logical CPU cores.
@@ -54,7 +55,9 @@ says so in plain text: a basic or generic renderer name, or the well-known softw
 rasterizer strings. A real desktop reports a specific GPU model from a specific vendor.
 This is the single loudest VM tell
 in the browser, because it is a string you can read directly rather than a statistic
-you have to accumulate. Worse, the string and the pixels can disagree: a renderer that
+you have to accumulate.
+
+Worse, the string and the pixels can disagree: a renderer that
 names real hardware while a software path actually draws the frame is
 [a mismatch you cannot paper over with a property override](renderer-string-vs-render.md).
 The full surface is in [WebGL renderer strings](webgl-renderer-strings.md).
@@ -97,9 +100,11 @@ over a headless engine.
 For the VM signals specifically, the build derives one coherent real-hardware persona
 from a seed and overrides the browser-visible values to match it: the WebGL vendor and
 renderer name a real GPU (and the pixels are drawn to agree with the string, not just
-the string), `hardwareConcurrency` and device memory take values a real desktop
-reports, the `AudioContext` presents a real device's output characteristics, and the
-screen metrics describe a physical display. Every field is drawn from the same seed, so
+the string), `hardwareConcurrency` takes a value a real desktop reports, the
+`AudioContext` presents a real device's output characteristics, and the screen metrics
+describe a physical display. `navigator.deviceMemory` stays undefined, because that is
+what a real Firefox reports too: the API is Chromium-only, and inventing a number for it
+would be the tell, not the fix. Every field that is set is drawn from the same seed, so
 they agree with one another rather than being individually plausible and jointly
 contradictory, which is the failure mode a VM score is built to catch.
 
@@ -109,7 +114,7 @@ loading a page that scores your environment - is ordinary Playwright after that:
 ```python
 from invisible_playwright import InvisiblePlaywright
 
-# same seed -> same GPU, cores, memory, audio and screen every run
+# same seed -> same GPU, cores, audio and screen every run
 with InvisiblePlaywright(seed=42) as browser:
     page = browser.new_page()
     page.goto("https://example.com")
@@ -120,7 +125,7 @@ with InvisiblePlaywright(seed=42) as browser:
         return {
             renderer: dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : null,
             cores: navigator.hardwareConcurrency,
-            memory: navigator.deviceMemory,
+            memory: navigator.deviceMemory,  // undefined on Firefox; the API is Chromium-only
             sampleRate: new (window.AudioContext || window.webkitAudioContext)().sampleRate,
             screen: [screen.width, screen.height, window.devicePixelRatio],
         };
@@ -128,9 +133,10 @@ with InvisiblePlaywright(seed=42) as browser:
     print(report)
 ```
 
-Run that inside the build and the renderer names a real GPU, the core and memory
-counts sit in the range real desktops report, the sample rate is a real device's, and
-the screen looks like a monitor. Run it in a stock headless browser on the same cloud
+Run that inside the build and the renderer names a real GPU, the core count sits in the
+range real desktops report, `memory` comes back `None` exactly as it does on any real
+Firefox, the sample rate is a real device's, and the screen looks like a monitor. Run it
+in a stock headless browser on the same cloud
 instance and you will typically see a software renderer, a low core count and screen
 metrics that describe a framebuffer. That difference is the VM score, and it is the
 part a browser can control.
@@ -187,9 +193,10 @@ string. It is a value you can read in plain text rather than a statistic you hav
 accumulate, so it stands out immediately.
 
 **Does invisible_playwright hide that I am on a cloud server?** It fixes the
-browser-visible signals - GPU, cores, memory, audio, screen - to one coherent real
-desktop persona. It does not change your IP, which is often the actual reason a cloud
-session gets flagged.
+browser-visible signals it can change - GPU, cores, audio, screen - to one coherent real
+desktop persona, and leaves `deviceMemory` undefined, which already matches real
+Firefox. It does not change your IP, which is often the actual reason a cloud session
+gets flagged.
 
 **Can a website detect a VM through timing?** Some detectors time operations that cost
 more under virtualization. That is a property of the CPU you run on, not a browser
@@ -205,9 +212,16 @@ IP, timing floor and behaviour are still yours to get right.
 
 ## Sources
 
-- The public fingerprint suites this project tests against, read for which environment
-  values they collect and how they weight them - GPU renderer, hardwareConcurrency,
-  deviceMemory, AudioContext output and screen metrics.
+- The browser API references for each browser-visible value a VM score reads: the
+  [WebGL renderer string](https://developer.mozilla.org/en-US/docs/Web/API/WEBGL_debug_renderer_info),
+  [`hardwareConcurrency`](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/hardwareConcurrency),
+  [`deviceMemory`](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/deviceMemory),
+  [`AudioContext`](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API) output, and
+  [`devicePixelRatio`](https://developer.mozilla.org/en-US/docs/Web/API/Window/devicePixelRatio)
+  for screen metrics, retrieved 2026-08-29.
+- [Pafish](https://github.com/a0rtega/pafish), the open-source reference for the
+  native-side CPUID, BIOS and disk-controller checks a web page cannot reach,
+  retrieved 2026-08-29.
 - This project's release gates, which compare each of those fields against a stock
   Firefox on the same machine rather than reading a verdict.
 

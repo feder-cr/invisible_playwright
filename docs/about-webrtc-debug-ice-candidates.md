@@ -54,7 +54,8 @@ gets a collapsible block; expand it and the two things worth reading are:
 
 You are reading for three things: that a host candidate exists and is masked, that a
 server-reflexive candidate exists and points at the exit you expect, and that the
-timeline looks like a browser talking to a STUN server rather than fabricating an
+timeline looks like a browser talking to a
+[STUN](https://datatracker.ietf.org/doc/html/rfc8489) server rather than fabricating an
 answer instantly.
 
 ## The three states a leak site collapses into one
@@ -84,8 +85,8 @@ host` line, WebRTC is handing out your internal network address. A stock browser
 not do this; it masks it. Seeing it means a masking setting is off, and you are now
 more identifiable than a default install.
 
-**Correct host.** The same candidate with the address replaced by a per-session mDNS
-name:
+**Correct host.** The same candidate with the address replaced by a per-session
+[mDNS](https://datatracker.ietf.org/doc/html/rfc6762) name:
 
 ```text
 candidate:0 1 UDP 2122252543 3f1c9a7e-....local 51894 typ host
@@ -145,9 +146,16 @@ PROXY = {"server": "socks5://gate.example.com:1080", "username": "u", "password"
 
 with InvisiblePlaywright(seed=42, proxy=PROXY) as browser:
     page = browser.new_page()
-    # A peer connection has to exist before about:webrtc has anything to show.
+    # Gathering only starts after setLocalDescription, not at construction,
+    # so about:webrtc has nothing to show until the offer is set.
     page.goto("https://example.com")
-    page.evaluate("new RTCPeerConnection().createDataChannel('x')")
+    page.evaluate("""
+        async () => {
+            const pc = new RTCPeerConnection();
+            pc.createDataChannel('x');
+            await pc.setLocalDescription(await pc.createOffer());
+        }
+    """)
 
     inspector = browser.new_page()
     inspector.goto("about:webrtc")
@@ -252,8 +260,11 @@ not neutral; it is a shape no ordinary browser has, so assert presence, not abse
 
 ## Sources
 
-- Firefox's built-in `about:webrtc` and `about:config` pages, read directly rather
-  than through a third-party summary.
+- Mozilla's Firefox Source Docs, [Debugging WebRTC Calls](https://firefox-source-docs.mozilla.org/contributing/debugging/debugging_webrtc_calls.html),
+  retrieved 2026-08-28, for `about:webrtc` itself, read directly rather than through a
+  third-party summary.
+- Mozilla Support, [Configuration Editor for Firefox](https://support.mozilla.org/en-US/kb/about-config-editor-firefox),
+  retrieved 2026-08-28, for `about:config`, read the same way.
 - This project's WebRTC release gates and their per-event diagnostics, including the
   incident where a negative-only check passed a fully blocked WebRTC section behind a
   proxy, and the host-obfuscation fix that moved the host line from a raw LAN IP to a

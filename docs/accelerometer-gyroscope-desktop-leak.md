@@ -12,8 +12,9 @@ nav_order: 32
 Short version: on a real desktop Firefox they do not leak, because there is
 nothing to leak. The generic Sensor APIs that expose an accelerometer or a
 gyroscope reading are a Chromium feature, and the older DeviceOrientation and
-DeviceMotion events stay silent on a machine with no motion hardware. So the
-interesting question is not "how do I hide my sensors" - it is "am I sure my
+DeviceMotion events stay silent on a machine with no motion hardware.
+
+So the interesting question is not "how do I hide my sensors" - it is "am I sure my
 automated desktop is not inventing motion data a real desktop would never
 produce". A desktop that emits accelerometer or gyroscope readings is a
 mobile-or-fake tell, and it contradicts the platform string sitting right next
@@ -62,7 +63,9 @@ Detection on this surface is a cross-check, the same shape as every other
 consistency check. A page reads `navigator.platform`, `navigator.userAgent` and
 `navigator.oscpu`, decides you are claiming a Windows desktop, and then asks a
 question a Windows desktop has a known answer to: does `window.DeviceMotionEvent`
-ever produce a non-null reading? A desktop says no. If yours says yes - if some
+ever produce a non-null reading? A desktop says no.
+
+If yours says yes - if some
 well-meaning spoof layer decided to synthesize plausible-looking motion so the
 sensor "would not look dead" - you have just told the page you are a phone
 wearing a desktop user agent, which is a contradiction no real device produces.
@@ -71,7 +74,9 @@ This is why the honest move is silence, not simulation. The instinct to fill
 every surface with realistic data is exactly wrong here: on a desktop the
 realistic data is no data. The values that have to agree are your platform, your
 oscpu, your touch surface and your motion surface, and they agree by all
-pointing at the same kind of machine. If you want the platform side of that
+pointing at the same kind of machine.
+
+If you want the platform side of that
 in depth, see
 [keeping navigator.platform and oscpu consistent](navigator-platform-oscpu-consistency.md);
 the closely related touch side, where a desktop must report zero touch points,
@@ -86,7 +91,9 @@ correct. A mobile user agent with no motion sensor is the tell.
 
 invisible_playwright is a real Firefox patched at the C++ level and driven by
 stock Playwright. On the sensor surface its job is the easy kind: report exactly
-what a real Windows Firefox reports, which is silence. The generic Sensor
+what a real Windows Firefox reports, which is silence.
+
+The generic Sensor
 constructors stay absent, the DeviceMotion and DeviceOrientation handlers exist
 but never fire, and nothing invents a reading to fill the gap. Because the whole
 identity is seed-derived, the platform string, the oscpu string, the touch
@@ -104,9 +111,10 @@ with InvisiblePlaywright(seed=42) as browser:
     page = browser.new_page()
     page.goto("https://example.com")
 
-    report = page.evaluate("""() => {
+    report = page.evaluate("""async () => {
         const motionFired = [];
         window.addEventListener('devicemotion', e => motionFired.push(e), { once: true });
+        await new Promise(r => setTimeout(r, 300));
         return {
             platform: navigator.platform,
             hasAccelerometerCtor: typeof Accelerometer !== 'undefined',
@@ -141,8 +149,10 @@ Anything that differs between the automated browser and the stock one, other
 than the exit address, is a candidate worth explaining.
 
 Then extend the same probe to the neighbouring surfaces that have to tell the
-same story - platform, oscpu, `maxTouchpoints`, screen. A detector reads them
-together, so you should too. The method for turning that comparison into
+same story - platform, oscpu, `maxTouchPoints`, screen. A detector reads them
+together, so you should too.
+
+The method for turning that comparison into
 something trustworthy, including why one green run is not a pass and why an empty
 result is a failure rather than a clean sheet, is in
 [how to test bot detection without a false pass](how-to-test-bot-detection.md).
@@ -161,11 +171,14 @@ narrow win, and it is worth being blunt about the boundary.
 Reporting the correct silence does nothing for the parts of a session that are
 not browser properties at all. It does not clean your **IP reputation** - a
 perfectly consistent desktop on a datacenter or already-flagged address still
-loses on the address. It does not manage **per-account quotas or rate limits** -
+loses on the address.
+
+It does not manage **per-account quotas or rate limits** -
 those are counted server-side regardless of how real the browser looks. And it
 does not shape your **behaviour or timing** - a pointer that teleports, a form
 filled in eighty milliseconds, or an agent that pauses in a shape that looks
 like model latency will be flagged no matter how honest the sensor readings are.
+
 Those are yours to supply: a clean residential exit and human pacing. If your
 fingerprint is clean and you are still blocked, that separation is the whole
 subject of [why you can be blocked with a clean fingerprint](why-blocked-with-a-clean-fingerprint.md).
@@ -180,8 +193,9 @@ Accelerometer and gyroscope do not leak on desktop Firefox because desktop
 Firefox has nothing to report: the generic Sensor APIs are Chromium-only, and
 the motion events exist as handlers that never fire. The mistake to avoid is
 over-correction - synthesizing motion data so the surface "does not look dead"
-turns a correct silence into a contradiction with your platform string. The
-patched build reports the same silence a real Windows Firefox does, keeps it
+turns a correct silence into a contradiction with your platform string.
+
+The patched build reports the same silence a real Windows Firefox does, keeps it
 coherent with platform, oscpu and the touch surface because they all derive from
 one seed, and leaves the parts it cannot touch - address, quotas, behaviour -
 clearly labelled as yours.
@@ -213,16 +227,19 @@ limits, or behaviour and timing, which you still have to supply.
 
 ## Sources
 
-- The generic Sensor APIs (`Accelerometer`, `Gyroscope` and family) as an
-  engine feature present in Chromium and not in Firefox, read from each engine's
-  own behaviour rather than from a summary.
-- The DeviceOrientation and DeviceMotion event model, and its behaviour on
-  hardware with no motion sensor.
+- W3C, [Generic Sensor API](https://www.w3.org/TR/generic-sensor/), retrieved
+  2026-08-28, for the base framework that `Accelerometer`, `Gyroscope` and the
+  rest of that family extend as concrete sensor interfaces, an engine feature
+  present in Chromium and not in Firefox, read from each engine's own
+  behaviour rather than from a summary.
+- W3C, [Device Orientation and Motion](https://www.w3.org/TR/orientation-event/),
+  retrieved 2026-08-28, for the DeviceOrientation and DeviceMotion event model
+  and its attribute definitions.
 - This project's release gates, which compare the patched build's surfaces field
   by field against a stock desktop Firefox on the same machine.
 
 **See also:** [navigator.platform and oscpu consistency](navigator-platform-oscpu-consistency.md),
-[maxTouchpoints and pointer type](navigator-maxtouchpoints-pointer.md), and
+[maxTouchPoints and pointer type](navigator-maxtouchpoints-pointer.md), and
 [why you can be blocked with a clean fingerprint](why-blocked-with-a-clean-fingerprint.md).
 
 ---

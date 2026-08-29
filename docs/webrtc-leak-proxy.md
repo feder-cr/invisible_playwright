@@ -259,6 +259,27 @@ the actual difference between a VPN and a proxy here.
 full candidate set. A leak test that reports "no leak" over a browser with WebRTC
 disabled is reporting the absence of a feature, not the presence of protection.
 
+## Sources
+
+- This project's WebRTC release gate and the two failures described above: the
+  negative-only assertion that passed a dead WebRTC, and the passing test that ran a
+  configuration nobody's default session actually shipped with.
+- A read of the current Firefox 151 WebRTC gathering code confirming that
+  `media.peerconnection.ice.disableIPv6` is honored only for DNS resolution and TCP
+  sockets, never on the ICE candidate gathering path.
+- [RFC 8828, WebRTC IP Address Handling Requirements](https://www.rfc-editor.org/rfc/rfc8828),
+  retrieved 2026-08-28, which defines the default-route restricted mode a page without
+  camera or microphone permission triggers.
+- [RFC 8445, Interactive Connectivity Establishment (ICE)](https://www.rfc-editor.org/rfc/rfc8445#section-5.1.2),
+  retrieved 2026-08-28, section 5.1.2, which defines the candidate priority formula.
+- [Chrome for Developers, `chrome.privacy` API reference](https://developer.chrome.com/docs/extensions/reference/api/privacy),
+  retrieved 2026-08-28, documenting the `webRTCIPHandlingPolicy` values, including
+  `disable_non_proxied_udp`, behind the Chromium flag.
+- [BrowserLeaks, WebRTC test page](https://browserleaks.com/webrtc), retrieved
+  2026-08-28, for checking the full ICE candidate set through a live proxy.
+- [CreepJS](https://abrahamjuliot.github.io/creepjs/), retrieved 2026-08-28, for what a
+  real detector extracts from the candidate set.
+
 **See also:** [when the timezone does not match the proxy](timezone-proxy-mismatch.md),
 the other half of "the browser and the network disagree",
 [what privacy.resistFingerprinting really does](resist-fingerprinting.md),

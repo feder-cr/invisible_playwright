@@ -209,6 +209,28 @@ itself a recognisable launch configuration.
 cheapest check, not the important one. Everything else on your machine is still
 answering honestly.
 
+## Sources
+
+- [MDN, `Navigator.webdriver`](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/webdriver),
+  retrieved 2026-08-28, for the specified behavior discussed throughout this page.
+- The [WebDriver specification](https://www.w3.org/TR/webdriver2/#interface), retrieved
+  2026-08-28, whose interface section defines the webdriver-active flag and requires a
+  conforming user agent to expose `navigator.webdriver` as `true` under automation control.
+- [MDN, `Function.prototype.toString()`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function/toString),
+  retrieved 2026-08-28, for the native-code string a builtin getter returns.
+- [CreepJS](https://github.com/abrahamjuliot/creepjs), retrieved 2026-08-28, one of the
+  public fingerprinting suites named on this page.
+- [BotD](https://github.com/fingerprintjs/BotD), retrieved 2026-08-28, another of the
+  named public suites.
+- [bot.sannysoft.com](https://bot.sannysoft.com/), retrieved 2026-08-28, the older test
+  page named alongside the others.
+- [fpscanner](https://github.com/antoinevastel/fpscanner), retrieved 2026-08-28, the
+  fourth suite named on this page.
+- [Patchright](https://github.com/Kaliiiiiiiiii-Vinyzu/patchright), retrieved 2026-08-28,
+  the named example of a driver-level fix on the Chromium side.
+- [Camoufox](https://github.com/daijro/camoufox), retrieved 2026-08-28, the named example
+  of an engine-level Firefox patch this page contrasts with `invisible_playwright`.
+
 **See also:** [the three levels a stealth tool can work at](playwright-stealth-levels.md), [what CreepJS does to catch an override](creepjs-explained.md), [the ChromeDriver `cdc_` variable](cdc-variable-explained.md) for the same problem in a different place, and [whether stock Playwright sets navigator.webdriver to true](does-playwright-set-navigator-webdriver.md).
 
 ---

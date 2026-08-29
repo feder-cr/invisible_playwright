@@ -28,14 +28,17 @@ a page can read. The fingerprint layer is another: the values the browser report
 for its GPU, its canvas output, its fonts and its audio pipeline, and whether those
 values agree with each other and with the platform you claim to be.
 
-pydoll works at the driver layer. It removes the intermediary binary and talks CDP
-straight to Chrome, so the tells that came from that binary are simply not there to
-find. That is a real and durable fix for a real class of problem.
+pydoll's own engineered fix lives at the driver layer. It removes the intermediary
+binary and talks CDP straight to Chrome, so the tells that came from that binary are
+simply not there to find. That is a real and durable fix for a real class of
+problem, and pydoll layers a fingerprint-injection call on top of it, which a later
+section covers on its own terms.
 
-invisible_playwright works at the fingerprint layer. The engine is a genuine Firefox
-build, so its TLS handshake and JavaScript engine already read as Firefox, and the
-values it reports are generated together from a seed so they do not contradict one
-another. Different layer, different failure it addresses.
+invisible_playwright's own engineered fix lives at the fingerprint layer. The engine
+is a genuine Firefox build, so its TLS handshake and JavaScript engine already read
+as Firefox, and the values it reports are generated together from a seed so they do
+not contradict one another. Each tool's own engineering sits at a different layer,
+which is the failure each one solves without asking anything of you first.
 
 Neither of these is a superset of the other, which is the whole reason a comparison
 is worth writing instead of just picking the newer tool.
@@ -59,24 +62,30 @@ than through Playwright.
 What this buys you is a clean automation layer. The `navigator.webdriver` flag and
 its neighbours are [mostly solved and mostly not your problem in
 2026](navigator-webdriver-explained.md) precisely because tools like this one remove
-them at the root. What it does not touch is the fingerprint layer below it.
+them at the root. That specific move does not by itself touch the fingerprint layer
+below it. pydoll addresses that layer too, through a separate call the next section
+covers.
 
 ## What a seeded Firefox carries: a fingerprint that agrees with itself
 
-pydoll is Chrome-based and does not spoof the rendering-layer fingerprint. That is
-not a criticism, it is a scope statement: the GPU string Chrome reports, the canvas
-it draws, the fonts it enumerates and the audio pipeline it exposes are whatever the
-underlying machine produces. On a real desktop with a real GPU that is fine. On a
-headless server it is often exactly what gives the session away, because a software
-renderer or an empty font list says "datacenter" no matter how clean the driver
-layer is.
+pydoll is Chrome-based, and it does not leave the rendering-layer fingerprint
+untouched. Its own `apply_fingerprint()` call overrides the User-Agent and Client
+Hints, `navigator`, WebGL, canvas, screen, fonts, timezone and locale together, but
+pydoll's own documentation says plainly that it does not generate or ship the
+profile behind that call: you copy a sample file and adapt every field to your own
+machine, GPU and IP by hand. On one real desktop where you know your own hardware,
+that adaptation is a cost you pay once. On a headless server, or across a fleet of
+them, hand-adapting a profile per box is the part that does not scale, and pydoll's
+own docs warn about exactly that failure mode: getting one layer right while another
+contradicts it is worse than an unmodified browser.
 
-invisible_playwright generates those surfaces together from one seed. The canvas
-hash, the WebGL renderer string and the font metrics are drawn as one coherent
-identity, so they agree with each other rather than each being individually
-plausible and jointly contradictory. That mutual consistency is what a tampering
-check like CreepJS actually grades, and it is a harder property to fake one field at
-a time than it looks.
+invisible_playwright generates those same surfaces together from one seed, with no
+profile file for you to copy or adjust. The canvas hash, the WebGL renderer string
+and the font metrics are drawn as one coherent identity by the tool itself, so they
+agree with each other rather than depending on whoever assembled the profile getting
+every field right. That mutual consistency is what a tampering check like CreepJS
+actually grades, and it is a harder property to hold one field at a time than it
+looks, generated or hand-built.
 
 One subtlety worth naming, because it is the most common way a spoof at this layer
 still fails: a renderer string can claim a real GPU while the pixels are drawn by a
@@ -141,20 +150,22 @@ pip install invisible-playwright
 ```
 
 If your project is committed to Chrome and to an async Python API of its own, and
-your machines have real GPUs so the fingerprint layer is not your problem, pydoll's
-driverless CDP approach is a clean fit. If your problem is that the fingerprint layer
-gives you away on headless infrastructure, or you already have Playwright code you do
-not want to rewrite, an engine that carries a coherent seeded identity is the layer
-you are short on. Some people run a CDP-native driver and a separate fingerprint
-solution together for exactly this reason; here the engine is the fingerprint
-solution.
+your machines have real GPUs so hand-adapting one fingerprint profile is a cost you
+pay once, pydoll's driverless CDP approach plus its own injection call is a clean
+fit. If your problem is that hand-building a profile per headless box does not
+scale, or you already have Playwright code you do not want to rewrite, an engine
+that generates a coherent seeded identity itself is the layer you are short on.
+pydoll gives you the CDP connection and the injection point; here the engine also
+generates what goes through it.
 
 ## How to choose
 
 - **Driver tells are your problem and you are on Chrome with real hardware?** pydoll
   removes the driver binary cleanly and gives you an async CDP API.
-- **Fingerprint layer gives you away on servers?** A seeded Firefox keeps canvas,
-  WebGL and fonts mutually consistent, which is the property a tampering check grades.
+- **Fingerprint layer gives you away on servers?** A seeded Firefox generates
+  canvas, WebGL and font values together so they stay mutually consistent by
+  construction; pydoll's own injection call expects you to supply and adapt that
+  profile yourself.
 - **Have existing Playwright code?** invisible_playwright is a two-line swap; pydoll
   is a different API to adopt.
 - **Need Firefox specifically, or a Firefox TLS handshake?** pydoll is Chrome-based;
@@ -166,25 +177,32 @@ solution.
 
 pydoll and invisible_playwright are not the same bet. pydoll removes the driver
 layer by speaking CDP with no binary, which is a genuine fix for the tells that
-binary left behind. invisible_playwright ships a real Firefox whose fingerprint is
-generated coherently from a seed, which is a fix for a layer pydoll does not claim to
-touch. Pick the one that matches the layer you are actually failing at, and remember
-that both leave your IP reputation and your behaviour exactly where they were.
+binary left behind, and its own injection call reaches the fingerprint layer too, on
+condition that you supply the profile. invisible_playwright ships a real Firefox
+whose fingerprint is generated coherently from a seed, with no profile left for you
+to build. Pick the one that matches the work you would rather the tool do for you,
+and remember that both leave your IP reputation and your behaviour exactly where
+they were.
 
 ## Short answers to the questions that lead here
 
 **Is pydoll undetectable?** No tool is, and pydoll does not claim to be. It removes
 the driver-layer tells by dropping the chromedriver binary and speaking CDP directly,
-which helps with one category and leaves the fingerprint, IP and behaviour layers to
-you.
+and its own injection call reaches the fingerprint layer too; what it leaves to you
+is the profile behind that call, plus IP and behaviour, which no injection call
+touches.
 
-**Does pydoll spoof the browser fingerprint?** No. It is Chrome-based and reports
-whatever the underlying machine produces for GPU, canvas, fonts and audio. That is
-fine on real hardware and often the tell on a headless server.
+**Does pydoll spoof the browser fingerprint?** It can. Its `apply_fingerprint()` call
+overrides GPU, canvas, fonts and more, but pydoll's own documentation says it does
+not generate or ship the profile behind that call, so you supply and adapt the
+values yourself. That is a one-time cost on a single real machine and a recurring
+one across a headless fleet.
 
 **What does invisible_playwright do that pydoll does not?** It generates canvas,
-WebGL renderer and font metrics together from one seed so they stay mutually
-consistent, and it runs on a real Firefox whose TLS handshake reads as Firefox.
+WebGL renderer and font metrics together from one seed with no profile for you to
+hand-adapt, and it runs on a real Firefox whose TLS handshake reads as Firefox.
+pydoll's own fingerprint call still needs a profile you build and match to the box
+yourself.
 
 **Will either one fix my IP getting blocked?** No. Neither changes your exit
 address. A clean browser on a datacenter IP is still on a datacenter IP, so pair
@@ -199,9 +217,12 @@ of writing; check its own repository for the current state before you depend on 
 
 ## Sources
 
-- pydoll's own repository documentation, for its async CDP-direct architecture, its
-  lack of a chromedriver or WebDriver binary, and its own API surface. Read from the
-  project's own source rather than its rendered summary.
+- [pydoll's own GitHub documentation](https://github.com/autoscrape-labs/pydoll),
+  retrieved 2026-08-29, for its async CDP-direct architecture and its lack of a
+  chromedriver or WebDriver binary, and its [fingerprint-injection
+  reference](https://pydoll.tech/docs/stealth/fingerprint-injection/), retrieved
+  2026-08-29, for the `apply_fingerprint()` call and its own statement that it does
+  not generate or ship fingerprint profiles.
 - This project's own [cdc-variable-explained.md](cdc-variable-explained.md) and
   [renderer-string-vs-render.md](renderer-string-vs-render.md) for the driver-tell
   and fingerprint-coherence mechanisms described above.

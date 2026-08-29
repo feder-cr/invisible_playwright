@@ -94,8 +94,9 @@ Two things, and they point in opposite directions from what people assume.
 **An ID that changes between runs of your own tool is a signal, not safety.** If your
 setup produces a different visitor ID on every launch of the same configuration, some
 component is being randomised per call, not per identity. Real machines do not
-do that. A tool adding canvas noise on every read, instead of deriving stable noise
-from a fixed seed, produces exactly this and is detectable by the instability itself.
+do that. [A tool adding canvas noise on every read](canvas-fingerprint-noise.md), instead
+of deriving stable noise from a fixed seed, produces exactly this and is detectable by
+the instability itself.
 
 **An ID that is stable per identity and different per identity is the target.** Not a
 stable ID across all your sessions, which is one machine doing everything, and not a
@@ -148,6 +149,21 @@ break the open-source ID.
 **Does canvas noise help?** Only if it is stable per identity. Noise added per call
 makes two reads in one session disagree, which is the cheapest tampering check there
 is.
+
+## Sources
+
+- FingerprintJS's own open-source library, [`fingerprintjs/fingerprintjs`](https://github.com/fingerprintjs/fingerprintjs)
+  on GitHub, read 2026-07-27, for `hashComponents`, the component list in `src/sources/`,
+  and `src/agent.ts`.
+- MDN Web Docs, [`forced-colors`](https://developer.mozilla.org/en-US/docs/Web/CSS/@media/forced-colors),
+  retrieved 2026-08-28.
+- MDN Web Docs, [`prefers-reduced-motion`](https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-reduced-motion),
+  retrieved 2026-08-28.
+- Fingerprint's own product page, [Fingerprint Pro](https://fingerprint.com/products/fingerprint-pro/),
+  retrieved 2026-08-28, for what the commercial product adds over the open-source library.
+- This project's own seed-to-identity testing: running the open-source library twice
+  against the same seed and confirming the visitor ID matches, then changing the seed
+  and confirming it does not.
 
 **See also:** [which fingerprint fields can be pinned](pinning.md), if you want
 specific components held still while the rest stays seed-derived,

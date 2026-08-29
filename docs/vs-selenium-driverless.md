@@ -119,8 +119,8 @@ Neither approach touches three things, and pretending otherwise would be the fas
 get blocked while feeling safe.
 
 - **Egress-IP reputation.** A coherent browser on a datacenter IP is still on a datacenter
-  IP. A patched engine does not change your address, and roughly nine in ten cheap proxies
-  are already on block lists before you send a single request. You supply a clean exit.
+  IP. A patched engine does not change your address, and a cheap proxy is often already on
+  a block list before you send a single request. You supply a clean exit.
 - **Per-account quotas and rate limits.** These are counted server-side against your
   account and your address, not read from the browser. No fingerprint work moves them.
 - **Behaviour and timing.** A pointer that teleports, keystrokes at a metronome interval, a
@@ -172,8 +172,9 @@ is what detectors actually check.
 
 ## Sources
 
-- selenium-driverless project documentation and source, read for the CDP-direct connection
-  and Selenium-style API described above, rather than from a third-party summary.
+- [selenium-driverless](https://github.com/kaliiiiiiiiii/Selenium-Driverless) project
+  documentation and source, retrieved 2026-08-29, for the CDP-direct connection and
+  Selenium-style API described above, rather than from a third-party summary.
 - This project's own quickstart, configuration and release gates for the invisible_playwright
   API and the seed-reproducible fingerprint behaviour.
 

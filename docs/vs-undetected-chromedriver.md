@@ -180,13 +180,15 @@ datacenter IP still loses. The browser supplies the disguise; you supply the exi
 
 ## Sources
 
-- The undetected-chromedriver public repository and its documented approach: patching
-  the ChromeDriver binary to remove the `cdc_` properties and the `webdriver` flag, read
-  from the project's own README rather than from secondhand summaries.
+- [undetected-chromedriver's own GitHub documentation](https://github.com/ultrafunkamsterdam/undetected-chromedriver),
+  read 2026-08-29, for its documented approach: patching the ChromeDriver binary to
+  remove the `cdc_` properties and the `webdriver` flag, rather than trusting a
+  secondhand summary of what it does.
 - This project's own measurements comparing a stock engine's fingerprint on a headless
   host against a patched build's Windows Firefox fingerprint on the same host.
-- The public detection suites, including CreepJS and BrowserLeaks, used to read the
-  per-surface values the table above compares.
+- The public detection suites used to read the per-surface values the table above
+  compares: [CreepJS](https://github.com/abrahamjuliot/creepjs) and
+  [BrowserLeaks](https://browserleaks.com/), retrieved 2026-08-29.
 
 **See also:** [the driver leaks undetected-chromedriver strips](cdc-variable-explained.md),
 [a patched build versus a page-level stealth plugin](vs-nodriver.md), and

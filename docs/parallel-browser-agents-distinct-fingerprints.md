@@ -216,6 +216,9 @@ separate seeds, no shared in-memory state, and it uses multiple cores.
   distinct across seeds and consistent within one.
 - The release gates for the network-layer caveat: a self-inflicted velocity flag that
   turned out to be one address making too many requests, not the fingerprints.
+- Playwright's own [`Browser` API reference](https://playwright.dev/python/docs/api/class-browser),
+  for `new_page` and confirmation that the object each worker launches above is the
+  standard Playwright API, not a modified one.
 
 **See also:** [running invisible_playwright concurrently with asyncio](run-invisible-playwright-concurrently-asyncio.md) for the I/O-bound version of this pattern, [whether two devices can share a fingerprint](can-two-devices-share-a-browser-fingerprint.md) for why distinct seeds read as distinct machines, [whether a datacenter exit IP is detectable](can-websites-detect-a-datacenter-proxy-ip.md) for the network half you still have to solve, and [giving one agent a reproducible identity](reproducible-agent-browser-identity-seed.md) for the seed-to-fingerprint pipeline behind the consistency claim above.
 

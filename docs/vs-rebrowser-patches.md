@@ -23,13 +23,13 @@ method, having been built independently of each other.
 
 ## What rebrowser-patches actually changes
 
-rebrowser-patches targets Puppeteer and Playwright's Node.js and Python bindings on
-Chromium, patching the library's own source rather than anything in the browser
-binary. Its core fix addresses the CDP command `Runtime.enable`: automation
-libraries call it to manage the execution contexts they need for evaluating
-JavaScript on a page, and that call itself is a documented, widely deployed
-detection signal, checked for specifically by commercial anti-bot products because
-ordinary browsing never triggers it.
+rebrowser-patches targets Puppeteer's Node.js bindings and Playwright's Node.js and
+Python bindings on Chromium, patching the library's own source rather than anything
+in the browser binary. Its core fix addresses the CDP command `Runtime.enable`:
+automation libraries call it to manage the execution contexts they need for
+evaluating JavaScript on a page, and that call itself is a documented, widely
+deployed detection signal, checked for specifically by commercial anti-bot products
+because ordinary browsing never triggers it.
 
 The fix disables the automatic `Runtime.enable` call and instead manually creates
 execution contexts with IDs the page can't correlate back to the automation
@@ -117,10 +117,10 @@ its own remaining gaps.
 
 ## Sources
 
-- rebrowser-patches' own repository and documentation, read directly, for its
-  stated scope, its `Runtime.enable` fix mechanism, and its own named gaps
-  (proxies, user agent, canvas/WebGL fingerprinting, and the detectability of
-  page-level JavaScript overrides).
+- [rebrowser-patches' own repository and documentation](https://github.com/rebrowser/rebrowser-patches),
+  retrieved 2026-08-29, for its stated scope, its `Runtime.enable` fix mechanism, and its
+  own named gaps (proxies, user agent, canvas/WebGL fingerprinting, and the detectability
+  of page-level JavaScript overrides).
 - [The Patchright comparison](vs-patchright.md) on this site, for the parallel
   fix and its own sourcing.
 

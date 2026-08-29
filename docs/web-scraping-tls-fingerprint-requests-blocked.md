@@ -84,6 +84,15 @@ answer:
 - If they don't, and the target does need JavaScript, no amount of TLS impersonation
   substitutes for the rest of what a browser provides.
 
+## Conclusion
+
+A blocked `requests` scraper is rarely a headers problem. The TLS handshake finishes
+before your code writes a single header, so a library-level mismatch decides the
+outcome first, and nothing you add above it reaches back down to change that. Compare
+your scraper's ClientHello against a real browser's before touching anything else. If
+the target does not run JavaScript, an impersonating HTTP client closes the gap; if it
+does, only a real browser closes it.
+
 ## Short answers to the questions that lead here
 
 **Why does my Python scraper get blocked even with the right headers and a good
@@ -107,16 +116,21 @@ hashing them, so it survives the extension-order randomization modern browsers u
 JA3 doesn't, and has become less reliable as a result, though it's still widely
 checked.
 
+## Sources
+
+- RFC 8446, the TLS 1.3 specification, [retrieved 2026-08-28](https://datatracker.ietf.org/doc/html/rfc8446),
+  which defines the ClientHello and its ordering of cipher suites and extensions - the
+  bytes a JA3/JA4 fingerprint is computed from, and the reason the fingerprint exists
+  before any HTTP-layer data does.
+- `curl_cffi` on PyPI, [retrieved 2026-08-28](https://pypi.org/project/curl-cffi/), and
+  the [curl-impersonate](https://github.com/lwthiker/curl-impersonate) build of curl it
+  wraps, cited here for the TLS/HTTP2 impersonation this page points to as the
+  non-browser fix.
+
 **See also:** [JA3 and JA4: why a TLS fingerprint cannot be patched](ja3-ja4-tls-fingerprint.md),
 the full technical breakdown this page summarizes for a non-Playwright audience, and
 [Chromium is not Chrome, and detectors know the difference](chromium-is-not-chrome.md),
 for the general shape of a capability-based check versus a value-based one.
-
-## Sources
-
-- RFC 8446, the TLS 1.3 specification, which defines the ClientHello and its ordering
-  of cipher suites and extensions - the bytes a JA3/JA4 fingerprint is computed from,
-  and the reason the fingerprint exists before any HTTP-layer data does.
 
 ---
 

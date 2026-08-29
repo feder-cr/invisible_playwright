@@ -11,12 +11,12 @@ nav_order: 22
 botasaurus is a batteries-included scraping framework built around Chrome;
 invisible_playwright is a patched-Firefox engine plus a seed-reproducible
 fingerprint that you drive with the automation library you already know. That is
-the whole difference: a framework that decides your harness for you, versus an
+the whole difference: a framework that decides your setup for you, versus an
 engine you drive with your own.
 
 The two get compared because both promise a browser that reads as real, but they
 sit at different layers of the stack, and picking between them is mostly a
-question about how much of your scraping harness you want to own. The rest of
+question about how much of your scraping setup you want to own. The rest of
 this page is what that difference means in practice.
 
 ## What botasaurus is
@@ -30,7 +30,7 @@ and hands it a ready driver.
 
 The selling point is that it is batteries-included. You write a function, annotate
 it, and the framework supplies the browser, the retries, the cache and the
-concurrency around it. If you want a harness handed to you rather than assembled,
+concurrency around it. If you want a setup handed to you rather than assembled,
 that is the appeal, and it is a real one.
 
 The trade that comes with it is the one every framework makes: you adopt its driver,
@@ -42,7 +42,7 @@ patched at the JavaScript and driver layer rather than in the engine itself.
 
 invisible_playwright is not a framework. It is a Firefox patched at the C++ level
 and a seed-reproducible fingerprint, which you drive with stock Playwright. There is
-no scraping harness in the box: no caching, no decorators, no built-in parallelism
+no scraping setup in the box: no caching, no decorators, no built-in parallelism
 model. You bring those, or you bring the ones you already have.
 
 What it gives you instead is the browser. The realness comes from the engine
@@ -53,14 +53,15 @@ are internally consistent because they are derived together from one seed. That 
 [why the automation-flag layer is mostly not your problem here](navigator-webdriver-explained.md):
 it is answered by the engine, not painted on top of it.
 
-Because the returned object is a real Playwright `Browser`, every method works
-exactly as documented upstream. You compose it into whatever stack you like.
+Because the returned object is a real [Playwright `Browser`](https://playwright.dev/python/docs/api/class-browser),
+every method works exactly as documented upstream. You compose it into whatever
+stack you like.
 
 ## Framework versus engine: the durable difference
 
 The honest, verifiable difference is architectural, not a scoreboard.
 
-botasaurus wraps Chrome and gives you a harness. invisible_playwright replaces the
+botasaurus wraps Chrome and gives you a setup. invisible_playwright replaces the
 engine and gives you nothing but the engine. A framework is convenient precisely
 because it decides things for you; a library is flexible precisely because it does
 not. Neither is better in the abstract.
@@ -141,7 +142,7 @@ signal as a failure rather than a pass.
 
 ## Which one to reach for
 
-Reach for botasaurus when you want a scraping harness handed to you, you are happy on
+Reach for botasaurus when you want a scraping setup handed to you, you are happy on
 Chrome, and its caching, decorators and concurrency model match how you want to work.
 The value is that you write less scaffolding.
 
@@ -158,7 +159,7 @@ convenience for the easy targets and reaching for a real engine for the hard one
 ## Conclusion
 
 The comparison is framework versus library, and it resolves on ownership. botasaurus
-decides your harness and drives Chrome; invisible_playwright decides nothing but the
+decides your setup and drives Chrome; invisible_playwright decides nothing but the
 browser and lets you drive a real Firefox with stock Playwright. The engine-level
 realness is the reason it clears most fingerprint, TLS and driver checks, and the
 honest boundary is that it clears none of the network or behaviour signals for you.
@@ -169,7 +170,7 @@ clean exit and the human pacing either way.
 
 **Is botasaurus better than invisible_playwright?** They are different layers. One is
 a Chrome scraping framework, the other is a Firefox engine plus fingerprint you drive
-yourself. Better depends on whether you want a harness or a browser.
+yourself. Better depends on whether you want a setup or a browser.
 
 **Can I use invisible_playwright like a framework?** No, and that is deliberate. It
 gives you a real Playwright `Browser` and nothing else, so you add caching, retries
@@ -193,9 +194,12 @@ and reach for a real engine for the hard ones.
 
 ## Sources
 
-- The botasaurus project's own repository and README, read from source rather than
-  from third-party summaries, for its framework scope: anti-detect Chrome driver,
+- The [botasaurus](https://github.com/omkarcloud/botasaurus) repository and README,
+  retrieved 2026-08-28, for its framework scope: anti-detect Chrome driver,
   humanized actions, caching, and parallelism.
+- [Playwright's `Browser` class documentation](https://playwright.dev/python/docs/api/class-browser),
+  retrieved 2026-08-28, for what the returned object exposes once you switch from
+  botasaurus to stock Playwright.
 - This project's quickstart and configuration docs for the invisible_playwright API
   used in the examples above.
 - This project's own release gates and testing notes for the realness boundary: the

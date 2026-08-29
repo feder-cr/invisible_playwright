@@ -71,6 +71,17 @@ because its own upstream is more actively developed fixes a maintenance gap; it
 does not, by itself, fix the underlying automation-detection surface, which is a
 separate concern from which driver you picked.
 
+## Conclusion
+
+pyppeteer's own README already gives the answer: move to Playwright. The more
+useful part is why that recommendation names one specific successor instead of any
+actively updated Puppeteer port. A single-browser, single-protocol design has a
+structural ceiling that more contributors cannot lift; an abstraction built from the
+start to cover three engines does not carry that same ceiling. That difference is a
+real reason to move, and it is the one worth remembering. It is not, by itself, a
+reason to expect a different result from a detector, because which driver sent the
+commands was never the question a detector is asking.
+
 ## Short answers to the questions that lead here
 
 **Is pyppeteer still usable?** The existing code still runs. There's no active
@@ -91,15 +102,16 @@ rendering - is a separate question from which driver library you're using.
 gap is specific to this particular port. The broader engine-abstraction point is
 about Playwright generally, independent of which language binding is in use.
 
+## Sources
+
+- The project's own repository and README, read directly rather than assumed from
+  its continued popularity in older tutorials and Stack Overflow answers:
+  [pyppeteer/pyppeteer](https://github.com/pyppeteer/pyppeteer), retrieved 2026-08-28.
+
 **See also:** [three ways to make Playwright undetected](playwright-stealth-levels.md),
 for what switching drivers does and does not solve on its own, and
 [invisible_playwright vs playwright-stealth: page vs engine](vs-playwright-stealth.md),
 for what changes once you're already on Playwright and asking the next question.
-
-## Sources
-
-- The project's own repository and README, read directly rather than assumed from
-  its continued popularity in older tutorials and Stack Overflow answers.
 
 ---
 

@@ -54,10 +54,10 @@ nothing for the others.
    how many requests per minute from one account, and the timing shape of an
    automated agent.
 
-invisible_playwright is built to solve layer 1 well, and it drives a real Firefox
-binary, which means layer 1's network handshake is a genuine Firefox handshake rather
-than an impersonation. What it deliberately does not do is manufacture a clean IP, a
-per-account quota, or human pacing. Those are yours to bring.
+invisible_playwright is built to solve layer 1 well, and because it drives a real
+Firefox binary, the handshake half of layer 2 comes out genuine for free: a real
+Firefox handshake, not an impersonation. What it deliberately does not do is
+manufacture a clean IP, a per-account quota, or human pacing. Those are yours to bring.
 
 ## What invisible_playwright removes: the browser layer
 
@@ -76,9 +76,9 @@ from invisible_playwright import InvisiblePlaywright
 with InvisiblePlaywright(seed=42) as browser:
     page = browser.new_page()
     page.goto("https://example.com")
-    # navigator.webdriver reads undefined, the fingerprint is internally
+    # navigator.webdriver reads false, the fingerprint is internally
     # consistent, and the TLS handshake is a real Firefox handshake
-    print(page.evaluate("navigator.webdriver"))   # -> None
+    print(page.evaluate("navigator.webdriver"))   # -> False
 ```
 
 Add a proxy and let the browser timezone follow the exit automatically, which is how
@@ -109,8 +109,9 @@ fingerprint on top of any one of them still loses.
 
 - **IP reputation.** A perfect browser on a datacenter range, or on a residential exit
   a thousand other people are sharing this minute, is still on a flagged address, and
-  that is decided before your script runs. Around 90 percent of cheap proxies are
-  public and already known. The fix is a clean exit, which is your input, not the
+  that is decided before your script runs. Cheap and free proxy pools are reused across
+  thousands of scrapers, so a lot of that range is already flagged before you connect.
+  The fix is a clean exit, which is your input, not the
   browser's output. [WebRTC through a proxy](webrtc-leak-proxy.md) is the related
   browser-visible surface, but the reputation itself is not a browser property.
 - **Per-account rate limits and quotas.** If one account does in an hour what a person
@@ -195,9 +196,11 @@ and behaviour layers are not in those tests at all.
 - This project's release gates, which compare the browser's fingerprint field by field
   against a stock Firefox on the same machine and treat a suppressed signal as a
   failure rather than a pass.
-- The public detection suites named across this documentation set (sannysoft, CreepJS,
-  BotD, FingerprintJS, BrowserLeaks), each read from its own source rather than its
-  rendered verdict.
+- The public detection suites named across this documentation set
+  ([sannysoft](https://bot.sannysoft.com/), [CreepJS](https://github.com/abrahamjuliot/creepjs),
+  [BotD](https://github.com/fingerprintjs/BotD), [FingerprintJS](https://github.com/fingerprintjs/fingerprintjs),
+  [BrowserLeaks](https://browserleaks.com/)), each read from its own source rather than its
+  rendered verdict, retrieved 2026-08-28.
 
 **See also:** [how to test whether your browser is detected](how-to-test-bot-detection.md),
 [the checklist for being detected on one site](playwright-detected-as-bot.md), and

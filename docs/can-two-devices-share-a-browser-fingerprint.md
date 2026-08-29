@@ -43,7 +43,7 @@ A one-of-a-kind fingerprint loses this even when every individual value is plaus
 GPU nobody else reports, a screen size nobody else has, a font set assembled by no real
 installer: each looks fine alone and, taken together, marks one browser out of everyone.
 That is why [pinning fields by hand is risky](pinning.md) unless you know the
-combination is one real machines actually ship.
+combination is one that real machines actually ship.
 
 ## Why a common configuration beats a clever one
 
@@ -99,8 +99,9 @@ with InvisiblePlaywright(seed=42) as browser:
     # same GPU, same canvas hash, same fonts, same screen, every run
 ```
 
-The `browser` returned is a real Playwright `Browser`. Every method works exactly as
-documented upstream; there is no reduced API to learn.
+The `browser` returned is a real Playwright
+[`Browser`](https://playwright.dev/python/docs/api/class-browser). Every method works
+exactly as documented upstream; there is no reduced API to learn.
 
 Two different seeds give two different plausible identities, and because each is
 generated to be a common real-world configuration, both can land in a well-populated
@@ -176,8 +177,13 @@ a datacenter IP or a robotic pattern, and you supply the clean exit and the huma
 
 ## Sources
 
-- The FingerprintJS open-source library's visitor ID model, read from its own source, for
-  how many components combine into one recognisable hash.
+- The FingerprintJS open-source library's visitor ID model, [read from its own
+  source](https://github.com/fingerprintjs/fingerprintjs), retrieved 2026-08-28, for how
+  many components combine into one recognisable hash.
+- Mozilla's own documentation of the `privacy.resistFingerprinting` mode, [read on its
+  own wiki page](https://wiki.mozilla.org/Security/Fingerprinting), retrieved
+  2026-08-28, for how the mode flattens timezone, locale and window size to one shared
+  value instead of a unique one.
 - This project's approach of generating common, real-world Windows and GPU
   configurations rather than unique ones, and its cross-checking of GPU string, renderer
   and capability limits against each other.

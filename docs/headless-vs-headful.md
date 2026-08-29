@@ -53,10 +53,11 @@ rendered and when state transitions are observable. Google has spent real effort
 the newer headless behave like the desktop browser, and the obvious tells from a few
 years ago are largely gone, but "a different binary" is a meaningful sentence.
 
-**In Firefox it is one binary with a flag**, which sounds better and is not free. The
-flag still puts the browser on a different path: no widget tree, software-only
-rendering, and timing that differs from a browser drawing to a real surface. Same
-executable, different behaviour.
+**In Firefox it is one binary with a flag**, which sounds better and is not free. Passing
+[`-headless`](https://hacks.mozilla.org/2017/12/using-headless-mode-in-firefox/) still
+puts the browser on a different path: no widget tree, software-only rendering, and
+timing that differs from a browser drawing to a real surface. Same executable,
+different behaviour.
 
 So in both engines the honest statement is: headless is not a property that is checked,
 it is a mode that changes several things that are.
@@ -144,6 +145,18 @@ Do not reason about it. Measure it, in this order.
 
 Most people skip step four and spend a week on step two.
 
+## Conclusion
+
+Headless is not a property a detector checks. It is a mode that changes a handful of
+properties detectors do check, and on the same machine a headful browser keeps nearly
+all of them: the GPU, the font set, the audio device, the screen, the permission
+history. None of that comes from the rendering path, which is why switching modes
+without switching machines fixes so little. What actually closes the gap is keeping the
+real, headed rendering pipeline and hiding the window instead of skipping it, on
+whichever platform you are running. Diff a fingerprint page across both modes on your
+own machine before you tune anything; whatever field moves is the entire real
+difference for your case.
+
 ## Short answers to the questions that lead here
 
 **Is headless mode detectable?** Modern headless is not detectable as a property. What
@@ -167,6 +180,23 @@ On Windows and macOS this project hides the real window instead.
 **Does running headful cost much more?** More memory and a display server on Linux. If
 your target does not care about the mode, it buys nothing, which is why step one is
 finding out whether it cares.
+
+## Sources
+
+- Playwright's own documentation on
+  [the Chromium headless shell](https://playwright.dev/docs/browsers#chromium-headless-shell),
+  for headed runs defaulting to Chrome and headless runs defaulting to a separate binary.
+- Chrome for Developers' own documentation on
+  [Chrome's Headless mode](https://developer.chrome.com/docs/chromium/headless), retrieved
+  2026-08-28, for the unification of headless and headful on the same codebase and the
+  retirement of the old, separately-implemented headless.
+- Mozilla's own documentation on
+  [using headless mode in Firefox](https://hacks.mozilla.org/2017/12/using-headless-mode-in-firefox/),
+  retrieved 2026-08-29, for the single Firefox binary launched with the `-headless` flag
+  rather than a second, separately-built implementation.
+- This project's own fix history for the Windows/macOS hiding mechanism and the
+  cross-process desktop-split bug it also closed, verified against a visible headful run
+  on the same machine and against a per-platform check on the underlying window attribute.
 
 **See also:** [Playwright in Docker](playwright-docker-detection.md), which is the same
 question asked about the container instead of the mode, and

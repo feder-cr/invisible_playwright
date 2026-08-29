@@ -156,6 +156,17 @@ platform, held stable for the identity. Rarity is the problem, not the specific 
 platform. It is also the value people most often set to 1 for convenience, on a
 resolution where 1 is implausible.
 
+## Sources
+
+- [MDN: `Screen.availHeight`](https://developer.mozilla.org/en-US/docs/Web/API/Screen/availHeight),
+  retrieved 2026-08-28, for how the taskbar is expected to shrink the available area
+  below the full display height.
+- [MDN: `Window.outerHeight`](https://developer.mozilla.org/en-US/docs/Web/API/Window/outerHeight),
+  retrieved 2026-08-28, for the browser chrome that should separate it from `innerHeight`.
+- This project's own `webgl-renderer-strings.md`, for the time a resolution and
+  device-pixel-ratio pool sampled from real-world data handed out a software GPU for
+  the same reason it can hand out an unlucky screen size.
+
 **See also:** [why headless browsers render different fonts](headless-fonts-differ.md)
 and [Firefox WebGL renderer strings](webgl-renderer-strings.md), the other two members
 of the same family, and

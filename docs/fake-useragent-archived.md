@@ -92,14 +92,22 @@ says](playwright-user-agent.md).
 
 **See also:** [why you should not set the user agent in Playwright](playwright-user-agent.md),
 the underlying argument this package's archival makes concrete, and
-[selenium-stealth hasn't been updated since December 2021](selenium-stealth-unmaintained.md),
+[selenium-stealth hasn't been updated since November 2020](selenium-stealth-unmaintained.md),
 another popular package in this space whose real status is easy to miss.
 
 ## Sources
 
-- The package's own repository, checked directly for its archive state and last
+- The package's own repository, [fake-useragent/fake-useragent](https://github.com/fake-useragent/fake-useragent),
+  retrieved 2026-08-28, checked directly for its archive state and last
   activity date, rather than assumed from its continued presence in tutorials and
   existing automation code.
+- [PyPI release history for fake-useragent](https://pypi.org/project/fake-useragent/),
+  whose most recent version was uploaded in April 2025, independently confirming
+  the string database stopped receiving updates before the repository itself was
+  archived, retrieved 2026-08-29.
+- GitHub's own documentation on [archiving a repository](https://docs.github.com/en/repositories/archiving-a-github-repository/archiving-repositories),
+  confirming that an archived repository's issues and pull requests, not only its
+  code, become read-only, retrieved 2026-08-29.
 
 ---
 

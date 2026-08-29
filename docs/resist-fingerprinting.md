@@ -132,6 +132,18 @@ layout and timing. That is the trade it exists to make.
 **What does this project do instead?** Sets the values to a plausible, consistent
 machine derived from a seed, and leaves the mode off.
 
+## Sources
+
+- Mozilla's own [Tor Uplift project page](https://wiki.mozilla.org/Security/Tor_Uplift),
+  retrieved 2026-08-28, for the origin of `resistFingerprinting` as work landed from Tor
+  Browser into Firefox.
+- Mozilla's own [Fingerprinting wiki page](https://wiki.mozilla.org/Security/Fingerprinting),
+  retrieved 2026-08-28, for the per-surface behaviour of `privacy.resistFingerprinting`
+  (timezone, screen rounding, user agent, `hardwareConcurrency`, timer precision, canvas,
+  locale).
+- This project's own default preferences, for the five values it sets to `false` and
+  why the seeded profile is used instead.
+
 **See also:** [how CreepJS decides you are lying](creepjs-explained.md), whose `resistance` module exists to identify this mode, and [the three levels](playwright-stealth-levels.md).
 
 ---

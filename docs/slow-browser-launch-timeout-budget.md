@@ -83,11 +83,15 @@ The difference in one table:
 ## What to check in your own setup
 
 If a multi-step network operation is occasionally slow despite every individual call
-having a timeout, add up the worst case by hand: number of steps times the largest
-per-step timeout. If that number is larger than what you'd actually consider
-acceptable, the fix is a shared budget across the steps, not a smaller per-step
-timeout - a smaller per-step timeout only narrows the same unbounded sum, it doesn't
-cap it.
+having a timeout:
+
+1. Add up the worst case by hand: number of steps times the largest per-step
+   timeout.
+2. Check whether that number is larger than what you'd actually consider
+   acceptable.
+3. If it is, the fix is a shared budget across the steps, not a smaller per-step
+   timeout - a smaller per-step timeout only narrows the same unbounded sum, it
+   doesn't cap it.
 
 ## Short answers to the questions that lead here
 
@@ -123,6 +127,13 @@ where the gap was a smoke test that never actually exercised the thing that brok
 - This project's own diagnosis and fix for the launch-time geo resolution step, and
   its regression test suite, which locks in both the budget behaviour and the
   message distinguishing "endpoint unreachable" from "budget exhausted."
+- gRPC documentation, [Deadlines](https://grpc.io/docs/guides/deadlines/), on the same
+  distinction in general form: a timeout bounds one call, while a deadline is
+  deducted as it passes from hop to hop so the remaining budget never resets,
+  retrieved 2026-08-28.
+- Python documentation, [asyncio.timeout()](https://docs.python.org/3/library/asyncio-task.html#asyncio.timeout),
+  the standard library's own context manager for capping every await inside a block
+  at one ceiling instead of timing each one separately, retrieved 2026-08-28.
 
 ---
 

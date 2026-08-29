@@ -144,7 +144,8 @@ What the product does add is underneath the cookie layer. The browser is a Firef
 patched at the C++ level and driven by stock Playwright, so its fingerprint, its TLS
 handshake and its driver surface read as a genuine Firefox rather than an automated
 one. That is why it passes most fingerprint and driver checks: there is no
-`navigator.webdriver` tell, no software renderer, no headless font set. Every field is
+[`navigator.webdriver`](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/webdriver)
+tell, no software renderer, no headless font set. Every field is
 derived from a seed, so the same seed gives the same machine on every run, and a
 failing session can be replayed exactly.
 
@@ -201,8 +202,9 @@ fingerprint; the proxy and the timing are yours.
 
 ## Sources
 
-- The Playwright `BrowserContext` cookie API (`cookies`, `add_cookies`), read from its
-  documented behaviour rather than a rendered example.
+- Playwright documentation, [BrowserContext.cookies()](https://playwright.dev/python/docs/api/class-browsercontext#browser-context-cookies), retrieved 2026-08-28
+- Playwright documentation, [BrowserContext.add_cookies()](https://playwright.dev/python/docs/api/class-browsercontext#browser-context-add-cookies), retrieved 2026-08-28
+- MDN, [Navigator.webdriver](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/webdriver), retrieved 2026-08-28
 - This project's own quickstart and configuration notes for the launch API and the
   proxy and timezone surfaces a cookie rides on.
 

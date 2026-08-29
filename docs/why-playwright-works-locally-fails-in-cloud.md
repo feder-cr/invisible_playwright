@@ -61,7 +61,8 @@ with InvisiblePlaywright(seed=42) as browser:
 
 `seed=42` fixes the whole identity: the same GPU string, the same canvas and audio
 hashes, the same fonts and screen, run after run, on any machine. The `browser`
-object is a real Playwright `Browser`, so every method you already use works
+object is a real Playwright [`Browser`](https://playwright.dev/python/docs/api/class-browser),
+so every method you already use works
 unchanged.
 
 Now the logic is simple. Run that exact script on the laptop and on the cloud runner.
@@ -176,6 +177,10 @@ Handle those and headless is fine.
 - This project's own measurements, where the same seeded identity is run on a
   residential connection and a datacenter runner and only the network differs, which
   is what isolates IP reputation as the variable.
+- [Playwright's `Browser` class reference](https://playwright.dev/python/docs/api/class-browser),
+  for what the launched `browser` object exposes once the wrapper hands it back.
+- Playwright's proxy option at browser and context level, documented at
+  [Playwright network documentation](https://playwright.dev/python/docs/network).
 - The proxy, timezone, and DNS behaviour documented on the
   [Configuration](configuration.md) page and exercised by the release gates.
 

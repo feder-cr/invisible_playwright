@@ -198,8 +198,10 @@ changes and breaks more than this cluster and tends to create its own tells.
 
 ## Sources
 
-- The CSS media-feature specifications for the four preference features named above, and
-  their documented default values.
+- W3C, [Media Queries Level 5](https://www.w3.org/TR/mediaqueries-5/), the specification
+  that defines `prefers-reduced-motion`, `prefers-contrast`, `forced-colors`, and
+  `prefers-reduced-transparency` and documents each one's default value, retrieved
+  2026-08-28.
 - This project's own release gates, which compare each media feature against a stock
   Windows browser on the same machine rather than reading a verdict.
 

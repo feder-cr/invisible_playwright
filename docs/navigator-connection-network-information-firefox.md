@@ -116,7 +116,7 @@ public list of every member that differs and the set moves with each release. A 
 survivor is a contradiction, and a contradiction scores worse than an honest Chromium
 would have. This is the same trap as
 [changing the user agent and nothing else](is-changing-user-agent-enough.md): one field
-edited in isolation just disagrees with the forty around it.
+edited in isolation just disagrees with everything else around it.
 
 Doing it the other way is the whole point of running a real Firefox. Because the engine
 *is* Firefox, the Chromium-only members are absent for the same reason they are absent
@@ -191,8 +191,9 @@ the same machine.
 ## Sources
 
 - The Network Information API definition (`effectiveType`, `downlink`, `rtt`,
-  `saveData`) and its Chromium-only implementation status, read from the standard and
-  from browser support tables.
+  `saveData`) and its Chromium-only implementation status, read from
+  [the standard](https://wicg.github.io/netinfo/) and from
+  [browser support tables](https://caniuse.com/netinfo), retrieved 2026-08-28.
 - This project's own fingerprint-parity checks, which compare the wrapper against a
   stock Firefox field by field on the same machine, including `navigator` member
   existence.

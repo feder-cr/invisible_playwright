@@ -220,9 +220,19 @@ proxy and human pacing.
 
 ## Sources
 
-- The Gamepad API as implemented by Firefox: `navigator.getGamepads()`, the
-  `gamepadconnected` / `gamepaddisconnected` events, the secure-context requirement, and
-  the user-gesture gate before a controller is surfaced.
+- W3C, [Gamepad](https://www.w3.org/TR/gamepad/), retrieved 2026-08-28, for the
+  `gamepadconnected` / `gamepaddisconnected` events and the specification of the API
+  surface.
+- MDN, [Gamepad API](https://developer.mozilla.org/en-US/docs/Web/API/Gamepad_API),
+  retrieved 2026-08-28, for the overview of the surface.
+- MDN, [`Navigator.getGamepads()`](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/getGamepads),
+  retrieved 2026-08-28, for the method signature and its return value.
+- MDN, [Using the Gamepad API](https://developer.mozilla.org/en-US/docs/Web/API/Gamepad_API/Using_the_Gamepad_API),
+  retrieved 2026-08-28, for the Firefox-specific note that a gamepad already connected
+  when the page loads stays hidden until the user presses a button or moves an axis on it.
+- Mozilla Hacks, [Securing Gamepad API](https://hacks.mozilla.org/2020/07/securing-gamepad-api/),
+  retrieved 2026-08-28, for the Firefox 81 secure-context requirement and the empty-array
+  behavior on an insecure origin.
 - This project's fingerprint parity checks, which compare each browser surface against a
   stock Firefox on the same machine field by field rather than reading a verdict.
 

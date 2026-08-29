@@ -141,6 +141,20 @@ everywhere.
 accompanies it, and every item on that list is also true of a headful browser in the
 same container.
 
+## Sources
+
+- Playwright's own documentation for [the official Docker image](https://playwright.dev/python/docs/docker),
+  which documents the `mcr.microsoft.com/playwright` images, retrieved 2026-08-28. It
+  covers installing system dependencies and fonts and starting the browser reliably,
+  which is the different problem this page says those pages solve.
+- MDN Web Docs, [`Navigator.webdriver`](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/webdriver),
+  retrieved 2026-08-28.
+- MDN Web Docs, [`SpeechSynthesis.getVoices()`](https://developer.mozilla.org/en-US/docs/Web/API/SpeechSynthesis/getVoices),
+  retrieved 2026-08-28, for the empty array a base image with no speech engine returns.
+- This project's own font, screen, audio and voice generation, seeded from one profile
+  rather than read from the host, and the field-by-field comparison against a stock
+  desktop browser that the "What this project does about it" section above describes.
+
 **See also:** [the checklist for being detected on one site](playwright-detected-as-bot.md),
 which is the order to work in, [three ways to make Playwright undetected](playwright-stealth-levels.md),
 which explains why none of the page-level tools reach any of this, and

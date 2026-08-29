@@ -210,8 +210,10 @@ your policy, not the engine's.
 
 ## Sources
 
-- The public literature on mouse-dynamics as a behavioural biometric, which consistently
-  finds dwell time, velocity profile and curvature to be the high-weight features.
+- Khan, Devlen, Manno and Hou,
+  [Mouse Dynamics Behavioral Biometrics: A Survey](https://arxiv.org/abs/2208.09061), which
+  surveys the published literature and finds dwell time, velocity profile and curvature
+  among the consistently high-weight features, retrieved 2026-08-28.
 - This project's own event model and cursor engine, which emit trusted OS-level pointer
   events on a Bezier path, and the boundary documented across the mouse-movement pages in
   this set: the primitive is the engine's, the movement policy is the caller's.

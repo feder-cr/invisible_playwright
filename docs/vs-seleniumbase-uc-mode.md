@@ -227,10 +227,17 @@ with every readable field derived from one reproducible seed.
 
 ## Sources
 
-- SeleniumBase's own repository and UC Mode documentation, read 2026-08-05, for the
-  disconnect-and-reconnect mechanism, the `uc_open_with_reconnect` and `uc_click`
+- [SeleniumBase's own repository](https://github.com/seleniumbase/SeleniumBase) and its
+  [UC Mode documentation](https://seleniumbase.io/help_docs/uc_mode/), read 2026-08-05, for
+  the disconnect-and-reconnect mechanism, the `uc_open_with_reconnect` and `uc_click`
   `reconnect_time` parameters, the Chromium-based browser support, and the maintenance
   and star count stated above.
+- The detection suites named above, each read from its own source:
+  [CreepJS](https://github.com/abrahamjuliot/creepjs), [BotD](https://github.com/fingerprintjs/BotD),
+  [sannysoft](https://bot.sannysoft.com/), [FingerprintJS](https://github.com/fingerprintjs/fingerprintjs),
+  and [BrowserLeaks](https://browserleaks.com/), retrieved 2026-08-28.
+- Playwright's own [`Browser` class docs](https://playwright.dev/python/docs/api/class-browser),
+  read 2026-08-28, for the returned object the code examples above hand back unchanged.
 - This project's own comparison and testing notes for the field-by-field method and the
   engine-versus-driver distinction, linked throughout.
 

@@ -163,6 +163,25 @@ pixels that come out of the rasteriser.
 **Does the extension list matter?** Yes, and it is the value most likely to give away
 the host platform rather than the card.
 
+## Sources
+
+- The [WebGL specification](https://registry.khronos.org/webgl/specs/latest/1.0/), retrieved
+  2026-08-28, for `getParameter()`'s defined behavior and the constant names it accepts
+  (`MAX_TEXTURE_SIZE`, `MAX_VIEWPORT_DIMS`, and the rest of the block above), and the
+  [MDN reference for `getParameter()`](https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/getParameter),
+  also retrieved 2026-08-28.
+- MDN Web Docs, [`getSupportedExtensions()`](https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/getSupportedExtensions)
+  and [`getExtension()`](https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/getExtension),
+  retrieved 2026-08-28, for the extension-list behavior described above.
+- ANGLE's own [D3D11 renderer utilities](https://github.com/google/angle/blob/main/src/libANGLE/renderer/d3d/d3d11/renderer11_utils.cpp)
+  (`renderer11_utils.cpp`), retrieved 2026-08-28, where the capability block is generated
+  from the D3D feature level rather than the physical card, and the public surveys of WebGL
+  parameter distributions mentioned above (no specific survey is named in these notes, so
+  none is linked here).
+- This project's own testing: an earlier version of this project randomised the numeric
+  WebGL limits per session, and the CreepJS low-entropy classification described above is
+  what drove the numbers back to the canonical block.
+
 **See also:** [Firefox WebGL renderer strings](webgl-renderer-strings.md) for the string
 half, and [your renderer string says NVIDIA, your pixels say software](renderer-string-vs-render.md)
 for the part that no parameter can fix.

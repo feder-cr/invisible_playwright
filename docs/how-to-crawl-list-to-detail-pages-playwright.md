@@ -181,7 +181,7 @@ of energy goes into the per-page disguise, which the earlier phases and this pro
 seeded identity already handle. Almost none goes into the shape of the fan-out, which is
 what a velocity-based system is actually scoring. We measured this on our own release
 gates: a stealth check that hammered one scoring endpoint from one address produced a
-velocity flag, and the flag was correct. It belonged to the pace of the harness, not to
+velocity flag, and the flag was correct. It belonged to the pace of the check, not to
 the browser it was testing. The disguise was clean; the rate was the tell.
 
 So the defense splits in two. Keep the identity consistent across the whole fan-out, so
@@ -282,8 +282,13 @@ exactly what makes the volume read as a single coherent session instead of a swa
   for the real API surface used above: `InvisiblePlaywright(seed=...)` returning a stock
   Playwright `Browser`, sync and async.
 - This project's release gates, including the velocity flag that a stealth check produced
-  against its own scoring endpoint, where the flag belonged to the pace of the harness
+  against its own scoring endpoint, where the flag belonged to the pace of the check
   rather than to the browser it was testing.
+- Playwright's [`Locator`](https://playwright.dev/python/docs/api/class-locator) API,
+  specifically `all()`, `inner_text()` and `get_attribute()`, used exactly as documented
+  upstream in the code above, retrieved 2026-08-28.
+- Python's [`asyncio.Semaphore`](https://docs.python.org/3/library/asyncio-sync.html#semaphore),
+  the concurrency primitive behind the width cap on the fan-out, retrieved 2026-08-28.
 
 **See also:** [how to scrape paginated pages](how-to-scrape-paginated-pages-playwright.md)
 for collecting the list across many pages, [new_page vs new_context](playwright-new-page-vs-new-context.md)

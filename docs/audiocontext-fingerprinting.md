@@ -63,7 +63,7 @@ same identity always produced the same audio.
 
 Two things went wrong, and the second one is the interesting one.
 
-### Silence is a trap
+## Silence is a trap
 
 [CreepJS](https://abrahamjuliot.github.io/creepjs/) has a check called
 `hasFakeAudio`. It does not compare your hash to a database. It builds a buffer that
@@ -77,9 +77,9 @@ Nothing should come out of that. On real hardware nothing does. A tool adding no
 every rendered buffer puts noise into silence, which is physically impossible, and the
 check records a lie.
 
-It also inspects the first 100 samples of a normal buffer and counts distinct values
-there, for the same reason: the beginning of a render is predictable, so variation
-there is manufactured.
+It also inspects the first 100 samples of a normal buffer and sums the distinct values
+it finds there, for the same reason: the beginning of a render is predictable, so
+variation there is manufactured.
 
 The fix is not to stop adding noise, it is to add it only where noise can legitimately
 exist: skip buffers short enough to be a probe, skip the opening samples, and skip
@@ -90,7 +90,7 @@ claim that your sound card produces sound when it is off.
 have to recognise your noise. It only has to ask a question whose correct answer is
 *nothing*, and see whether it gets something.
 
-### The defence was the signal
+## The defence was the signal
 
 The second problem was not expected: with the noise correctly guarded and passing the
 silence checks, a commercial fingerprinting service still scored the browser as
@@ -150,7 +150,9 @@ ctx.close();
 
 - **`sampleRate` is 44100 or 48000.** Anything else is rare enough to be interesting.
 - **The three device values describe one plausible device.** A 5.1 channel count with a
-  laptop latency is two devices in one answer.
+  laptop latency is two devices in one answer. Those three numbers need no rendering at
+  all, which makes them [a fingerprinting surface of their
+  own](audiocontext-samplerate-latency-fingerprint.md).
 - **[`outputLatency`](https://developer.mozilla.org/en-US/docs/Web/API/AudioContext/outputLatency)
   is not zero and not identical across machines.** A container with no sound device is
   a real tell here, in the same way that [a machine with no GPU is one for
@@ -158,6 +160,21 @@ ctx.close();
 - **Read the rendered sum twice in one session.** It must match. If it does not, your
   noise is per-call, and that is the single cheapest tampering check there is.
 - **Render a silent buffer and confirm it is silent.**
+
+## Conclusion
+
+The inversion is the whole lesson. Audio fingerprinting hashes seven values that have
+to agree with each other, and the noise people add to break that hash is also the
+easiest way to fail the checks built to catch noise. A detector does not need your
+value to be unusual, it only needs one place where a silent buffer stops being silent,
+a predictable opening stops being predictable, or two reads of the same identity
+disagree.
+
+Guard those three spots before adding anything, or skip the noise entirely. Silence
+stays silent. The opening samples stay untouched. The same seed reads the same buffer
+twice. On this measurement, the honest, un-noised answer already matched what every
+other real installation of that browser produces, and matching the crowd turned out to
+be the safer position.
 
 ## Short answers to the questions that lead here
 
@@ -176,6 +193,25 @@ render that has to look like it came from the device the other six describe.
 **Why does my audio fingerprint differ between headless and headed?** Usually the audio
 device. A headless container often has none, so the values fall back to defaults that
 say so.
+
+## Sources
+
+- MDN Web Docs on the [Web Audio API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API),
+  retrieved 2026-08-28, for the oscillator-into-compressor offline rendering pipeline
+  described above.
+- MDN Web Docs on the specific interfaces the seven values come from:
+  [OfflineAudioContext](https://developer.mozilla.org/en-US/docs/Web/API/OfflineAudioContext),
+  [BaseAudioContext.sampleRate](https://developer.mozilla.org/en-US/docs/Web/API/BaseAudioContext/sampleRate),
+  [AudioContext.outputLatency](https://developer.mozilla.org/en-US/docs/Web/API/AudioContext/outputLatency),
+  [AudioDestinationNode.maxChannelCount](https://developer.mozilla.org/en-US/docs/Web/API/AudioDestinationNode/maxChannelCount),
+  [AnalyserNode.getFloatFrequencyData()](https://developer.mozilla.org/en-US/docs/Web/API/AnalyserNode/getFloatFrequencyData)
+  and [getFloatTimeDomainData()](https://developer.mozilla.org/en-US/docs/Web/API/AnalyserNode/getFloatTimeDomainData),
+  and [DynamicsCompressorNode.reduction](https://developer.mozilla.org/en-US/docs/Web/API/DynamicsCompressorNode/reduction),
+  retrieved 2026-08-28.
+- [CreepJS](https://github.com/abrahamjuliot/creepjs), read 2026-08-28, for the
+  `hasFakeAudio` check and its silence-and-opening-samples tests described above.
+- This project's own A/B measurement of the tampering score with the audio noise isolated
+  as the only variable, on one machine and one identity.
 
 **See also:** [why a FingerprintJS visitor ID changes](fingerprintjs-visitor-id.md),
 since the audio hash is one of the components that ID is made of,

@@ -239,9 +239,17 @@ order a [detection checklist](playwright-detected-as-bot.md) suggests.
 
 ## Sources
 
-- The Selenium WebDriver protocol and its `geckodriver` / `chromedriver` server model,
-  and Playwright's driverless protocol, each read from their own project documentation
-  rather than from a summary.
+- The WebDriver components named in this migration, each read from its own project
+  documentation rather than a summary:
+  [Selenium's WebDriver overview](https://www.selenium.dev/documentation/overview/components/),
+  [geckodriver](https://firefox-source-docs.mozilla.org/testing/geckodriver/index.html),
+  and [ChromeDriver](https://developer.chrome.com/docs/chromedriver), retrieved 2026-08-28.
+- [MDN, `Navigator.webdriver`](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/webdriver)
+  and the [WebDriver specification](https://www.w3.org/TR/webdriver2/#interface), retrieved
+  2026-08-28, for the flag's defined behaviour under automation.
+- Playwright's own [`Browser` class reference](https://playwright.dev/python/docs/api/class-browser),
+  retrieved 2026-08-28, the upstream documentation that the object returned by
+  `InvisiblePlaywright` implements.
 - This project's own fingerprint and TLS gates, which is where the claim that the
   driver layer, fingerprint and handshake read as a genuine Firefox is measured, and
   where the limits of that (IP, rate, behaviour) are stated plainly.

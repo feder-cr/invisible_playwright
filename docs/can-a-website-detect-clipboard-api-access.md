@@ -9,13 +9,13 @@ nav_order: 21
 
 # Can a website detect Clipboard API access?
 
-Short version: a page can see that `navigator.clipboard` exists and it can ask the
-Permissions API what state `clipboard-read` is in, so yes, it can observe your
-relationship with the clipboard. What it mostly cannot do is turn that into a stable
-fingerprint of your machine. The Clipboard API is interesting to a detector for a
-different reason than canvas or WebGL are: it is not a value you leak, it is a gate that
-only opens for a real user gesture, and its permission state has to agree with a second
-API that reports the same thing.
+Short version: a page can see that `navigator.clipboard` exists, and it can ask the
+Permissions API about `clipboard-read`, which answers with a state on Chromium and throws
+on Firefox, so either way it can observe your relationship with the clipboard. What it
+mostly cannot do is turn that into a stable fingerprint of your machine. The Clipboard API
+is interesting to a detector for a different reason than canvas or WebGL are: it is not a
+value you leak, it is a gate that only opens for a real user gesture, and the way the
+Permissions API answers for it has to match the engine you claim to be.
 
 This page is what the async Clipboard API actually exposes, why it behaves as a gate
 rather than a fingerprint, the cross-check a detector runs against it, how to drive it
@@ -32,10 +32,11 @@ A page can read three things without any special access:
 
 - **Whether `navigator.clipboard` is present at all.** A secure context (HTTPS) in a
   modern browser has it; its absence under a modern user agent is itself a mismatch.
-- **The permission state for `clipboard-read`**, by asking the
-  [Permissions API](https://developer.mozilla.org/en-US/docs/Web/API/Permissions_API)'s
-  `navigator.permissions.query({name: 'clipboard-read'})`. That returns `granted`,
-  `denied` or `prompt` without prompting anyone.
+- **What the [Permissions API](https://developer.mozilla.org/en-US/docs/Web/API/Permissions_API)
+  says about `clipboard-read`**, by asking it directly:
+  `navigator.permissions.query({name: 'clipboard-read'})`. Chromium answers with
+  `granted`, `denied` or `prompt`, no dialog involved. Firefox throws instead, because it
+  has never implemented that permission name.
 - **What happens when it calls a method.** A rejected promise, and the shape of the
   rejection, tells the page which guard tripped.
 
@@ -53,14 +54,19 @@ on two conditions the specification requires:
    meaning a real interaction (a click, a key press) happened
    recently. Call either one from a script with no gesture behind it and the promise
    rejects.
-2. **A permission.** Reading additionally requires the `clipboard-read` permission;
-   writing is allowed under a gesture in most configurations but can also be governed by
-   `clipboard-write`.
+2. **A second gate that differs by engine.** Chromium backs both operations with a real
+   `clipboard-read`/`clipboard-write` permission a page can query through the Permissions
+   API. Firefox implements no such permission at all: the identical query throws, and a
+   read that does not already satisfy the gesture rule falls back to an ephemeral,
+   one-shot "Paste" item in a native context menu instead of a stored grant. Either shape
+   is policy the page can observe, and neither hands back a value that varies from
+   machine to machine.
 
 For an automation setup this is exactly the kind of check that separates a real browser
 from a spoofed one, and it separates them on *behaviour*, not on a leaked value. A script
 that dispatches its own synthetic `click` event to satisfy the gesture requirement fails,
-because a page-built event carries `isTrusted=false` and does not count as activation.
+because a page-built event carries [`isTrusted=false`](https://developer.mozilla.org/en-US/docs/Web/API/Event/isTrusted)
+and does not count as activation.
 This is the same boolean that decides
 [whether an automated click reads as real input](playwright-clicks-istrusted.md): the
 clipboard gate sits directly on top of it.
@@ -69,31 +75,34 @@ So the detector question is not "what is your clipboard value". It is "does the 
 open for you the way it opens for a person", and the answer depends on whether your
 clicks are trusted.
 
-## The cross-check: permission state must agree with the Permissions API
+## The cross-check: the Permissions API answer must match the engine
 
-The sharper check does not call the clipboard at all. It reads two answers to the same
-question and looks at whether they line up.
+The sharper check does not call the clipboard at all. It reads what the Permissions API
+says about `clipboard-read` and checks whether that answer matches the engine the rest of
+the page claims to be.
 
-`navigator.clipboard` being present implies a certain permission model. The Permissions
-API is then asked directly: `query({name: 'clipboard-read'})`. On a coherent, real
-browser those two facts describe one consistent policy. On an over-patched setup, where
-someone bolted on `navigator.clipboard` or forced a permission state from JavaScript
-without moving the other half, the two disagree, and the disagreement is the tell.
+A modern Firefox user agent implies a specific, boring answer:
+`navigator.permissions.query({name: 'clipboard-read'})` throws, because Firefox has never
+implemented that permission name. Chromium, by contrast, answers with a real
+`granted`/`denied`/`prompt` state. A detector that sees a Firefox user agent and a
+Chromium-shaped answer to that one query has found a browser lying about what it is:
+either the engine underneath is not really Firefox, or something patched the Permissions
+API on top of one without reproducing the one answer a real Firefox has always given.
 
-It is the same shape as
+It is the same family as
 [the notifications permission mismatch](permissions-api-consistency.md), where
 `Notification.permission` and `navigator.permissions.query({name: 'notifications'})` are
-expected to give one coherent answer and a headless browser gives two. Clipboard adds a
-third instance of the pattern, alongside
-[the notification-state cross-check detectors already run](notification-permission-detection.md).
-Nobody has to recognise automation directly; they just ask the same thing twice through
-different code and compare.
+expected to give one coherent answer and a headless browser gives two, and it sits
+alongside [the notification-state cross-check detectors already run](notification-permission-detection.md).
+Clipboard is a blunter version of the same idea: the expected answer for a real Firefox is
+not a state to match, it is a specific failure to reproduce. Nobody has to recognise
+automation directly; they just ask the same question the browser already answers for free
+and see if the answer fits.
 
 A patched-at-the-engine build does well here for an unglamorous reason: it is a real
-Firefox. The permission plumbing is the browser's own, so the Permissions API answer and
-the clipboard's actual behaviour come from one source and cannot contradict each other the
-way a page-level shim does. There is nothing to keep in sync because nothing was bolted
-on.
+Firefox, so the Permissions API answers exactly the way any Firefox does, including by
+throwing on a permission name Firefox never implemented. There is nothing to keep in sync
+because nothing was bolted on.
 
 ## Reading the clipboard with invisible_playwright
 
@@ -112,34 +121,39 @@ with InvisiblePlaywright(seed=42) as browser:
     # The Playwright click is a trusted gesture, so the write is permitted.
     page.click("#copy-button")
 
-    # Inspect the surface the way a detector would: presence plus the
-    # permission state that has to agree with it.
+    # Inspect the surface the way a detector would: presence plus how the
+    # Permissions API answers for clipboard-read on this engine.
     report = page.evaluate("""async () => {
         const present = 'clipboard' in navigator;
         let readState = 'unavailable';
         try {
             const s = await navigator.permissions.query({ name: 'clipboard-read' });
-            readState = s.state;               // 'granted' | 'denied' | 'prompt'
-        } catch (e) {
-            readState = 'query-failed';
+            readState = s.state;               // Chromium: 'granted' | 'denied' | 'prompt'
+        } catch {
+            readState = 'query-failed';        // Firefox: always lands here
         }
         return { present, readState };
     }""")
 
-    print(report)   # e.g. {'present': True, 'readState': 'prompt'}
+    print(report)   # e.g. {'present': True, 'readState': 'query-failed'}
 ```
 
 The values you get back are the ones a genuine Firefox returns: `navigator.clipboard`
-present in the secure context, and a `clipboard-read` state that matches the browser's
-real policy rather than a hand-forced constant. If you need to grant clipboard permissions
-explicitly for a `readText()` flow, use Playwright's own
-`context.grant_permissions([...])` on the browser context, exactly as you would with
-upstream Playwright; there is no separate API to learn here.
+present in the secure context, and a `clipboard-read` query that fails exactly the way it
+fails on every real Firefox, rather than answering with a hand-forced constant.
+[`context.grant_permissions([...])`](https://playwright.dev/python/docs/api/class-browsercontext#browser-context-grant-permissions)
+works for the permissions Firefox actually implements through Playwright, such as
+`geolocation`, but not for `clipboard-read` or `clipboard-write`: pass either one on a
+Firefox context and Playwright itself raises `Unknown permission`, on stock Playwright as
+much as on this one. There is no separate API and no workaround to learn here, because the
+browser has nothing to grant; a `readText()` flow on Firefox depends on the trusted
+gesture, not on a permission you can pre-approve.
 
-The measurable point is the one from the section above: the presence flag and the
-permission state agree, and a click-gated `writeText()` succeeds because the gesture was
-trusted. That agreement is what the cross-check is looking for, and it is a property of
-being a real browser rather than of any value we inject.
+The measurable point is the one from the section above: the presence flag reads true, the
+`clipboard-read` query fails exactly the way it does on every real Firefox, and a
+click-gated `writeText()` succeeds because the gesture was trusted. That match is what the
+cross-check is looking for, and it is a property of being a real browser rather than of
+any value we inject.
 
 ## What this does not fix
 
@@ -166,36 +180,39 @@ Those you supply: a clean proxy and human-shaped behaviour.
 
 ## Conclusion
 
-A website can absolutely detect that you are touching the Clipboard API, and it can read
-your `clipboard-read` permission state without prompting. But the async Clipboard API is a
-gate, not a value fingerprint: access opens only for a real trusted gesture, and the
-permission it reports has to agree with the Permissions API's answer for the same thing.
-A patched-at-the-engine Firefox driven by stock Playwright clears both because the gesture
-is genuinely trusted and the permission plumbing is the browser's own. That handles the
-browser side. The exit and the pacing are still yours to get right.
+A website can absolutely detect that you are touching the Clipboard API, and it can ask
+the Permissions API about `clipboard-read` without ever showing you a prompt. But the
+async Clipboard API is a gate, not a value fingerprint: access opens only for a real
+trusted gesture, and the way the Permissions API answers for `clipboard-read` has to match
+how the engine you claim to be actually answers it. A patched-at-the-engine Firefox driven
+by stock Playwright clears both because the gesture is genuinely trusted and the
+permission plumbing is the browser's own, throw and all. That handles the browser side.
+The exit and the pacing are still yours to get right.
 
 ## Short answers to the questions that lead here
 
 **Can a website tell if I read the clipboard?** It can see that `navigator.clipboard`
-exists and query the `clipboard-read` permission state. A silently rejected read also
-tells it which guard tripped. It cannot turn any of that into a stable machine
-fingerprint.
+exists and query `clipboard-read` on the Permissions API, which answers with a state on
+Chromium and throws on Firefox. A silently rejected read also tells it which guard
+tripped. It cannot turn any of that into a stable machine fingerprint.
 
 **Is the Clipboard API a fingerprinting surface?** Barely, in the value sense. It is a
 permission-and-gesture gate, so its interest to a detector is consistency and access
 behaviour, not a hash that varies between machines.
 
-**Why does `readText()` reject in my automation?** Most often because there was no trusted
-user gesture, or the `clipboard-read` permission was not granted. A script-dispatched
-click does not count as a gesture.
+**Why does `readText()` reject in my automation?** Almost always a missing trusted user
+gesture. On Firefox specifically, a read that does not already satisfy that gesture rule
+falls back to an ephemeral native "Paste" menu item a script cannot click. A
+script-dispatched click never counts as the gesture in the first place.
 
 **Do Playwright clicks satisfy the gesture requirement?** Yes. They go through the native
 input path and arrive as trusted events, so the clipboard gate opens as it would for a
 real user.
 
-**What is the clipboard cross-check?** A detector compares `navigator.clipboard` presence
-against the Permissions API state for `clipboard-read`. On a real browser they describe
-one policy; a page-level shim that forces one without the other makes them disagree.
+**What is the clipboard cross-check?** A detector checks whether querying the Permissions
+API for `clipboard-read` behaves the way the claimed engine actually behaves: a real state
+on Chromium, a specific unsupported-permission error on Firefox. A shim that answers with
+a clean state on a Firefox user agent is the mismatch.
 
 **Does a coherent clipboard mean I will not get blocked?** No. It is one browser-side
 signal. IP reputation, per-account quotas and behaviour are separate and are yours to
@@ -203,12 +220,30 @@ handle.
 
 ## Sources
 
-- The WHATWG and W3C definitions of the async Clipboard API and the Permissions API,
-  including the user-activation and `clipboard-read`/`clipboard-write` requirements, read
-  from the specifications rather than from a blog summary.
+- W3C, [Clipboard API and events](https://www.w3.org/TR/clipboard-apis/), retrieved
+  2026-08-28, for the async Clipboard API and its `clipboard-read`/`clipboard-write`
+  permission requirements, read from the specification rather than from a blog summary.
+- W3C, [Permissions API](https://www.w3.org/TR/permissions/), retrieved 2026-08-28, for
+  the `navigator.permissions.query()` behavior the cross-check relies on.
+- MDN, [Clipboard API: Security considerations](https://developer.mozilla.org/en-US/docs/Web/API/Clipboard_API#security_considerations),
+  retrieved 2026-08-28, for the browser divergence this page relies on: Chromium backs
+  `clipboard-read`/`clipboard-write` with a real, queryable Permissions API permission;
+  Firefox and Safari implement neither and gate access by transient activation instead.
+- Mozilla Bugzilla, [bug 1560373](https://bugzilla.mozilla.org/show_bug.cgi?id=1560373),
+  retrieved 2026-08-28, for the `TypeError` Firefox throws on a `clipboard-write` Permissions
+  API query instead of returning a state, and for the WONTFIX resolution confirming Firefox
+  never planned to add that permission name. The same missing-enum gap is why a
+  `clipboard-read` query fails the identical way.
+- microsoft/playwright, [issue 19888](https://github.com/microsoft/playwright/issues/19888),
+  retrieved 2026-08-28, for the `Unknown permission: clipboard-read` error `grant_permissions`
+  raises in stock Playwright. This project's own testing reproduces the identical failure
+  on a Firefox context, independent of anything this project changes.
+- WHATWG HTML Standard, [Tracking user activation](https://html.spec.whatwg.org/multipage/interaction.html#tracking-user-activation),
+  retrieved 2026-08-28, for the transient-activation gesture requirement the clipboard
+  gate sits on.
 - This project's own permission and gesture gates, which check that a click-gated
-  operation succeeds under a trusted event and that the permission state a page can query
-  agrees with the browser's real policy.
+  operation succeeds under a trusted event and that what a page can observe from the
+  Permissions API matches what the real browser being claimed actually does.
 
 **See also:** [the trusted-click boolean the clipboard gate sits on](playwright-clicks-istrusted.md),
 [the permission answers that must agree](permissions-api-consistency.md), and

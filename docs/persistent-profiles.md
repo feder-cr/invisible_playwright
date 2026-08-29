@@ -34,7 +34,7 @@ For "log in once and stay logged in", `storageState` is usually enough and much 
 to reason about. For "this identity should look like it has been used", the profile is
 the one that does it, because it accumulates the things you would not think to fake.
 
-### When each is the right choice
+The choice breaks down to a few common cases:
 
 - A test suite that needs an authenticated session: `storageState`.
 - One long-lived identity you return to over weeks: a profile.
@@ -96,8 +96,6 @@ So a liveness or verification flow that asks for a camera, or a `grant_permissio
 you made months ago while debugging, quietly undoes
 [the WebRTC work described here](webrtc-leak-proxy.md). Nothing warns you; the session
 simply starts reporting more than it used to.
-
-### What to do about it
 
 Audit the stored permissions on any profile used with a proxy. It takes a minute, and
 the failure mode is exactly the one the proxy was there to prevent.
@@ -180,10 +178,22 @@ which is the one profile you should never reuse.
 
 ## Sources
 
-- Playwright persistent context documentation and the two open issues linked above.
+- Playwright's own [`launch_persistent_context`
+  documentation](https://playwright.dev/python/docs/api/class-browsertype#browser-type-launch-persistent-context),
+  retrieved 2026-08-28, for the user data directory mechanism this page builds on.
+- The two open Playwright issues on cookie persistence in a user data directory:
+  [microsoft/playwright#36139](https://github.com/microsoft/playwright/issues/36139) and
+  [microsoft/playwright#35466](https://github.com/microsoft/playwright/issues/35466),
+  retrieved 2026-08-28.
+- [RFC 8828, WebRTC IP Address Handling Requirements](https://datatracker.ietf.org/doc/html/rfc8828),
+  retrieved 2026-08-28, and
+  [draft-ietf-mmusic-mdns-ice-candidates](https://datatracker.ietf.org/doc/draft-ietf-mmusic-mdns-ice-candidates/),
+  retrieved 2026-08-28, the two specs behind the permission-conditioned WebRTC behaviour
+  described above.
 - Firefox's own conditioning of `default_address_only` and `obfuscate_host_addresses` on
-  active-or-permitted capture, which is the mechanism behind the permission trap, built on
-  the IETF specs linked above (RFC 8828, draft-ietf-mmusic-mdns-ice-candidates).
+  active-or-permitted capture, which is the mechanism behind the permission trap:
+  [Mozilla Bugzilla 1570669](https://bugzilla.mozilla.org/show_bug.cgi?id=1570669),
+  retrieved 2026-08-28, the report that added the permission check.
 - This project's proxy and profile handling, described in the pages linked above.
 
 ---

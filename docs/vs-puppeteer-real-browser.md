@@ -104,8 +104,8 @@ A browser that reads as genuine still does not override:
 
 - **IP reputation.** A perfect fingerprint on a datacenter range, or on a
   residential IP a thousand other automated sessions are using this minute, is
-  still on a bad address. Around 90% of public proxies are already known and
-  blocked before you send a single request. The fingerprint work cannot see the
+  still on a bad address. Around [90% of proxies are public](configuration.md), so their IPs
+  are already known and blocked before you send a single request. The fingerprint work cannot see the
   address, let alone launder it.
 - **Per-account quotas and rate limits.** These are counted server-side against
   your account and your address. Looking like a real browser does not raise the
@@ -183,7 +183,7 @@ account, and the interaction timing, in that order.
 
 ## Sources
 
-- `puppeteer-real-browser`, read from its own repository README for how it
+- `puppeteer-real-browser`'s own GitHub repository, [ZFC-Digital/puppeteer-real-browser](https://github.com/ZFC-Digital/puppeteer-real-browser), read 2026-08-29, for how it
   launches Chrome and applies runtime evasions, rather than from second-hand
   summaries.
 - This project's own quickstart and configuration pages for the API shown above,

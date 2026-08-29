@@ -112,7 +112,7 @@ with InvisiblePlaywright(seed=42) as browser:
     print(rect)   # fractional values, Windows-shaped, because Windows produced them
 ```
 
-The `browser` object is a real Playwright `Browser`, so `page.evaluate`,
+The `browser` object is a real Playwright [`Browser`](https://playwright.dev/python/docs/api/class-browser), so `page.evaluate`,
 `getClientRects` and every other method behave exactly as documented upstream. Nothing
 about reading geometry is special-cased.
 
@@ -195,8 +195,13 @@ browser on a bad IP or with robotic timing still gets flagged.
 
 ## Sources
 
-- The WHATWG and CSSOM View specifications for `getClientRects` and
-  `getBoundingClientRect`, which define the returned rectangles as floating-point values.
+- The W3C [CSSOM View](https://www.w3.org/TR/cssom-view-1/) specification, which defines
+  `getClientRects` and `getBoundingClientRect` on the Element interface and specifies the
+  returned rectangles as floating-point values, retrieved 2026-08-28.
+- [MDN: `Element.getClientRects()`](https://developer.mozilla.org/en-US/docs/Web/API/Element/getClientRects)
+  and [MDN: `Element.getBoundingClientRect()`](https://developer.mozilla.org/en-US/docs/Web/API/Element/getBoundingClientRect),
+  retrieved 2026-08-28, the reference documentation for both methods; the getClientRects
+  page states outright that fractional pixel offsets are possible.
 - This project's fingerprint gates, which compare a full field panel against a stock
   browser on the same machine rather than reading a verdict, and which treat a value that
   disagrees with the claimed platform as a failure.

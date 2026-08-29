@@ -159,6 +159,11 @@ for what an address carries on its own.
 keys. A demo key is configured for demonstrations and its risk model is not the one you
 care about.
 
+## Sources
+
+- Google's own reCAPTCHA v3 documentation, [reCAPTCHA v3](https://developers.google.com/recaptcha/docs/v3),
+  retrieved 2026-08-28, for the 0.0-1.0 behavioral score model described above.
+
 **See also:** [the checklist for being detected on one site](playwright-detected-as-bot.md),
 where behaviour is step five and the address is step seven;
 [when the timezone does not match the proxy](timezone-proxy-mismatch.md), which is the

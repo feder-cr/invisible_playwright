@@ -207,8 +207,11 @@ pacing too.
 
 ## Sources
 
-- The WebGPU specification's adapter and `GPUAdapterInfo` interfaces, and the Firefox
-  release notes recording WebGPU shipping on Windows in the 141 series.
+- [The WebGPU specification](https://www.w3.org/TR/webgpu/), for the adapter and
+  `GPUAdapterInfo` interfaces, retrieved 2026-08-28.
+- Mozilla Gfx Team Blog,
+  [Shipping WebGPU on Windows in Firefox 141](https://mozillagfx.wordpress.com/2025/07/15/shipping-webgpu-on-windows-in-firefox-141/),
+  retrieved 2026-08-28.
 - This project's own fingerprint parity gates, which compare a seed-derived identity field
   by field against a known-good reference and treat a suppressed surface as a failure
   rather than a pass.

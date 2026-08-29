@@ -202,9 +202,10 @@ and JA4. If they are not byte-identical, that gap is what a detector sees.
   offered one cipher suite more than the stock Firefox of the same version, moving the
   JA4 to a value no shipping Firefox produces, closed by restoring exact cipher parity
   with current upstream.
-- Public JA3 and JA4 fingerprinting pages, read by driving both this build and a stock
-  Firefox to them on the same machine and comparing the parsed ClientHello field by
-  field.
+- Public JA3 and JA4 fingerprinting pages such as [BrowserLeaks' TLS fingerprint
+  test](https://browserleaks.com/tls), retrieved 2026-08-28, read by driving both this
+  build and a stock Firefox to them on the same machine and comparing the parsed
+  ClientHello field by field.
 
 **See also:** [why a TLS fingerprint cannot be patched](ja3-ja4-tls-fingerprint.md),
 [the headers that must agree with the User-Agent](client-hints-sec-fetch.md), and

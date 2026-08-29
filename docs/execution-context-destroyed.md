@@ -140,6 +140,15 @@ tell you that are relevant here specifically:
 
 The timing of the navigation is itself evidence, and it is free.
 
+## Conclusion
+
+"Execution context was destroyed" describes a mechanism, not a cause. A document went
+away, and anything still holding a reference to it fails, whether the navigation was
+yours or the site's. Reading `page.url` and taking a screenshot at the moment of failure
+costs one small code change and settles which one happened. Treat it as a race first,
+since that is the common case, but stop tightening waits the day the screenshot shows a
+challenge page instead of the one you asked for.
+
 ## Short answers to the questions that lead here
 
 **How do I fix "Execution context was destroyed"?** If it is a race, wait for the
@@ -156,12 +165,24 @@ If you ended up somewhere you did not ask for, it is the site.
 with some races and does nothing for a redirect that happens later.
 
 **Why does it only happen in headless or only in CI?** Usually timing, because a loaded
-machine changes the race. Occasionally the environment, because a container is more
-detectable than your laptop and a challenge fires there and not at home.
+machine changes the race. Occasionally the environment, because
+[a container carries its own tells](headless-vs-headful.md) independent of headless or
+headful mode, and a challenge fires there and not at home.
 
 **What about "Target closed"?** Same family. The page or the browser went away while you
 were talking to it, and the diagnosis is the same: find out what the browser was doing
 at that moment.
+
+## Sources
+
+- Playwright's own documentation, [Navigations](https://playwright.dev/python/docs/navigations),
+  retrieved 2026-08-28, for how a navigation tears down and replaces a document's
+  execution context, which is the mechanism behind this error.
+- Playwright's own documentation, [Auto-waiting](https://playwright.dev/python/docs/actionability),
+  retrieved 2026-08-28, for the built-in waiting this page recommends in place of sleeping.
+- Puppeteer's own documentation, [Page.waitForNavigation()](https://pptr.dev/api/puppeteer.page.waitfornavigation),
+  retrieved 2026-08-28, for the equivalent navigation-waiting API in Puppeteer, where the
+  same error message appears under the same name.
 
 **See also:** [the checklist for being detected on one site](playwright-detected-as-bot.md),
 which is where to go if the URL came back wrong, and

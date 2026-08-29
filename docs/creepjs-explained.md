@@ -24,20 +24,23 @@ The project is organised into modules that map onto surfaces: `canvas`, `webgl`,
 `navigator`, `window`, `worker`, `css`, `cssmedia`, `svg`, `domrect`, `math`,
 `engine`, `features`.
 
-Then there are four that are not surfaces at all, and they are the point:
+Then there are five that are not surfaces at all, and they are the point:
 
 - **`lies`**, which detects tampering.
 - **`trash`**, which collects values that are junk or impossible.
 - **`errors`**, which records what threw when it should not have.
 - **`resistance`**, which identifies privacy tooling, including Firefox's own
   `resistFingerprinting` mode.
+- **`headless`**, which turns the other modules' signals into the headless and
+  stealth percentages quoted later on this page.
 
 A high score is not "your fingerprint is rare". It is "nothing here contradicts
 anything else here, and nothing looks tampered with".
 
 ## How it finds tampering
 
-Four techniques, all visible in `src/lies/index.ts`.
+Four techniques, all visible in `src/lies/index.ts` and [described in general
+terms elsewhere](tostring-native-code-detection.md).
 
 **A pristine reference.** It creates fresh iframes and reaches into
 [`contentWindow`](https://developer.mozilla.org/en-US/docs/Web/API/HTMLIFrameElement/contentWindow)
@@ -104,7 +107,9 @@ Run directly against a live Playwright-driven Chromium session with no stealth
 layer of any kind applied - no injected patches, no engine-level work, nothing
 this project or any comparable tool does. CreepJS's own headless module returned
 0% headless and 0% stealth, with a 25% "like headless" partial-similarity score
-alongside them. Worth stating plainly what that does and does not mean: it says
+alongside them.
+
+Worth stating plainly what that does and does not mean: it says
 this one specific, directly-checked session did not trip CreepJS's headless
 heuristics that day, not that headless or automation detection in general is
 solved, and not that every Playwright launch configuration scores the same way.
@@ -141,6 +146,23 @@ unusual but honest fingerprint.
 
 **What passes it?** Not lying in JavaScript at all. If the value is decided below the
 JavaScript layer there is no override to find and no seam to detect.
+
+## Sources
+
+- CreepJS's own GitHub repository, [`abrahamjuliot/creepjs`](https://github.com/abrahamjuliot/creepjs),
+  `src/lies/index.ts` and the module layout, read 2026-07-27, for the four
+  tampering-detection techniques and the lie names quoted throughout.
+- MDN Web Docs, [`HTMLIFrameElement.contentWindow`](https://developer.mozilla.org/en-US/docs/Web/API/HTMLIFrameElement/contentWindow),
+  [`Function.prototype.toString()`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function/toString),
+  [`Object.getOwnPropertyDescriptor()`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/getOwnPropertyDescriptor),
+  and [`Object.getPrototypeOf()`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/getPrototypeOf),
+  retrieved 2026-08-28, for the four native APIs CreepJS's tampering checks are built on.
+- Mozilla's own [Fingerprinting wiki page](https://wiki.mozilla.org/Security/Fingerprinting),
+  retrieved 2026-08-28, for Firefox's `resistFingerprinting` mode, which CreepJS's own
+  `resistance` module identifies.
+- This project's own testing: a live, unmodified Playwright-driven Chromium session run
+  directly against CreepJS's headless module, for the 0% headless / 0% stealth scores
+  quoted above.
 
 **See also:** [what sannysoft checks](sannysoft-explained.md), whose canvas-in-iframe test is the same idea in miniature, [the three levels](playwright-stealth-levels.md), and [AudioContext fingerprinting](audiocontext-fingerprinting.md), where its silent-buffer check is worked through in detail.
 

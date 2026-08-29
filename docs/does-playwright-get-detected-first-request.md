@@ -181,9 +181,14 @@ engine's and is the same regardless.
 
 ## Sources
 
-- The TLS 1.3 and HTTP/2 specifications for what the `ClientHello` and `SETTINGS`
-  frames actually contain, and the public JA3 and JA4 definitions for how those
-  are hashed into a fingerprint.
+- The TLS 1.3 specification, [RFC 8446](https://datatracker.ietf.org/doc/html/rfc8446),
+  retrieved 2026-08-28, for what the `ClientHello` message actually contains.
+- The HTTP/2 specification, [RFC 9113](https://datatracker.ietf.org/doc/html/rfc9113),
+  retrieved 2026-08-28, for what the `SETTINGS` frame actually contains.
+- Salesforce's own GitHub repository for [JA3](https://github.com/salesforce/ja3),
+  retrieved 2026-08-28, for the public JA3 definition and how the fields are hashed into a fingerprint.
+- FoxIO's own GitHub repository for [JA4](https://github.com/FoxIO-LLC/ja4),
+  retrieved 2026-08-28, for the public JA4 definition.
 - This project's own comparison method: capturing a handshake from a session and
   from a stock Firefox on the same machine and diffing the result, rather than
   trusting a verdict.

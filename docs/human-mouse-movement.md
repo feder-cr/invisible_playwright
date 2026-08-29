@@ -163,6 +163,17 @@ here; immediate ones point at the fingerprint or the address.
 cannot be reproduced. Derive it from a seed so the motion is varied between identities
 and identical when you replay one.
 
+## Sources
+
+- [MDN: `Event.isTrusted`](https://developer.mozilla.org/en-US/docs/Web/API/Event/isTrusted),
+  for how the trusted flag is set by the browser and cannot be assigned from page script.
+- [MDN: `PointerEvent.pointerType`](https://developer.mozilla.org/en-US/docs/Web/API/PointerEvent/pointerType),
+  for the field a naive synthetic event usually gets wrong.
+- Playwright's documented [`Mouse.move()`](https://playwright.dev/python/docs/api/class-mouse),
+  the driver-level call every Bezier-curve humanizer plugs into.
+- This project's own source patch to the browser's input handling, and its own
+  detection gates comparing the resulting event fields against a real device.
+
 **See also:** [the checklist for being detected on one site](playwright-detected-as-bot.md),
 where behaviour is step five, and
 [three ways to make Playwright undetected](playwright-stealth-levels.md), which is the

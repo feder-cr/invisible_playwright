@@ -169,8 +169,8 @@ the most common tool for doing exactly what this page argues against.
 
 ## Sources
 
-- Playwright's `userAgent` context option, and the browser properties listed above.
-- The Client Hints headers sent by Chromium and not by Firefox.
+- Playwright documentation, [`userAgent` browser context option](https://playwright.dev/python/docs/api/class-browser#browser-new-context-option-user-agent), retrieved 2026-08-28.
+- MDN Web Docs, [`Sec-CH-UA` header](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Sec-CH-UA), retrieved 2026-08-28.
 - This project derives the user agent from the engine's real upstream version rather than
   writing one, for the staleness reason given above.
 

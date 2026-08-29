@@ -233,10 +233,14 @@ are now forced to agree for every identity.
 
 ## Sources
 
-- The pointer and hover CSS media features, and `navigator.maxTouchPoints`, read
-  from their own specifications rather than from a rendered report.
-- [CreepJS](creepjs-explained.md), read from its own source, for how it records a
-  self-inconsistent pair as a lie.
+- W3C, [Pointer Events](https://www.w3.org/TR/pointerevents/), retrieved
+  2026-08-28, for the specification that extends the `Navigator` interface with
+  `maxTouchPoints`.
+- W3C, [Media Queries Level 4](https://www.w3.org/TR/mediaqueries-4/), retrieved
+  2026-08-28, for the `pointer`, `any-pointer`, `hover` and `any-hover`
+  interaction media features this page checks against the touch count.
+- [CreepJS](https://github.com/abrahamjuliot/creepjs), retrieved 2026-08-28, read
+  from its own source, for how it records a self-inconsistent pair as a lie.
 - This project's release gates, including the test that now asserts the shared
   gate is active for every seed the identity pool can produce.
 

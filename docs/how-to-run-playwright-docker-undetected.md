@@ -268,6 +268,10 @@ comparison method used in the verification section above.
 
 ## Sources
 
+- Playwright's own documentation for [the official Docker image](https://playwright.dev/python/docs/docker),
+  which documents the `mcr.microsoft.com/playwright` images, retrieved 2026-08-28, for the
+  baseline setup this tutorial starts from and the reliability problems it solves before
+  the machine-tells this page covers even come up.
 - [Playwright in Docker: it runs, and still gets blocked](playwright-docker-detection.md),
   for the six-tell breakdown this tutorial builds a Dockerfile against.
 - [WebGL renderer strings](webgl-renderer-strings.md) and

@@ -150,6 +150,19 @@ console.log('solid red survived:', px[0] === 255 && px[1] === 0 && px[2] === 0);
 Then relaunch with the same identity and confirm the first hash is the same value. Two
 launches, one identity, one hash.
 
+## Conclusion
+
+Per-call noise fails the moment a page reads the same canvas twice, and seeded noise
+that survives that check can still fail the second time a page draws a flat reference
+colour and checks it came back unchanged. Both checks run in a handful of lines of
+JavaScript, and both are already in use.
+
+What passes both is substitution: pixel values that are a pure function of a seed,
+stable within a session, stable across relaunches of the same identity, and different
+between identities. The cost is real. A substitution applied at readback cannot tell a
+fingerprinting probe from a QR scanner or a photo crop, so anything reading canvas
+pixels for a genuine reason inherits the substituted values too.
+
 ## Short answers to the questions that lead here
 
 **Does adding noise to canvas prevent fingerprinting?** It prevents a stable identifier
@@ -173,6 +186,19 @@ also makes you identifiable as someone running that mode. There is
 **Will noise break my application?** If you read pixels for anything real, yes,
 potentially. Protection applied at readback cannot tell your QR decoder from a
 fingerprinting probe.
+
+## Sources
+
+- [MDN: `HTMLCanvasElement.toDataURL()`](https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/toDataURL)
+  and [MDN: `CanvasRenderingContext2D.getImageData()`](https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/getImageData),
+  retrieved 2026-08-28, the two readback APIs the checks on this page run directly against.
+- The two protections named above: [Canvas Blocker - Fingerprint Protect](https://addons.mozilla.org/en-US/firefox/addon/canvas-blocker-no-fingerprint/),
+  a Firefox extension whose modes include per-call random noise, and Mozilla's own
+  [Resist Fingerprinting support page](https://support.mozilla.org/en-US/kb/resist-fingerprinting)
+  for what `privacy.resistFingerprinting` changes on a canvas read, both retrieved 2026-08-29.
+- This project's own testing notes: the solid-fill guard shipped without it and was
+  learned from a detector telling us so, and the field-by-field canvas parity
+  measurements referenced throughout.
 
 **See also:** [AudioContext fingerprinting](audiocontext-fingerprinting.md), where the
 same per-call mistake has the same consequence and where our own noise turned out to be

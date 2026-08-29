@@ -75,7 +75,7 @@ fed by:
 
 | Surface | Where a page reads it | Should be derived from |
 |---|---|---|
-| Timezone (IANA name) | `Intl.DateTimeFormat().resolvedOptions().timeZone` | egress IP |
+| Timezone (IANA name) | [`Intl.DateTimeFormat().resolvedOptions().timeZone`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/DateTimeFormat/resolvedOptions) | egress IP |
 | UTC offset | `new Date().getTimezoneOffset()` | the live zone |
 | Interface language | `navigator.language` / `navigator.languages` | egress IP |
 | `Accept-Language` header | the HTTP request itself | egress IP |
@@ -142,8 +142,8 @@ Setting `timezone_id` fixes the timezone and nothing else: `navigator.languages`
 the host machine. That gap is why the "just set the timezone" advice keeps producing
 detected sessions.
 
-Stock Playwright exposes `timezone_id`, and it works: it changes the timezone the browser
-reports. But a session with an exit in one country, `timezone_id` set to match, and
+Stock Playwright exposes [`timezone_id`](https://playwright.dev/python/docs/emulation), and
+it works: it changes the timezone the browser reports. But a session with an exit in one country, `timezone_id` set to match, and
 everything else left at the host's default now has a timezone that agrees with the IP and
 a language list that does not. You have moved the contradiction, not removed it.
 
@@ -282,6 +282,8 @@ target country.
   memory.
 - The nine-surface cross-check and the Windows `TZ` behaviour, from this set's own notes on
   timezone and proxy mismatch, each measured through the proxy rather than on localhost.
+- Playwright documentation, [Emulation](https://playwright.dev/python/docs/emulation), retrieved 2026-08-28.
+- MDN Web Docs, [`Intl.DateTimeFormat.prototype.resolvedOptions()`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/DateTimeFormat/resolvedOptions), retrieved 2026-08-28.
 
 **See also:** [why the timezone does not match the proxy IP](timezone-proxy-mismatch.md)
 for the full surface list, and [client hints and Sec-Fetch headers](client-hints-sec-fetch.md)

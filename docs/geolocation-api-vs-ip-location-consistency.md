@@ -228,7 +228,8 @@ others is how the mismatch survives.
 - This project's runtime timezone path, which resolves `timezone="auto"` from the proxy
   exit against a locally cached database, described in full in
   [offline timezone resolution from a proxy exit IP](offline-geoip-timezone-proxy.md).
-- Stock Playwright's `new_context` geolocation and permission options, used unchanged.
+- Stock Playwright documentation, [`Browser.new_context`](https://playwright.dev/python/docs/api/class-browser#browser-new-context),
+  retrieved 2026-08-28, for the `geolocation` and `permissions` options used unchanged.
 - The [Configuration](configuration.md) page for the proxy and timezone settings the
   example above relies on.
 

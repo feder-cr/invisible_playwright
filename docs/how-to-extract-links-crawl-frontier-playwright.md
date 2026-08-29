@@ -256,8 +256,12 @@ Crawl the frontier under one seed and control volume separately.
 
 ## Sources
 
-- The Python standard library `urllib.parse` (`urljoin`, `urlsplit`, `parse_qsl`,
-  `urlencode`), which does all of the resolution and normalization above.
+- Python documentation, [`urllib.parse`](https://docs.python.org/3/library/urllib.parse.html)
+  (`urljoin`, `urlsplit`, `parse_qsl`, `urlencode`), retrieved 2026-08-28, which does
+  all of the resolution and normalization above.
+- MDN, [`HTMLAnchorElement.href`](https://developer.mozilla.org/en-US/docs/Web/API/HTMLAnchorElement/href),
+  retrieved 2026-08-28, for the pre-resolved property this page tells you to avoid in
+  favor of the raw attribute.
 - This project's own crawl measurements, including the 3,168-to-812 collapse quoted
   above, run under a fixed seed so the numbers are reproducible.
 

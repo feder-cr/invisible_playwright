@@ -1,22 +1,22 @@
 ---
-title: "puppeteer-extra-plugin-stealth: unmaintained since 2024"
-description: "puppeteer-extra-plugin-stealth has had no real update since mid-2024. Its old patches still work, but the checklist froze while detection kept moving on."
+title: "puppeteer-extra-plugin-stealth: unmaintained since 2023"
+description: "puppeteer-extra-plugin-stealth has had no real update since early 2023. Its old patches still work, but the checklist froze while detection kept moving on."
 parent: "Comparisons"
 nav_order: 8
 ---
 
 
-# puppeteer-extra-plugin-stealth: unmaintained since 2024
+# puppeteer-extra-plugin-stealth: unmaintained since 2023
 
-puppeteer-extra-plugin-stealth has not shipped a substantive update since mid-2024.
+puppeteer-extra-plugin-stealth has not shipped a substantive update since early 2023.
 Its existing JavaScript patches still do their job, but the list of checks it covers
 froze the day active development stopped, while the detection it was built to defeat
-kept moving. If you checked the project two years ago and never checked again, this
+kept moving. If you checked the project three years ago and never checked again, this
 page is the update.
 
 A lot of automation code still imports it, and a lot of tutorials still recommend it
 as the default answer to "how do I stop getting flagged." The part that's easy to
-miss is the date on its home repository's last substantive commit: July 2024.
+miss is the date on its home repository's last substantive commit: March 2023.
 
 This covers [`playwright-extra`](vs-playwright-extra-stealth.md) too, the Node package
 that wraps the same plugin for Playwright instead of Puppeteer. Both ship from the
@@ -44,7 +44,7 @@ The problem isn't that the existing patches stopped working. It's that detection
 services don't stand still, and a plugin's whole value is in the list of checks it
 covers - a list that was frozen the day active development stopped.
 
-Two years is long enough for new CDP-visible artifacts to surface, for new browser
+Three years is long enough for new CDP-visible artifacts to surface, for new browser
 versions to change what a stock Chromium object looks like well enough that an old
 patch becomes the tell instead of the fix, and for detection vendors to simply start
 checking properties nobody had bothered to patch before. None of that requires the
@@ -59,7 +59,7 @@ changes that.
 
 [Patching individual properties from the page, one at a time, is a different
 strategy from being a real browser](vs-playwright-stealth.md), and it has the same
-shape whether the patch list is current or two years stale. That's worth separating
+shape whether the patch list is current or three years stale. That's worth separating
 from the maintenance question, because it's the more durable point.
 
 Every property this class of plugin fixes is fixed **after the fact**: the browser's
@@ -100,15 +100,25 @@ The split is easiest to read as a table:
    plugin, current or not, was ever going to be the fix - those aren't properties it
    touches at any version.
 
+## Conclusion
+
+puppeteer-extra-plugin-stealth's existing patches still execute exactly as written,
+and that was never the question. The question is what the checklist stopped covering
+the day active development ended, and how much of today's detection surface now sits
+outside it. A frozen list is a maintenance problem with a maintenance-shaped answer:
+move to whatever fork or plugin is actually current. The deeper limit, overwriting a
+property from the page instead of changing what the browser is, would still be there
+on the freshest possible fork, and no update schedule closes that gap.
+
 ## Short answers to the questions that lead here
 
 **Is puppeteer-extra-plugin-stealth still maintained in 2026?** Its home repository's
-last substantive commits are from mid-2024. The project isn't formally archived, but
+last substantive commits are from early 2023. The project isn't formally archived, but
 there's been no meaningful ongoing development since.
 
 **Do the existing patches in puppeteer-extra-plugin-stealth still work?** The
 patches that exist still do what they were written to do. What's missing is
-everything a detector might check that wasn't on the list two years ago.
+everything a detector might check that wasn't on the list three years ago.
 
 **What should I use instead?** Depends what you actually need. If the goal is
 patching a short, specific list of CDP-visible properties and nothing more, a more
@@ -130,10 +140,12 @@ places this whole category at one specific level rather than the top of it, and
 ## Sources
 
 - The plugin's own public repository and commit history, checked directly rather
-  than assumed from its continued popularity in tutorials and Stack Overflow answers.
+  than assumed from its continued popularity in tutorials and Stack Overflow answers:
+  [berstend/puppeteer-extra, packages/puppeteer-extra-plugin-stealth commit history](https://github.com/berstend/puppeteer-extra/commits/master/packages/puppeteer-extra-plugin-stealth),
+  retrieved 2026-08-28.
 
 ---
 
 *From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
-a Firefox patched at the C++ level, on why a two-year-old patch list and a same-day
+a Firefox patched at the C++ level, on why a three-year-old patch list and a same-day
 patch list share the exact same structural gap.*

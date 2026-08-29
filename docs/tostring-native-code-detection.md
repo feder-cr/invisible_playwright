@@ -145,6 +145,23 @@ detector likes, and your override is still an override.
 **Does an engine-level build make me undetectable?** No. It removes this category. The
 machine you are running on still answers for itself.
 
+## Sources
+
+- MDN Web Docs, [`Function.prototype.toString()`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function/toString),
+  retrieved 2026-08-28, for the native-versus-source-text distinction the whole check
+  turns on.
+- MDN Web Docs, [`Object.getOwnPropertyDescriptor()`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/getOwnPropertyDescriptor),
+  retrieved 2026-08-28, for the descriptor walk described in "Descriptor and prototype
+  walking."
+- ECMA-262, [Function.prototype.toString ( )](https://tc39.es/ecma262/#sec-function.prototype.tostring),
+  retrieved 2026-08-28, for the specified requirement that a native function's string
+  representation follow the `NativeFunction` grammar rather than reproduce source text,
+  which is why `[native code]` is the honest answer and not a convention someone chose.
+- [CreepJS](https://github.com/abrahamjuliot/creepjs), read 2026-08-28, for a real
+  implementation of the pristine-reference, stack-trace, and descriptor-walking checks
+  described in "The four ways this is actually checked," covered in more detail on
+  [the page on CreepJS](creepjs-explained.md).
+
 **See also:** [navigator.webdriver is not the tell you think it is](navigator-webdriver-explained.md),
 which is the same argument from the most famous property, and
 [the ChromeDriver cdc_ variable](cdc-variable-explained.md), which is the same argument

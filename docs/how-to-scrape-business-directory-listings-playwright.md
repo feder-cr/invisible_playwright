@@ -70,8 +70,8 @@ with InvisiblePlaywright(seed=42) as browser:
 ## Drive the search form, do not guess its URL
 
 Drive the form instead of guessing the results URL: fill the location and category fields,
-submit, wait for the results container to actually appear, and only then read. That is more
-robust because it is what a browser does, not a reconstruction of what one did.
+submit, wait for the results container to actually appear, and only then read. That holds up
+better because it is what a browser does, not a reconstruction of what one did.
 
 It is tempting to reverse-engineer the results URL and skip the form: notice that a search
 lands on `?loc=Springfield&cat=plumbers` and just build that string. Sometimes it works.
@@ -267,6 +267,9 @@ session instead of hoping a new random identity reproduces it.
 
 - This project's own API for launching a seed-reproducible browser and driving stock
   Playwright, as documented on the quickstart and configuration pages.
+- Playwright documentation, [Auto-waiting](https://playwright.dev/python/docs/actionability),
+  retrieved 2026-08-28, for the actionability checks a real click and a `wait_for_selector`
+  call both rely on.
 - The behaviour of trusted versus synthetic input events, from this project's notes on why
   a reveal click needs `isTrusted`.
 - The release gate that flagged our own harness for request velocity, which is where the

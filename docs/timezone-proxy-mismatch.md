@@ -153,6 +153,20 @@ is a common source of an hour's confusion.
 **Is a VPN better than a proxy here?** For this specific problem they are equivalent, as
 long as you resolve the zone from the address you actually exit through.
 
+## Sources
+
+- [MDN: `Intl.DateTimeFormat().resolvedOptions()`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/DateTimeFormat)
+  and [MDN: `Date.prototype.getTimezoneOffset()`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Date/getTimezoneOffset),
+  retrieved 2026-08-28, for the two JavaScript-only mechanisms and the offset sign
+  convention described above.
+- Playwright documentation, [`timezone_id`](https://playwright.dev/python/docs/api/class-browser#browser-new-context-option-timezone-id),
+  retrieved 2026-08-28, for the per-realm override that Playwright's option actually reaches.
+- The [IANA Time Zone Database](https://www.iana.org/time-zones), retrieved 2026-08-28, for
+  the identifier form (`America/New_York`) that Firefox on Windows does not accept from the
+  `TZ` environment variable.
+- This project's own testing, for the Windows `TZ` POSIX-form finding and the offline
+  IP-to-timezone lookup described in "Derive it from the exit, do not configure it."
+
 **See also:** [Firefox preferences that silently do nothing](firefox-prefs-not-applying.md),
 if you are here because a setting looks ignored,
 [WebRTC leak with a proxy](webrtc-leak-proxy.md), which is the other half

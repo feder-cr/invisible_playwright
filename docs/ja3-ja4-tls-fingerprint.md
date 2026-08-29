@@ -181,6 +181,18 @@ this layer is a reasonable suspect.
 from, not what the ClientHello looks like, unless it terminates TLS itself, in which
 case the fingerprint becomes the proxy's.
 
+## Sources
+
+- Salesforce's own GitHub repository for JA3, [retrieved 2026-08-28](https://github.com/salesforce/ja3),
+  for the exact fields it joins and hashes with MD5.
+- FoxIO's own GitHub repository for JA4, [retrieved 2026-08-28](https://github.com/FoxIO-LLC/ja4),
+  for the sorted-list construction that survives extension-order permutation.
+- The Chromium project's own shipping announcement, [Intent to Ship: TLS ClientHello
+  extension permutation, retrieved 2026-08-28](https://groups.google.com/a/chromium.org/g/blink-dev/c/bYZK81WxYBo),
+  for why Chrome randomises extension order.
+- This project's own measurement of a stray cipher-suite default against stock Firefox
+  of the same version, described above.
+
 **See also:** [the checklist for being detected on one site](playwright-detected-as-bot.md),
 where the network layer is step six,
 [Playwright SOCKS5 proxy with authentication](playwright-socks5-proxy-authentication.md),

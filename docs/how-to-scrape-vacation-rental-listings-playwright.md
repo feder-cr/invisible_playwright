@@ -193,7 +193,7 @@ silently miss every listing the map never brought into view. This map-bound beha
 [its own walkthrough for scraping a map-based search](how-to-scrape-map-based-search-playwright.md);
 the short version for a rentals sweep is below.
 
-The robust approach is to drive the search by geographic bounds and walk a grid of
+The approach that holds up is to drive the search by geographic bounds and walk a grid of
 smaller boxes, collecting listing IDs into a set as you go, so overlaps deduplicate
 themselves.
 
@@ -288,6 +288,9 @@ rates change, so store the dates, guests and timestamp with every total.
 
 ## Sources
 
+- Playwright documentation, [Page.expect_response](https://playwright.dev/python/docs/api/class-page#page-expect-response),
+  retrieved 2026-08-28, for the response-waiting context manager used to capture the
+  pricing XHR instead of the redrawn DOM.
 - This project's [Quickstart](quickstart.md) and [Configuration](configuration.md) pages
   for the real launch, seed and proxy API used in every example above.
 - The behaviour of date-and-guest-driven pricing endpoints and map-bound pagination, read

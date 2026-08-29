@@ -109,7 +109,7 @@ The stock browser is the reference. Anything that differs between the two, other
 address, is a candidate. Anything that matches is not your problem, whatever the score
 says.
 
-### Separate the machine from the automation
+## Separate the machine from the automation
 
 When something differs, ask which of the two it belongs to:
 
@@ -153,7 +153,7 @@ This domain is not deterministic, and single runs mislead in both directions.
   velocity signal you are trying to measure. We flagged our own product for this once,
   and the flag belonged to the test harness.
 
-### Read the screenshot, not the log
+## Read the screenshot, not the log
 
 A text log tells you what your code extracted. A screenshot tells you what the page
 actually rendered, including the parts your extractor did not know to look at. Several
@@ -212,8 +212,11 @@ linked throughout.
 
 ## Sources
 
-- The five public suites named above, each with its own page in this set, read from their
-  own source rather than from their rendered output.
+- The five public suites named above, each read from its own source rather than its
+  rendered output: [CreepJS](https://github.com/abrahamjuliot/creepjs),
+  [BotD](https://github.com/fingerprintjs/BotD), [sannysoft](https://bot.sannysoft.com/),
+  [FingerprintJS](https://github.com/fingerprintjs/fingerprintjs), and
+  [BrowserLeaks](https://browserleaks.com/), retrieved 2026-08-28.
 - This project's release gates, including the WebRTC gate whose negative-only assertions
   produced the false pass described above, and the velocity flag that turned out to be
   the harness.

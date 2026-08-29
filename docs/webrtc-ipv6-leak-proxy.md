@@ -203,6 +203,19 @@ automatically, so recheck those each time you change the exit.
 - A read of the current Firefox WebRTC transport code confirming the legacy
   disableIPv6 pref is honoured only for DNS resolution and the TCP socket, and
   nowhere on the host-candidate gathering path.
+- [RFC 1928, SOCKS Protocol Version 5](https://datatracker.ietf.org/doc/html/rfc1928),
+  retrieved 2026-08-29, which defines the CONNECT command a SOCKS5 proxy uses to
+  tunnel TCP and says nothing about the interface enumeration a host candidate comes
+  from.
+- [RFC 8445, Interactive Connectivity Establishment (ICE)](https://datatracker.ietf.org/doc/html/rfc8445),
+  retrieved 2026-08-29, which defines the host candidate as a binding to a local
+  interface address, gathered independently of any STUN round trip.
+- [RFC 8828, WebRTC IP Address Handling Requirements](https://www.rfc-editor.org/rfc/rfc8828),
+  retrieved 2026-08-29, which sets the default mode for exposing a host's private
+  IPv4 and IPv6 addresses as ICE candidates.
+- [The IETF mDNS ICE candidates draft](https://datatracker.ietf.org/doc/html/draft-ietf-mmusic-mdns-ice-candidates-03),
+  retrieved 2026-08-29, which documents the `<uuid>.local` name masking applied to the
+  IPv4 host candidate referenced above.
 
 **See also:** [what a WebRTC leak through a proxy looks like end to end](webrtc-leak-proxy.md),
 [how a synthetic ICE candidate is shaped to match a real browser](webrtc-ice-candidate-spoofing.md),

@@ -16,8 +16,8 @@ fail a different half of the check, while one real-browser engine presents a sin
 consistent identity all the way down. Pick DrissionPage for speed where nobody inspects the
 connection, invisible_playwright when the connection and the fingerprint are read together.
 
-DrissionPage is a well-liked Python automation library, around 12.3k stars and actively
-maintained (its repository was last pushed on 2026-07-22 as of this writing). Its
+DrissionPage is a well-liked Python automation library, around 12.4k stars and actively
+maintained (its repository was last pushed on 2026-08-20 as of this writing). Its
 signature idea is genuinely clever and worth understanding on its own terms: a single
 object that can act as an HTTP client one moment and drive a real Chromium browser the
 next, carrying cookies and state across the switch. Its own documentation calls these the
@@ -202,7 +202,7 @@ browser engine so there is a single consistent identity. That costs you the raw-
 path and buys you an end-to-end true story.
 
 **Is DrissionPage abandoned?** No. Its repository was actively maintained as of its last
-push on 2026-07-22 with a large user base. This is an architecture comparison, not a
+push on 2026-08-20 with a large user base. This is an architecture comparison, not a
 maintenance one.
 
 **Which should I pick?** DrissionPage for high-volume scraping where the target does not
@@ -211,9 +211,9 @@ to hold up under a check that reads the handshake and the fingerprint together.
 
 ## Sources
 
-- DrissionPage's own repository and documentation, read from source, for the session and
-  browser mode design, the CDP-based browser control, and the maintenance dates cited
-  above.
+- [DrissionPage's own repository](https://github.com/g1879/DrissionPage) and documentation,
+  read from source, for the session and browser mode design, the CDP-based browser control,
+  and the maintenance dates cited above, retrieved 2026-08-28.
 - This project's own comparison and network notes, linked throughout, for the CDP-Chromium
   ceiling and the TLS-handshake behaviour that no in-page layer can reach.
 

@@ -9,18 +9,20 @@ nav_order: 90
 
 # Wrap invisible_playwright in a FastAPI service
 
-A common next step after the first script works is to put it behind an HTTP
-endpoint, so other services can ask for a rendered page or a screenshot without
-carrying a browser of their own. This page is a real service shape for that: an
-async FastAPI app that keeps one browser alive across requests, bounds how many
-pages render at once, and returns either the HTML or a PNG.
+To wrap invisible_playwright in a FastAPI service, start one browser in the
+app's lifespan instead of one per request, hand each incoming request a fresh
+page from it, bound concurrency with an asyncio semaphore, and return the
+result as rendered HTML or a screenshot using stock Playwright calls. This is
+a common next step once the first script works: putting the browser behind an
+HTTP endpoint so other services can ask for a page or a screenshot without
+carrying a browser of their own.
 
-It also answers the question honestly. A shared render endpoint helps with the
-part invisible_playwright is built for - the browser looks like a genuine
-Firefox driven by a person, so the fingerprint, TLS and driver layers read as
-real. It does nothing for the part you have just made worse: every caller now
-leaves from the same address, which is its own detectable pattern. Both halves
-are below.
+This page also answers the question honestly. A shared render endpoint helps
+with the part invisible_playwright is built for - the browser looks like a
+genuine Firefox driven by a person, so the fingerprint, TLS and driver layers
+read as real. It does nothing for the part you have just made worse: every
+caller now leaves from the same address, which is its own detectable pattern.
+Both halves are below.
 
 ## Why a long-lived browser, not one per request
 
@@ -263,8 +265,11 @@ per-account limits and pacing are separate and yours to supply.
 
 - This project's Quickstart and Configuration pages for the launch, the async
   entry point, the proxy dict and the auto-derived timezone.
-- FastAPI's lifespan documentation and Python's `asyncio.Semaphore` and
-  `contextlib.AsyncExitStack`, all standard library and framework API.
+- FastAPI documentation, [Lifespan Events](https://fastapi.tiangolo.com/advanced/events/), and
+  Python documentation,
+  [asyncio.Semaphore](https://docs.python.org/3/library/asyncio-sync.html#asyncio.Semaphore) and
+  [contextlib.AsyncExitStack](https://docs.python.org/3/library/contextlib.html#contextlib.AsyncExitStack),
+  retrieved 2026-08-29.
 - This set's own testing notes on why an address and its rate survive a perfect
   fingerprint, and why the screenshot beats the log.
 

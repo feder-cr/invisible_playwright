@@ -105,10 +105,11 @@ The current build does not touch `navigator.buildID`, and this is what that
 turns out to mean, measured on 2026-08-09 by reading the property from a page
 on the real binary: it returns **`20181001000000`**, the fixed value every
 release Firefox reports. Gecko itself does the flattening, in
-`dom/base/Navigator.cpp`: a caller that is not system code gets the legacy
-constant unless the document is on a mozilla.org origin. It is not gated on
-resistFingerprinting and it is not gated on any profile pref, so the real
-compile timestamp never reaches a page on retail Firefox either.
+[`dom/base/Navigator.cpp`](https://github.com/mozilla/gecko-dev/blob/master/dom/base/Navigator.cpp):
+a caller that is not system code gets the legacy constant unless the document
+is on a mozilla.org origin. That does not require resistFingerprinting to be
+on, and it happens with no override pref set, so the real compile timestamp
+never reaches a page on retail Firefox either.
 
 An earlier version of this page said the property "returns whatever the binary
 was actually compiled from". That was wrong, and it was wrong in the direction
@@ -211,10 +212,15 @@ the year should be consistent with your version.
 - This project's release notes and A/B measurements for the 2026-04-28 change
   that removed the build-date override, including the three reCAPTCHA v3 score
   deltas quoted above.
-- Firefox's documented resistFingerprinting behaviour, which reports the fixed
-  `20181001000000` value for `navigator.buildID`.
-- The public detection suites named across this set, each read from its own
-  source rather than from its rendered verdict.
+- MDN's [`navigator.buildID`](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/buildID)
+  reference, which documents the fixed `20181001000000` value returned once a
+  browser resists fingerprinting, retrieved 2026-08-28.
+- [reCAPTCHA v3](https://developers.google.com/recaptcha/docs/v3), Google's
+  documentation for the continuous score that this project's A/B measured,
+  retrieved 2026-08-28.
+- [CreepJS](https://github.com/abrahamjuliot/creepjs), the consistency
+  detector named above, read from its own source rather than from its
+  rendered verdict, retrieved 2026-08-28.
 
 **See also:** [what the reCAPTCHA v3 score actually measures](recaptcha-v3-score.md),
 [how the user agent is derived rather than pinned](playwright-user-agent.md), and

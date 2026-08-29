@@ -74,8 +74,8 @@ Linux default, has contradicted itself. No property override fixes this, because
 nothing was overridden: the fonts really are the fonts, and the measurement really
 does measure them.
 
-This is the same shape as [the WebGL renderer string](webgl-renderer-strings.md), and the software WebGL renderer problem. It is not an
-automation tell. It is a *this is a server* tell, and [the same distinction runs across
+This is the same shape as [the WebGL renderer string](webgl-renderer-strings.md) and its
+software-rasterizer problem. It is not an automation tell. It is a *this is a server* tell, and [the same distinction runs across
 every headless signal](headless-vs-headful.md), not just fonts.
 
 ## What the enumeration actually does, and what each platform's set looks like
@@ -171,10 +171,22 @@ serious checks use.
 **Does this matter if I am not hiding automation?** Yes, if you claim a platform you
 are not on. It says nothing about automation and everything about where you run.
 
+## Sources
+
+- [MDN: Local Font Access API](https://developer.mozilla.org/en-US/docs/Web/API/Local_Font_Access_API),
+  retrieved 2026-08-28, for why enumerating installed fonts from JavaScript requires
+  an explicit, per-site permission grant that detection scripts never trigger.
+- This project's own font-bundle architecture, which makes the font stack
+  self-contained on all three platforms so the reported set does not depend on the
+  host underneath it.
+
 **See also:** [WebGL renderer strings](webgl-renderer-strings.md), which is the same shape of problem on different hardware, [why the speech voice list is empty](speech-synthesis-voices.md), which is the same problem again on a surface nobody checks, and [the checklist for one site failing](playwright-detected-as-bot.md), where fonts are step three.
 
 ---
 
 *From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
 a Firefox patched at the C++ level that bundles its own fonts on Windows, Linux and
-macOS.*
+macOS. The font files were never the hard part: this project's own Linux build once kept
+reading hinting and antialiasing from the host's fontconfig after the fonts themselves
+were bundled, so the same page came back as different pixels depending on the machine
+underneath it.*

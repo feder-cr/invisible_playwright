@@ -166,6 +166,14 @@ All green is not the target; matching is.
 **What does it not check?** Behaviour, the network layer, the TLS handshake, and
 whether your hardware is plausible. All of those decide more than this table does.
 
+## Sources
+
+- This project's own run against the live page, described above under "What a real
+  run against this page actually shows," checked directly rather than assumed.
+- bot.sannysoft.com itself, [the live test page](https://bot.sannysoft.com/), read
+  2026-07-27, for the element ids, the group structure, and the canvas-iframe
+  comparison described throughout this page.
+
 **See also:** [how detectors decide you are a bot](how-do-websites-detect-bots.md),
 [what the WebGL vendor and renderer strings give away](webgl-renderer-strings.md),
 [why identical WebGL parameters are their own tell](webgl-parameters-are-identical.md),

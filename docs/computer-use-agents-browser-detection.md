@@ -24,10 +24,10 @@ invisible_playwright helps and where you still have to do the work yourself.
 A CUA never triggers the DOM-automation flags sites check for, because its click is a
 coordinate delivered through the input pipeline the same way a real click is, not a
 script reaching into the page. Most bot-detection advice targets that automation layer
-anyway: `navigator.webdriver`, leftover automation globals, DOM mutations that only a
-driver produces, an untrusted event dispatched from code rather than from hardware.
-Those signals exist because a selector-driven script reaches into the page and touches
-elements directly.
+anyway: [`navigator.webdriver`](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/webdriver),
+leftover automation globals, DOM mutations that only a driver produces, an untrusted
+event dispatched from code rather than from hardware. Those signals exist because a
+selector-driven script reaches into the page and touches elements directly.
 
 A CUA does not do that. It never calls `querySelector`, never sets an element's
 value from script, never dispatches a synthetic event at a node it located by selector.
@@ -73,7 +73,8 @@ with InvisiblePlaywright(seed=42) as browser:
     png = page.screenshot()          # next frame
 ```
 
-`browser` here is a real Playwright `Browser`, so
+`browser` here is a real Playwright
+[`Browser`](https://playwright.dev/python/docs/api/class-browser), so
 [`page.screenshot()`](https://playwright.dev/python/docs/api/class-page#page-screenshot)
 and [`page.mouse.click()`](https://playwright.dev/python/docs/api/class-mouse#mouse-click)
 are the ordinary documented methods - the same ones a coordinate-clicking agent already
@@ -98,7 +99,7 @@ step-to-step rhythm of your agent loop, because that rhythm is produced by your 
 and your code, not by the browser. If your loop clicks every 1.9 seconds because that is
 how long the model takes, the engine cannot know to vary it. You add the variance:
 jitter the delay between steps, and do not click the instant a screenshot returns. This
-is [the pause shaped like model latency](ai-browser-agents-stealth.md), and it is
+is [the pause shaped like model latency](ai-agent-timing-signal.md), and it is
 behaviour, which no fingerprint layer reaches.
 
 ## What invisible_playwright does not do
@@ -181,13 +182,14 @@ A real-looking browser on a datacenter address still loses, so bring a clean pro
 
 ## Sources
 
-- OpenAI's Computer-Using Agent and Anthropic's computer-use tool, both of which drive a
-  browser through a screenshot to coordinate-click to screenshot loop rather than by DOM
-  selector.
+- OpenAI's own announcement, [Computer-Using Agent](https://openai.com/index/computer-using-agent/),
+  retrieved 2026-08-28, and Anthropic's own documentation, [Computer use tool](https://platform.claude.com/docs/en/agents-and-tools/tool-use/computer-use-tool),
+  retrieved 2026-08-28, both of which drive a browser through a screenshot to
+  coordinate-click to screenshot loop rather than by DOM selector.
 - This project's own fingerprint gates and the stock-browser comparison method used to
   separate an engine tell from a machine tell from a timing tell.
 
-**See also:** [AI browser agents and stealth](ai-browser-agents-stealth.md) for the
+**See also:** [why AI agents have their own timing signal](ai-agent-timing-signal.md) for the
 agent-specific timing tell in depth, [browser-use and what you can change](browser-use-detection.md)
 for a selector-driven agent by contrast, and [why you can be blocked with a clean
 fingerprint](why-blocked-with-a-clean-fingerprint.md) for the surfaces past the browser.

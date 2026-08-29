@@ -135,6 +135,9 @@ same accumulation mistake made on pixels instead of text.
 
 ## Sources
 
+- [MDN: `CanvasRenderingContext2D.measureText()`](https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/measureText)
+  and [MDN: `TextMetrics`](https://developer.mozilla.org/en-US/docs/Web/API/TextMetrics),
+  retrieved 2026-08-28, for the full field list the returned object carries.
 - This project's own canvas and font-shaping patch catalogue, including the measured
   before/after on both the per-glyph accumulation fix and the vertical-metrics
   host-independence fix.

@@ -181,8 +181,12 @@ by default.
 
 ## Sources
 
-- The smolagents documentation and its bundled vision-browser example, read from source:
-  the example drives Chromium through helium (a Selenium wrapper), not Playwright.
+- [smolagents](https://github.com/huggingface/smolagents) and its bundled
+  [vision-browser example](https://github.com/huggingface/smolagents/blob/main/src/smolagents/vision_web_browser.py),
+  retrieved 2026-08-28: the example calls `helium.start_chrome()` and imports
+  `selenium.webdriver` directly, with no Playwright import anywhere in the file.
+- [helium](https://github.com/mherrmann/helium), retrieved 2026-08-28: described in its
+  own README as a wrapper that forwards each call to Selenium underneath.
 - This project's [quickstart](quickstart.md) and [configuration](configuration.md) pages
   for the real launch, proxy and seed API used above.
 

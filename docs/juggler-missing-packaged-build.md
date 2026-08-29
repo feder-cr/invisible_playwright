@@ -28,9 +28,10 @@ console.error: "unrecognized command line flag" "-juggler-pipe"
 Error: Failed to load chrome://juggler/content/components/Juggler.js
 ```
 
-followed by Playwright reporting `TargetClosedError`. The browser process exits or
-never reaches a drivable state, and no amount of retrying, changing launch arguments,
-or bumping the Playwright version changes the outcome.
+followed by Playwright reporting [`TargetClosedError`](playwright-targetclosederror-causes.md).
+The browser process exits or never reaches a drivable state, and no amount of
+retrying, changing launch arguments, or bumping the Playwright version changes the
+outcome.
 
 ## Why the existing gates didn't catch it
 

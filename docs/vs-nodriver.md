@@ -1,6 +1,6 @@
 ---
 title: "Playwright stealth vs undetected-chromedriver and nodriver"
-description: "nodriver and undetected-chromedriver are Chrome-only tools, not Playwright forks. Neither hides your IP or fingerprint, by their own docs. How to choose."
+description: "nodriver and undetected-chromedriver are Chrome-only tools, not Playwright forks. Neither claims to hide your IP or fingerprint. How to choose."
 parent: "Comparisons"
 nav_order: 6
 ---
@@ -25,8 +25,9 @@ them" actually means.
 
 ## What they are, and the thing that makes this comparison different
 
-Every other tool on this site's comparison pages is a Playwright fork or a browser you
-launch through Playwright. `nodriver` and `undetected-chromedriver` are neither. Their own
+invisible_playwright itself is driven by stock Playwright, the common thread across this
+site's comparisons. `nodriver` and `undetected-chromedriver` break that thread entirely:
+neither is a Playwright fork, and neither runs through Playwright at all. Their own
 documentation is explicit: nodriver's pitch is "no more webdriver, no more selenium," with
 its own async interface and its own methods (`tab.find()`, `tab.select()`, `tab.xpath()`).
 There is no `page.goto()` here, because there is no Playwright underneath it.
@@ -35,7 +36,7 @@ So the decision is not "which of these two produces a less detectable browser." 
 whether you are willing to leave the Playwright ecosystem at all. If your project has
 existing Playwright code, page objects, or test infrastructure, adopting either of these
 means rewriting the automation layer, not swapping a launch call the way
-[most of the tools on this site's comparison pages](playwright-stealth-levels.md) let you.
+[a Playwright-compatible stealth tool](playwright-stealth-levels.md) lets you.
 
 ## What undetected-chromedriver actually patches
 
@@ -44,7 +45,7 @@ leave literal tells in the page: a global variable named after the string `cdc_`
 placed there by the driver itself. Early versions of undetected-chromedriver removed and
 renamed that variable; later versions changed approach and instead prevent the tell from
 being injected in the first place, which the project's own changelog frames as the more
-robust fix. [We cover the same variable, and why renaming beats removing, on our own
+durable fix. [We cover the same variable, and why removing beats renaming, on our own
 version of this problem](cdc-variable-explained.md) - it turns out the exact lesson
 generalises past Selenium entirely: a tell you rename is still a tell if its presence is
 what gets checked, not its name.
@@ -63,7 +64,7 @@ change, not the point of it.
 Both projects are unusually direct about their own scope, more so than most tools in this
 space, and it is worth taking them at their word rather than assuming more.
 undetected-chromedriver's documentation states plainly that the package does not hide your
-IP address and does not handle device fingerprinting. Nothing in either project's
+IP address. Nothing in either project's
 documentation claims to change the GPU string Chrome reports, the fonts it enumerates, the
 canvas output, or the audio pipeline. That is a different layer of the problem, the one
 [Camoufox and this project work at instead](vs-camoufox.md), and pairing a CDP-native
@@ -101,9 +102,9 @@ Chrome/Chromium-only by design.
 
 ## Conclusion
 
-undetected-chromedriver and nodriver solve the same problem this project solves at the
-Playwright-driver layer for Camoufox and its comparisons, but they do it by leaving
-Playwright's API entirely rather than patching around it. That is a real cost if you have
+undetected-chromedriver and nodriver solve the same driver-tell problem this project
+solves at the engine layer instead, but they do it by leaving Playwright's API entirely
+rather than patching around it. That is a real cost if you have
 existing Playwright infrastructure, and a real benefit if you are starting fresh and want
 the shortest path to a CDP-native Chrome. Neither claims the fingerprint layer, and their
 own documentation says so.
@@ -125,21 +126,23 @@ and IP handling as a separate problem for either tool.
 
 **Can I use Firefox with either?** No, both are Chrome/Chromium-specific.
 
+## Sources
+
+- [nodriver's own GitHub documentation](https://github.com/ultrafunkamsterdam/nodriver),
+  read 2026-07-28, for its CDP-direct architecture, its own API surface, and its
+  supported browsers.
+- [undetected-chromedriver's own GitHub documentation](https://github.com/ultrafunkamsterdam/undetected-chromedriver),
+  read 2026-07-28, for its patch mechanism, its explicit statement on IP address
+  handling, and its versioned change in approach to the driver variable.
+- This project's own [cdc-variable-explained.md](cdc-variable-explained.md) for the
+  equivalent tell on our own stack.
+
 **See also:** [three ways to make Playwright undetected](playwright-stealth-levels.md),
 for where a CDP-native tool sits relative to a driver patch or an engine patch;
 [the ChromeDriver `cdc_` variable, explained](cdc-variable-explained.md), for the exact
 tell undetected-chromedriver was built to remove; and
 [invisible_playwright vs Camoufox](vs-camoufox.md), for the comparison at the fingerprint
 layer neither of these tools works at.
-
-## Sources
-
-- nodriver's own GitHub documentation, read 2026-07-28, for its CDP-direct architecture,
-  its own API surface, and its supported browsers.
-- undetected-chromedriver's own GitHub documentation, read 2026-07-28, for its patch
-  mechanism, its explicit statement on IP address handling, and its versioned change in
-  approach to the driver variable.
-- This project's own `cdc-variable-explained.md` for the equivalent tell on our own stack.
 
 ---
 

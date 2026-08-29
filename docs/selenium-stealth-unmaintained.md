@@ -1,23 +1,23 @@
 ---
-title: "selenium-stealth hasn't been updated since December 2021"
-description: "selenium-stealth's last commit was December 2021. What its property patches still do, what four-plus years of silence costs, and what to check today."
+title: "selenium-stealth hasn't been updated since November 2020"
+description: "selenium-stealth's last commit was November 2020. What its property patches still do, what nearly six years of silence costs, and what to check today."
 parent: "Comparisons"
 nav_order: 9
 ---
 
 
-# selenium-stealth hasn't been updated since December 2021
+# selenium-stealth hasn't been updated since November 2020
 
 **`selenium-stealth` is effectively unmaintained: its repository's last commit is
-from December 2021.** The JavaScript patches it applies still execute, but the list
-of automation-visible properties it covers stopped growing in late 2021, while the
-browser and the detection methods aimed at automation have moved through four-plus
+from November 2020.** The JavaScript patches it applies still execute, but the list
+of automation-visible properties it covers stopped growing in late 2020, while the
+browser and the detection methods aimed at automation have moved through nearly six
 years of updates since. That widening gap, not a broken install, is what its
 continued presence in current tutorials obscures.
 
 Search for how to stop Selenium from being detected and `selenium-stealth` still
 shows up on the first page of results, in tutorials dated well into 2026. The last
-commit being from December 2021 is not a minor detail buried in a changelog - it's
+commit being from November 2020 is not a minor detail buried in a changelog - it's
 the single fact that changes how much weight the rest of the advice deserves.
 
 ## What it patches, and why that part still runs fine
@@ -28,23 +28,23 @@ Protocol before the page's own scripts run, so a handful of automation-visible
 properties answer the way a real Chrome's would. User agent, languages, platform,
 vendor, renderer, a few others. Straightforward, and none of that logic has any
 reason to stop functioning just because nobody's committed to the repository lately -
-the patches that exist still apply the same way they did in 2021.
+the patches that exist still apply the same way they did in 2020.
 
-## What four and a half years of silence actually costs
+## What nearly six years of silence actually costs
 
 The cost isn't in the patches that exist. It's in the ones that don't.
 
-Chrome has shipped roughly four and a half years of version updates since this
-package's last commit. Detection services have shipped that many update cycles too,
-and they've spent them looking at exactly the kind of automation traffic this
-package produces. A property list frozen in late 2021 was written against the
-Chrome and CDP surface of that year. Neither stayed still.
+Chrome has shipped roughly six years of version updates since this package's last
+commit. Detection services have shipped that many update cycles too, and they've
+spent them looking at exactly the kind of automation traffic this package produces.
+A property list frozen in late 2020 was written against the Chrome and CDP surface
+of that year. Neither stayed still.
 
 Concretely, this shows up as a widening gap between "the properties this package
 patches" and "the properties something checks today." The package's whole value
 proposition is that list, and the list stopped growing while the thing it's
 measured against kept moving. That's true regardless of whether any individual
-2021-era patch technically still executes without error.
+2020-era patch technically still executes without error.
 
 ## The same ceiling as everything else in this category, just older
 
@@ -68,8 +68,9 @@ The staleness makes the practical gap wider today; it isn't the whole story.
    Popularity in search results says nothing about whether a project is maintained -
    check the commit history directly.
 2. **Test the actual properties you depend on**, against a current version of the
-   browser you're driving, rather than trusting that a 2021-era patch list still
-   matches a 2026 detection surface.
+   browser you're driving, rather than trusting that a 2020-era patch list still
+   matches a 2026 detection surface. [A verdict-only test can't tell you which of
+   dozens of possible checks is the one that matters for your case](how-to-test-bot-detection.md).
 3. **If Chrome-based automation with active maintenance is the goal**, that's a
    separate question from whether this specific package is still receiving updates -
    the two shouldn't be conflated just because they're often mentioned together.
@@ -77,7 +78,7 @@ The staleness makes the practical gap wider today; it isn't the whole story.
 ## Short answers to the questions that lead here
 
 **Is selenium-stealth still maintained?** Its repository's last commit is from
-December 2021. It has not received meaningful ongoing development since.
+November 2020. It has not received meaningful ongoing development since.
 
 **Does selenium-stealth still work?** The specific patches it applies still execute.
 Whether they're sufficient against a given detector in 2026 is a separate, unrelated
@@ -97,13 +98,18 @@ versions of this approach.
 **See also:** [what the `$cdc_` variable actually is and why renaming it isn't the
 whole fix](cdc-variable-explained.md), the Selenium-specific detection surface this
 package's property patches sit next to, and
-[puppeteer-extra-plugin-stealth hasn't shipped a real update since 2024](puppeteer-extra-stealth-unmaintained.md),
+[puppeteer-extra-plugin-stealth hasn't shipped a real update since 2023](puppeteer-extra-stealth-unmaintained.md),
 the same pattern on a different driver.
 
 ## Sources
 
 - The package's own public repository and commit history, checked directly rather
-  than inferred from its continued presence in current tutorials and answers.
+  than inferred from its continued presence in current tutorials and answers:
+  [diprajpatra/selenium-stealth, commit history](https://github.com/diprajpatra/selenium-stealth/commits/main),
+  retrieved 2026-08-28.
+- [PyPI release history for selenium-stealth](https://pypi.org/project/selenium-stealth/),
+  whose last published version was uploaded in November 2020, independently
+  confirming the repository's own commit dates, retrieved 2026-08-28.
 
 ---
 

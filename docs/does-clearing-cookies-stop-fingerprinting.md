@@ -17,7 +17,7 @@ exists precisely because cookies can be cleared and it wanted an identifier that
 could not.
 
 This page explains the difference between the two, why the second one ignores the
-first, what does change the identity, and where the honest limits of the fingerprint
+first, what changes the identity, and where the honest limits of the fingerprint
 layer are.
 
 ## What a cookie is, and what a fingerprint is
@@ -50,11 +50,12 @@ Clear your cookies, clear local storage, open a private window, and then reload 
 fingerprinting page. The canvas still draws the same pixels, so it hashes to the same
 value. WebGL still reports the same renderer. The font probe still finds the same
 list. The audio path still returns the same numbers. Combine those and you get the
-same identifier you had five minutes ago, because none of the inputs changed. The
-[FingerprintJS visitor ID is a hash of exactly these components](fingerprintjs-visitor-id.md),
-and a hash of unchanged inputs is unchanged output.
+same identifier you had five minutes ago, because none of the inputs changed. Canvas,
+WebGL, fonts and audio are four of the roughly forty-one components
+[a FingerprintJS visitor ID hashes together](fingerprintjs-visitor-id.md), and a hash
+of unchanged inputs is unchanged output.
 
-This is why "clear cookies between sessions" does not rotate you a new identity. It
+This is why "clear cookies between sessions" does not rotate you into a new identity. It
 rotates the one thing that was trivial to rotate and leaves untouched every signal
 that was hard to. A detector that leans on the fingerprint rather than the cookie is
 built specifically to not care what you did to your storage.
@@ -85,7 +86,8 @@ so they agree with each other. Switching seeds is what a cookie clear is trying 
 failing to be.
 
 The launch is the standard two-line change, and the object you get back is a real
-Playwright `Browser` with every method intact:
+Playwright [`Browser`](https://playwright.dev/python/docs/api/class-browser) with every
+method intact:
 
 ```python
 from invisible_playwright import InvisiblePlaywright
@@ -183,6 +185,14 @@ which is most checks but not all of them. Behaviour, pacing and IP are still on 
 
 - This project's fingerprint generator, which derives canvas, WebGL, font, audio and
   screen values together from a single seed so a new identity is internally consistent.
+- MDN Web Docs, [`HTMLCanvasElement.toDataURL()`](https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/toDataURL),
+  [`WEBGL_debug_renderer_info`](https://developer.mozilla.org/en-US/docs/Web/API/WEBGL_debug_renderer_info),
+  and the [Web Audio API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API),
+  retrieved 2026-08-28, for the canvas, WebGL and audio surfaces referenced above.
+- FingerprintJS's own open-source library, [`fingerprintjs/fingerprintjs`](https://github.com/fingerprintjs/fingerprintjs)
+  on GitHub, retrieved 2026-08-28, for the visitor ID hash mentioned above.
+- Playwright documentation, [`Browser`](https://playwright.dev/python/docs/api/class-browser),
+  retrieved 2026-08-28, for the object returned by the launch call shown above.
 - The public detection suites named across this set, read for which components feed
   the identifier and which of them a storage clear leaves untouched.
 - The release gates that separate the fingerprint layer from IP and behaviour, so a

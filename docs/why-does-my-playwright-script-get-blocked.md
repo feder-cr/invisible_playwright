@@ -81,10 +81,10 @@ nothing: open the same URL by hand from the same machine and network that runs t
 automation. If the manual visit is also blocked, this is not a fingerprint problem at all,
 and no browser setting will move it.
 
-Around 90% of proxy pools are public, so their addresses are already known and scored
-before you connect. A flawless browser on a known-bad IP still loses, and the tool cannot
-make a flagged address clean - that is a property of the address, not the browser. The fix
-is a cleaner exit, ideally residential and not already on shared lists;
+Around [90% of proxy pools are public](configuration.md), so their addresses are already
+known and scored before you connect. A flawless browser on a known-bad IP still loses, and
+the tool cannot make a flagged address clean - that is a property of the address, not the
+browser. The fix is a cleaner exit, ideally residential and not already on shared lists;
 [whether a site can tell your proxy is a datacenter IP](can-websites-detect-a-datacenter-proxy-ip.md)
 covers what gives the range away. You pass the proxy straight through, and the browser
 timezone auto-derives from the egress IP so the two stories match:
@@ -169,9 +169,11 @@ and the honest claim stops there.
 
 - This project's four-layer model of a block, and the release gate that flagged our own
   product for velocity during testing when the flag belonged to the test harness.
-- The public detection suites (CreepJS, BotD, FingerprintJS, sannysoft, BrowserLeaks), each
-  answering a different one of these layers, read from their own source rather than their
-  rendered verdict.
+- The public detection suites, each answering a different one of these layers, read from
+  their own source rather than their rendered verdict:
+  [CreepJS](https://github.com/abrahamjuliot/creepjs), [BotD](https://github.com/fingerprintjs/BotD),
+  [sannysoft](https://bot.sannysoft.com/), [FingerprintJS](https://github.com/fingerprintjs/fingerprintjs),
+  and [BrowserLeaks](https://browserleaks.com/), retrieved 2026-08-29.
 - The wrapper's real API surface: seed-reproducible identity, proxy pass-through, and
   egress-derived timezone.
 

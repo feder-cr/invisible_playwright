@@ -167,6 +167,30 @@ credentials you want SOCKS5 or HTTP.
 names locally unless you tell them not to. Set `network.proxy.socks_remote_dns` to true,
 or use `socks5h` outside the browser.
 
+## Sources
+
+- Playwright's own [API reference for `browser_type.launch()`](https://playwright.dev/python/docs/api/class-browsertype#browser-type-launch),
+  on the `proxy.server` and `proxy.username`/`proxy.password` fields quoted above, and
+  [`docs/src/api/params.md`](https://github.com/microsoft/playwright/blob/main/docs/src/api/params.md)
+  in the same repository, checked 2026-07-27.
+- [microsoft/playwright#10567, "Support socks5 proxy with authentication"](https://github.com/microsoft/playwright/issues/10567),
+  opened November 2021 and still open when this page was checked, 2026-07-27.
+- [RFC 1928, SOCKS Protocol Version 5](https://datatracker.ietf.org/doc/html/rfc1928) and
+  [RFC 1929, Username/Password Authentication for SOCKS V5](https://datatracker.ietf.org/doc/html/rfc1929),
+  the base protocol and the credential sub-negotiation this page is about, neither one named by
+  Playwright's own documentation.
+- [SOCKS 4A: A Simple Extension to SOCKS 4 Protocol](https://www.openssh.com/txt/socks4a.protocol),
+  Ying-Da Lee's original specification, for the user field with no password contrasted against
+  SOCKS5 above.
+- Mozilla's [Firefox enterprise policy reference for `Proxy`](https://firefox-admin-docs.mozilla.org/reference/policies/proxy/),
+  which names `network.proxy.socks_remote_dns` among the affected preferences and documents it as
+  "use proxy DNS when using SOCKS v5."
+- The `requests` library's own [documentation on SOCKS proxies](https://requests.readthedocs.io/en/latest/user/advanced/#socks),
+  for the `socks5` versus `socks5h` scheme distinction referenced above.
+- This project's own patched Firefox proxy service and its two added preferences,
+  `network.proxy.socks_username` and `network.proxy.socks_password`, exercised directly rather than
+  through Playwright's own credential path.
+
 **See also:** [when the timezone does not match the proxy](timezone-proxy-mismatch.md),
 which is the other half of getting a proxied session to agree with itself, and
 [WebRTC leak with a proxy](webrtc-leak-proxy.md), which is the leak that survives a

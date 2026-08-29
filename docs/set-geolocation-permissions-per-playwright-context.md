@@ -77,7 +77,7 @@ subset to learn.
 ## Granting the permission after the context exists
 
 Sometimes you cannot decide the position at context-creation time, or you want to grant
-the permission only once a page is already open. Playwright's `grant_permissions()` on the
+the permission only once a page is already open. Playwright's [`grant_permissions()`](https://playwright.dev/python/docs/api/class-browsercontext#browser-context-grant-permissions) on the
 context does exactly that, and it accepts an `origin` so the grant is scoped to one site
 rather than the whole context:
 
@@ -97,8 +97,8 @@ with InvisiblePlaywright(seed=42) as browser:
     context.set_geolocation({"latitude": 40.4200, "longitude": -3.7050})
 ```
 
-`set_geolocation()` updates the coordinates the context reports without a new context, so
-a session can move. `context.clear_permissions()` revokes everything you granted if you
+[`set_geolocation()`](https://playwright.dev/python/docs/api/class-browsercontext#browser-context-set-geolocation) updates the coordinates the context reports without a new context, so
+a session can move. [`context.clear_permissions()`](https://playwright.dev/python/docs/api/class-browsercontext#browser-context-clear-permissions) revokes everything you granted if you
 want a later page to see the prompt again.
 
 ## Why the coordinates have to agree with everything else
@@ -188,9 +188,13 @@ a clean coordinate on a burned IP still fails.
 
 ## Sources
 
-- Playwright's browser context API: the `geolocation` and `permissions` context options,
-  `grant_permissions()`, `set_geolocation()` and `clear_permissions()`, read from the
-  documented method surface rather than from a tutorial.
+- Playwright documentation, [the `geolocation` context option](https://playwright.dev/python/docs/api/class-browser#browser-new-context-option-geolocation),
+  [the `permissions` context option](https://playwright.dev/python/docs/api/class-browser#browser-new-context-option-permissions),
+  [`grant_permissions()`](https://playwright.dev/python/docs/api/class-browsercontext#browser-context-grant-permissions),
+  [`set_geolocation()`](https://playwright.dev/python/docs/api/class-browsercontext#browser-context-set-geolocation), and
+  [`clear_permissions()`](https://playwright.dev/python/docs/api/class-browsercontext#browser-context-clear-permissions), retrieved 2026-08-28.
+- MDN, [`Geolocation.getCurrentPosition()`](https://developer.mozilla.org/en-US/docs/Web/API/Geolocation/getCurrentPosition),
+  retrieved 2026-08-28.
 - This project's own timezone-derivation behaviour and the consistency failures logged in
   the pages linked above, where a hand-set surface disagreeing with the exit produced a
   flag that the surface alone looked fine.

@@ -1,6 +1,6 @@
 ---
 title: "Does storage quota estimate reveal disk size?"
-description: "storage.estimate() returns quota from free disk space, so it buckets as a device fingerprint. Keep it plausible, agreeing with deviceMemory and hardwareConcurrency."
+description: "storage.estimate() returns a quota derived from total disk size, so it buckets as a device fingerprint. Keep it plausible, agreeing with deviceMemory and hardwareConcurrency."
 parent: "Browser Identity"
 grand_parent: "Guides"
 nav_order: 34
@@ -13,9 +13,11 @@ Partly, and it is one of the surfaces almost no stealth tool audits. When a page
 [`navigator.storage.estimate()`](https://developer.mozilla.org/en-US/docs/Web/API/StorageManager/estimate),
 the browser answers with two numbers: how much origin-scoped storage is already used,
 and a quota it is allowed to grow into. That quota is not a constant. It is computed
-from the free space on the disk the profile lives on, which means it varies by device
-and can be bucketed as a fingerprint, per the
-[Storage Standard](https://storage.spec.whatwg.org/) that defines both values.
+from the total size of the disk the profile lives on, not the free space on it, which
+still varies by device and can be bucketed as a fingerprint, per the
+[Storage Standard](https://storage.spec.whatwg.org/) that defines both values and
+[Firefox's own quota rules](https://developer.mozilla.org/en-US/docs/Web/API/Storage_API/Storage_quotas_and_eviction_criteria),
+which size it from total disk space specifically so free space cannot be read this way.
 
 It does not reveal your exact disk size, and it says nothing about your IP reputation
 or how fast you are sending requests. What it does do is add one more hardware-shaped
@@ -41,18 +43,20 @@ with InvisiblePlaywright(seed=42) as browser:
 
 `usage` is how many bytes this origin currently occupies across IndexedDB, Cache
 Storage, service worker registrations and the rest. `quota` is the ceiling the origin
-may grow into before the browser starts evicting. On a real Firefox that ceiling is a
-fraction of the free space on the volume, so a laptop with 40 GB free and a workstation
-with 900 GB free report quotas an order of magnitude apart. That spread is the whole
-point for a fingerprinter: the quota does not identify you on its own, but it drops you
-into a bucket, and a bucket combines with everything else.
+may grow into before the browser starts evicting. On a real Firefox that ceiling is
+10% of the total disk size the profile lives on, or 10 GiB, whichever is smaller. A
+256 GB laptop and a 2 TB workstation both land on that same 10 GiB ceiling, but a
+machine with a 32 GB disk lands under it and stands out. That low-end split is the
+whole point for a fingerprinter: the quota does not identify you on its own, but it
+drops you into a bucket, and a bucket combines with everything else.
 
 ## Why a storage quota is a fingerprint at all
 
-Individually the number is coarse. It changes as you fill or free the disk, and two
-machines with similar free space report similar quotas, so it is a weak signal in
-isolation. Fingerprinting does not use it in isolation. It uses it the way it uses
-every coarse value: as one more bit that has to be consistent with its neighbours.
+Individually the number is coarse. It sits on a handful of common disk-size steps, and
+most machines above roughly 100 GB of total disk converge on the same capped quota, so
+it is a weak signal in isolation. Fingerprinting does not use it in isolation. It uses
+it the way it uses every coarse value: as one more bit that has to be consistent with
+its neighbours.
 
 The neighbours here are the other hardware surfaces. `navigator.deviceMemory` reports a
 bucketed RAM figure. `navigator.hardwareConcurrency` reports a logical-core count. A
@@ -91,12 +95,14 @@ def read_hardware(seed):
     with InvisiblePlaywright(seed=seed) as browser:
         page = browser.new_page()
         page.goto("https://example.com")
-        return page.evaluate("""() => ({
-            quota: navigator.storage && navigator.storage.estimate
-                     ? undefined : undefined,
-            deviceMemory: navigator.deviceMemory,
-            cores: navigator.hardwareConcurrency,
-        })""")
+        return page.evaluate("""async () => {
+            const est = await navigator.storage.estimate();
+            return {
+                quota: est.quota,
+                deviceMemory: navigator.deviceMemory,
+                cores: navigator.hardwareConcurrency,
+            };
+        }""")
 
 # same seed -> same persona -> same numbers every run
 print(read_hardware(42))
@@ -179,7 +185,7 @@ you want to see this separation in a live report, work through
 
 ## Conclusion
 
-`navigator.storage.estimate()` does leak a coarse, bucketed view of free disk space, and
+`navigator.storage.estimate()` does leak a coarse, bucketed view of total disk size, and
 it is a fingerprint for the same reason every hardware surface is: not because the number
 is unique, but because it has to agree with `deviceMemory`, `hardwareConcurrency` and the
 platform you claim. invisible_playwright answers it from the real build's storage layer as
@@ -191,8 +197,8 @@ are the parts you still have to get right.
 ## Short answers to the questions that lead here
 
 **Does navigator.storage.estimate() reveal my exact disk size?** No. It returns a quota
-derived from free space, bucketed rather than exact, so it places you in a range instead
-of naming a number.
+derived from total disk size, capped well below the real number on most modern drives, so
+it names a bucket instead of an exact size.
 
 **Can a storage quota be used as a fingerprint?** Yes, as a coarse bucket that combines
 with other signals. On its own it is weak; cross-checked against RAM and core count it
@@ -215,8 +221,12 @@ and address are measured elsewhere and no browser property hides them.
 
 ## Sources
 
-- The Storage Standard `estimate()` API and the Firefox implementation that derives its
-  quota from available disk space.
+- [Storage Standard](https://storage.spec.whatwg.org/) and MDN's
+  [StorageManager: estimate() method](https://developer.mozilla.org/en-US/docs/Web/API/StorageManager/estimate),
+  which define `usage` and `quota`, retrieved 2026-08-28.
+- MDN, [Storage quotas and eviction criteria](https://developer.mozilla.org/en-US/docs/Web/API/Storage_API/Storage_quotas_and_eviction_criteria),
+  which documents that Firefox sizes the quota from total disk size rather than free
+  space, retrieved 2026-08-28.
 - This project's per-seed hardware persona and the cross-field consistency gates that
   check the storage quota against `deviceMemory` and `hardwareConcurrency`.
 

@@ -30,7 +30,7 @@ Matching means the server-reflexive (`srflx`) candidate carries the same public 
 the HTTP exit, paired with a real, non-zero port next to it, not just the address on its own.
 That candidate is what a real browser behind a home router produces: the router rewrites the
 source address of an outbound packet to the household's public address and to some port the
-router chose, and a [STUN](https://datatracker.ietf.org/doc/html/rfc5389) server on the far
+router chose, and a [STUN](https://www.rfc-editor.org/rfc/rfc8489) server on the far
 side reports that rewritten pair back. The pair is the NAT mapping, and a real `srflx` is
 always a public address with a plausible port next to it.
 
@@ -146,7 +146,8 @@ with InvisiblePlaywright(seed=42, proxy=proxy) as browser:
     page = browser.new_page()
 
     # The exit address, read back through the same proxy the browser uses.
-    exit_ip = page.goto("https://api.ipify.org?format=json") and \
+    # (your own IP-echo endpoint; example.com is a stand-in here)
+    exit_ip = page.goto("https://example.com/ip?format=json") and \
         json.loads(page.locator("pre, body").inner_text())["ip"]
 
     page.goto("https://example.com/")
@@ -225,6 +226,12 @@ passes the negative check while looking nothing like a real browser behind NAT.
 - The project's release gates for WebRTC, which assert the positive form of the
   candidate (present, matching the exit, real port) rather than the absence of a leak,
   after an earlier negative-only gate passed a browser that was gathering nothing.
+- [RFC 8489, Session Traversal Utilities for NAT (STUN)](https://www.rfc-editor.org/rfc/rfc8489),
+  retrieved 2026-08-28, which defines the address-and-port pair a NAT allocates and how a
+  STUN server reports it back to the agent that sent the original packet.
+- [MDN, `RTCIceCandidate.type`](https://developer.mozilla.org/en-US/docs/Web/API/RTCIceCandidate/type),
+  retrieved 2026-08-28, documenting the `srflx` value as a binding a NAT allocated, learned
+  through a STUN or TURN server.
 
 ---
 

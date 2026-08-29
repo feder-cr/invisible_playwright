@@ -162,6 +162,23 @@ actual pixels.
 **What should the string look like?** Consumer hardware someone could buy, with a
 shader model plausible for its generation, and consistent with the platform you claim.
 
+## Sources
+
+- [MDN Web Docs: `WEBGL_debug_renderer_info`](https://developer.mozilla.org/en-US/docs/Web/API/WEBGL_debug_renderer_info),
+  retrieved 2026-08-28, for the `UNMASKED_VENDOR_WEBGL` and `UNMASKED_RENDERER_WEBGL`
+  tokens described above.
+- The [Khronos WebGL extension registry](https://registry.khronos.org/webgl/extensions/WEBGL_debug_renderer_info/)
+  entry for `WEBGL_debug_renderer_info`, retrieved 2026-08-28, the extension's own
+  ratified specification.
+- [ANGLE](https://github.com/google/angle), Google's own repository, read 2026-08-28,
+  for the OpenGL-ES-to-Direct3D translation layer Firefox uses on Windows and the
+  reason the renderer string begins `ANGLE (`.
+- [MDN Web Docs: `WebGLRenderingContext.getSupportedExtensions()`](https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/getSupportedExtensions),
+  retrieved 2026-08-28, for the extension list used as a cross-check against a spoofed
+  renderer string.
+- This project's own logs, for the seed-42 software-rasterizer mistake and its fix
+  described above.
+
 **See also:** [why headless renders different fonts](headless-fonts-differ.md), the same class of server tell, and [what sannysoft checks](sannysoft-explained.md), where two of the eleven rows are these strings.
 
 ---

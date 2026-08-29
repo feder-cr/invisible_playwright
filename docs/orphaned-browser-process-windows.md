@@ -151,6 +151,14 @@ the error your automation sees when the process it was driving disappears out fr
 - This project's own diagnosis, the controlled comparison that ruled out the
   exception path, the job-object fix, and the regression test suite that locks the
   killed-runner case in.
+- Microsoft's Win32 documentation, [Job Objects](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects),
+  which confirms that closing the last handle to a job created with
+  `KILL_ON_JOB_CLOSE` terminates every process still inside it, retrieved 2026-08-28.
+- Playwright's own Python API reference, [the Playwright class](https://playwright.dev/python/docs/api/class-playwright),
+  for the context-manager teardown the exception-path comparison confirmed was
+  never broken, retrieved 2026-08-28.
+- [psutil documentation](https://psutil.readthedocs.io/), the process library the
+  token-matching identification step depends on, retrieved 2026-08-28.
 
 ---
 

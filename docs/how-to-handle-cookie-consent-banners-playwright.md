@@ -220,9 +220,12 @@ stays accepted, along with any device permission the flow also stored.
 - This project's own patch history for the cross-origin iframe root cause, the frame
   tree measurement (four empty entries versus five populated), and the process-model
   fix that makes the iframe reachable.
-- Playwright's documented `frame_locator`, `get_by_role`, `page.frames` and
-  `wait_for_selector` APIs, used unchanged because the returned object is a real
-  `Browser`.
+- Playwright documentation, [Frame.frame_locator](https://playwright.dev/python/docs/api/class-frame#frame-frame-locator)
+  and [Locator.get_by_role](https://playwright.dev/python/docs/api/class-locator#locator-get-by-role),
+  retrieved 2026-08-28.
+- Playwright documentation, [Page class reference](https://playwright.dev/python/docs/api/class-page),
+  which documents `frames` and `wait_for_selector`, used unchanged here because the
+  driven object is a real Playwright `Browser`, retrieved 2026-08-28.
 - This project's notes on persistent profiles and the stored-permission trap, linked
   above.
 

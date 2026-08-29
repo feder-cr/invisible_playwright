@@ -174,14 +174,22 @@ machine and network. If the manual visit is also challenged, it is the exit, and
 
 ## Sources
 
+- Google's own reCAPTCHA v3 documentation, [reCAPTCHA v3](https://developers.google.com/recaptcha/docs/v3),
+  retrieved 2026-08-29, for the score-and-threshold behavior this page treats as its working
+  model throughout.
 - This project's fingerprint generation, which derives roughly 400 fields from one seed so
   they agree with each other rather than contradicting.
 - The comparison method in the testing guide linked above, used to read the fingerprint
   contribution to a score directly rather than trusting a verdict.
-- Public detector suites (CreepJS, BotD, FingerprintJS, sannysoft, BrowserLeaks), each read
-  from its own source, for what a coherence check actually inspects.
+- Public detector suites ([CreepJS](https://github.com/abrahamjuliot/creepjs),
+  [BotD](https://github.com/fingerprintjs/BotD),
+  [FingerprintJS](https://github.com/fingerprintjs/fingerprintjs),
+  [sannysoft](https://bot.sannysoft.com/), [BrowserLeaks](https://browserleaks.com/)), each
+  read from its own source, retrieved 2026-08-28, for what a coherence check actually
+  inspects.
 
 **See also:** [how a browser trust score is assembled](browser-trust-score-explained.md),
+[why a fresh browser scores low on reCAPTCHA v3](recaptcha-v3-score.md),
 [the checklist for being detected on one site](playwright-detected-as-bot.md), and
 [how to test whether your browser is detected](how-to-test-bot-detection.md).
 

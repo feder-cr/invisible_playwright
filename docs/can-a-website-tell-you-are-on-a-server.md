@@ -29,7 +29,7 @@ by every serious tool on day one. The ones that survive are hardware questions t
 machine cannot answer honestly:
 
 - **The GPU**, read through the [`WEBGL_debug_renderer_info`](https://developer.mozilla.org/en-US/docs/Web/API/WEBGL_debug_renderer_info)
-  extension, which on a server is drawn by software.
+  extension, which on a server names a software rasterizer instead of real hardware.
 - **The audio device**, read through [`AudioContext`](https://developer.mozilla.org/en-US/docs/Web/API/AudioContext), which on a server does not exist.
 - **The screen**, whose resolution, available height and device pixel ratio describe
   a display that no real desktop has.
@@ -45,7 +45,8 @@ cannot).
 
 Ask a browser on a normal desktop what draws its graphics and it names a real GPU
 vendor and model. Ask a browser on a server and, if it renders WebGL at all, it names
-a software rasterizer: strings like `llvmpipe` or `SwiftShader`, or a generic "software"
+a software rasterizer: strings like [`llvmpipe`](https://docs.mesa3d.org/drivers/llvmpipe.html)
+or [`SwiftShader`](https://github.com/google/swiftshader), or a generic "software"
 renderer. That string is a plain statement that there is no graphics hardware present,
 and a detector reads it as exactly that.
 
@@ -82,8 +83,8 @@ Linux container, because they are presented by the browser rather than read from
 
 ## What invisible_playwright presents instead
 
-The launch is two lines, and the browser you get back is a real Playwright `Browser`,
-so every method is the one you already know. Here is the launch plus reading back the
+The launch is two lines, and the browser you get back is a real Playwright
+[`Browser`](https://playwright.dev/python/docs/api/class-browser), so every method is the one you already know. Here is the launch plus reading back the
 three signals this page is about:
 
 ```python
@@ -188,6 +189,20 @@ and the pacing still depend on where and how you run it.
 
 ## Sources
 
+- MDN Web Docs: [`WEBGL_debug_renderer_info`](https://developer.mozilla.org/en-US/docs/Web/API/WEBGL_debug_renderer_info),
+  retrieved 2026-08-28, for the `UNMASKED_VENDOR_WEBGL` and `UNMASKED_RENDERER_WEBGL`
+  tokens a software renderer answers with.
+- MDN Web Docs: [`AudioContext`](https://developer.mozilla.org/en-US/docs/Web/API/AudioContext),
+  retrieved 2026-08-28, for the sample rate, output latency and channel count a
+  container reports with no sound card present.
+- Mesa 3D Graphics Library documentation: [LLVMpipe](https://docs.mesa3d.org/drivers/llvmpipe.html),
+  retrieved 2026-08-29, for the software rasterizer whose name is one of the two strings a
+  GPU-less host answers `UNMASKED_RENDERER_WEBGL` with.
+- Google SwiftShader, [project repository](https://github.com/google/swiftshader), retrieved
+  2026-08-29, for the other software renderer a headless host commonly reports in place of
+  a GPU.
+- Playwright documentation: [`Browser`](https://playwright.dev/python/docs/api/class-browser),
+  retrieved 2026-08-29, for the class the launch call in this article returns unchanged.
 - This project's release gates, which read WebGL renderer, AudioContext output and screen
   metrics through the shipped binary on a Linux host and compare them against a stock
   desktop browser.

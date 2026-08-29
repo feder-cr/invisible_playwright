@@ -45,7 +45,7 @@ In a real browser those three agree by construction, because one piece of state 
 all of them. Comparing them is a few lines on the server and it needs no fingerprinting
 library at all.
 
-### The mismatches that get caught
+**The mismatches that get caught:**
 
 - **A spoofed user agent with untouched Client Hints.** You set the string to Chrome 141
   and the headers still describe whatever the browser really is. This is the single most
@@ -192,18 +192,20 @@ navigation.
 correctly, and hand-maintaining them is how you produce a combination that does not
 exist.
 
+## Sources
+
+- WICG, [User-Agent Client Hints](https://wicg.github.io/ua-client-hints/), retrieved
+  2026-08-28, for the `Sec-CH-UA` headers and `navigator.userAgentData`, as implemented in
+  Chromium and absent in Firefox.
+- W3C, [Fetch Metadata Request Headers](https://www.w3.org/TR/fetch-metadata/), retrieved
+  2026-08-28, for `Sec-Fetch-Site`, `-Mode`, `-Dest` and `-User`.
+- This project's handling of user activation, which is described on
+  [the debugger page](debugger-timing-detection.md).
+
 **See also:** [why you should not set the user agent](playwright-user-agent.md), which is
 the same argument from the other end,
 [JA3 and JA4](ja3-ja4-tls-fingerprint.md), for the layer below these headers, and
 [how to test whether your browser is detected](how-to-test-bot-detection.md).
-
-## Sources
-
-- The User Agent Client Hints headers and `navigator.userAgentData`, as implemented in
-  Chromium and absent in Firefox.
-- The Fetch Metadata request headers, `Sec-Fetch-Site`, `-Mode`, `-Dest` and `-User`.
-- This project's handling of user activation, which is described on
-  [the debugger page](debugger-timing-detection.md).
 
 ---
 

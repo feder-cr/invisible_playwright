@@ -184,6 +184,20 @@ has.
 platform, the fonts and everything else. Randomising it alone creates contradictions
 rather than hiding anything.
 
+## Sources
+
+- This project's own testing: a fixed seed reproduces the same machine on every run,
+  which is what makes a bisect through this list a bisect rather than guesswork.
+- Playwright's own documentation, [`Browser.new_context()`](https://playwright.dev/python/docs/api/class-browser#browser-new-context),
+  retrieved 2026-08-28, for the `user_agent`, `locale`, `timezone_id`, `viewport` and
+  `extra_http_headers` options named in step 1.
+- The [WebDriver specification](https://www.w3.org/TR/webdriver2/), retrieved
+  2026-08-28, which defines `navigator.webdriver`.
+- MDN Web Docs, [`SpeechSynthesis.getVoices()`](https://developer.mozilla.org/en-US/docs/Web/API/SpeechSynthesis/getVoices),
+  retrieved 2026-08-28.
+- MDN Web Docs, [the `pageshow` event](https://developer.mozilla.org/en-US/docs/Web/API/Window/pageshow_event),
+  retrieved 2026-08-28, which documents the `persisted` property.
+
 **See also:** [WebGL renderer strings](webgl-renderer-strings.md) and [why headless renders different fonts](headless-fonts-differ.md) for step three, [what sannysoft actually checks](sannysoft-explained.md) before you trust a green table, and, if every step above comes back clean and the block persists anyway, [why you might still be blocked with a clean fingerprint](why-blocked-with-a-clean-fingerprint.md).
 
 ---

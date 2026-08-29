@@ -19,7 +19,7 @@ preferences. Every failure mode below is one we have hit.
 ## The six reasons a Firefox preference silently does nothing
 
 A Firefox preference set with no visible effect almost always falls into one of six
-cases: the name is not one that build reads, the value is compiled in at build time,
+cases: the name is not one that the build reads, the value is compiled in at build time,
 it was written to the wrong file, an enterprise policy locked it, another layer
 overrides it, or it was set in the parent process and never crossed into the content
 process. The single confirmation step for all of them is the same: read the value back
@@ -174,6 +174,22 @@ process, which is not always what a content process or a given realm is using.
 **Why would a documented preference do nothing?** Because it was removed upstream and
 left in place, or it was never wired to anything. A preference existing is not evidence
 that anything reads it.
+
+## Sources
+
+- Mozilla's [Configuration Editor for Firefox](https://support.mozilla.org/en-US/kb/about-config-editor-firefox),
+  retrieved 2026-08-28, for what `about:config` shows and does not validate.
+- Mozilla's [profile documentation](https://support.mozilla.org/en-US/kb/profiles-where-firefox-stores-user-data),
+  retrieved 2026-08-28, for the `prefs.js` / `user.js` distinction and which one wins on
+  startup.
+- Firefox's source documentation on [`libpref` and the static preference mechanism](https://firefox-source-docs.mozilla.org/modules/libpref/index.html),
+  retrieved 2026-08-28, for how build-time preferences are generated and mirrored into C++.
+- Mozilla's enterprise documentation, [Customize Firefox using policies.json](https://support.mozilla.org/en-US/kb/customizing-firefox-using-policiesjson),
+  retrieved 2026-08-28, for how a policy lock overrides both preference files.
+- Firefox's source documentation on the [process model](https://firefox-source-docs.mozilla.org/dom/ipc/process_model.html),
+  retrieved 2026-08-28, for the parent/content process split a preference has to cross.
+- This project's own test suite, for the seven preference names that were set and never
+  read by the engine.
 
 **See also:** [what `privacy.resistFingerprinting` changes](resist-fingerprinting.md),
 which is a preference whose effects are large and mostly unwanted here, and
