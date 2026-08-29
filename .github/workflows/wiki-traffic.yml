@@ -1,0 +1,85 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# wiki-traffic.yml - keep GitHub's traffic numbers, which GitHub throws away.
+#
+# `/traffic/views` is the last 14 days. `/traffic/popular/paths` is a top TEN
+# over the same 14 days. Nothing older is retrievable, ever - miss a fortnight
+# and that fortnight is gone. This runs daily, folds what the API currently
+# reports into .github/traffic/, and commits it, so the window stops limiting
+# what is known and only limits how far back the record can start.
+#
+# It runs daily and not weekly for that reason: at 14 days of retention a weekly
+# job survives one skipped run and loses data on the second. Daily leaves a
+# fortnight of slack.
+#
+# AUTH. This CANNOT use the built-in GITHUB_TOKEN. The traffic endpoints need
+# push access to the repository - `Administration: Read` for a fine-grained
+# token - and `administration` is not among the permissions a GITHUB_TOKEN can
+# be granted at all, so it gets a 403 no matter how `permissions:` is written.
+# It needs a PAT of its own in the TRAFFIC_TOKEN secret:
+#
+#   fine-grained: this repository, Administration -> Read
+#   classic:      `repo`
+#
+# Without the secret the job fails on the first run with a message saying this,
+# which is deliberate: a collector that quietly writes nothing looks exactly
+# like a repository nobody visits.
+#
+# WHAT IT CANNOT SEE. Ten paths for the whole repository - the root, issues,
+# file views and the wiki all compete for the same ten slots - so a wiki page
+# outside them is UNMEASURED, not unvisited. REPORT.md says so in that case
+# instead of printing a zero somebody will quote.
+name: wiki-traffic
+
+on:
+  schedule:
+    # 03:17 UTC. Not on the hour: GitHub queues scheduled workflows across the
+    # whole platform, and the top of the hour is where everyone else already is.
+    - cron: "17 3 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wiki-traffic
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Collect today's traffic into .github/traffic/
+        env:
+          TRAFFIC_TOKEN: ${{ secrets.TRAFFIC_TOKEN }}
+        run: python scripts/collect_traffic.py "${{ github.repository }}" .github/traffic
+
+      - name: Commit what changed
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/traffic
+          # Nothing to commit is a NORMAL outcome, not a failure: a re-run on
+          # the same day re-reads the same 14-day window and produces the same
+          # files. `git commit` exits 1 on an empty index and the step runs
+          # under `bash -e`, so without this branch every second run of the day
+          # would go red.
+          if git diff --cached --quiet; then
+            echo "traffic unchanged"
+          else
+            git commit -m "chore(traffic): record $(date -u +%F)"
+            git push
+          fi
+
+      - name: Put the report in the run summary
+        if: always()
+        run: |
+          if [ -f .github/traffic/REPORT.md ]; then
+            cat .github/traffic/REPORT.md >> "$GITHUB_STEP_SUMMARY"
+          fi

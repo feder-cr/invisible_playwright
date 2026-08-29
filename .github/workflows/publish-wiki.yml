@@ -12,18 +12,6 @@
 # each run so a page deleted from docs/ also disappears from the wiki; nothing
 # but generated output is ever committed.
 #
-# VIEW COUNTS. GitHub reports no per-page traffic for a wiki, so the only signal
-# a page can produce is an image fetch. Set the repository VARIABLE
-# WIKI_VIEW_PIXEL (Settings > Secrets and variables > Actions > Variables) to a
-# URL template containing {page} - e.g. https://example.com/wiki/{page}.svg - and
-# every published page ends with that image, with the page name substituted in.
-# A variable, not a secret: the URL is published in 300+ public pages, so there
-# is nothing to hide, and it can be added or removed without a commit. Unset,
-# which is the default and the state of every fork, the pages are built exactly
-# as they are today and no third party is contacted. scripts/build_wiki.py
-# explains what the resulting counts are worth (camo caches them; they rank
-# pages, they do not count visitors).
-#
 # AUTH. Pushing to <repo>.wiki.git needs contents:write. The built-in
 # GITHUB_TOKEN carries it here; if a run ever gets a 403 pushing the wiki
 # (some org policies withhold wiki write from GITHUB_TOKEN), set a PAT with
@@ -56,9 +44,6 @@ jobs:
           python-version: "3.12"
 
       - name: Render docs/ into a wiki build directory
-        # Empty when the variable is unset, which is what turns the pixel off.
-        env:
-          WIKI_VIEW_PIXEL: ${{ vars.WIKI_VIEW_PIXEL }}
         run: python scripts/build_wiki.py docs wiki_build
 
       - name: Publish to the wiki
