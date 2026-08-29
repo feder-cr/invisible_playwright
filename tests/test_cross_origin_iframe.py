@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import socket
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
@@ -132,6 +133,40 @@ def _serve(payload: bytes, port: int) -> HTTPServer:
     return srv
 
 
+def _wait_for_child_frame(page, child_origin, timeout=10_000, required=True):
+    """Wait until the cross-origin child has ACTUALLY navigated.
+
+    `wait_for_selector("iframe#ifr_plain")` resolves as soon as the <iframe>
+    ELEMENT is in the parent's DOM. The child's navigation to `child_origin` is
+    still in flight at that moment, so `content_frame().url` is `about:blank`
+    and `frame_locator(...).locator(...).count()` is 0 - which surfaces as a
+    missing button rather than as an unloaded frame.
+
+    This replaces `page.wait_for_timeout(500)`. A fixed delay is not a
+    synchronisation primitive, it is a bet on runner speed, and the CI history
+    is the record of it losing: of the last 30 `e2e` runs on main, 10 failed,
+    always in this file. Both symptoms were seen - `assert 'http://127.0.0.1:...'
+    in 'about:blank'` from a test that DID sleep 500ms, and `locator('button#ok')
+    found 0 elements` from the two that waited for nothing at all.
+
+    `required=False` for the one test whose whole job is asserting the frame
+    list: it has to make that assertion itself, with its own message, rather
+    than have this raise the same thing one line earlier.
+    """
+    deadline = time.monotonic() + timeout / 1000
+    while True:
+        if any(child_origin in (f.url or "") for f in page.frames):
+            return True
+        if time.monotonic() >= deadline:
+            break
+        page.wait_for_timeout(50)
+    if required:
+        raise AssertionError(
+            f"the cross-origin child never navigated to {child_origin!r} within "
+            f"{timeout}ms; page.frames urls = {[f.url for f in page.frames]!r}")
+    return False
+
+
 @pytest.fixture
 def cross_origin_harness():
     """Spin up TWO local HTTP servers on different localhost ports.
@@ -179,7 +214,8 @@ def test_cross_origin_iframe_url_appears_in_page_frames(firefox_binary, cross_or
         page = ctx.new_page()
         page.goto(cross_origin_harness["parent_url"], wait_until="domcontentloaded", timeout=30_000)
         page.wait_for_selector("iframe#ifr_plain", timeout=10_000)
-        page.wait_for_timeout(500)
+        _wait_for_child_frame(page, cross_origin_harness["child_origin"],
+                              required=False)
 
         urls = [f.url for f in page.frames]
         assert any(cross_origin_harness["child_origin"] in (u or "") for u in urls), (
@@ -199,7 +235,7 @@ def test_cross_origin_iframe_content_frame_resolves(firefox_binary, cross_origin
         page = ctx.new_page()
         page.goto(cross_origin_harness["parent_url"], wait_until="domcontentloaded", timeout=30_000)
         page.wait_for_selector("iframe#ifr_plain", timeout=10_000)
-        page.wait_for_timeout(500)
+        _wait_for_child_frame(page, cross_origin_harness["child_origin"])
 
         for sel in ("iframe#ifr_plain", "iframe#ifr_sandbox", "iframe#ifr_titled"):
             handle = page.query_selector(sel)
@@ -226,7 +262,7 @@ def test_cross_origin_iframe_evaluate_returns_real_values(firefox_binary, cross_
         page = ctx.new_page()
         page.goto(cross_origin_harness["parent_url"], wait_until="domcontentloaded", timeout=30_000)
         page.wait_for_selector("iframe#ifr_plain", timeout=10_000)
-        page.wait_for_timeout(500)
+        _wait_for_child_frame(page, cross_origin_harness["child_origin"])
 
         cf = page.query_selector("iframe#ifr_plain").content_frame()
         assert cf is not None
@@ -248,6 +284,7 @@ def test_cross_origin_iframe_frame_locator_resolves_button(firefox_binary, cross
         page = ctx.new_page()
         page.goto(cross_origin_harness["parent_url"], wait_until="domcontentloaded", timeout=30_000)
         page.wait_for_selector("iframe#ifr_plain", timeout=10_000)
+        _wait_for_child_frame(page, cross_origin_harness["child_origin"])
 
         for selector in ("button#ok", "button.btn-primary"):
             cnt = page.frame_locator("iframe#ifr_plain").locator(selector).count()
@@ -270,6 +307,7 @@ def test_cross_origin_iframe_dispatch_event_click_works(firefox_binary, cross_or
         page = ctx.new_page()
         page.goto(cross_origin_harness["parent_url"], wait_until="domcontentloaded", timeout=30_000)
         page.wait_for_selector("iframe#ifr_plain", timeout=10_000)
+        _wait_for_child_frame(page, cross_origin_harness["child_origin"])
 
         page.frame_locator("iframe#ifr_plain").locator("button#ok").dispatch_event(
             "click", timeout=4_000
