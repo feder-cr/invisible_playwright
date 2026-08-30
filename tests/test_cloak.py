@@ -102,7 +102,9 @@ def test_aaa_primo_lancio(firefox_binary):
                                      headless=False, extra_prefs=CLOAK_PREFS):
                 _ESITI.append("lancio %d: VIVO" % n)
         except Exception as e:
-            _ESITI.append("lancio %d: MORTO  %s" % (n, str(e).split(chr(10))[0][:60]))
+            _ESITI.append("lancio %d: MORTO" % n)
+            for riga in str(e).split(chr(10))[:14]:
+                _ESITI.append("      | " + riga[:120])
         print("  " + _ESITI[-1], flush=True)
     raise AssertionError("PRIMI LANCI (sonda):" + chr(10)
                          + chr(10).join("    " + r for r in _ESITI))
