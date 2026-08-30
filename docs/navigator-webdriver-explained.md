@@ -8,11 +8,11 @@ nav_order: 1
 
 # navigator.webdriver is not the tell you think it is
 
-[`navigator.webdriver`](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/webdriver) is a real, specified browser property: a conforming
-browser must report it as `true` while under automation control and otherwise
-leave it `undefined`, never `false`. It is the cheapest signal in any
-fingerprint, which is why it is the one everybody checks first, and passing it
-alone - by hiding, patching, or deleting it - stops a detector on essentially
+[`navigator.webdriver`](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/webdriver) is a real, specified browser property: the WebIDL declares it a
+plain `boolean`, `true` while under automation control and `false` otherwise, in
+every current build of Chrome, Firefox and Safari. It is the cheapest signal in
+any fingerprint, which is why it is the one everybody checks first, and passing
+it alone - by hiding, patching, or deleting it - stops a detector on essentially
 nothing else it looks at.
 
 If you have ever automated a browser and been shown a different page than a human
@@ -25,34 +25,38 @@ Here is why, and what the property actually tells a detector.
 ## navigator.webdriver is a standard, not a leak
 
 `navigator.webdriver` is specified. It is not something that slipped out by
-accident: the [WebDriver spec](https://www.w3.org/TR/webdriver2/) requires a conforming browser to expose it as `true`
+accident: the [WebDriver spec](https://www.w3.org/TR/webdriver2/#interface) defines it as a plain
+`boolean` attribute and requires a conforming browser to expose it as `true`
 when the session is under automation control. It exists so that a page can know,
 which means a page checking it is using it exactly as intended.
 
 Start from that. You are not defeating a bug. You are
 contradicting a value the browser is required to publish about itself.
 
-## Why setting navigator.webdriver to false is worse than leaving it true
+## Why patching navigator.webdriver still tells on you, even when the value is right
 
-Setting `navigator.webdriver` to `false` is worse than leaving it `true`, because a
-clean browser never reports `false` in the first place - it swaps one honest
-signal for a value no real browser sends, and adds two more tells in the
-process. The usual first attempt looks like this:
+Older advice on this property is now backwards, and it is worth saying why
+before explaining what still matters. Before Chrome 89 (2021) and Firefox 75
+(2020), the attribute was only exposed when automation was active, so reading it
+on a clean session returned `undefined`. Both engines changed that on purpose,
+specifically to agree with each other: Chromium's own "Intent to Ship" for the
+change is titled `navigator.webdriver === false` when automation is not active,
+and it says so because Gecko and WebKit already worked that way. Today,
+`navigator.webdriver` is `false` in a normal session and `true` under
+automation, full stop, in every current build of the three engines. There is no
+third value.
+
+That means the naive patch people reach for is no longer wrong about the
+*value*:
 
 ```js
 Object.defineProperty(navigator, 'webdriver', { get: () => false });
 ```
 
-Three things just happened, and only one of them was the thing you wanted.
+`false` is what a clean browser says today, so this line gets the number right.
+It still gets caught, for two reasons that have nothing to do with the number.
 
-**One.** In a normal browser that is not automated, the property is not `false`. It
-is `undefined` in most builds, because the attribute is only present when the flag
-is set. A detector that has ever looked at a real browser knows the difference
-between "the answer is no" and "there is no answer". Reporting `false` is a
-distinct value from what a clean browser reports, so you have swapped one signal
-for another.
-
-**Two.** You left fingerprints on the object itself. The property is now an own
+**One.** You left fingerprints on the object itself. The property is now an own
 property of the `navigator` instance instead of living on `Navigator.prototype`
 where it belongs. That is one line to check:
 
@@ -61,7 +65,7 @@ Object.getOwnPropertyNames(navigator).includes('webdriver')       // should be f
 Object.getOwnPropertyDescriptor(Navigator.prototype, 'webdriver') // should exist
 ```
 
-**Three.** Your getter is a JavaScript function you wrote, and functions carry
+**Two.** Your getter is a JavaScript function you wrote, and functions carry
 their source. [`Function.prototype.toString`](tostring-native-code-detection.md)
 on a native getter returns `function get webdriver() { [native code] }`. On
 yours it returns whatever you typed. Every serious stealth layer patches
@@ -143,9 +147,11 @@ against the detector inside the same runtime you are trying to lie to.
 remove the flags that set `webdriver` in the first place, stop injecting the
 bindings that automation frameworks leave in the page's global object. Patchright
 is the well-known example on the Chromium side. This removes a whole class of
-tells at the source rather than papering over them, and the property genuinely
-becomes `undefined` and not `false`, because nothing set it. What it does not
-change is anything about the machine underneath.
+tells at the source rather than papering over them: the automation flag never
+gets set, so the property reads `false` from the engine's own default, on
+`Navigator.prototype`, through the real native getter, with nothing to inspect
+because nothing was patched. What it does not change is anything about the
+machine underneath.
 
 **In the browser engine, before it ships.** Change the values in the C++ source
 and rebuild. [Camoufox](vs-camoufox.md) does this for Firefox, and so does the project I maintain,
@@ -187,35 +193,45 @@ setup and read the whole report rather than the headline verdict.
 
 ## Short answers to the questions that lead here
 
-**How do I remove `navigator.webdriver`?** You cannot remove it from the page. You can
-delete the override so the property is genuinely `undefined`, which is what a real
-browser reports, but that has to happen where the browser decides, not in a script the
-page can read.
+**How do I remove `navigator.webdriver`?** You cannot remove it from the page as a
+script. A page-level `delete navigator.webdriver` or a redefined getter still leaves an
+own property where a real browser has none, and a real browser's answer today is
+`false`, not absent. The fix that actually removes the tell has to happen where the
+browser decides the value, not in a script the page can read.
 
-**Does `Object.defineProperty(navigator, 'webdriver', {get: () => false})` work?** It
-changes the value and creates two new tells: the property moves from the prototype to
-the instance, and `false` is not what a real browser says. Real browsers say
-`undefined`.
+**Does `Object.defineProperty(navigator, 'webdriver', {get: () => false})` work?** The
+value is right - `false` is what a real, unautomated browser reports today - but the
+mechanism still gives you away: the property moves from `Navigator.prototype` to an own
+property on the instance, and the getter is a JavaScript function whose `toString` does
+not say `[native code]`.
 
-**What should `navigator.webdriver` be?** `undefined` in a normal browser.
-`true` under automation. `false` almost nowhere, which is why setting it to `false` is
-worse than leaving it alone.
+**What should `navigator.webdriver` be?** `false` in a normal, current browser. `true`
+under automation. `undefined` was the answer before Chrome 89 and Firefox 75; every
+current build of the three engines returns a plain boolean now, never a third value.
 
 **Is `--disable-blink-features=AutomationControlled` enough?** It hides this one flag
 in Chromium. It says nothing about the twenty other things a detector reads, and it is
 itself a recognisable launch configuration.
 
-**Why do I get detected even with `navigator.webdriver` undefined?** Because it is the
-cheapest check, not the important one. Everything else on your machine is still
+**Why do I get detected even with `navigator.webdriver` reading `false`?** Because it is
+the cheapest check, not the important one. Everything else on your machine is still
 answering honestly.
 
 ## Sources
 
 - [MDN, `Navigator.webdriver`](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/webdriver),
-  retrieved 2026-08-28, for the specified behavior discussed throughout this page.
+  retrieved 2026-08-30, documenting the value as a plain Boolean with no mention of an
+  undefined state.
 - The [WebDriver specification](https://www.w3.org/TR/webdriver2/#interface), retrieved
-  2026-08-28, whose interface section defines the webdriver-active flag and requires a
-  conforming user agent to expose `navigator.webdriver` as `true` under automation control.
+  2026-08-30, whose interface section declares `readonly attribute boolean webdriver`,
+  a plain boolean that WebIDL does not permit to be undefined, and requires a
+  conforming user agent to expose it as `true` under automation control.
+- Chromium's own ["Intent to Ship: `navigator.webdriver === false` when automation is
+  not active"](https://groups.google.com/a/chromium.org/g/blink-dev/c/h-5nQQLs2QU),
+  retrieved 2026-08-30, and the matching [Chrome Platform Status
+  entry](https://chromestatus.com/feature/5670121114697728), for Chrome 89 (2021)
+  changing from exposing the property only under automation to always exposing it,
+  `false` by default, specifically to match Gecko and WebKit.
 - [MDN, `Function.prototype.toString()`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function/toString),
   retrieved 2026-08-28, for the native-code string a builtin getter returns.
 - [CreepJS](https://github.com/abrahamjuliot/creepjs), retrieved 2026-08-28, one of the
