@@ -100,23 +100,33 @@ def test_aaa_primo_lancio(firefox_binary):
     # Su Windows Firefox avvia un processo LAUNCHER che si ri-esegue, e il suo
     # stato viene memorizzato dopo la prima esecuzione riuscita: si comporta
     # diversamente proprio al primo giro, che e' l'unico che muore.
-    # ⛔ UN GIRO A VUOTO PRIMA DEL PRIMO LANCIO VERO.
-    # `LauncherRegistryInfo::Check` legge e SCRIVE il registro di Windows: al
-    # primo avvio di un binario appena estratto quella voce non esiste, quindi
-    # il launcher prende un percorso che non prendera' mai piu'. La pref
-    # `browser.launcherProcess.enabled` non serve a provarlo - vive nel profilo,
-    # che al primo giro non e' ancora stato letto: era una leva inerte, e il suo
-    # rosso non voleva dire niente.
+    # ⛔ IL PRIMO LANCIO IN ASSOLUTO LO FA IL LANCIATORE NUDO.
+    # `--version` non scalda niente (provato: uscita 0, e il lancio dopo muore
+    # lo stesso), probabilmente perche' esce prima che il launcher di Windows
+    # scriva la sua voce nel registro. Un lancio VERO invece ci passa.
     #
-    # Questo invece arriva: `--version` fa girare il binario, e il launcher
-    # scrive la sua voce, senza aprire nessuna finestra.
-    import subprocess as _sub
+    # Questo separa due ipotesi che finora coincidevano: "muore il primo lancio
+    # qualunque esso sia" contro "muore il primo lancio del percorso pubblico".
+    from invisible_playwright._juggler import connection as _C
+    import tempfile as _tf, pathlib as _pl
+    d = _tf.mkdtemp(prefix="scalda-")
+    (_pl.Path(d) / "user.js").write_text(
+        'user_pref("zoom.stealth.cloak_windows", true);' + chr(10), encoding="utf-8")
+    conn = None
     try:
-        r = _sub.run([firefox_binary, "--version"], capture_output=True, timeout=60)
-        _ESITI.append("giro a vuoto: uscita %s, %r" % (r.returncode, (r.stdout or b"")[:40]))
+        conn = _C.launch(firefox_binary, d, headless=False, ready_timeout=30)
+        _ESITI.append("lanciatore nudo (primo in assoluto): VIVO")
     except Exception as e:
-        _ESITI.append("giro a vuoto: %s" % type(e).__name__)
+        _ESITI.append("lanciatore nudo (primo in assoluto): MORTO  %s"
+                      % str(e).split(chr(10))[0][:60])
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
     print("  " + _ESITI[-1], flush=True)
+
     for n in range(1, 7):
         try:
             with InvisiblePlaywright(seed=42, binary_path=firefox_binary,
