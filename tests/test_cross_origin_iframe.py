@@ -32,7 +32,7 @@ from __future__ import annotations
 
 import threading
 import time
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
@@ -120,6 +120,8 @@ def test_extra_prefs_override_can_break_isolation_only_explicitly():
 
 
 class _SilentHandler(BaseHTTPRequestHandler):
+    #: Una socket muta non pinna piu' un thread: dopo cinque secondi cade.
+    timeout = 5
     """Suppress per-request access logging so pytest output stays clean."""
     PAYLOAD = b""  # set per-instance via subclassing
 
@@ -134,7 +136,7 @@ class _SilentHandler(BaseHTTPRequestHandler):
         self.wfile.write(self.PAYLOAD)
 
 
-def _serve(payload: bytes) -> tuple[HTTPServer, int]:
+def _serve(payload: bytes) -> tuple[ThreadingHTTPServer, int]:
     """Serve ``payload`` on every GET from a kernel-chosen port on 127.0.0.1.
 
     Returns the server and the port it is ALREADY listening on, so the number
@@ -143,7 +145,8 @@ def _serve(payload: bytes) -> tuple[HTTPServer, int]:
     handler_cls = type(
         "_H", (_SilentHandler,), {"PAYLOAD": payload}
     )
-    srv = HTTPServer(("127.0.0.1", 0), handler_cls)
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), handler_cls)
+    srv.daemon_threads = True
     t = threading.Thread(target=srv.serve_forever, daemon=True)
     t.start()
     return srv, srv.server_address[1]
@@ -397,7 +400,8 @@ def test_the_geometry_invariant_holds_inside_a_nested_frame(firefox_binary):
             self.end_headers()
             self.wfile.write(body)
 
-    srv = HTTPServer(("127.0.0.1", 0), _H)
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), _H)
+    srv.daemon_threads = True
     port = srv.server_address[1]
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     from invisible_playwright import InvisiblePlaywright

@@ -28,7 +28,7 @@ import select
 import socket
 import struct
 import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler, HTTPServer
 
 import pytest
 
@@ -427,6 +427,8 @@ def socks5_tcp_only():
 def local_https_page():
     """A trivial localhost page (used by the no-proxy srflx test)."""
     class H(BaseHTTPRequestHandler):
+        #: Una socket muta non pinna piu' un thread: dopo cinque secondi cade.
+        timeout = 5
         def do_GET(self):
             self.send_response(200)
             self.send_header("Content-Type", "text/html")
@@ -436,7 +438,8 @@ def local_https_page():
         def log_message(self, *a):
             pass
 
-    httpd = HTTPServer(("127.0.0.1", 0), H)
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), H)
+    httpd.daemon_threads = True
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     yield f"http://127.0.0.1:{httpd.server_address[1]}/"
     httpd.shutdown()

@@ -39,7 +39,7 @@ content, which would be a fingerprinting tell.
 from __future__ import annotations
 
 import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
@@ -77,6 +77,8 @@ _AUTHOR_PAGE = b"""<!doctype html><html><head><title>author-closed</title></head
 
 
 class _SilentHandler(BaseHTTPRequestHandler):
+    #: Una socket muta non pinna piu' un thread: dopo cinque secondi cade.
+    timeout = 5
     """Serve the two pages by path, and say nothing while doing it."""
 
     def log_message(self, *_a):
@@ -101,7 +103,8 @@ def widget_harness():
     and a port number that has been released is a number two workers can be
     given at the same time.
     """
-    srv = HTTPServer(("127.0.0.1", 0), _SilentHandler)
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), _SilentHandler)
+    srv.daemon_threads = True
     port = srv.server_address[1]
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     try:
