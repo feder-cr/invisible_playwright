@@ -6,6 +6,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-08-30
+
+### Fixed
+
+- **`proxy=` with an `http` or `https` scheme was accepted and ignored.** The
+  page went out on the host's address while the timezone, the locale and the
+  WebRTC candidate had all been resolved through the proxy, so the session
+  announced one country and connected from another. That is worse than having
+  no proxy: it is the mismatch this package exists to avoid, produced by the
+  package. SOCKS was unaffected, which is why it went unnoticed.
+
+  The cause was three ways of expressing one thing, with the scheme choosing
+  between them: SOCKS wrote `network.proxy.*` preferences, HTTP was handed to
+  the Playwright driver to route per channel, and HTTP without a driver got
+  different preferences again. Removing the Node driver removed the middle one
+  and nothing said so. The other two are now gone rather than repaired: the
+  endpoint is read once and routed by the engine command, for every scheme. A
+  proxy that cannot be expressed refuses the launch instead of starting a
+  browser without it. Reported from outside, with a 24-site case study behind
+  it.
+- **SOCKS proxies that require a username and password could not connect at
+  all.** The credentials reached the engine's channel filter and stopped there,
+  so the browser offered "no authentication" and the proxy closed the
+  connection. The symptom was a connection refused, which reads like a dead
+  proxy rather than a missing password. Needs the matching engine release.
+- **`profile_dir=` raised `KeyError: 'browser'`.** A persistent context never
+  opened: the reply carried the context and not the browser, and the client
+  reads both.
+
+### Changed
+
+- Pins `invisible-core` 24.16.0, which seals the `firefox-24` engine. The proxy
+  credentials fix lives in the engine, so on an older binary that one is inert.
+
 ## [0.8.0] - 2026-08-30
 
 ### Removed
