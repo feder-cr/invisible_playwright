@@ -110,14 +110,17 @@ def test_aaa_primo_lancio(firefox_binary):
     from invisible_playwright._juggler import connection as _C
     import tempfile as _tf, pathlib as _pl
     d = _tf.mkdtemp(prefix="scalda-")
-    (_pl.Path(d) / "user.js").write_text(
-        'user_pref("zoom.stealth.cloak_windows", true);' + chr(10), encoding="utf-8")
+    # ⛔ PROFILO NUDO, NESSUNA PREF. Finora il primo lancio l'ho sempre fatto col
+    # cloak, quindi "muore il primo" e "muore il primo col cloak" erano ancora
+    # la stessa misura. Questo le separa: se muore con un user.js vuoto, il
+    # cloak non c'entra per niente.
+    (_pl.Path(d) / "user.js").write_text("", encoding="utf-8")
     conn = None
     try:
         conn = _C.launch(firefox_binary, d, headless=False, ready_timeout=30)
-        _ESITI.append("lanciatore nudo (primo in assoluto): VIVO")
+        _ESITI.append("lanciatore nudo, profilo VUOTO (primo in assoluto): VIVO")
     except Exception as e:
-        _ESITI.append("lanciatore nudo (primo in assoluto): MORTO  %s"
+        _ESITI.append("lanciatore nudo, profilo VUOTO (primo in assoluto): MORTO  %s"
                       % str(e).split(chr(10))[0][:60])
     finally:
         if conn is not None:
