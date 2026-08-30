@@ -167,6 +167,9 @@ def test_aab_minidump_del_primo_lancio(firefox_binary):
     (_pl.Path(prof) / "user.js").write_text("", encoding="utf-8")
     conn = None
     try:
+        _os.environ["MOZ_CRASHREPORTER"] = "1"
+        _os.environ["MOZ_CRASHREPORTER_NO_REPORT"] = "1"
+        _os.environ["MOZ_CRASHREPORTER_SHUTDOWN"] = "1"
         conn = _C.launch(firefox_binary, prof, headless=False, ready_timeout=30)
         _DUMP.append("il primo lancio NON e' morto: niente da leggere")
     except Exception as e:
@@ -178,13 +181,37 @@ def test_aab_minidump_del_primo_lancio(firefox_binary):
             except Exception:
                 pass
 
+    import json as _json
     import time as _t
-    _t.sleep(4)          # WER scrive il dump dopo che il processo e' uscito
-    trovati = sorted(_pl.Path(cartella).glob("*.dmp"))
-    _DUMP.append("dump trovati: %d" % len(trovati))
-    for d in trovati[:3]:
-        _DUMP.append("  %s  (%d byte)" % (d.name, d.stat().st_size))
-        _DUMP.append("  -> " + _leggi_eccezione(d))
+    _t.sleep(5)
+
+    # ⛔ WER NON PUO' AVERE NIENTE, e il sorgente lo dice: `MOZ_REALLY_CRASH` su
+    # MSVC fa `__debugbreak()` e poi usa **TerminateProcess** con il codice di
+    # uscita di un abort - "because we don't want to invoke atexit handlers"
+    # (`mfbt/Assertions.h`). TerminateProcess non solleva un'eccezione, quindi
+    # non c'e' niente da catturare. Il primo giro di questa sonda ha infatti
+    # trovato zero dump con le chiavi scritte correttamente.
+    #
+    # Ma vuol dire che e' un MOZ_CRASH VERO, e quelli lasciano il motivo nel
+    # `.extra` accanto al minidump DENTRO IL PROFILO: la chiave si chiama
+    # `MozCrashReason` ed e' esattamente il messaggio dell'assert.
+    _DUMP.append("dump WER: %d (attesi 0: TerminateProcess non e' un'eccezione)"
+                 % len(sorted(_pl.Path(cartella).glob("*.dmp"))))
+    md = _pl.Path(prof) / "minidumps"
+    _DUMP.append("minidumps nel profilo: %s" % (md.is_dir() and len(list(md.glob("*"))) or 0))
+    for f in sorted(md.glob("*.extra")) if md.is_dir() else []:
+        try:
+            dati = _json.loads(f.read_text(encoding="utf-8", errors="replace"))
+        except Exception:
+            dati = {}
+        _DUMP.append("  %s" % f.name)
+        for k in ("MozCrashReason", "CrashTime", "ProcessType", "StartupCrash",
+                  "OOMAllocationSize", "TextureUsage"):
+            if k in dati:
+                _DUMP.append("     %-18s %s" % (k, str(dati[k])[:90]))
+    for d in sorted(md.glob("*.dmp")) if md.is_dir() else []:
+        _DUMP.append("  %s (%d byte) -> %s" % (d.name, d.stat().st_size,
+                                               _leggi_eccezione(d)))
     raise AssertionError("MINIDUMP (sonda):" + chr(10)
                          + chr(10).join("    " + r for r in _DUMP))
 
