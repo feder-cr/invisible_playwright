@@ -77,73 +77,116 @@ def _macos_firefox_window_alpha_zero() -> bool:
 
 
 # -----------------------------------------------------------------------------
-# SONDA [B193], seconda forma. La prima ha misurato 18 lanci su 18 VIVI con la
-# configurazione che nello stesso job faceva morire il test vero - quindi non e'
-# la configurazione. La differenza e' che il test vero e' il PRIMO lancio del
-# processo e i miei venivano dopo.
+# SONDA [B193], quarta forma: il MINIDUMP del primo lancio.
 #
-# Questa sonda e' definita PRIMA del test del cloak apposta, cosi' il suo primo
-# lancio e' il primo in assoluto, e riporta i lanci UNO PER UNO: se cade solo il
-# primo, un tasso lo nasconderebbe.
+# Nove esclusioni hanno detto cosa il crash NON e'. Per dire cosa E' serve
+# guardarlo, e continuare a bisezionare non ci arriva.
+#
+# ⛔ IL CRASH REPORTER DI FIREFOX NON LO PRENDE. `0xC0000409` e' `__fastfail`,
+# che per progetto AGGIRA l'unhandled exception filter dove Breakpad si
+# installa. Serve Windows Error Reporting, che invece lo cattura: si accende
+# scrivendo `HKLM\\...\\Windows Error Reporting\\LocalDumps`.
+#
+# E non servono i simboli. Nel record dell'eccezione c'e' il CODICE FAIL-FAST,
+# `ExceptionInformation[0]`, che nomina la classe del guasto: stack corrotto,
+# uscita fatale dell'applicazione, controllo CFG fallito, e cosi' via. Un numero
+# solo, e il parser sta in trenta righe.
 # -----------------------------------------------------------------------------
+import os as _os
+import pathlib as _pl
+import struct as _st
+import subprocess as _sp
 import sys as _sys
+import tempfile as _tf
 
-_ESITI = []
+_DUMP = []
+
+#: I codici che Windows definisce per `__fastfail`, dal winnt.h.
+_FAIL_FAST = {
+    0: "LEGACY_GS_VIOLATION", 1: "VTGUARD_CHECK_FAILURE",
+    2: "STACK_COOKIE_CHECK_FAILURE", 3: "CORRUPT_LIST_ENTRY",
+    4: "INCORRECT_STACK", 5: "INVALID_ARG", 6: "GS_COOKIE_INIT",
+    7: "FATAL_APP_EXIT", 8: "RANGE_CHECK_FAILURE",
+    9: "UNSAFE_REGISTRY_ACCESS", 10: "GUARD_ICALL_CHECK_FAILURE",
+    11: "GUARD_WRITE_CHECK_FAILURE", 12: "INVALID_FIBER_SWITCH",
+    13: "INVALID_SET_OF_CONTEXT", 18: "INVALID_REFERENCE_COUNT",
+    24: "INVALID_JUMP_BUFFER", 25: "MRDATA_MODIFIED",
+    26: "CERTIFICATION_FAILURE", 27: "INVALID_EXCEPTION_CHAIN",
+    28: "CRYPTO_LIBRARY", 29: "INVALID_CALL_IN_DLL_CALLOUT",
+    30: "INVALID_IMAGE_BASE", 37: "GUARD_ICALL_CHECK_SUPPRESSED",
+    38: "APCS_DISABLED", 39: "INVALID_IDLE_STATE",
+    46: "INVALID_BUFFER_ACCESS", 47: "INVALID_BALANCED_TREE",
+    48: "INVALID_NEXT_THREAD", 51: "GUARD_SS_FAILURE",
+}
+
+
+def _leggi_eccezione(percorso):
+    """Il record dell'eccezione da un minidump, senza simboli e senza dbghelp.
+
+    Il formato e' documentato e stabile: intestazione, un elenco di stream, e
+    lo stream 6 (`ExceptionStream`) che contiene il codice e i suoi parametri.
+    """
+    b = _pl.Path(percorso).read_bytes()
+    if b[:4] != b"MDMP":
+        return "non e' un minidump (%r)" % b[:4]
+    n_stream, rva_stream = _st.unpack_from("<II", b, 8)
+    for i in range(n_stream):
+        tipo, _dim, rva = _st.unpack_from("<III", b, rva_stream + i * 12)
+        if tipo != 6:           # ExceptionStream
+            continue
+        # MINIDUMP_EXCEPTION_STREAM: ThreadId, __alignment, poi MINIDUMP_EXCEPTION
+        base = rva + 8
+        codice, _flag, _record, indirizzo, n_par = _st.unpack_from("<IIQQI", b, base)
+        par = _st.unpack_from("<15Q", b, base + 32)
+        nome = _FAIL_FAST.get(par[0], "sconosciuto")
+        return ("codice 0x%08X, indirizzo 0x%X, %d parametri | "
+                "fail-fast[0] = %d (%s) | par[1] = 0x%X"
+                % (codice, indirizzo, n_par, par[0], nome, par[1]))
+    return "nessuno stream di eccezione nel dump"
 
 
 @pytest.mark.e2e
-@pytest.mark.skipif(_sys.platform != "win32", reason="il crash e' su Windows")
-def test_aaa_primo_lancio(firefox_binary):
-    """I primi sei lanci del processo, uno per uno, con il cloak."""
-    from invisible_playwright import InvisiblePlaywright
-    # ⛔ IL PRIMO LANCIO PORTA `browser.launcherProcess.enabled: False`.
-    # Su Windows Firefox avvia un processo LAUNCHER che si ri-esegue, e il suo
-    # stato viene memorizzato dopo la prima esecuzione riuscita: si comporta
-    # diversamente proprio al primo giro, che e' l'unico che muore.
-    # ⛔ IL PRIMO LANCIO IN ASSOLUTO LO FA IL LANCIATORE NUDO.
-    # `--version` non scalda niente (provato: uscita 0, e il lancio dopo muore
-    # lo stesso), probabilmente perche' esce prima che il launcher di Windows
-    # scriva la sua voce nel registro. Un lancio VERO invece ci passa.
-    #
-    # Questo separa due ipotesi che finora coincidevano: "muore il primo lancio
-    # qualunque esso sia" contro "muore il primo lancio del percorso pubblico".
+@pytest.mark.skipif(_sys.platform != "win32", reason="WER e' Windows")
+def test_aab_minidump_del_primo_lancio(firefox_binary):
+    """Accende WER, fa morire il primo lancio, e legge il record."""
+    cartella = _tf.mkdtemp(prefix="dump-")
+    chiave = (r"HKLM\SOFTWARE\Microsoft\Windows\Windows Error Reporting"
+              r"\LocalDumps")
+    for nome, tipo, valore in (("DumpFolder", "REG_EXPAND_SZ", cartella),
+                               ("DumpCount", "REG_DWORD", "10"),
+                               ("DumpType", "REG_DWORD", "2")):
+        r = _sp.run(["reg", "add", chiave, "/v", nome, "/t", tipo,
+                     "/d", valore, "/f"], capture_output=True, text=True)
+        _DUMP.append("reg %s -> %s %s" % (nome, r.returncode,
+                                          (r.stderr or "").strip()[:50]))
+    _DUMP.append("cartella dump: %s" % cartella)
+
+    # Il primo lancio del processo: quello che muore.
     from invisible_playwright._juggler import connection as _C
-    import tempfile as _tf, pathlib as _pl
-    d = _tf.mkdtemp(prefix="scalda-")
-    # ⛔ PROFILO NUDO, NESSUNA PREF. Finora il primo lancio l'ho sempre fatto col
-    # cloak, quindi "muore il primo" e "muore il primo col cloak" erano ancora
-    # la stessa misura. Questo le separa: se muore con un user.js vuoto, il
-    # cloak non c'entra per niente.
-    (_pl.Path(d) / "user.js").write_text("", encoding="utf-8")
+    prof = _tf.mkdtemp(prefix="dumpprof-")
+    (_pl.Path(prof) / "user.js").write_text("", encoding="utf-8")
     conn = None
     try:
-        conn = _C.launch(firefox_binary, d, headless=False, ready_timeout=30)
-        _ESITI.append("lanciatore nudo, profilo VUOTO (primo in assoluto): VIVO")
+        conn = _C.launch(firefox_binary, prof, headless=False, ready_timeout=30)
+        _DUMP.append("il primo lancio NON e' morto: niente da leggere")
     except Exception as e:
-        _ESITI.append("lanciatore nudo, profilo VUOTO (primo in assoluto): MORTO  %s"
-                      % str(e).split(chr(10))[0][:60])
+        _DUMP.append("primo lancio morto: %s" % str(e).split(chr(10))[0][:60])
     finally:
         if conn is not None:
             try:
                 conn.close()
             except Exception:
                 pass
-    print("  " + _ESITI[-1], flush=True)
 
-    for n in range(1, 7):
-        try:
-            with InvisiblePlaywright(seed=42, binary_path=firefox_binary,
-                                     headless=False,
-                                     extra_prefs=CLOAK_PREFS):
-                _ESITI.append("lancio %d: VIVO" % n)
-        except Exception as e:
-            _ESITI.append("lancio %d: MORTO" % n)
-            for riga in str(e).split(chr(10))[:14]:
-                _ESITI.append("      | " + riga[:120])
-        print("  " + _ESITI[-1], flush=True)
-    raise AssertionError("PRIMI LANCI (sonda):" + chr(10)
-                         + chr(10).join("    " + r for r in _ESITI))
-
+    import time as _t
+    _t.sleep(4)          # WER scrive il dump dopo che il processo e' uscito
+    trovati = sorted(_pl.Path(cartella).glob("*.dmp"))
+    _DUMP.append("dump trovati: %d" % len(trovati))
+    for d in trovati[:3]:
+        _DUMP.append("  %s  (%d byte)" % (d.name, d.stat().st_size))
+        _DUMP.append("  -> " + _leggi_eccezione(d))
+    raise AssertionError("MINIDUMP (sonda):" + chr(10)
+                         + chr(10).join("    " + r for r in _DUMP))
 
 
 @pytest.mark.e2e
