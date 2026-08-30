@@ -421,21 +421,56 @@ def launch(executable: str, profile_dir: str, *, headless: bool = True,
     # Juggler. It waits for the line, but it does NOT die if it does not
     # arrive: it tries to talk anyway, so the failure mode is a protocol
     # error naming the command instead of a silent timeout.
-    seen = _wait_until_ready(p, ready_timeout)
+    seen, detto = _wait_until_ready(p, ready_timeout)
+    # ⛔ A BROWSER THAT EXITED SAYS SO HERE, WHERE ITS OUTPUT STILL EXISTS.
+    #
+    # `stderr` is merged into `stdout` two functions up and read line by line
+    # while waiting for readiness - and it used to be thrown away. When the
+    # process had already died, this returned a Connection over a closed pipe
+    # and the caller got `BrowserType.launch: the pipe is closed`, which names
+    # neither the exit code nor the one thing the browser printed before going.
+    #
+    # Measured 2026-08-30: a CI guard went red with exactly that sentence, and
+    # deciding whether the cause was the engine or the client took a rebuilt
+    # binary, four workflow runs and a controlled comparison against the
+    # PREVIOUS engine - all to recover information the browser had already
+    # written and nobody had kept.
+    if p.poll() is not None:
+        coda = "\n".join(("    " + r) for r in detto[-15:]) or "    (nothing)"
+        raise RuntimeError(
+            "the browser exited during startup, before the protocol could be "
+            "used.\n  exit code : %s\n  command   : %s\n  it printed:\n%s"
+            % (p.returncode, " ".join([executable] + argv), coda))
     c = Connection(to_browser, from_browser, p)
     c.ready_seen = seen
     return c
 
 
-def _wait_until_ready(p, timeout: float) -> bool:
+def _wait_until_ready(p, timeout: float):
+    """(readiness seen, what the browser printed) - the second half is new.
+
+    The lines are KEPT rather than tested and dropped: they are the only
+    account of a startup that fails, and they cost a list.
+    """
+    detto = []
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if p.poll() is not None:
-            return False
+            # Drain what is still buffered: the last line before the exit is
+            # usually the one that says why.
+            try:
+                resto = p.stdout.read() or b""
+            except Exception:
+                resto = b""
+            detto += [r for r in resto.decode("utf-8", "replace").split("\n") if r.strip()]
+            return False, detto
         line = p.stdout.readline()
         if not line:
             time.sleep(0.01)
             continue
-        if _READY in line.decode("utf-8", "replace"):
-            return True
-    return False
+        testo = line.decode("utf-8", "replace").rstrip("\r\n")
+        if testo.strip():
+            detto.append(testo)
+        if _READY in testo:
+            return True, detto
+    return False, detto
