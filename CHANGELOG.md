@@ -12,9 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - The Node driver. `invisible_playwright._driver` (6 MB of vendored JavaScript)
   and the `node.exe` downloader are gone, and the browser is now driven from
-  Python over the Juggler protocol directly. The wheel goes from about 13 MB to
-  7 MB, and a first install no longer downloads a 92 MB Node runtime - it
-  fetches the browser and nothing else.
+  Python over the Juggler protocol directly. The wheel goes from 1.6 MB to
+  0.7 MB and the installed package from 11.2 MB to 6.5 MB, and a first install
+  no longer downloads a 92 MB Node runtime - it fetches the browser and nothing
+  else.
 - `invisible-playwright show-trace`. The trace viewer is a Node application and
   left with the runtime that ran it. Traces themselves are unaffected: they are
   still recorded, and `playwright show-trace` from an ordinary Playwright
