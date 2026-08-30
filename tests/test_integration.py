@@ -111,14 +111,19 @@ def test_socks5_proxy_mutates_prefs_then_pipeline_still_valid():
         prefs,
     )
 
-    assert pw_proxy is None  # Firefox handles SOCKS internally.
-    assert prefs["network.proxy.type"] == 1
-    assert prefs["network.proxy.socks"] == "proxy.example.com"
-    assert prefs["network.proxy.socks_port"] == 1080
-    assert prefs["network.proxy.socks_version"] == 5
-    assert prefs["network.proxy.socks_username"] == "alice"
-    assert prefs["network.proxy.socks_password"] == "s3cret"
-    assert prefs["network.proxy.socks_remote_dns"] is True
+    # ⛔ INVERTITO IL 2026-08-30. Questo blocco asseriva che un SOCKS
+    # diventasse `network.proxy.*` e non tornasse niente. Erano due strade per
+    # un fatto solo, e quando la strada dell'HTTP e' sparita col driver Node un
+    # proxy http veniva accettato e buttato. Adesso instrada il comando del
+    # motore, uguale per tutti e quattro gli schemi, e prefs che nominano un
+    # endpoint sono cio' che NON deve comparire.
+    assert pw_proxy is not None
+    for nome in ("network.proxy.type", "network.proxy.socks",
+                 "network.proxy.socks_port", "network.proxy.socks_version",
+                 "network.proxy.socks_username", "network.proxy.socks_password",
+                 "network.proxy.http", "network.proxy.ssl"):
+        assert nome not in prefs, nome
+    assert prefs["zoom.stealth.dns.no_local_resolution"] is True
 
     # Profile-derived keys must still be present after proxy mutation.
     #
@@ -207,7 +212,7 @@ def test_http_proxy_returned_unchanged_no_socks_mutations():
 
     pw_proxy = configure_proxy(proxy_in, prefs)
 
-    assert pw_proxy is proxy_in  # returned unchanged (same object)
+    assert pw_proxy == proxy_in  # lo stesso endpoint, per ogni schema
     # No SOCKS prefs should have been written.
     assert "network.proxy.type" not in prefs
     assert "network.proxy.socks" not in prefs
@@ -304,10 +309,10 @@ def test_windows_virtual_display_with_socks_proxy(monkeypatch):
         {"server": "socks5://127.0.0.1:1080"}, prefs
     )
 
-    assert pw_proxy is None
+    assert pw_proxy is not None      # una strada sola, anche qui
     assert prefs["security.sandbox.gpu.level"] == 0  # virtual_display branch
-    assert prefs["network.proxy.type"] == 1          # SOCKS branch
-    assert prefs["network.proxy.socks"] == "127.0.0.1"
+    assert pw_proxy is not None                      # una strada sola
+    assert "network.proxy.type" not in prefs
     # Windows exposes a validated persona renderer (calibrated clean bucket),
     # not empty/native - see _webgl_personas.
     assert prefs["zoom.stealth.webgl.renderer"].startswith("ANGLE (")
@@ -335,7 +340,7 @@ def test_linux_xvfb_workarounds_with_socks_proxy(monkeypatch):
         {"server": "socks5://127.0.0.1:1080"}, prefs
     )
 
-    assert pw_proxy is None
+    assert pw_proxy is not None      # una strada sola, anche qui
     # Xvfb workarounds present.
     assert prefs["gfx.webrender.all"] is False
     assert prefs["gfx.webrender.force-disabled"] is True
@@ -351,9 +356,10 @@ def test_linux_xvfb_workarounds_with_socks_proxy(monkeypatch):
     assert prefs["zoom.stealth.webgl.renderer"] == _persona["prefs"]["zoom.stealth.webgl.renderer"]
     assert prefs["zoom.stealth.webgl.renderer"]  # non-empty
     assert "ANGLE" in prefs["zoom.stealth.webgl.renderer"]  # Windows ANGLE form
-    # SOCKS branch wrote its keys without clobbering the Linux prefs above.
-    assert prefs["network.proxy.type"] == 1
-    assert prefs["network.proxy.socks"] == "127.0.0.1"
+    # Il livello proxy non scrive piu' nessun endpoint, e cio' che scrive - le
+    # prefs dei canali di fuga - non calpesta le prefs Linux qui sopra.
+    assert "network.proxy.type" not in prefs
+    assert prefs["zoom.stealth.dns.no_local_resolution"] is True
 
 
 # ──────────────────────────────────────────────────────────────────────
