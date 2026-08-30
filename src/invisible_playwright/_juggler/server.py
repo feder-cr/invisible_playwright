@@ -50,8 +50,13 @@ from .lifecycle import Lifecycle
 from ._marshal import (_as_callable, _button, _console_text, _deserialize,
                        _guid_of, _headers_array, _js_string, _location,
                        _resource_type, _serialize, _with_argument)
-from ._profile import (_domain_matches, _host_of, _only_set, _read_version,
-                       _remove_profile, _write_user_js)
+# ⛔ THE PARSER IS THE CORE'S, and briefly it was not: a copy of it lived
+# here for the length of one fix. Two readings of what a proxy is would be
+# the same duplication that produced the defect, one layer down.
+from invisible_core import parse_proxy
+
+from ._profile import (_domain_matches, _host_of, _only_set,
+                       _read_version, _remove_profile, _write_user_js)
 
 
 
@@ -2618,6 +2623,18 @@ class BrowserDispatcher(Dispatcher):
         # ONCE, as context options, and never again - so a place that forgets
         # one is a feature that silently does not exist rather than one that
         # fails.
+        # A context may carry its OWN proxy, and Playwright documents it as
+        # overriding the browser-level one. Same refusal as the launch path:
+        # a context whose proxy cannot be expressed must not come back usable.
+        if params.get("proxy"):
+            try:
+                proxy = parse_proxy(params["proxy"]).as_engine_command()
+            except ValueError as exc:
+                raise ProtocolException(
+                    "new_context(proxy=...) cannot be applied: %s" % exc)
+            self.conn.send("Browser.setContextProxy",
+                           dict(proxy, browserContextId=context_id),
+                           timeout=10)
         headers = params.get("extraHTTPHeaders")
         if headers:
             self.conn.send("Browser.setExtraHTTPHeaders",
@@ -2721,9 +2738,17 @@ class BrowserTypeDispatcher(Dispatcher):
         writing `user.js` into it on every launch is correct - the prefs must be
         re-applied - but deleting anything in it is not.
 
-        ⛔ AND THE CONTEXT COMES BACK, NOT THE BROWSER. That is the whole
-        difference in the contract: `_browser_type.py` reads `context` from the
-        answer, and a persistent browser has exactly one, already created.
+        ⛔ BOTH COME BACK, AND THE LINE THAT USED TO BE HERE SAID OTHERWISE.
+        It read "the CONTEXT comes back, NOT the browser ... `_browser_type.py`
+        reads `context` from the answer". The client reads BOTH: `result
+        ["browser"]` first, to attach it to the browser type, and then
+        `result["context"]`. Returning only the context raised `KeyError:
+        'browser'` on every `profile_dir=` session - measured 2026-08-30
+        against the published 0.8.0, so it shipped.
+
+        It is this project's most repeated defect, in its purest form: the
+        assertion was written against the COMMENT rather than against the code
+        it describes, and no test opened a persistent context to find out.
         """
         directory = params.get("userDataDir")
         if not directory:
@@ -2733,7 +2758,8 @@ class BrowserTypeDispatcher(Dispatcher):
                 "would be a temporary directory")
         browser_channel = self.op_launch(dict(params, userDataDir=directory))
         browser = self.server.object(browser_channel["browser"]["guid"])
-        return browser.op_new_context(params)
+        return {"browser": browser_channel["browser"],
+                "context": browser.op_new_context(params)["context"]}
 
     def op_launch(self, params: Dict) -> Any:
         executable = params.get("executablePath")
@@ -2789,11 +2815,35 @@ class BrowserTypeDispatcher(Dispatcher):
         ready = 60.0
         if isinstance(wanted, (int, float)) and wanted > 0:
             ready = float(wanted) / 1000.0
+        # ⛔ PARSED BEFORE THE BROWSER STARTS, so a proxy we cannot express
+        # refuses the launch instead of leaving a process running without one.
+        proxy = None
+        if params.get("proxy"):
+            try:
+                proxy = parse_proxy(params["proxy"]).as_engine_command()
+            except ValueError as exc:
+                raise ProtocolException("launch(proxy=...) cannot be applied: "
+                                        "%s" % exc)
         conn = juggler.launch(executable, profile,
                               headless=bool(params.get("headless", True)),
                               env=env, argv_extra=params.get("args") or [],
                               ready_timeout=ready)
         self.server.on_shutdown(conn.close)
+        # ⛔ AND SENT BEFORE ANY PAGE EXISTS. The driver used to do this and
+        # nothing here replaced it, so `proxy=` was accepted and dropped for
+        # every scheme the engine prefs do not carry - measured 2026-08-30, a
+        # page resolved its own DNS and went out on the host address while the
+        # session's timezone, locale and WebRTC candidate had all been resolved
+        # THROUGH the proxy. Announcing one country and connecting from another
+        # is worse than having no proxy at all.
+        if proxy is not None:
+            try:
+                conn.send("Browser.setBrowserProxy", proxy, timeout=10)
+            except BaseException as exc:
+                conn.close()
+                raise ProtocolException(
+                    "the engine refused the proxy, so the browser was closed "
+                    "rather than left running without one: %s" % exc)
         if ours:
             # ⛔ AFTER `conn.close`, and the order is the point: the hooks run
             # in reverse, so this one runs LAST - the browser is already gone
