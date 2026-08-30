@@ -96,10 +96,17 @@ _ESITI = []
 def test_aaa_primo_lancio(firefox_binary):
     """I primi sei lanci del processo, uno per uno, con il cloak."""
     from invisible_playwright import InvisiblePlaywright
+    # ⛔ IL PRIMO LANCIO PORTA `browser.launcherProcess.enabled: False`.
+    # Su Windows Firefox avvia un processo LAUNCHER che si ri-esegue, e il suo
+    # stato viene memorizzato dopo la prima esecuzione riuscita: si comporta
+    # diversamente proprio al primo giro, che e' l'unico che muore.
+    prefs_primo = dict(CLOAK_PREFS)
+    prefs_primo["browser.launcherProcess.enabled"] = False
     for n in range(1, 7):
         try:
             with InvisiblePlaywright(seed=42, binary_path=firefox_binary,
-                                     headless=False, extra_prefs=CLOAK_PREFS):
+                                     headless=False,
+                                     extra_prefs=(prefs_primo if n == 1 else CLOAK_PREFS)):
                 _ESITI.append("lancio %d: VIVO" % n)
         except Exception as e:
             _ESITI.append("lancio %d: MORTO" % n)
