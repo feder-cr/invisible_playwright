@@ -76,6 +76,39 @@ def _macos_firefox_window_alpha_zero() -> bool:
     return bool(alphas) and all(a < 0.05 for a in alphas)
 
 
+# -----------------------------------------------------------------------------
+# SONDA [B193], seconda forma. La prima ha misurato 18 lanci su 18 VIVI con la
+# configurazione che nello stesso job faceva morire il test vero - quindi non e'
+# la configurazione. La differenza e' che il test vero e' il PRIMO lancio del
+# processo e i miei venivano dopo.
+#
+# Questa sonda e' definita PRIMA del test del cloak apposta, cosi' il suo primo
+# lancio e' il primo in assoluto, e riporta i lanci UNO PER UNO: se cade solo il
+# primo, un tasso lo nasconderebbe.
+# -----------------------------------------------------------------------------
+import sys as _sys
+
+_ESITI = []
+
+
+@pytest.mark.e2e
+@pytest.mark.skipif(_sys.platform != "win32", reason="il crash e' su Windows")
+def test_aaa_primo_lancio(firefox_binary):
+    """I primi sei lanci del processo, uno per uno, con il cloak."""
+    from invisible_playwright import InvisiblePlaywright
+    for n in range(1, 7):
+        try:
+            with InvisiblePlaywright(seed=42, binary_path=firefox_binary,
+                                     headless=False, extra_prefs=CLOAK_PREFS):
+                _ESITI.append("lancio %d: VIVO" % n)
+        except Exception as e:
+            _ESITI.append("lancio %d: MORTO  %s" % (n, str(e).split(chr(10))[0][:60]))
+        print("  " + _ESITI[-1], flush=True)
+    raise AssertionError("PRIMI LANCI (sonda):" + chr(10)
+                         + chr(10).join("    " + r for r in _ESITI))
+
+
+
 @pytest.mark.e2e
 @pytest.mark.skipif(
     sys.platform.startswith("linux"),
@@ -116,53 +149,3 @@ def test_cloak_hides_window_but_keeps_rendering(firefox_binary):
             except ImportError:
                 pytest.skip("pyobjc Quartz not available to verify macOS cloak alpha")
             assert hidden, "Firefox macOS window is not alpha-cloaked"
-
-
-# -----------------------------------------------------------------------------
-# SONDA TEMPORANEA per [B193]. Il crash del cloak sui runner e' INTERMITTENTE:
-# nella stessa esecuzione in cui il test cadeva, un rilancio due minuti dopo era
-# vivo. Con un fenomeno intermittente una misura singola non isola niente, e ne
-# ho gia' sprecate due credendo a un "2 su 2".
-#
-# Quindi qui non si bisezione: si CONTA. Tre bracci, sei lanci ciascuno, con il
-# percorso pubblico vero (InvisiblePlaywright), e si stampano i tassi.
-#
-# Il sospetto che il terzo braccio prova: `stealthfox.showcursor` e' acceso di
-# default DALLA 0.8.0 - la 0.7.4, che sui runner passa, non lo accendeva - e il
-# cursore disegna nella finestra di chrome, che e' proprio quella che il cloak
-# nasconde.
-# -----------------------------------------------------------------------------
-import sys as _sys
-
-_CONTI = []
-
-
-def _giro(etichetta, binario, kw, giri=6):
-    from invisible_playwright import InvisiblePlaywright
-    vivi = morti = 0
-    primo_errore = ""
-    for _ in range(giri):
-        try:
-            with InvisiblePlaywright(seed=42, binary_path=binario, **kw):
-                vivi += 1
-        except Exception as e:
-            morti += 1
-            if not primo_errore:
-                primo_errore = str(e).split(chr(10))[0][:70]
-    _CONTI.append("%-34s vivi %d/%d   %s" % (etichetta, vivi, giri, primo_errore))
-    print("  " + _CONTI[-1], flush=True)
-
-
-@pytest.mark.e2e
-@pytest.mark.skipif(_sys.platform != "win32", reason="il crash e' su Windows")
-def test_tasso_del_cloak(firefox_binary):
-    """Conta, non giudica: il tasso di ognuno dei tre bracci."""
-    print(chr(10) + "=== tassi (sonda [B193]) ===", flush=True)
-    _giro("A cloak, cursore di default", firefox_binary,
-          {"headless": False, "extra_prefs": CLOAK_PREFS})
-    _giro("B cloak, cursore SPENTO", firefox_binary,
-          {"headless": False, "extra_prefs": CLOAK_PREFS, "show_cursor": False})
-    _giro("C nessun cloak, cursore acceso", firefox_binary,
-          {"headless": False, "show_cursor": True})
-    raise AssertionError("TASSI (sonda, non un difetto):" + chr(10)
-                         + chr(10).join("    " + r for r in _CONTI))
