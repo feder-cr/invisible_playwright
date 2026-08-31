@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-08-31
+
+### Changed
+
+- **The pinned engine moves to firefox-25, which has no updater.** Until now
+  every session showed an "Update available" badge in the toolbar shortly after
+  start. No preference could remove it: `app.update.auto` stops the download
+  rather than the notification, `app.update.suppressPrompts` only delays the
+  doorhanger because the badge is shown immediately and unconditionally, and
+  `app.update.disabledForTesting` is inert unless the browser is driven by
+  Marionette or the remote agent, which this package is not.
+
+  The engine is therefore built without the update machinery at all: the build
+  options are gone rather than switched off, so nothing checks for an update,
+  nothing can install one over the binary the seal pins, and the badge has no
+  code left to draw it. The update channel is unchanged, because the
+  application's remoting name derives from it.
+
+  One consequence is worth stating: a retail Firefox contacts Mozilla's update
+  service at startup and this build no longer does. No page can observe that -
+  no API exposes the updater's state - but anything watching the connection
+  can.
+
 ## [0.8.1] - 2026-08-30
 
 ### Fixed
