@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-08-31
+
+### Changed
+
+- **Pins `invisible-core` 26.17.0, which seals firefox-26.** That engine moves
+  every input handler in the visible-pointer overlay out of input delivery.
+  Until now only the `mousemove` one had been deferred; the press handler was
+  still adding a class, CREATING a DOM node, attaching a listener to it and
+  appending it - which starts a CSS animation - synchronously in the parent
+  process while a `mousedown` was in flight. That is more work than what had
+  been removed, and on the click path rather than the move path.
+
+  The move handler's cost was measured: with the overlay on, the median gap
+  between the `mousemove` events THE PAGE receives moved by a whole clamp step,
+  18 ms against 17, p = 0.0005. The press path was never measured, because the
+  bench that found the first one injects and listens for `mousemove` only - it
+  was watching the branch that had already been fixed. The remedy here is the
+  same rule applied to all four handlers rather than a second special case: a
+  handler records numbers and asks for a frame, and one place draws.
+
+  ⛔ The timing gain is NOT measured. A press-path bench now exists and refuses
+  to run on a loaded machine, which is all that has been available. This is a
+  fix with a mechanism and a measured precedent, not a number.
+
+- The core it pins also stops the pre-push hook from naming one cause for every
+  kind of publish-gate refusal.
+
 ## [0.8.2] - 2026-08-31
 
 ### Changed
