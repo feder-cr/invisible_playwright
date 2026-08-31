@@ -161,6 +161,22 @@ def test_aab_minidump_del_primo_lancio(firefox_binary):
                                           (r.stderr or "").strip()[:50]))
     _DUMP.append("cartella dump: %s" % cartella)
 
+    # ⛔ IL CONTROLLO DELLO STRUMENTO, e la prima stesura non ce l'aveva.
+    # Concludere "nessun dump, quindi non e' un'eccezione" senza sapere se WER
+    # scrive dump su questa macchina e' esattamente l'errore che questo progetto
+    # tiene scritto: un banco che non produce mai un positivo non dimostra
+    # niente con il suo zero.
+    #
+    # Qui si fa crashare di proposito un processo Python con un accesso a
+    # memoria non valido - un'eccezione VERA - e si guarda se il dump compare.
+    codice = ("import ctypes; ctypes.string_at(0)")
+    _sp.run([_sys.executable, "-c", codice], capture_output=True)
+    import time as _t0
+    _t0.sleep(4)
+    quanti = len(sorted(_pl.Path(cartella).glob("*.dmp")))
+    _DUMP.append("CONTROLLO: crash deliberato -> %d dump (se 0, WER e' spento "
+                 "e ogni zero qui sotto non vuol dire niente)" % quanti)
+
     # Il primo lancio del processo: quello che muore.
     from invisible_playwright._juggler import connection as _C
     prof = _tf.mkdtemp(prefix="dumpprof-")
