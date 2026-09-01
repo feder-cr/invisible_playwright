@@ -1,0 +1,33 @@
+{
+  "name": "invisible-playwright",
+  "version": "0.8.3",
+  "description": "TypeScript wrapper for invisible_playwright's patched Firefox",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {"types": "./dist/index.d.ts", "import": "./dist/index.js"}
+  },
+  "files": ["dist", "README.md", "LICENSE"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/feder-cr/invisible_playwright.git"
+  },
+  "homepage": "https://github.com/feder-cr/invisible_playwright#readme",
+  "bugs": {"url": "https://github.com/feder-cr/invisible_playwright/issues"},
+  "publishConfig": {"access": "public", "provenance": true},
+  "engines": {"node": ">=18"},
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "tsc -p tsconfig.test.json && node --test dist-test/test/*.test.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "playwright-core": "1.61.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  }
+}

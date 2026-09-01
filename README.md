@@ -34,10 +34,21 @@ Once the browser is handled it stops being the variable. If you are still gettin
 
 ## Install
 
+**Python**
+
 ```bash
 pip install invisible-playwright
 python -m invisible_playwright fetch      # one-time ~238 MB download (~544 MB unpacked), sha256-verified
 ```
+
+**TypeScript**
+
+```bash
+pip install invisible-playwright          # profile and sealed browser runtime
+npm install invisible-playwright          # wrapped Playwright API
+```
+
+The TypeScript package downloads and verifies the browser on first launch. It has no CLI and needs no separate fetch command.
 
 Supported platforms: **Windows x86_64**, **Linux x86_64 / arm64**. macOS is no longer supported (releases stopped at firefox-20); on a Mac the package refuses at launch with a clear message rather than downloading a binary that no longer exists.
 
@@ -77,7 +88,24 @@ async with InvisiblePlaywright(proxy={"server": "socks5://...", "username": "u",
     await page.click("#submit")
 ```
 
-The `browser` object is a `playwright.sync_api.Browser` / `playwright.async_api.Browser` - every Playwright method works as-is.
+**TypeScript**
+```ts
+import { InvisiblePlaywright } from "invisible-playwright";
+
+const invisible = new InvisiblePlaywright({ seed: 42, proxy });
+try {
+  const context = await invisible.launch();
+  const page = context.pages()[0] ?? await context.newPage();
+  await page.goto("https://example.com");
+  await page.click("#submit");
+} finally {
+  await invisible.close();
+}
+```
+
+`launch()` returns a standard Playwright `BrowserContext`; its pages, locators, routes and events use the regular TypeScript API. The persistent context lets Firefox read the generated fingerprint profile before startup. See [`typescript/README.md`](typescript/README.md) for options and runtime details.
+
+The Python `browser` object is a `playwright.sync_api.Browser` / `playwright.async_api.Browser` - every Playwright method works as-is.
 
 Log the seed to replay a run:
 

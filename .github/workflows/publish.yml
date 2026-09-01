@@ -297,3 +297,134 @@ jobs:
           fi
           echo "::error::the release page for $TAG could not be created. The package IS published; create the page by hand or a later run of the release gate will refuse over it."
           exit 1
+
+  python-release-ready:
+    needs: [already-published, gate, upload]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: require an existing or newly uploaded Python release
+        shell: bash
+        run: |
+          if [ "${{ needs.already-published.result }}" != success ]; then
+            echo "the PyPI version probe did not succeed" >&2
+            exit 1
+          fi
+          if ${{ needs.already-published.outputs.present == 'yes' }}; then
+            echo "::notice::the matching Python version was already on PyPI"
+            exit 0
+          fi
+          if ${{ needs.already-published.outputs.present == 'no' && needs.gate.result == 'success' && needs.upload.result == 'success' }}; then
+            echo "::notice::the matching Python version passed its gate and upload"
+            exit 0
+          fi
+          echo "the matching Python version is unavailable or its release failed" >&2
+          echo "gate=${{ needs.gate.result }} upload=${{ needs.upload.result }}" >&2
+          exit 1
+
+  npm-already-published:
+    # npm trusted publishing must name owner `feder-cr`, repository
+    # `invisible_playwright`, workflow `publish.yml`, and environment `npm`.
+    # Without that registry-side trust this fails closed. Do not add a token to
+    # bootstrap it; establish or transfer package ownership through npm support.
+    runs-on: ubuntu-latest
+    outputs:
+      present: ${{ steps.probe_npm.outputs.present }}
+      version: ${{ steps.probe_npm.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: probe_npm
+        shell: bash
+        working-directory: typescript
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          CODE=$(curl -s -o /dev/null -w '%{http_code}' "https://registry.npmjs.org/invisible-playwright/$VERSION")
+          case "$CODE" in
+            200) echo "present=yes" >> "$GITHUB_OUTPUT"
+                 echo "::notice::invisible-playwright $VERSION is already on npm. No-op, not a failure." ;;
+            404) echo "present=no" >> "$GITHUB_OUTPUT" ;;
+            *)   echo "npm answered HTTP $CODE for invisible-playwright $VERSION; refusing rather than guessing" >&2
+                 exit 1 ;;
+          esac
+
+  npm-gate:
+    needs: [npm-already-published, python-release-ready]
+    if: always() && needs.npm-already-published.result == 'success' && needs.python-release-ready.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: typescript/package-lock.json
+      - name: npm and PyPI versions match the tag
+        shell: bash
+        run: |
+          NPM_VERSION="${{ needs.npm-already-published.outputs.version }}"
+          PYTHON_VERSION="$(grep -m1 '^version = ' pyproject.toml | cut -d'"' -f2)"
+          if [ "$NPM_VERSION" != "$PYTHON_VERSION" ]; then
+            echo "npm version $NPM_VERSION does not match Python version $PYTHON_VERSION" >&2
+            exit 1
+          fi
+          if [ "${{ github.event_name }}" = push ] && [ "${GITHUB_REF_NAME#v}" != "$NPM_VERSION" ]; then
+            echo "tag $GITHUB_REF_NAME does not name npm version $NPM_VERSION" >&2
+            exit 1
+          fi
+      - name: test and pack the npm package
+        working-directory: typescript
+        run: |
+          npm ci
+          npm test
+          npm run build
+          npm pack --dry-run
+
+  npm-upload:
+    needs: [npm-already-published, python-release-ready, npm-gate]
+    if: always() && needs.npm-already-published.outputs.present == 'no' && needs.python-release-ready.result == 'success' && needs.npm-gate.result == 'success'
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+          cache: npm
+          cache-dependency-path: typescript/package-lock.json
+      - name: install an npm CLI with trusted publishing support
+        run: npm install --global npm@11.19.1
+      - name: build and publish with npm trusted publishing
+        working-directory: typescript
+        shell: bash
+        run: |
+          npm ci
+          npm run build
+          VERSION="$(node -p "require('./package.json').version")"
+          URL="https://registry.npmjs.org/invisible-playwright/$VERSION"
+          CODE=$(curl -s -o /dev/null -w '%{http_code}' "$URL")
+          case "$CODE" in
+            200) echo "::notice::invisible-playwright $VERSION is already on npm. No-op, not a failure."
+                 exit 0 ;;
+            404) ;;
+            *)   echo "npm answered HTTP $CODE before publish; refusing rather than guessing" >&2
+                 exit 1 ;;
+          esac
+          set +e
+          npm publish --provenance --access public
+          STATUS=$?
+          set -e
+          if [ "$STATUS" -eq 0 ]; then
+            exit 0
+          fi
+          CODE=$(curl -s -o /dev/null -w '%{http_code}' "$URL")
+          if [ "$CODE" = 200 ]; then
+            echo "::notice::invisible-playwright $VERSION already appeared on npm after the publish attempt. No-op, not a failure."
+            exit 0
+          fi
+          echo "npm publish failed and the exact version is still absent (HTTP $CODE)" >&2
+          exit "$STATUS"
