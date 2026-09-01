@@ -6,6 +6,9 @@ build/
 .pytest_cache/
 .venv/
 firefox-source/
+typescript/node_modules/
+typescript/dist/
+typescript/dist-test/
 
 # Third-party source trees kept on disk for on-demand compatibility audits.
 # They are somebody else's code, with their own licence and their own .git, and

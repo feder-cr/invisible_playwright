@@ -132,6 +132,26 @@ jobs:
           print(f"{passed} tests ran")
           PY
 
+  typescript:
+    name: TypeScript API (node 20)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: typescript/package-lock.json
+
+      - name: Install, test, and build the npm package
+        working-directory: typescript
+        run: |
+          npm ci
+          npm test
+          npm run build
+          npm pack --dry-run
+
   # ONE SINGLE CONTEXT FOR BRANCH PROTECTION. Measured 2026-08-13: this
   # repo's protection required `pytest (windows-latest, py3.11)`, which the
   # matrix explicitly EXCLUDES a few lines up - a context no job can ever
@@ -151,7 +171,7 @@ jobs:
   # release day of all days. So it refuses on `failure` and `cancelled`,
   # never on `skipped`.
   gate:
-    needs: [core-on-index, unit]
+    needs: [core-on-index, unit, typescript]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -159,8 +179,12 @@ jobs:
         run: |
           echo "core-on-index: ${{ needs.core-on-index.result }}"
           echo "unit:          ${{ needs.unit.result }}"
+          echo "typescript:    ${{ needs.typescript.result }}"
           case "${{ needs.unit.result }}" in
             failure|cancelled) echo "the suite did not pass"; exit 1 ;;
+          esac
+          case "${{ needs.typescript.result }}" in
+            failure|cancelled) echo "the TypeScript package did not pass"; exit 1 ;;
           esac
           case "${{ needs.core-on-index.result }}" in
             failure|cancelled) echo "the index check did not run"; exit 1 ;;
