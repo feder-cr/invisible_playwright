@@ -787,7 +787,22 @@ class FrameDispatcher(Dispatcher):
         return None
 
     def op_wait_for_timeout(self, params: Dict) -> Any:
-        time.sleep((params.get("timeout") or 0) / 1000.0)
+        # `waitTimeout`, not `timeout`, because that is what the client sends.
+        # Playwright's protocol.yml declares this one parameter under its own
+        # name precisely BECAUSE `timeout` is reserved on this channel: every
+        # other call carries a per-call action timeout under that key, and
+        # `_connection.py` rewrites it on the way out.
+        #
+        # Reading the wrong key made this a no-op that reported success. A
+        # request for 2000ms returned in 1ms, in both the sync and the async
+        # API, and in every caller of either, for as long as this server has
+        # existed. Nothing failed, so nothing showed.
+        #
+        # ⛔ THE CLIENT IS NOT THE PLACE TO FIX THIS. `_pw/_impl/_frame.py` is
+        # vendored upstream Playwright and its line is correct; patching it
+        # there would leave this defect in the code this project owns, and the
+        # next re-vendor would silently undo the repair.
+        time.sleep((params.get("waitTimeout") or 0) / 1000.0)
         return None
 
     def op_wait_for_load_state(self, params: Dict) -> Any:

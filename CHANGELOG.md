@@ -6,6 +6,45 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-09-02
+
+### Fixed
+
+- **`wait_for_timeout` has never waited.** A request for 2000ms returned in
+  1ms, in both the sync and the async API and in every caller of either, for as
+  long as this package has had its own driver. Nothing raised, so nothing
+  showed.
+
+  The defect was in `_juggler/server.py`, the driver written here to replace the
+  Node one: `op_wait_for_timeout` read `params.get("timeout")`, a key the client
+  never sends for this call, so the sleep was always zero. The client sends
+  `waitTimeout`, which looks like a typo and is not - upstream Playwright
+  declares this one parameter under its own name because `timeout` is the
+  reserved key on that channel, carrying the per-call action timeout for every
+  other call.
+
+  ⛔ The first attempt patched the vendored client instead, to make it send
+  the key the server happened to read. That is a fix at the symptom: it leaves
+  the defect in the code this project owns, the next re-vendor of upstream would
+  silently undo it, and it committed a false claim about the protocol into a
+  comment, this changelog and a test. Review caught it before it shipped.
+
+  What it cost, where it was found. A corpus run against real sites reported
+  three of them as blocked by three different anti-bot products, one with the
+  challenge markup sitting in the document; all three serve their real page once
+  the wait exists, so those verdicts were artefacts of the tool rather than
+  measurements of anything. A fourth site was reported as never loading and
+  loads in twenty seconds. In the MCP package a polling loop of sixty
+  one-second waits ran to completion instantly, so a test with a sixty-second
+  budget failed in fourteen for no reason anybody could see.
+
+  ⛔ **This changes timings for existing callers**, which is why it is a
+  minor bump and not a patch. Code that called `wait_for_timeout` and returned
+  instantly will now take the time it asked for. That is the documented
+  behaviour of the API and the old behaviour was silently wrong, but a script
+  that waited in a loop will get slower rather than faster.
+
+
 ## [0.8.3] - 2026-08-31
 
 ### Changed
