@@ -156,13 +156,25 @@ class Actions:
     # ── the loop ────────────────────────────────────────────────────────────
     def _retry(self, selector: str, run, *, states=None,
                timeout: float = 30.0, frame_id: Optional[str] = None,
-               position=None):
+               position=None, element_id: Optional[str] = None):
         """Resolve, check, act, and if something doesn't match, START OVER.
 
         ⛔ `position` travels HERE and not through each action, because the
         point is recomputed on every turn of this loop: an offset applied by
         the caller once would be stale the moment the page moved, which is
         precisely the case this loop exists to absorb.
+
+        ⛔ `element_id` IS THE ElementHandle CASE, and it changes exactly two
+        things. The node is not looked up again - a handle names one node, and
+        re-querying the selector would be a different element with the same
+        description, which is not what `handle.click()` means - and the node is
+        NOT disposed at the end, because it belongs to the caller and disposing
+        it would destroy the handle they still hold.
+
+        Everything else is deliberately shared: states, the point, the scroll,
+        the hit-target check, the retry on detachment. A second loop for handles
+        would be a second definition of "actionable" and a second click path,
+        and two click paths are two fingerprints.
         """
         f = frame_id or self.lifecycle.main_frame
         if f is None:
@@ -174,10 +186,16 @@ class Actions:
         while True:
             turns += 1
             element = None
+            ours = False
             try:
-                # ⛔ FROM SCRATCH on every turn. A handle from the previous
-                # turn could point to a node the DOM has since replaced.
-                element = self.inj.query_selector(f, selector)
+                if element_id is not None:
+                    # The caller's node, fixed. Not re-queried and not ours.
+                    element = element_id
+                else:
+                    # ⛔ FROM SCRATCH on every turn. A handle from the previous
+                    # turn could point to a node the DOM has since replaced.
+                    element = self.inj.query_selector(f, selector)
+                    ours = True
                 if not element:
                     reason = "the selector finds nothing"
                 elif states:
@@ -226,7 +244,11 @@ class Actions:
                 # geometry.
                 reason = "the event would have landed elsewhere (%s)" % e
             finally:
-                if element:
+                # Only what this loop resolved. Disposing the caller's handle
+                # here would make `handle.click()` destroy the handle, and the
+                # NEXT call on it would fail with the node not existing - an
+                # error naming neither the cause nor the previous call.
+                if element and ours:
                     self.inj.dispose(f, element)
 
             if time.monotonic() > deadline:
@@ -346,16 +368,16 @@ class Actions:
 
     # ── the actions ─────────────────────────────────────────────────────────
     def hover(self, selector: str, *, timeout: float = 30.0, frame_id: Optional[str] = None,
-              position=None):
+              position=None, element_id: Optional[str] = None):
         def run(f, element, point):
             return self._with_hit_target(
                 f, element, point, "hover",
                 lambda: self._mouse_event("mousemove", point) or point)
-        return self._retry(selector, run, timeout=timeout,
+        return self._retry(selector, run, timeout=timeout, element_id=element_id,
                            frame_id=frame_id, position=position)
 
     def click(self, selector: str, *, timeout: float = 30.0, frame_id: Optional[str] = None, button: int = 0,
-              clicks: int = 1, position=None, modifiers: int = 0):
+              clicks: int = 1, position=None, modifiers: int = 0, element_id: Optional[str] = None):
         def run(f, element, point):
             def act():
                 # The order is that of a user: approach, press, release.
@@ -372,7 +394,7 @@ class Actions:
                 return point
             return self._with_hit_target(f, element, point, "mouse", act)
         return self._retry(selector, run, timeout=timeout, frame_id=frame_id,
-                           position=position)
+                           position=position, element_id=element_id)
 
     def dblclick(self, selector: str, *, timeout: float = 30.0, frame_id: Optional[str] = None,
                  button: int = 0, position=None, modifiers: int = 0):
@@ -393,17 +415,17 @@ class Actions:
                           modifiers=modifiers)
 
     def check(self, selector: str, *, timeout: float = 30.0, frame_id: Optional[str] = None,
-              position=None):
-        return self._set_checked(selector, True, timeout=timeout,
+              position=None, element_id: Optional[str] = None):
+        return self._set_checked(selector, True, timeout=timeout, element_id=element_id,
                                  frame_id=frame_id, position=position)
 
     def uncheck(self, selector: str, *, timeout: float = 30.0, frame_id: Optional[str] = None,
-                position=None):
-        return self._set_checked(selector, False, timeout=timeout,
+                position=None, element_id: Optional[str] = None):
+        return self._set_checked(selector, False, timeout=timeout, element_id=element_id,
                                  frame_id=frame_id, position=position)
 
     def _set_checked(self, selector: str, wanted: bool, *, timeout: float,
-                     frame_id: Optional[str] = None, position=None):
+                     frame_id: Optional[str] = None, position=None, element_id: Optional[str] = None):
         """`check` / `uncheck`.
 
         ⛔ It CHECKS FIRST, and rechecks after. Clicking without looking
@@ -433,10 +455,10 @@ class Actions:
                     "the click or put the value back"
                     % ("unchecked" if wanted else "checked"))
             return state
-        return self._retry(selector, run, timeout=timeout,
+        return self._retry(selector, run, timeout=timeout, element_id=element_id,
                            frame_id=frame_id, position=position)
 
-    def focus(self, selector: str, *, timeout: float = 30.0, frame_id: Optional[str] = None):
+    def focus(self, selector: str, *, timeout: float = 30.0, frame_id: Optional[str] = None, element_id: Optional[str] = None):
         """⛔ Does NOT require `visible`: `focus()` works on an off-screen
         element, and imposing the pointer states would time out an action
         that would have succeeded. Playwright does the same."""
@@ -444,7 +466,8 @@ class Actions:
             return self.inj.call(
                 f, "(injected, el) => injected.focusNode(el, true)",
                 {"objectId": element})
-        return self._retry(selector, run, states=[], timeout=timeout, frame_id=frame_id)
+        return self._retry(selector, run, states=[], timeout=timeout, frame_id=frame_id,
+                           element_id=element_id)
 
     def blur(self, selector: str, *, timeout: float = 30.0, frame_id: Optional[str] = None):
         def run(f, element, point):
@@ -453,7 +476,8 @@ class Actions:
                 "(injected, el) => { if (!el.isConnected) return "
                 "'error:notconnected'; el.blur(); return 'done'; }",
                 {"objectId": element})
-        return self._retry(selector, run, states=[], timeout=timeout, frame_id=frame_id)
+        return self._retry(selector, run, states=[], timeout=timeout, frame_id=frame_id,
+)
 
     def select_text(self, selector: str, *, timeout: float = 30.0, frame_id: Optional[str] = None):
         def run(f, element, point):
@@ -465,7 +489,7 @@ class Actions:
         return self._retry(selector, run, states=["visible"],
                            timeout=timeout, frame_id=frame_id)
 
-    def select_option(self, selector: str, options, *, timeout: float = 30.0, frame_id: Optional[str] = None):
+    def select_option(self, selector: str, options, *, timeout: float = 30.0, frame_id: Optional[str] = None, element_id: Optional[str] = None):
         """`select_option`. Options are given by value, label or index.
 
         ⛔ And the `input`/`change` events are requested from the TRUSTED
@@ -486,7 +510,8 @@ class Actions:
             return r
         return self._retry(selector, run,
                            states=["visible", "stable", "enabled"],
-                           timeout=timeout, frame_id=frame_id)
+                           timeout=timeout, frame_id=frame_id,
+                           element_id=element_id)
 
     def dispatch_event(self, selector: str, event_type: str, detail=None, *,
                        timeout: float = 30.0, frame_id: Optional[str] = None):
@@ -504,9 +529,10 @@ class Actions:
             return self.inj.call(
                 f, "(injected, el, t, d) => injected.dispatchEvent(el, t, d)",
                 {"objectId": element}, event_type, detail or {})
-        return self._retry(selector, run, states=[], timeout=timeout, frame_id=frame_id)
+        return self._retry(selector, run, states=[], timeout=timeout, frame_id=frame_id,
+)
 
-    def press(self, selector: str, key: str, *, timeout: float = 30.0, frame_id: Optional[str] = None):
+    def press(self, selector: str, key: str, *, timeout: float = 30.0, frame_id: Optional[str] = None, element_id: Optional[str] = None):
         """`press`: focuses and presses, with the modifiers from the name."""
         def run(f, element, point):
             self.inj.call(f, "(injected, el) => injected.focusNode(el, true)",
@@ -515,10 +541,11 @@ class Actions:
             return key
         return self._retry(selector, run,
                            states=["visible", "stable", "enabled"],
-                           timeout=timeout, frame_id=frame_id)
+                           timeout=timeout, frame_id=frame_id,
+                           element_id=element_id)
 
     def type_text(self, selector: str, text: str, *, timeout: float = 30.0, frame_id: Optional[str] = None,
-                  delay: float = 0.0):
+                  delay: float = 0.0, element_id: Optional[str] = None):
         """`type`: one key per character, WITHOUT clearing first.
 
         ⛔ It isn't `fill`: that one replaces the content, this one
@@ -532,7 +559,8 @@ class Actions:
             return text
         return self._retry(selector, run,
                            states=["visible", "stable", "enabled"],
-                           timeout=timeout, frame_id=frame_id)
+                           timeout=timeout, frame_id=frame_id,
+                           element_id=element_id)
 
     def set_input_files(self, selector: str, files, *, timeout: float = 30.0, frame_id: Optional[str] = None):
         """`set_input_files`. The paths are ABSOLUTE and the browser
@@ -548,7 +576,8 @@ class Actions:
                          "files": [str(p) for p in files]},
                         session=self.session, timeout=30)
             return list(files)
-        return self._retry(selector, run, states=[], timeout=timeout, frame_id=frame_id)
+        return self._retry(selector, run, states=[], timeout=timeout, frame_id=frame_id,
+)
 
     def tap(self, selector: str, *, timeout: float = 30.0, frame_id: Optional[str] = None,
             position=None):
@@ -650,7 +679,7 @@ class Actions:
             self._mouse_event("mouseup", point, button=button, buttons=0,
                               click_count=n, modifiers=modifiers)
 
-    def fill(self, selector: str, text: str, *, timeout: float = 30.0, frame_id: Optional[str] = None):
+    def fill(self, selector: str, text: str, *, timeout: float = 30.0, frame_id: Optional[str] = None, element_id: Optional[str] = None):
         """Writes into a field.
 
         ⛔ It doesn't just write `element.value = ...`: a site listening
@@ -680,7 +709,7 @@ class Actions:
             else:
                 self._trusted_events(f, element, ["input", "change"])
             return result
-        return self._retry(selector, run,
+        return self._retry(selector, run, element_id=element_id,
                            states=["visible", "stable", "enabled",
                                    "editable"],
                            timeout=timeout, frame_id=frame_id)

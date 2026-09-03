@@ -155,6 +155,13 @@ class APIRequestContextDispatcher(RefusingDispatcher):
 
 
 # ── handles ─────────────────────────────────────────────────────────────────
+#: What `_retry` prints when an action on a handle times out. The loop takes a
+#: selector for its message and never queries it once an element is given, so
+#: this is a label rather than a lookup - and `None not actionable in 30s` is
+#: what the alternative reads like.
+_HANDLE = "<element handle>"
+
+
 class ElementHandleDispatcher(Dispatcher):
     TYPE = "ElementHandle"
     METHODS = {
@@ -172,6 +179,18 @@ class ElementHandleDispatcher(Dispatcher):
         "getProperty": "op_get_property",
         "getPropertyList": "op_get_property_list",
         "jsonValue": "op_json_value",
+        # Actions. The wire names are the client's, read from `_element_handle`
+        # rather than guessed: `selectOption` is camelCase and the other eight
+        # are not, which is exactly the kind of asymmetry a guess gets wrong.
+        "click": "op_click",
+        "hover": "op_hover",
+        "fill": "op_fill",
+        "type": "op_type",
+        "press": "op_press",
+        "focus": "op_focus",
+        "check": "op_check",
+        "uncheck": "op_uncheck",
+        "selectOption": "op_select_option",
     }
 
     def __init__(self, server, frame: "FrameDispatcher", object_id: str,
@@ -359,6 +378,86 @@ class ElementHandleDispatcher(Dispatcher):
 
 
 # ── frame ───────────────────────────────────────────────────────────────────
+    # ── acting on THIS element ──────────────────────────────────────────────
+    #
+    # Nine, and the number is a decision. The client offers fifty-five methods on
+    # a handle and this driver served fourteen, all of them reads: every action
+    # answered "no method 'click'", which is honest and useless. These are the
+    # ones a person migrating from Playwright hits in the first hour -
+    # `page.query_selector(...).click()` is ordinary code - and the rest keep
+    # reporting themselves as missing rather than being filled in for symmetry.
+    #
+    # ⛔ THEY GO THROUGH THE SAME `actions` AS THE SELECTOR VERSIONS, and that is
+    # the whole design. `click` here is the humanised pointer: approach, hover,
+    # press, release, with the hit-target check and the actionability retry. A
+    # second, simpler path would be quicker to write and would give this package
+    # two click behaviours with two fingerprints, which is the one thing it
+    # exists not to have.
+    #
+    # What differs from a selector click is exactly what SHOULD differ: the node
+    # is not looked up again, because a handle names one node and re-querying
+    # would find a different element with the same description; and the node is
+    # not disposed afterwards, because the caller still holds it.
+    #
+    # The parameter helpers are the frame's. `self.frame._timeout` rather than a
+    # copy: the rules for reading a timeout, a position and the pointer flags out
+    # of a request are one thing, and two readers of one wire format drift.
+
+    def _act_args(self, params: Dict) -> Dict:
+        return {"timeout": self.frame._timeout(params),
+                "frame_id": self.frame.frame_id,
+                "element_id": self.object_id}
+
+    def op_click(self, params: Dict) -> Any:
+        self.frame.actions.click(_HANDLE, position=self.frame._position(params),
+                                 **self.frame._pointer(params),
+                                 **self._act_args(params))
+        return None
+
+    def op_hover(self, params: Dict) -> Any:
+        self.frame.actions.hover(_HANDLE, position=self.frame._position(params),
+                                 **self._act_args(params))
+        return None
+
+    def op_check(self, params: Dict) -> Any:
+        self.frame.actions.check(_HANDLE, position=self.frame._position(params),
+                                 **self._act_args(params))
+        return None
+
+    def op_uncheck(self, params: Dict) -> Any:
+        self.frame.actions.uncheck(_HANDLE, position=self.frame._position(params),
+                                   **self._act_args(params))
+        return None
+
+    def op_fill(self, params: Dict) -> Any:
+        self.frame.actions.fill(_HANDLE, params["value"], **self._act_args(params))
+        return None
+
+    def op_type(self, params: Dict) -> Any:
+        """One key per character, and it does NOT clear first.
+
+        The same distinction the selector version carries: `fill` replaces,
+        `type` appends. Swapping them is how a field meant to hold `bar` ends up
+        holding `foobar`.
+        """
+        self.frame.actions.type_text(_HANDLE, params["text"],
+                                     delay=params.get("delay") or 0.0,
+                                     **self._act_args(params))
+        return None
+
+    def op_press(self, params: Dict) -> Any:
+        self.frame.actions.press(_HANDLE, params["key"], **self._act_args(params))
+        return None
+
+    def op_focus(self, params: Dict) -> Any:
+        self.frame.actions.focus(_HANDLE, **self._act_args(params))
+        return None
+
+    def op_select_option(self, params: Dict) -> Any:
+        chosen = self.frame.actions.select_option(
+            None, params.get("options") or [], **self._act_args(params))
+        return {"values": chosen or []}
+
 class FrameDispatcher(Dispatcher):
     TYPE = "Frame"
     METHODS = {
