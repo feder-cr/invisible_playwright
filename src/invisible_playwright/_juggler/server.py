@@ -1954,13 +1954,49 @@ class PageDispatcher(Dispatcher):
         # like sending it as null: `Object "<root>.clip" is undefined, but has
         # some scheme`. Reading the type declaration is what settled this -
         # both of the obvious readings of the error are wrong.
+        #
+        # ⛔ AND THE CLIP IS IN DOCUMENT COORDINATES, WHICH IS WHY THIS USED TO
+        # PHOTOGRAPH THE WRONG THING. It was built as
+        # `{x: 0, y: 0, width: innerWidth, height: innerHeight}`, which is not
+        # the viewport - it is the top-left corner of the DOCUMENT, at viewport
+        # size. Two promises broke on that one line, both silently:
+        #
+        #   * scrolling did nothing. `scrollTo(0, 3000)` then `screenshot()`
+        #     returned the top of the page, and the caller has no way to see
+        #     that: the image is a valid screenshot of somewhere else. For an
+        #     agent that scrolls and looks, every look answered the same thing.
+        #   * `full_page=True` was never read here at all, so it returned the
+        #     viewport-sized top corner too. Measured on a 4000px document:
+        #     800x600 where 800x4000 was asked for.
+        #
+        # Both are the same defect - the clip was computed from nothing - so
+        # both are fixed by computing it from the page: where the viewport
+        # actually is, or how big the document actually is.
+        #
+        # A clip the CALLER supplied is passed through untouched. Playwright
+        # documents it in page coordinates, which is what the engine wants, so
+        # there is nothing to translate.
         clip = params.get("clip")
         if not clip:
-            size = self.injected.evaluate(
+            box = self.injected.evaluate(
                 self.frame.frame_id,
-                "({x: 0, y: 0, width: window.innerWidth,"
-                " height: window.innerHeight})")
-            clip = size or {"x": 0, "y": 0, "width": 1280, "height": 720}
+                "({x: window.scrollX, y: window.scrollY,"
+                " width: window.innerWidth, height: window.innerHeight,"
+                " fullWidth: Math.max(document.documentElement.scrollWidth,"
+                "                     document.body ? document.body.scrollWidth : 0),"
+                " fullHeight: Math.max(document.documentElement.scrollHeight,"
+                "                      document.body ? document.body.scrollHeight : 0)})")
+            # A page that cannot be measured still gets photographed, at the
+            # size the caller most likely has. Failing here would turn an
+            # unusual page into no screenshot at all.
+            box = box or {"x": 0, "y": 0, "width": 1280, "height": 720,
+                          "fullWidth": 1280, "fullHeight": 720}
+            if params.get("fullPage"):
+                clip = {"x": 0, "y": 0,
+                        "width": box["fullWidth"], "height": box["fullHeight"]}
+            else:
+                clip = {"x": box["x"], "y": box["y"],
+                        "width": box["width"], "height": box["height"]}
         result = self.send("Page.screenshot", _only_set({
             "mimeType": "image/jpeg" if params.get("type") == "jpeg"
                         else "image/png",
