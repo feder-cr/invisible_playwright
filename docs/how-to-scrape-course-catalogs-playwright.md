@@ -118,17 +118,27 @@ with zero sections and no error.
 Click each course, wait for its own container rather than a timeout, then read:
 
 ```python
-for course in page.query_selector_all("[data-course-id]"):
-    cid = course.get_attribute("data-course-id")
-    course.click()
-    page.wait_for_selector(f"[data-sections-for='{cid}'] [data-section-id]")
-    for sec in page.query_selector_all(f"[data-sections-for='{cid}'] [data-section-id]"):
-        rows.append(parse_section(sec, cid))
+courses = page.locator("[data-course-id]")
+ids = [courses.nth(i).get_attribute("data-course-id")
+       for i in range(courses.count())]          # read ids first, hold no handles
+
+for cid in ids:
+    page.locator(f"[data-course-id='{cid}']").click()   # re-resolved every round
+    sections = page.locator(f"[data-sections-for='{cid}'] [data-section-id]")
+    sections.first.wait_for()
+    for i in range(sections.count()):
+        rows.append(parse_section(sections.nth(i), cid))
 ```
 
 Waiting for the container keyed to that specific course matters. A generic wait on
 `[data-section-id]` passes immediately because the previous course's sections are still
 in the DOM, and you parse the same section twice under two different course codes.
+
+Holding the element handles from a first pass and clicking them one by one looks
+equivalent and is not. A catalog that re-renders its course list when a row expands
+detaches every handle taken before that click, and the loop dies on the second course
+with a detached-node error. Reading the identifiers first and re-resolving the locator on
+each round costs one extra query and removes the failure.
 
 The same trap in its general form is described in
 [how to scrape a load-more button with Playwright](how-to-scrape-load-more-button-playwright.md).
@@ -207,28 +217,31 @@ that only the seat counts moved.
 
 ## Short answers to the questions that lead here
 
-### Should one row be a course or a section?
-
-A section. A course with two sections has two instructors, two schedules and two seat
+**Should one row be a course or a section?** A section. A course with two sections has two instructors, two schedules and two seat
 counts, and a course-level row cannot hold either pair without duplicating the other.
 
-### Why do the seat numbers differ from the page?
-
-The badge on the results page is usually a cached rendering that stops updating once a
+**Why do the seat numbers differ from the page?** The badge on the results page is usually a cached rendering that stops updating once a
 section closes. The section endpoint carries the current integers, so read the response
 rather than the element.
 
-### Why does the filtered result count not match the rows I extract?
-
-Catalog filters commonly count courses while returning sections. Partition the crawl by
+**Why does the filtered result count not match the rows I extract?** Catalog filters commonly count courses while returning sections. Partition the crawl by
 department and term, then filter locally.
 
-### Is a cross-listed course a duplicate?
-
-No. It is one section reachable under two course codes. Keep one row per section and
+**Is a cross-listed course a duplicate?** No. It is one section reachable under two course codes. Keep one row per section and
 record the additional codes alongside it.
 
 ## Sources
 
 - Playwright documentation, [Events and response handling](https://playwright.dev/python/docs/events), retrieved 2026-08-28
 - Playwright documentation, [Auto-waiting](https://playwright.dev/python/docs/actionability), retrieved 2026-08-28
+
+**See also:** [capturing XHR API responses](how-to-capture-xhr-api-responses-playwright.md)
+for reading the section endpoint instead of the badge, [scraping a load-more button](how-to-scrape-load-more-button-playwright.md)
+for the wait that passes on the previous panel, and [resuming an interrupted scrape](how-to-resume-an-interrupted-scrape-playwright.md)
+for picking a long term back up.
+
+---
+
+*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+a Firefox patched at the C++ level driven by stock Playwright. The generic wait on `[data-section-id]` is a mistake that shipped here first: it
+passes on the previous course's sections and doubles them under a new code.*

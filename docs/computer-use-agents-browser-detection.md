@@ -12,8 +12,8 @@ nav_order: 6
 A computer-use agent (CUA) does not read the DOM to decide where to act. It takes a
 screenshot, sends the image to a vision model, gets back a pixel coordinate, clicks
 there, and takes another screenshot. That loop is the whole architecture of OpenAI's
-Computer-Using Agent and of Anthropic's computer-use tool, and it changes which
-detection signals matter and which stop mattering.
+Computer-Using Agent and of Claude's computer use tool (Anthropic's name for the same
+pattern), and it changes which detection signals matter and which stop mattering.
 
 This page is about that shift: why the automation flags people usually worry about are
 moot for a coordinate agent, what is still checkable underneath it, and where
@@ -160,7 +160,7 @@ or DOM automation flags, because a coordinate click never produces them. They ge
 on the engine fingerprint, on the IP, or on the regular timing of the screenshot-click
 loop.
 
-**Does invisible_playwright work with OpenAI or Anthropic computer-use?** Yes. It returns
+**Does invisible_playwright work with OpenAI or Claude computer use?** Yes. It returns
 a real Playwright `Browser`, so `page.screenshot()` and `page.mouse.click(x, y)` - the
 two calls a coordinate agent needs - work exactly as documented, on a Firefox that
 renders like a real Windows desktop.

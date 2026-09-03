@@ -213,6 +213,13 @@ Chromium build.
 differently about the GPU, the fonts, the audio device and the screen. The agent is
 identical.
 
+**How do you make an AI agent undetectable?** You do not, as a single setting. Three
+separate problems each need their own fix: the engine fingerprint (what patching Firefox
+at the C++ level answers), the machine surfaces a container gives away regardless of
+engine (GPU, fonts, audio, screen), and the agent loop's own rhythm, which no fingerprint
+patch touches. Fixing only the first and calling the agent undetectable is the mistake
+this whole page is about.
+
 **Which AI agent framework is most stealth-friendly?** The question is usually the wrong
 one. Pick on the agent loop, then fix the machine, then consider the engine.
 

@@ -118,11 +118,10 @@ a numbered or bulleted list under an "Inclusion Criteria" heading, another under
 each line is not something a scraper should try to parse.
 
 An age range written as "must be between 18 and 65 years of age" looks like two numbers
-waiting to be extracted, until the next criterion reads "diagnosed within the last five
-years" or "prior treatment with at least one but no more than three agents," where the
-comparison, the units and the exceptions are all doing real work in the sentence. Storing
-each criterion as its own string keeps the boundary honest: the scraper's job stops at
-splitting the list, and a clinician or a downstream model reads the sentence.
+waiting to be extracted, until the next criterion reads "prior treatment with at least one
+but no more than three agents," where the comparison and the exception are doing real work
+in the sentence. Storing each criterion as its own string keeps the boundary honest: the
+scraper's job stops at splitting the list, and a clinician reads the sentence.
 
 ```python
 def read_eligibility(page):
@@ -211,12 +210,11 @@ and gone through whatever review the registry requires before publishing it. A t
 no results section is, more often than not, simply a trial whose results have not arrived
 yet.
 
-The distinction worth encoding is "not reported" versus "not applicable," and most
-registries mark the second case explicitly rather than leaving it to be inferred: a note
-attached to the results area stating that results reporting does not apply to this study
-type or this outcome. Absent that explicit marker, treat a missing results section on a
-completed or terminated trial as pending, not as evidence the study never finished, and
-re-check it on the same schedule you use for status.
+The distinction worth encoding is "not reported" versus "not applicable." Most registries
+mark the second case explicitly, with a note attached to the results area stating that
+reporting does not apply to this study type. Absent that marker, treat a missing results
+section on a completed or terminated trial as pending, and re-check it on the same
+schedule you use for status.
 
 ```python
 def read_results_status(page):
@@ -238,13 +236,12 @@ a re-check cycle on a record that is already complete in every sense that matter
 
 ## Assembling one row per trial, sized for re-checking
 
-Put the pieces together and the record for one trial is a dict with a handful of scalar
-fields, two nested lists (eligibility, sites), and a checked-at timestamp that makes the
-whole thing safe to overwrite on the next pass instead of trusting it forever. Getting to
-that record usually means walking a paginated search listing first to collect trial URLs,
-the same [numbered pagination](how-to-scrape-paginated-pages-playwright.md) pattern used
-on any other listing page, then visiting each one, which is the general [list-to-detail
-crawl](how-to-crawl-list-to-detail-pages-playwright.md) shape.
+Put the pieces together and one trial's record is a dict with a handful of scalar fields,
+two nested lists, and a checked-at timestamp that makes the whole thing safe to overwrite
+on the next pass. Getting there means walking a paginated search listing first to collect
+trial URLs, the same [numbered pagination](how-to-scrape-paginated-pages-playwright.md)
+pattern used on any listing page, then visiting each one, the general
+[list-to-detail crawl](how-to-crawl-list-to-detail-pages-playwright.md) shape.
 
 ```python
 from invisible_playwright import InvisiblePlaywright
@@ -291,14 +288,13 @@ database](how-to-scrape-into-a-database-playwright.md), and it is what makes the
 ## Conclusion
 
 A clinical trial listing is not one fact, it is several records at different ages sharing
-a page. Status decays and needs a re-check timestamp. The registry-specific identifier and
-the international identifier both belong on the row, because a dedup step across
-registries needs the second one. Eligibility criteria stay as text, because the logic
-inside them is not something a scraper should parse. Enrollment needs its label kept
-alongside the number, or a target quietly becomes a headcount. Site status is a separate,
-finer field than trial status. And a missing results section is usually a timing gap, not
-a dead end, unless the page says otherwise. Build the row to be overwritten safely on the
-next pass, and the pipeline stays honest about how current every field actually is.
+a page. Status decays and needs a re-check timestamp. Both identifiers belong on the row,
+because a dedup step across registries needs the international one. Eligibility criteria
+stay as text, because the logic inside them is not something a scraper should parse.
+Enrollment needs its label kept alongside the number, or a target quietly becomes a
+headcount. Site status is a separate, finer field than trial status, and a missing results
+section is usually a timing gap rather than a dead end. Build the row to be overwritten
+safely on the next pass, and the pipeline stays honest about how current every field is.
 
 ## Short answers to the questions that lead here
 
@@ -315,20 +311,14 @@ inside the sentences is a separate problem from scraping the page.
 often the target written into the protocol, and it is only an actual count when the page
 labels it that way. Store the label with the number.
 
-**A trial shows one status but a location page shows a different one for a specific
-site. Which is right?** Both, because they are different fields. Trial-level status and
-site-level status move independently, and a site can close or open without the overall
-trial status changing.
+**A trial shows one status but a listed site shows a different one. Which is right?**
+Both. They are different fields, and a site can close or open without the overall trial
+status changing.
 
 **A completed trial has no results section. Is that a bug in my scraper?** Probably not.
 Results are added long after registration, sometimes years later, so a completed trial can
 legitimately show no results yet. Look for an explicit "not applicable" marker before
 assuming the study never finished.
-
-**How often should I re-scrape a trial once I have it?** Often enough that the
-`status_checked_at` field stays meaningful for your use case. A recruiting trial changes
-state more often than a completed one, so a fixed schedule for every trial wastes cycles
-on the ones that rarely move and under-checks the ones that do.
 
 ## Sources
 
@@ -339,10 +329,9 @@ on the ones that rarely move and under-checks the ones that do.
 - Playwright's
   [`wait_for_load_state`](https://playwright.dev/python/docs/api/class-page#page-wait-for-load-state),
   used to detect the end of a pagination click before reading the next page's rows.
-- This page describes registry mechanics in generic terms on purpose: field names,
-  status vocabularies and identifier formats differ between registries, so verify the
-  selectors above against the specific registry you are reading before trusting them
-  at scale.
+- This page describes registry mechanics in generic terms on purpose, since field names
+  and identifier formats differ between registries: verify the selectors above against
+  the specific registry you are reading before trusting them at scale.
 
 **See also:** [crawling a list to its detail pages](how-to-crawl-list-to-detail-pages-playwright.md)
 for the general listing-to-detail shape used in the last section,
