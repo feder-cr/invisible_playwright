@@ -6,6 +6,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-09-03
+
+### Documentation
+
+- **Two pages said there is no MCP server for this project.** Both were written
+  on 2026-07-27 and the server was published on 2026-08-19: true when written,
+  and afterwards they steered readers to Microsoft's server, which cannot carry
+  the seeded profile, for a problem ours solves. The integration page now opens
+  with ours and is what it actually is - how to point Microsoft's playwright-mcp
+  at this engine if you are already on it, and what that costs.
+
+- **The README never mentioned either sibling.** A reader who would rather prompt
+  than script had one hand-off, to the page above, which told them no server
+  existed. There is now a short block after Install with both one-liners, and the
+  Related projects section lists the three siblings before the third-party ones.
+
+- The Python floor was stated only as a badge image about 200 lines below the
+  install block, and the first-run download size disagreed across three READMEs,
+  all three wrong against the packaged seal. One home for it, here.
+
+- Four wiki pages edited in a working tree on 2026-08-30, rescued onto a branch
+  and then lost a second time when the branch was never merged. Landed.
+
+### Internal
+
+- The English-only gate was written for this repository on 2026-08-27 and wired
+  nowhere: not into tests.yml, not into the pre-push hook. Both sibling packages
+  copied the script and the CI step; this one kept only the script. Run here for
+  the first time it found four Italian test files, now translated, and it runs in
+  CI from now on.
+
 ### Added
 
 - **Nine acting methods on `ElementHandle`.** `click`, `hover`, `fill`, `type`,
