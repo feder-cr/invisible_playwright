@@ -36,7 +36,7 @@ Once the browser is handled it stops being the variable. If you are still gettin
 
 ```bash
 pip install invisible-playwright
-python -m invisible_playwright fetch      # one-time ~238 MB download (~544 MB unpacked), sha256-verified
+python -m invisible_playwright fetch      # one-time download, sha256-verified: 240 MB (Windows) / 262 MB (Linux x86_64) / 253 MB (Linux arm64), about 550 MB unpacked
 ```
 
 Requires **Python 3.11 or newer**.

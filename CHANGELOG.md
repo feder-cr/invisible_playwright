@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Nine acting methods on `ElementHandle`.** `click`, `hover`, `fill`, `type`,
+  `press`, `focus`, `check`, `uncheck` and `select_option` now work on a handle,
+  so `page.query_selector("#go").click()` does what it does in Playwright. Until
+  now the driver served fourteen handle methods, every one of them a read, and
+  every action answered `ElementHandle has no method 'click'`.
+
+  They go through the same humanised path as the selector versions - approach,
+  hover, press, release, with the hit-target check and the actionability retry -
+  rather than a second, simpler one. Two click paths would be two fingerprints.
+  What differs is only what should: the node is not looked up again, and the
+  handle is still usable afterwards.
+
 ## [0.9.0] - 2026-09-02
 
 ### Fixed
