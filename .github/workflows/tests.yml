@@ -20,6 +20,35 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The gate was written FOR this repository on 2026-08-27, after 549 lines of
+  # Italian shipped here in one subsystem and 852 more were found in 33 files
+  # that were already public. It has been wired nowhere ever since: not into
+  # tests.yml, not into the pre-push hook, whose steps are pytest, pin, names,
+  # internals and publish. Both sibling packages copied the script AND the CI
+  # step; this one kept only the script, so the one repository the rule exists
+  # for is the one that never checked. Measured 2026-09-03, the first time
+  # anybody ran it here: four files, red.
+  #
+  # Its own job, and deliberately NOT behind core-on-index. Reading files needs
+  # no install, and hanging a language check off the availability of a package on
+  # an index would silently skip it during exactly the window when releases are
+  # being made.
+  english:
+    name: the repository is English
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: check the prose
+        # --selftest first: a language gate that has only ever printed "clean" is
+        # the same non-gate as any other, and this one can go blind from a single
+        # edit to its word list.
+        run: |
+          python scripts/check_english_only.py --selftest
+          python scripts/check_english_only.py
+
   # `pip install -e ".[dev]"` below resolves `invisible-core==N.M.0` from the
   # package index. The core is published BEFORE this package, so between the
   # first push of this repo and that upload there is a window in which no

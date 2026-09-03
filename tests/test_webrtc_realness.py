@@ -427,7 +427,7 @@ def socks5_tcp_only():
 def local_https_page():
     """A trivial localhost page (used by the no-proxy srflx test)."""
     class H(BaseHTTPRequestHandler):
-        #: Una socket muta non pinna piu' un thread: dopo cinque secondi cade.
+        #: A silent socket no longer pins a thread down: after five seconds it drops.
         timeout = 5
         def do_GET(self):
             self.send_response(200)

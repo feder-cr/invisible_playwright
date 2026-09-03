@@ -111,18 +111,18 @@ def test_socks5_proxy_mutates_prefs_then_pipeline_still_valid():
         prefs,
     )
 
-    # ⛔ INVERTITO IL 2026-08-30. Questo blocco asseriva che un SOCKS
-    # diventasse `network.proxy.*` e non tornasse niente. Erano due strade per
-    # un fatto solo, e quando la strada dell'HTTP e' sparita col driver Node un
-    # proxy http veniva accettato e buttato. Adesso instrada il comando del
-    # motore, uguale per tutti e quattro gli schemi, e prefs che nominano un
-    # endpoint sono cio' che NON deve comparire.
+    # ⛔ INVERTED ON 2026-08-30. This block used to assert that a SOCKS
+    # proxy became `network.proxy.*` and that nothing came back. Those were two
+    # paths for a single fact, and when the HTTP path disappeared along with the
+    # Node driver an http proxy was accepted and thrown away. Now it routes the
+    # engine command, the same for all four schemes, and prefs that name an
+    # endpoint are what must NOT appear.
     assert pw_proxy is not None
-    for nome in ("network.proxy.type", "network.proxy.socks",
+    for name in ("network.proxy.type", "network.proxy.socks",
                  "network.proxy.socks_port", "network.proxy.socks_version",
                  "network.proxy.socks_username", "network.proxy.socks_password",
                  "network.proxy.http", "network.proxy.ssl"):
-        assert nome not in prefs, nome
+        assert name not in prefs, name
     assert prefs["zoom.stealth.dns.no_local_resolution"] is True
 
     # Profile-derived keys must still be present after proxy mutation.
@@ -212,7 +212,7 @@ def test_http_proxy_returned_unchanged_no_socks_mutations():
 
     pw_proxy = configure_proxy(proxy_in, prefs)
 
-    assert pw_proxy == proxy_in  # lo stesso endpoint, per ogni schema
+    assert pw_proxy == proxy_in  # the same endpoint, for every scheme
     # No SOCKS prefs should have been written.
     assert "network.proxy.type" not in prefs
     assert "network.proxy.socks" not in prefs
@@ -309,9 +309,9 @@ def test_windows_virtual_display_with_socks_proxy(monkeypatch):
         {"server": "socks5://127.0.0.1:1080"}, prefs
     )
 
-    assert pw_proxy is not None      # una strada sola, anche qui
+    assert pw_proxy is not None      # a single path, here too
     assert prefs["security.sandbox.gpu.level"] == 0  # virtual_display branch
-    assert pw_proxy is not None                      # una strada sola
+    assert pw_proxy is not None                      # a single path
     assert "network.proxy.type" not in prefs
     # Windows exposes a validated persona renderer (calibrated clean bucket),
     # not empty/native - see _webgl_personas.
@@ -340,7 +340,7 @@ def test_linux_xvfb_workarounds_with_socks_proxy(monkeypatch):
         {"server": "socks5://127.0.0.1:1080"}, prefs
     )
 
-    assert pw_proxy is not None      # una strada sola, anche qui
+    assert pw_proxy is not None      # a single path, here too
     # Xvfb workarounds present.
     assert prefs["gfx.webrender.all"] is False
     assert prefs["gfx.webrender.force-disabled"] is True
@@ -356,8 +356,8 @@ def test_linux_xvfb_workarounds_with_socks_proxy(monkeypatch):
     assert prefs["zoom.stealth.webgl.renderer"] == _persona["prefs"]["zoom.stealth.webgl.renderer"]
     assert prefs["zoom.stealth.webgl.renderer"]  # non-empty
     assert "ANGLE" in prefs["zoom.stealth.webgl.renderer"]  # Windows ANGLE form
-    # Il livello proxy non scrive piu' nessun endpoint, e cio' che scrive - le
-    # prefs dei canali di fuga - non calpesta le prefs Linux qui sopra.
+    # The proxy layer no longer writes any endpoint, and what it does write - the
+    # leak-channel prefs - does not trample the Linux prefs above.
     assert "network.proxy.type" not in prefs
     assert prefs["zoom.stealth.dns.no_local_resolution"] is True
 

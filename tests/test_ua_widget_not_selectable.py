@@ -77,7 +77,7 @@ _AUTHOR_PAGE = b"""<!doctype html><html><head><title>author-closed</title></head
 
 
 class _SilentHandler(BaseHTTPRequestHandler):
-    #: Una socket muta non pinna piu' un thread: dopo cinque secondi cade.
+    #: A silent socket no longer pins a thread: after five seconds it drops.
     timeout = 5
     """Serve the two pages by path, and say nothing while doing it."""
 

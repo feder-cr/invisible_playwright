@@ -120,7 +120,7 @@ def test_extra_prefs_override_can_break_isolation_only_explicitly():
 
 
 class _SilentHandler(BaseHTTPRequestHandler):
-    #: Una socket muta non pinna piu' un thread: dopo cinque secondi cade.
+    #: A mute socket no longer pins a thread: after five seconds it drops.
     timeout = 5
     """Suppress per-request access logging so pytest output stays clean."""
     PAYLOAD = b""  # set per-instance via subclassing
