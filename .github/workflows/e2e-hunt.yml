@@ -30,7 +30,7 @@ name: e2e hunt
 on:
   workflow_dispatch:
     inputs:
-      giri:
+      runs:
         description: "How many runs at most (at 12% it takes ~18 for a 90% chance)"
         required: false
         default: "18"
@@ -92,19 +92,19 @@ jobs:
       - name: Loop until it catches one
         env:
           PYTHONUNBUFFERED: "1"
-          INVPW_TEST_WATCHDOG_FILE: prove/e2e-watchdog.log
+          INVPW_TEST_WATCHDOG_FILE: evidence/e2e-watchdog.log
         run: |
           set -u
-          runs="${{ inputs.giri }}"
-          mkdir -p prove/giri
-          # `prove/` inside the workspace, not RUNNER_TEMP: on Windows that
+          runs="${{ inputs.runs }}"
+          mkdir -p evidence/runs
+          # `evidence/` inside the workspace, not RUNNER_TEMP: on Windows that
           # variable contains backslashes and does not cross bash reliably.
           # xvfb only where it exists; on Windows the browser goes to the
           # runner's desktop.
           if [ "$RUNNER_OS" = "Linux" ]; then PRE="xvfb-run -a"; else PRE=""; fi
           captured=0
           for n in $(seq 1 "$runs"); do
-            log="prove/giri/giro_$(printf '%02d' "$n").log"
+            log="evidence/runs/run_$(printf '%02d' "$n").log"
             t0=$(date +%s)
             set +e
             $PRE python -u scripts/run_e2e.py "$FF" > "$log" 2>&1
@@ -140,7 +140,7 @@ jobs:
         with:
           name: e2e-hunt-${{ inputs.os }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            prove/giri
-            prove/e2e-watchdog.log
+            evidence/runs
+            evidence/e2e-watchdog.log
           if-no-files-found: warn
           retention-days: 14
