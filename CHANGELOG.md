@@ -8,8 +8,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [0.10.0] - 2026-09-03
 
-### Documentation
+### Added
+- **Nine acting methods on `ElementHandle`.** `click`, `hover`, `fill`, `type`,
+  `press`, `focus`, `check`, `uncheck` and `select_option` now work on a handle,
+  so `page.query_selector("#go").click()` does what it does in Playwright. Until
+  now the driver served fourteen handle methods, every one of them a read, and
+  every action answered `ElementHandle has no method 'click'`.
 
+  They go through the same humanised path as the selector versions - approach,
+  hover, press, release, with the hit-target check and the actionability retry -
+  rather than a second, simpler one. Two click paths would be two fingerprints.
+  What differs is only what should: the node is not looked up again, and the
+  handle is still usable afterwards.
+### Documentation
 - **Two pages said there is no MCP server for this project.** Both were written
   on 2026-07-27 and the server was published on 2026-08-19: true when written,
   and afterwards they steered readers to Microsoft's server, which cannot carry
@@ -28,28 +39,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Four wiki pages edited in a working tree on 2026-08-30, rescued onto a branch
   and then lost a second time when the branch was never merged. Landed.
-
 ### Internal
-
 - The English-only gate was written for this repository on 2026-08-27 and wired
   nowhere: not into tests.yml, not into the pre-push hook. Both sibling packages
   copied the script and the CI step; this one kept only the script. Run here for
   the first time it found four Italian test files, now translated, and it runs in
   CI from now on.
-
-### Added
-
-- **Nine acting methods on `ElementHandle`.** `click`, `hover`, `fill`, `type`,
-  `press`, `focus`, `check`, `uncheck` and `select_option` now work on a handle,
-  so `page.query_selector("#go").click()` does what it does in Playwright. Until
-  now the driver served fourteen handle methods, every one of them a read, and
-  every action answered `ElementHandle has no method 'click'`.
-
-  They go through the same humanised path as the selector versions - approach,
-  hover, press, release, with the hit-target check and the actionability retry -
-  rather than a second, simpler one. Two click paths would be two fingerprints.
-  What differs is only what should: the node is not looked up again, and the
-  handle is still usable afterwards.
 
 ## [0.9.0] - 2026-09-02
 
