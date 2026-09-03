@@ -1,15 +1,30 @@
 ---
 title: "Using invisible_playwright with Microsoft's Playwright MCP"
-description: "Microsoft's own playwright-mcp takes a browser and an executable path as arguments, so pointing it at this engine is configuration, not a separate server."
+description: "There is a server for this engine, invisible-playwright-mcp. This page is for people already committed to Microsoft's playwright-mcp, and says exactly what that route costs."
 parent: "Integrations"
 nav_order: 7
 ---
 
 # Using invisible_playwright with Microsoft's Playwright MCP
 
-You do not need a separate MCP server. Microsoft's own `playwright-mcp` takes a
-browser and an executable path as arguments, so pointing it at this engine is
-configuration, not code.
+**There is a server for this engine:**
+[`invisible-playwright-mcp`](https://github.com/feder-cr/invisible-playwright-mcp).
+One line, and it carries the seeded profile and the humanised pointer that the
+route on this page cannot:
+
+```bash
+claude mcp add stealth -- uvx invisible-playwright-mcp
+```
+
+This page is for the other case: you are already committed to Microsoft's
+`playwright-mcp` and want to point it at this engine. That works, it is
+configuration rather than code, and the section below says precisely what it
+costs you.
+
+⛔ This page said "You do not need a separate MCP server" until 2026-09-03. It
+was written on 2026-07-27, and the server was published on 2026-08-19: true when
+written, and afterwards it was steering readers away from the thing that solves
+the problem the page then documents a workaround for.
 
 Written against `microsoft/playwright-mcp` as of 2026-07-27.
 
@@ -46,8 +61,10 @@ The same two settings exist as environment variables, `PLAYWRIGHT_MCP_BROWSER` a
 It gets you the engine: a Firefox whose fingerprint surfaces are patched in C++
 rather than shimmed from JavaScript, driven by the standard MCP tool set.
 
-**It does not get you the seeded profile.** The identity this package generates lives
-in `firefox_user_prefs`, and `--executable-path` has no way to carry them. So the
+**Microsoft's server does not get you the seeded profile.** The identity this package
+generates lives in `firefox_user_prefs`, and `--executable-path` has no way to carry
+them. (Ours does: it launches through the engine, so the profile is built the same
+way a script would build it.) So the
 browser reports the build's own defaults, the same on every launch and on every
 machine that runs the same build, with no per-session identity and nothing to
 reproduce a session from.
@@ -97,9 +114,15 @@ knowing before you trust the session.
 
 ## Short answers to the questions that lead here
 
-**Is there an MCP server for this project?** No, and there does not need to be.
-Microsoft's own `playwright-mcp` accepts `--browser firefox` together with
-`--executable-path`, which is both halves of what this engine needs.
+**Is there an MCP server for this project?** Yes:
+[`invisible-playwright-mcp`](https://github.com/feder-cr/invisible-playwright-mcp),
+`uvx invisible-playwright-mcp`. It launches through the engine, so the seeded
+profile and the humanised pointer come with it.
+
+Microsoft's own `playwright-mcp` also accepts `--browser firefox` together with
+`--executable-path`, which is enough to run this engine and not enough to carry
+the profile. Use it if you are already on it; the section above says what that
+costs.
 
 **Can an MCP client drive a stealth browser at all?** Yes, as long as the client lets
 you set the launch arguments. If it does, you can point it at any binary.

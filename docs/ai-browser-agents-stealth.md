@@ -216,8 +216,12 @@ identical.
 **Which AI agent framework is most stealth-friendly?** The question is usually the wrong
 one. Pick on the agent loop, then fix the machine, then consider the engine.
 
-**Is there any agent route to an engine-level fingerprint?** MCP, through Microsoft's own
-Playwright MCP server, which takes a browser and an executable path.
+**Is there any agent route to an engine-level fingerprint?** Two, and they are not
+equivalent. `uvx invisible-playwright-mcp` launches through the engine, so the
+seeded profile and the humanised pointer come with it. Microsoft's own Playwright
+MCP server takes a browser and an executable path, which runs the engine but
+carries no `firefox_user_prefs`, so every session on a given build shares one
+identity.
 
 **See also:** [browser-use in detail](browser-use-detection.md),
 [crawl4ai in detail](crawl4ai-stealth-custom-browser.md),

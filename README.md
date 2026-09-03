@@ -39,7 +39,23 @@ pip install invisible-playwright
 python -m invisible_playwright fetch      # one-time ~238 MB download (~544 MB unpacked), sha256-verified
 ```
 
+Requires **Python 3.11 or newer**.
+
 Supported platforms: **Windows x86_64**, **Linux x86_64 / arm64**. macOS is no longer supported (releases stopped at firefox-20); on a Mac the package refuses at launch with a clear message rather than downloading a binary that no longer exists.
+
+### If you would rather prompt than script
+
+This page is the engine, as a Python library. There are two ways to use it
+without writing code, and both are one line:
+
+- **From an MCP client you already have** (Claude Code, Claude Desktop,
+  Cursor): `claude mcp add stealth -- uvx invisible-playwright-mcp`. See
+  [invisible-playwright-mcp](https://github.com/feder-cr/invisible-playwright-mcp).
+- **With an interface and a model included**, needing only an OpenRouter key:
+  `uvx aihawk ui --openrouter-key sk-or-...`. See
+  [AIHawk](https://github.com/feder-cr/AIHawk).
+
+Same engine underneath, and the second is a client of the first.
 
 ---
 
@@ -197,7 +213,18 @@ almost nothing.
 
 ## Related projects
 
-The open-source neighbours, and what each one is for.
+**The other pieces of this one.** The engine is the middle of three, and the
+two around it are how most people reach it:
+
+- **[invisible_core](https://github.com/feder-cr/invisible_core)** - seed to
+  fingerprint to preferences, plus proxy and geolocation. This package pins it.
+- **[invisible-playwright-mcp](https://github.com/feder-cr/invisible-playwright-mcp)**
+  - this engine as an MCP server, for any client that brings its own model.
+- **[AIHawk](https://github.com/feder-cr/AIHawk)** - an interface and a model,
+  from one command. A client of the server above, with no private path to the
+  browser.
+
+**The open-source neighbours**, and what each one is for.
 
 **On the Firefox side**
 
