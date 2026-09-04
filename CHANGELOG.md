@@ -6,6 +6,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-09-04
+
+### Fixed
+- **The first launch on Windows works.** On a machine that had never run the
+  engine from that path, the first `InvisiblePlaywright(...)` exited with
+  `3221226505` (0xC0000409) before the protocol came up, and the second one
+  worked. It was Firefox's launcher process, not the browser: on a new path
+  `firefox.exe` runs as the launcher first and forwards the Juggler pipe to the
+  real browser, and it read that pipe from CRT descriptors 3 and 4, which the
+  Node.js driver provides and this client does not, since it names the handles
+  in `PW_PIPE_READ` / `PW_PIPE_WRITE`. The launcher died on `_get_osfhandle(3)`;
+  the next launch found a launcher timestamp with no browser timestamp in the
+  registry and disabled the launcher for that path, which is why it failed
+  exactly once per machine and why nothing about the cache directory mattered.
+  The engine is firefox-27, where the launcher forwards the handles it is
+  handed. Every Windows first launch since 0.8.0, the release where this client
+  replaced the Node driver, had this; the daily Windows install check had been
+  red since 2026-08-31. (#144)
+
+### Added
+- **A test for the first launch from a path Firefox has never run from**,
+  Windows only, e2e. It removes the launcher's registry values for the binary
+  under test, launches once, and checks both that the page answers and that the
+  launcher recorded a start followed by the browser's, so a success with the
+  launcher disabled, the path that always worked, does not pass. Against
+  firefox-26 it fails with the exit code above.
+
+### Internal
+- Engine pin moved to firefox-27 through `invisible-core 27.17.0`.
+
 ## [0.11.0] - 2026-09-04
 
 ### Fixed
