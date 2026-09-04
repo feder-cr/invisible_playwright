@@ -217,3 +217,58 @@ def test_no_test_invokes_the_cli_with_arguments_it_rejects():
         "these tests invoke the CLI with arguments its own parser refuses, so "
         "they exit 2 wherever they actually run:\n  " + "\n  ".join(problems)
         + "\nThe surface is `fetch` and `version`, and `fetch` takes nothing.")
+
+
+@pytest.mark.unit
+def test_no_workflow_invokes_the_cli_with_arguments_it_rejects():
+    """A manual workflow is still executable code, even when normal CI is green.
+
+    Measured 2026-09-04: two workflows still invoked the removed ``path``
+    subcommand a month after the CLI became ``fetch`` + ``version``.  The
+    Windows launch matrix failed in all three cells before reaching its launch
+    probe; the manual WebRTC gate had not run since the removal.  The existing
+    sibling scans Python tests only, so neither call site was in its perimeter.
+
+    Parse literal workflow invocations against the real parser.  Shell syntax
+    starts at the first punctuation token and is not part of the CLI argv.
+    Comment-only lines are excluded so this explanation cannot flag itself.
+    """
+    import re
+    import shlex
+
+    parser = cli.build_parser()
+    root = Path(__file__).resolve().parents[1]
+    workflows = root / ".github" / "workflows"
+    call = re.compile(r"python\s+-m\s+invisible_playwright\s+(.+)")
+    shell_punctuation = {"|", "||", "&", "&&", ";", ")", ">", ">>"}
+
+    problems = []
+    for path in sorted(workflows.glob("*.y*ml")):
+        for line_number, line in enumerate(
+            path.read_text(encoding="utf-8", errors="replace").splitlines(), 1
+        ):
+            if line.lstrip().startswith("#"):
+                continue
+            match = call.search(line)
+            if match is None:
+                continue
+            lexer = shlex.shlex(
+                match.group(1), posix=True, punctuation_chars="|&;()<>")
+            lexer.whitespace_split = True
+            args = []
+            for token in lexer:
+                if token in shell_punctuation:
+                    break
+                args.append(token)
+            try:
+                parser.parse_args(args)
+            except SystemExit as exit_:
+                if exit_.code:
+                    problems.append(
+                        f"{path.name}:{line_number} -> {args}")
+
+    assert not problems, (
+        "these workflows invoke the CLI with arguments its own parser refuses, "
+        "so the jobs fail before reaching the assertion they exist to run:\n  "
+        + "\n  ".join(problems)
+        + "\nThe surface is `fetch` and `version`, and `fetch` takes nothing.")
