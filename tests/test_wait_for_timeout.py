@@ -71,7 +71,7 @@ def test_the_server_reads_the_key_the_client_actually_sends():
 
 @pytest.mark.e2e
 @pytest.mark.parametrize("requested", [1000, 3000])
-def test_the_wait_takes_the_time_it_was_asked_for(requested):
+def test_the_wait_takes_the_time_it_was_asked_for(requested, firefox_binary):
     """A key that matches and a wait that happens are two claims.
 
     The floor is generous on purpose: this asserts that time passed at all,
@@ -81,7 +81,11 @@ def test_the_wait_takes_the_time_it_was_asked_for(requested):
     """
     from invisible_playwright import InvisiblePlaywright
 
-    with InvisiblePlaywright(seed=1, headless=True) as browser:
+    # The binary comes from the harness, like every other e2e here. Resolving
+    # one from the seal instead ignores INVPW_BINARY_PATH, and under a local
+    # seal, which has no published assets, it cannot resolve at all.
+    with InvisiblePlaywright(seed=1, headless=True,
+                             binary_path=firefox_binary) as browser:
         ctx = browser.new_context()
         page = ctx.new_page()
         page.goto("data:text/html,<p>wait</p>")

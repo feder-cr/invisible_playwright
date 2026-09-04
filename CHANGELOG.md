@@ -6,6 +6,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-09-04
+
+### Fixed
+- **A screenshot photographs where the page is.** The clip was
+  `{x: 0, y: 0, width: innerWidth, height: innerHeight}`, and that clip is in
+  document coordinates: not the window, but the top corner of the page at the
+  window's size. An agent that scrolled and looked got the same image every
+  time, and nothing in the image says so. `full_page` was not read at all:
+  800x600 came back where 800x4000 was asked for. (#136)
+- **Two manual workflows stop calling the removed `path` command.** Both
+  called `python -m invisible_playwright path`, a subcommand removed when the
+  CLI became `fetch` plus `version`. The Windows launch matrix failed in all
+  three cells before reaching its launch probe, and the WebRTC gate had not run
+  since the removal. The existing parser gate scanned Python tests only, so
+  neither call site was in its perimeter; there is now one that reads the
+  workflows too. Thanks to @SamadhiFire for finding and fixing it. (#141)
+
+### Added
+- **A check that asks the index whether the version a change proposes is
+  still free**, on pull requests. This release exists partly because that
+  check found its own repository in the state it exists to prevent: 0.10.0 was
+  on the index while main sat on 0.10.0 with fifteen commits on top of the
+  tag, the screenshot fix among them. A release from there would have
+  published nothing and reported success, because the publish workflow treats
+  an already-present version as a deliberate no-op, which is right for a
+  re-pushed tag and indistinguishable from somebody forgetting to bump. (#142)
+
+### Documentation
+- Twelve pages stop shipping code that cannot run as pasted, tool metadata is
+  out of the shipped screenshots, and the front page names the agent layer
+  that sits on this engine. (#137, #138, #139, #140)
+
 ## [0.10.0] - 2026-09-03
 
 ### Added
