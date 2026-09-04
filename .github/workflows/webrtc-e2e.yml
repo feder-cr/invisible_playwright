@@ -49,10 +49,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
-      - name: Fetch the patched Firefox binary
-        run: python -m invisible_playwright fetch
-
-      - name: Resolve binary path
+      - name: Fetch the patched Firefox binary and expose its path
         shell: bash
         run: |
           # NOT `echo "VAR=$(cmd)" >> $GITHUB_ENV`. echo exits 0 whatever the
@@ -61,9 +58,11 @@ jobs:
           # `pytest.skip("no patched binary")`, pytest exits 0, and the job is
           # green having verified nothing - which is exactly what run #1 did.
           set -euo pipefail
-          BIN="$(python -m invisible_playwright path)"
+          FETCH_OUTPUT="$(python -m invisible_playwright fetch)"
+          printf '%s\n' "$FETCH_OUTPUT"
+          BIN="$(printf '%s\n' "$FETCH_OUTPUT" | tail -n 1)"
           if [ -z "$BIN" ] || [ ! -e "$BIN" ]; then
-            echo "invisible_playwright path returned '$BIN', which is not a" >&2
+            echo "invisible_playwright fetch returned '$BIN', which is not a" >&2
             echo "file. Refusing to run a suite that would skip itself green." >&2
             exit 1
           fi

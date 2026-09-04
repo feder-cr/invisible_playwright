@@ -13,7 +13,7 @@ name: firefox-launch-matrix
 # cache is content-keyed (Cache/<tag>_<version>_<buildid>/), so every cell failed
 # with NOT FOUND - a failure that looked exactly like the bug under investigation
 # and was not. Nine red cells read as "reproduced everywhere". The path now comes
-# from `python -m invisible_playwright path`, the only thing that knows it.
+# from the last line of `fetch`, the command that verifies the sealed tree.
 
 on:
   workflow_dispatch:
@@ -82,23 +82,36 @@ jobs:
           pip install .
 
       - name: Fetch the sealed binary
-        run: python -m invisible_playwright fetch
+        shell: pwsh
+        run: |
+          $fetchOutput = @(python -m invisible_playwright fetch)
+          $fetchExit = $LASTEXITCODE
+          $fetchOutput | ForEach-Object { Write-Host $_ }
+          if ($fetchExit -ne 0) {
+              exit $fetchExit
+          }
+          $ffPath = [string]($fetchOutput | Select-Object -Last 1)
+          $ffPath = $ffPath.Trim()
+          if (-not $ffPath -or -not (Test-Path $ffPath)) {
+              Write-Error "fetch reported no firefox.exe at '$ffPath'"
+              exit 1
+          }
+          "FF_PATH=$ffPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Verify firefox.exe can launch standalone
         shell: pwsh
         run: |
-          # ASK for the path, never rebuild it. The cache directory is keyed on
-          # tag + base version + BuildID, so any string assembled here is a second
-          # copy of a naming rule that has already moved once - and when it drifts
-          # the step fails with NOT FOUND, which is indistinguishable from the
-          # launch bug this job exists to detect.
-          $ffPath = (python -m invisible_playwright path).Trim()
+          # CARRY the path from fetch, never rebuild it. The cache directory is
+          # keyed on tag + base version + BuildID, so any string assembled here
+          # is a second copy of a naming rule that has already moved once - and
+          # when it drifts the step fails with NOT FOUND, indistinguishable from
+          # the launch bug this job exists to detect.
+          $ffPath = $env:FF_PATH
           Write-Host "Package reports: $ffPath"
           if (-not $ffPath -or -not (Test-Path $ffPath)) {
-              Write-Error "firefox.exe NOT FOUND at '$ffPath' (reported by the package)"
+              Write-Error "firefox.exe NOT FOUND at '$ffPath' (reported by fetch)"
               exit 1
           }
-          "FF_PATH=$ffPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           Write-Host "Launching: $ffPath --version"
           # NOTE: firefox.exe --version on Windows prints the version but may
           # return non-zero exit code (sub-process fork quirk). Check stdout.
