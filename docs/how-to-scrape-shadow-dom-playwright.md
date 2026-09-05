@@ -105,24 +105,37 @@ Two practical consequences follow:
   calls does not.** The moment you write JavaScript by hand inside `evaluate`, you are
   back on the DOM's own rules and the boundary reappears.
 
-## Closed shadow roots: the honest limit
+## Closed shadow roots: where stock Playwright stops
 
-A closed shadow root is unreachable, and no scraping tool, stealth engine or otherwise,
-changes that. This is the part most pages skip. The host's `.shadowRoot` is `null` by the
-component author's explicit choice, so there is no handle for any query to follow. This
-is not a detection surface and there is nothing to spoof or patch: it is a DOM boundary,
-the same one for a stock browser and an automated one.
+A closed shadow root is out of reach for stock Playwright, in Firefox and Chromium
+alike, and Playwright's own documentation says so: "Closed-mode shadow roots are not
+supported." The host's `.shadowRoot` is `null` by the component author's explicit
+choice, so there is no handle for a DOM query to follow. This is not a detection
+surface and there is nothing to spoof: it is an encapsulation boundary the component
+asked for.
+
+**Measured 2026-09-05, and it is the one line on this page that changed:** on a local
+page carrying one open and one closed root, stock Playwright Firefox and stock
+Playwright Chromium each returned zero matches for the closed content, while this
+engine returned one - with the page still reading `null` from `.shadowRoot`, so
+nothing observable to the page moved. The three-arm table, the reproduction page and
+what that does and does not buy you are in
+[closed shadow roots: what Playwright cannot see](closed-shadow-root-playwright.md).
 
 If a locator cannot find content and you have confirmed the element renders, check
-whether the host was attached in closed mode. If it was, the honest answer is that you
-cannot reach it from the DOM at all. The realistic routes are all outside the DOM:
+whether the host was attached in closed mode. On stock Playwright the routes are all
+outside the DOM:
 
 - Read the data from the network response that populated the component, before it was
   rendered, rather than from the rendered tree.
 - Read it from a `<script type="application/json">` payload or a data attribute in the
   light DOM, if the component was hydrated from one.
-- Accept that a genuinely closed component with no other data source is not scrapable
-  through selectors, and stop spending time on selector variations that cannot work.
+- Call whatever the component exposes on its host. A property, a method or an event
+  dispatched with `composed: true` is public by the author's own design, and
+  `page.evaluate` on the host reaches it on every browser, stock included.
+- Accept that on stock Playwright a genuinely closed component with no other data
+  source is not reachable through selectors, and stop spending time on selector
+  variations that cannot work.
 
 Do not trust a blog snippet that claims to "bypass" closed shadow roots by monkeypatching
 `Element.prototype.attachShadow` before the component runs. That works only if you can
