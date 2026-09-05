@@ -23,6 +23,14 @@ Anti-bots ask two questions, and reCAPTCHA, hCaptcha and Cloudflare Turnstile sc
 - Every click, hover and drag follows a natural mouse path with human timing, no teleporting cursor.
 - Each input is byte-identical to a real mouse: real input source, pressure, trusted events.
 
+**And one thing the stock driver cannot do.** Playwright's own documentation says
+"Closed-mode shadow roots are not supported", and measured on 2026-09-05 against a page
+carrying one open and one closed root, stock Playwright returned zero matches for the
+closed content in Firefox and in Chromium alike. This engine returns the element, while
+the page still reads `null` from `element.shadowRoot`, so nothing observable to the page
+changes. The three-arm table and the page that reproduces it:
+[closed shadow roots](https://github.com/feder-cr/invisible_playwright/wiki/closed-shadow-root-playwright).
+
 Driven by the standard Playwright API. Full breakdown: [feder-cr/firefox_antidetect_patch](https://github.com/feder-cr/firefox_antidetect_patch).
 
 ---
