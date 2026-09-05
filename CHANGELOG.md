@@ -6,7 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.12.2] - 2026-09-05
+
 ### Changed
+- **The launch counter lives on the engine's repository.** Every session now
+  declares `invisible_firefox.usage_ping.url` through `invisible-core 27.18.0`,
+  pointing at the `usage-counter` release of `firefox_antidetect_patch`, the
+  repository that builds and ships the engine. The engine's compiled default
+  says the same from the next build. Engines older than firefox-21 do not read
+  the pref and are not counted. To opt out of the ping, set
+  `invisible_firefox.usage_ping.enabled` to `False` in `extra_prefs`.
 - **The `browser launches` badge is back.** It was removed in 0.7.2 because the
   counter behind it lived on a repository that had been deleted, so the badge
   would have redrawn a frozen number every morning. The counter has lived on
