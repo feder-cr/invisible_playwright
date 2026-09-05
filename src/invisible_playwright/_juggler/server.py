@@ -2318,6 +2318,23 @@ class PageDispatcher(Dispatcher):
 
 
 # ── context, browser, browser type ──────────────────────────────────────────
+def _address(context_id: Optional[str], params: Dict) -> Dict:
+    """The context a `Browser.*` command is about, in the form Juggler reads.
+
+    ⛔ `None` IS THE DEFAULT CONTEXT, AND IT IS ADDRESSED BY ABSENCE. Juggler
+    keeps every context in a Map keyed by its id and registers the default one
+    under `undefined`, so an omitted field resolves to it and a `null` does not:
+    `Map.get(null)` finds nothing, and the command fails naming no cause. Every
+    command that names a context goes through here, so the rule lives once.
+    """
+    out = dict(params)
+    if context_id is None:
+        out.pop("browserContextId", None)
+    else:
+        out["browserContextId"] = context_id
+    return out
+
+
 class BrowserContextDispatcher(Dispatcher):
     TYPE = "BrowserContext"
     METHODS = {
@@ -2340,9 +2357,12 @@ class BrowserContextDispatcher(Dispatcher):
     }
 
     def __init__(self, server, browser: "BrowserDispatcher", options: Dict,
-                 context_id: str) -> None:
+                 context_id: Optional[str]) -> None:
         self.browser = browser
         self.options = options
+        #: `None` is the DEFAULT context - userContextId 0, the one whose
+        #: cookies and storage are the profile's. It is what a persistent
+        #: launch hands back; every other context is a Juggler container.
         self.context_id = context_id
         # ⛔ THE THREE CHILDREN COME FIRST. `_browser_context.py` resolves all
         # of them with `from_channel` inside its constructor, so a context whose
@@ -2468,7 +2488,7 @@ class BrowserContextDispatcher(Dispatcher):
     def op_new_page(self, params: Dict) -> Any:
         conn = self.conn
         result = conn.send("Browser.newPage",
-                           {"browserContextId": self.context_id}, timeout=30)
+                           _address(self.context_id, {}), timeout=30)
         target_id = result["targetId"]
         session = self.browser.session_for(target_id, timeout=20.0)
         page = PageDispatcher(self.server, self, session, target_id)
@@ -2478,9 +2498,8 @@ class BrowserContextDispatcher(Dispatcher):
 
     # ── cookies, permissions, geolocation ───────────────────────────────────
     def _browser_send(self, command: str, params: Dict) -> Any:
-        params = dict(params)
-        params["browserContextId"] = self.context_id
-        return self.conn.send(command, params, timeout=30)
+        return self.conn.send(command, _address(self.context_id, params),
+                              timeout=30)
 
     def op_add_cookies(self, params: Dict) -> Any:
         """⛔ `expires` IS SECONDS AND -1 MEANS SESSION, not zero and not
@@ -2553,6 +2572,21 @@ class BrowserContextDispatcher(Dispatcher):
         return {"cookies": result.get("cookies") or [], "origins": []}
 
     def op_close(self, params: Dict) -> Any:
+        if self.context_id is None:
+            # ⛔ THE DEFAULT CONTEXT IS NEVER REMOVED, and closing it closes
+            # the browser: that is what upstream does for a persistent context,
+            # whose only context it is. `Browser.removeBrowserContext` on it
+            # would make Juggler's `destroy()` unregister the default from its
+            # maps and leave a browser that no command can address.
+            for page in list(self.pages):
+                try:
+                    page.announce_closed()
+                except Exception:
+                    pass
+            self.emit("close")
+            self.dispose()
+            self.browser.op_close({})
+            return None
         try:
             self.conn.send("Browser.removeBrowserContext",
                                    {"browserContextId": self.context_id},
@@ -2745,7 +2779,7 @@ class BrowserDispatcher(Dispatcher):
         self.emit("context", {"context": context.channel})
         return {"context": context.channel}
 
-    def _apply_context_options(self, context_id: str, params: Dict) -> None:
+    def _apply_context_options(self, context_id: Optional[str], params: Dict) -> None:
         """Push the options the caller asked for into the engine.
 
         ⛔ BEFORE THE FIRST PAGE EXISTS, and that ordering is the whole point:
@@ -2764,7 +2798,7 @@ class BrowserDispatcher(Dispatcher):
             value = params.get(name)
             if value in (None, ""):
                 continue
-            self.conn.send(command,
+            self._context_send(command,
                            {"browserContextId": context_id, field: value},
                            timeout=10)
         # ⛔ The rest of the option set, each one a lever that was arriving
@@ -2782,34 +2816,34 @@ class BrowserDispatcher(Dispatcher):
             except ValueError as exc:
                 raise ProtocolException(
                     "new_context(proxy=...) cannot be applied: %s" % exc)
-            self.conn.send("Browser.setContextProxy",
+            self._context_send("Browser.setContextProxy",
                            dict(proxy, browserContextId=context_id),
                            timeout=10)
         headers = params.get("extraHTTPHeaders")
         if headers:
-            self.conn.send("Browser.setExtraHTTPHeaders",
+            self._context_send("Browser.setExtraHTTPHeaders",
                            {"browserContextId": context_id,
                             "headers": headers}, timeout=10)
         if params.get("offline"):
-            self.conn.send("Browser.setOnlineOverride",
+            self._context_send("Browser.setOnlineOverride",
                            {"browserContextId": context_id,
                             "override": "offline"}, timeout=10)
         geolocation = params.get("geolocation")
         if geolocation:
-            self.conn.send("Browser.setGeolocationOverride",
+            self._context_send("Browser.setGeolocationOverride",
                            {"browserContextId": context_id,
                             "geolocation": geolocation}, timeout=10)
         credentials = params.get("httpCredentials")
         if credentials:
-            self.conn.send("Browser.setHTTPCredentials",
+            self._context_send("Browser.setHTTPCredentials",
                            {"browserContextId": context_id,
                             "credentials": credentials}, timeout=10)
         if params.get("ignoreHTTPSErrors"):
-            self.conn.send("Browser.setIgnoreHTTPSErrors",
+            self._context_send("Browser.setIgnoreHTTPSErrors",
                            {"browserContextId": context_id,
                             "ignoreHTTPSErrors": True}, timeout=10)
         if params.get("bypassCSP"):
-            self.conn.send("Browser.setBypassCSP",
+            self._context_send("Browser.setBypassCSP",
                            {"browserContextId": context_id,
                             "bypassCSP": True}, timeout=10)
         # ⛔ Inverted on purpose: Playwright says `javaScriptEnabled=False`,
@@ -2817,11 +2851,11 @@ class BrowserDispatcher(Dispatcher):
         # other would turn scripting OFF for every default context, which is
         # the kind of inversion that looks like the site being broken.
         if params.get("javaScriptEnabled") is False:
-            self.conn.send("Browser.setJavaScriptDisabled",
+            self._context_send("Browser.setJavaScriptDisabled",
                            {"browserContextId": context_id,
                             "javaScriptDisabled": True}, timeout=10)
         if params.get("hasTouch"):
-            self.conn.send("Browser.setTouchOverride",
+            self._context_send("Browser.setTouchOverride",
                            {"browserContextId": context_id,
                             "hasTouch": True}, timeout=10)
         permissions = params.get("permissions")
@@ -2831,7 +2865,7 @@ class BrowserDispatcher(Dispatcher):
             # `TargetRegistry.js`). An empty string would ALSO match every url
             # through the `startsWith` half, which is exactly the kind of
             # accident that works until somebody tightens that condition.
-            self.conn.send("Browser.grantPermissions",
+            self._context_send("Browser.grantPermissions",
                            {"browserContextId": context_id, "origin": "*",
                             "permissions": permissions}, timeout=10)
         viewport = params.get("viewport")
@@ -2850,9 +2884,42 @@ class BrowserDispatcher(Dispatcher):
                 wanted["deviceScaleFactor"] = params["deviceScaleFactor"]
             if params.get("isMobile"):
                 wanted["isMobile"] = True
-            self.conn.send("Browser.setDefaultViewport",
+            self._context_send("Browser.setDefaultViewport",
                            {"browserContextId": context_id,
                             "viewport": wanted}, timeout=10)
+
+    def _context_send(self, command: str, params: Dict, timeout: float = 10) -> Any:
+        """A `Browser.*` command about one context. The literal dicts above
+        carry `browserContextId` with the id, or with None for the default
+        context; `_address` turns None into the absence Juggler reads."""
+        return self.conn.send(command,
+                              _address(params.get("browserContextId"), params),
+                              timeout=timeout)
+
+    def op_default_context(self, params: Dict) -> Any:
+        """The context whose state IS the profile's: userContextId 0, the one
+        `launchPersistentContext` promises.
+
+        ⛔ UNTIL 0.12.0 THE PERSISTENT PATH HANDED BACK `op_new_context`, AND A
+        `profile_dir=` KEPT NOTHING. `Browser.createBrowserContext` makes a
+        container, a fresh userContextId, and Juggler's `destroy()` calls
+        `ContextualIdentityService.remove` on it, which deletes the container's
+        cookies and storage together with the identity. Every cookie and every
+        localStorage entry a session wrote lived in a container that died with
+        the session: `cookies.sqlite` in the profile stayed at zero rows, and
+        the second session of the same profile started logged out. Measured
+        2026-09-05 against the published 0.12.0, cookies and localStorage both,
+        while the docs promised "logging in once instead of every run".
+
+        Upstream's persistent context is the DEFAULT one, addressed by omitting
+        `browserContextId`. That is what this returns, with the same options
+        applied the same way.
+        """
+        self._apply_context_options(None, params)
+        context = BrowserContextDispatcher(self.server, self, params, None)
+        self.contexts.append(context)
+        self.emit("context", {"context": context.channel})
+        return {"context": context.channel}
 
     def op_new_page(self, params: Dict) -> Any:
         context = self.op_new_context(params)
@@ -2909,7 +2976,7 @@ class BrowserTypeDispatcher(Dispatcher):
         browser_channel = self.op_launch(dict(params, userDataDir=directory))
         browser = self.server.object(browser_channel["browser"]["guid"])
         return {"browser": browser_channel["browser"],
-                "context": browser.op_new_context(params)["context"]}
+                "context": browser.op_default_context(params)["context"]}
 
     def op_launch(self, params: Dict) -> Any:
         executable = params.get("executablePath")
