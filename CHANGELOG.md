@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-09-05
+
+### Fixed
+- **A persistent profile keeps its cookies and storage for the next session.**
+  Since 0.8.0, `profile_dir=` kept nothing: the first session on a profile set a
+  cookie and a localStorage entry and read both back, the second session on the
+  same profile read an empty jar and `None`, and on disk `cookies.sqlite` held
+  zero rows. The persistent launch handed back an ordinary context, a Juggler
+  container with its own userContextId, and Juggler deletes a container's
+  cookies and storage together with the identity when the context is removed;
+  everything a session wrote lived in a container that died with the session.
+  The persistent context is now the browser's default one, the one whose state
+  is the profile's, addressed by omitting `browserContextId` and never removed;
+  closing it closes the browser, as upstream does. Found by a clean-environment
+  check of 0.12.0, on the day after the docs page promised "logging in once
+  instead of every run".
+
+### Added
+- **A test that a persistent profile keeps state**, e2e: two sessions on one
+  profile, cookie and localStorage written in the first and read in the second,
+  and the cookie row read from `cookies.sqlite` in between, so a regression
+  cannot pass by keeping the data where the page sees it and the disk does not.
+  Against 0.12.0 it fails on the on-disk read.
+
 ## [0.12.0] - 2026-09-04
 
 ### Fixed
