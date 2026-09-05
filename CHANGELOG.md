@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-## [0.12.3] - 2026-09-06
+## [0.12.3] - 2026-09-05
 
 ### Fixed
 - **Orphaned `.tmp-<tag>-<pid>` trees in the engine cache are swept.** Through
