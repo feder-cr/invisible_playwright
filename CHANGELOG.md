@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+- **The `browser launches` badge is back.** It was removed in 0.7.2 because the
+  counter behind it lived on a repository that had been deleted, so the badge
+  would have redrawn a frozen number every morning. The counter has lived on
+  this repository since 2026-08-19 and is counting again, so the figure the
+  badge shows is live. It is cumulative, and it undercounts: engines before
+  firefox-21 still ask the old address, and they rejoin only as they upgrade.
+
 ## [0.12.1] - 2026-09-05
 
 ### Fixed
