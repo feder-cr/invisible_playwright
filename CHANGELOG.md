@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-09-06
+
 ### Added
 - **`page.screencast.start(on_frame=...)` streams JPEG frames of the browser
   WINDOW.** `page.screenshot()` gives the content viewport and can never show
