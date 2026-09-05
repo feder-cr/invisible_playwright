@@ -131,6 +131,17 @@ Two open Playwright reports affect anyone doing this:
 
 If cookies vanish between runs, read those before rewriting your own code.
 
+## One that was ours
+
+From 0.8.0 to 0.12.0, `profile_dir=` kept nothing between sessions: cookies and
+localStorage written in one session were gone in the next, and `cookies.sqlite`
+in the profile stayed empty. The persistent launch handed back a Juggler
+container, whose storage is deleted with the container when the session
+closes, instead of the browser's default context, whose storage is the
+profile's. Fixed in 0.12.1, with a test that reads the cookie row from disk
+between two sessions. If you are on one of those versions and your logins do
+not survive, upgrade before reading anything else.
+
 Add one more that is not a bug report: **never run two browsers against the same profile
 directory at once**. A user data directory has no concurrency story, and the failure is
 corruption rather than an error.
