@@ -1420,6 +1420,8 @@ class PageDispatcher(Dispatcher):
         "setViewportSize": "op_set_viewport_size",
         "emulateMedia": "op_emulate_media",
         "screenshot": "op_screenshot",
+        "screencastStart": "op_screencast_start",
+        "screencastStop": "op_screencast_stop",
         "bringToFront": "op_bring_to_front",
         "exposeBinding": "op_expose_binding",
         "touchscreenTap": "op_touchscreen_tap",
@@ -1448,6 +1450,9 @@ class PageDispatcher(Dispatcher):
         self.context = context
         self.session = session
         self.target_id = target_id
+        # The id Juggler gave the running screencast, or None. One per page,
+        # because the engine holds one capture sink per window.
+        self._screencast_id: Optional[str] = None
         conn = context.browser.conn
         self.lifecycle = Lifecycle(conn, session)
         self.injected = InjectedScript(conn, session)
@@ -1555,9 +1560,34 @@ class PageDispatcher(Dispatcher):
         conn.remove_listener(self._route_juggler_event)
         self.lifecycle.detach()
         self.injected.detach()
+        # A screencast owns a capture thread in the browser, reading a window
+        # that is about to go. The engine stops it when the page is disposed
+        # too; asking first means a page closed from here never leaves a
+        # frame in flight with nobody to acknowledge it.
+        if self._screencast_id:
+            conn.post("Page.stopScreencast", {}, session=self.session)
+            self._screencast_id = None
 
     def _on_juggler_event(self, method: str, params: Dict) -> None:
-        if method == "Runtime.console":
+        if method == "Page.screencastFrame":
+            # ⛔ ON THE READER THREAD, and both halves have to respect that.
+            # The frame goes up to the client as the event `Screencast`
+            # listens for - base64 stays base64, the client decodes - under
+            # the names the vendored client reads (`viewportWidth`, not the
+            # engine's `deviceWidth`). The ack goes back with `post`: a `send`
+            # here would wait for a reply only this thread can deliver.
+            if not self._screencast_id:
+                return
+            self.emit("screencastFrame", {
+                "data": params.get("data") or "",
+                "timestamp": params.get("timestamp") or 0,
+                "viewportWidth": params.get("deviceWidth") or 0,
+                "viewportHeight": params.get("deviceHeight") or 0,
+            })
+            self.conn.post("Page.screencastFrameAck",
+                           {"screencastId": self._screencast_id},
+                           session=self.session)
+        elif method == "Runtime.console":
             # ⛔ THE LOG FILLS HERE, not inside `console_messages()`. A log
             # filled on request can only ever hold what arrived AFTER the
             # request, which is nothing: `page.console_messages()` would always
@@ -2242,6 +2272,72 @@ class PageDispatcher(Dispatcher):
 
     def op_bring_to_front(self, params: Dict) -> Any:
         self.send("Page.bringToFront", {})
+        return None
+
+    #: The bound a screencast frame is scaled to fit when the caller gives no
+    #: `size`. The frame is the whole WINDOW, chrome included, so this is not
+    #: a viewport size; it is a ceiling that keeps a JPEG of a 1920x1080 window
+    #: around 100 KB. Frames are never scaled up.
+    SCREENCAST_DEFAULT_SIZE = {"width": 1280, "height": 800}
+    SCREENCAST_DEFAULT_QUALITY = 80
+    SCREENCAST_FPS = 10
+
+    def op_screencast_start(self, params: Dict) -> Any:
+        """`page.screencast.start(on_frame=...)`: live JPEG frames of the
+        browser WINDOW.
+
+        ⛔ THE WINDOW, NOT THE PAGE, AND THAT IS THE POINT. `page.screenshot()`
+        already gives the content viewport. What it can never give is the
+        pointer, which is drawn in the chrome document precisely so that no
+        page can see it - and a person watching an agent work wants the
+        pointer, the tab strip and the address bar. So every screencast this
+        server starts asks the engine for `fullWindow`, our own flag on
+        `Page.startScreencast`, and the `viewportWidth`/`viewportHeight` the
+        client reads on each frame are the captured window's size in device
+        pixels.
+
+        Nothing is injected into the page and no script runs in it: the engine
+        captures the window through the operating system, in the parent
+        process, and the content process is never told.
+
+        ⛔ `record` (a video file) is REFUSED, not ignored. The engine has no
+        encoder - the VP8/WebM half of Playwright's screencast was never
+        rebuilt - and the refusal at context creation for `record_video_dir`
+        is the same decision one level up.
+        """
+        if self._screencast_id:
+            raise ProtocolException(
+                "a screencast is already running on this page; stop it first")
+        if params.get("record"):
+            raise ProtocolException(
+                "screencast to a video FILE is not available: the engine "
+                "streams JPEG frames and has no video encoder. Pass "
+                "on_frame= to receive the frames instead of path=")
+        if not params.get("sendFrames"):
+            raise ProtocolException(
+                "screencast.start() was called with neither on_frame= nor "
+                "path=, so there is nobody to deliver frames to")
+        size = params.get("size") or self.SCREENCAST_DEFAULT_SIZE
+        quality = params.get("quality")
+        if quality is None:
+            quality = self.SCREENCAST_DEFAULT_QUALITY
+        result = self.send("Page.startScreencast", {
+            "width": int(size["width"]),
+            "height": int(size["height"]),
+            "quality": int(quality),
+            "fullWindow": True,
+            "fps": self.SCREENCAST_FPS,
+        })
+        self._screencast_id = result["screencastId"]
+        # The client's `start()` reads an optional `artifact` from the reply
+        # for the video-file case, which does not exist here.
+        return {}
+
+    def op_screencast_stop(self, params: Dict) -> Any:
+        if not self._screencast_id:
+            return None
+        self._screencast_id = None
+        self.send("Page.stopScreencast", {})
         return None
 
     def op_noop(self, params: Dict) -> Any:

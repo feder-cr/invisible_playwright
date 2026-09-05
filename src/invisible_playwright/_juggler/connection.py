@@ -140,6 +140,14 @@ class Connection(EventListeners):
         self._next_id = 0
         self._pending: dict[int, list] = {}
         self._lock = threading.Lock()
+        # ⛔ ONE WRITER AT A TIME ON THE PIPE. `send` used to write outside
+        # `_lock`, which was fine while every command came from one thread.
+        # The screencast acknowledges frames from the READER thread (see
+        # `post`) while the caller's thread is dispatching input, and two
+        # `os.write` calls interleaving on one pipe splice two JSON messages
+        # into one unparseable line - a failure that shows up as the browser
+        # ignoring a command, not as an error here.
+        self._write_lock = threading.Lock()
         self._closed = False
         self._error: Optional[BaseException] = None
         self._reader = threading.Thread(target=self._read_loop, daemon=True)
@@ -238,7 +246,7 @@ class Connection(EventListeners):
         msg: dict = {"id": msg_id, "method": method, "params": params or {}}
         if session:
             msg["sessionId"] = session
-        os.write(self._to_browser, json.dumps(msg).encode("utf-8") + NUL)
+        self._write(msg)
 
         if not ready.wait(timeout):
             with self._lock:
@@ -252,6 +260,39 @@ class Connection(EventListeners):
             e = response["error"]
             raise ProtocolError("%s: %s" % (method, e.get("message", e)))
         return response.get("result")
+
+    def post(self, method: str, params: Optional[dict] = None,
+             session: Optional[str] = None) -> None:
+        """Send a command and do NOT wait for its reply.
+
+        ⛔ THIS IS THE ONLY WAY TO SEND FROM INSIDE AN EVENT HANDLER. Handlers
+        run on the reader thread, and `send` blocks until the reader thread
+        delivers the reply - so a `send` from a handler waits for a message
+        that only the waiting thread could receive. That is a deadlock, not a
+        slowdown, and the file-chooser path already pays for it with a helper
+        thread. A screencast acknowledges every frame from the handler that
+        received it; a thread per frame would be absurd, and a queue would be
+        a second reader. So the ack goes out here, with an id the browser
+        will answer and nobody will wait for: `_deliver` drops a reply whose
+        id is not pending.
+
+        It is not for commands whose RESULT matters, and not for commands
+        whose FAILURE matters either: an error reply is dropped with the rest.
+        """
+        if self._closed:
+            return
+        with self._lock:
+            self._next_id += 1
+            msg_id = self._next_id
+        msg: dict = {"id": msg_id, "method": method, "params": params or {}}
+        if session:
+            msg["sessionId"] = session
+        self._write(msg)
+
+    def _write(self, msg: dict) -> None:
+        data = json.dumps(msg).encode("utf-8") + NUL
+        with self._write_lock:
+            os.write(self._to_browser, data)
 
     def close(self, timeout: float = 5.0) -> None:
         """Closes the pipe and waits for the browser to exit on its own.
