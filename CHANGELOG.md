@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.12.3] - 2026-09-06
+
+### Fixed
+- **Orphaned `.tmp-<tag>-<pid>` trees in the engine cache are swept.** Through
+  `invisible-core 27.19.0`: a download killed during `verifying` or
+  `extracting` used to leave up to the whole extracted tree behind, because
+  only a fresh download by the same pid ever removed it. `ensure_binary` now
+  removes the trees whose process is gone, on every call, and leaves alone
+  this process's own tree, a live process's tree and anything not named after
+  a pid. The MCP server 0.13.0 starts the download with the process, which made
+  a killed download an ordinary event rather than a Ctrl-C.
+
 ## [0.12.2] - 2026-09-05
 
 ### Changed
