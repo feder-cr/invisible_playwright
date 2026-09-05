@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+- **`page.screencast.start(on_frame=...)` streams JPEG frames of the browser
+  WINDOW.** `page.screenshot()` gives the content viewport and can never show
+  the pointer, which is drawn in the chrome document precisely so that no page
+  can see it. The screencast captures the window through the operating system
+  in the parent process - tab strip, address bar and pointer included, nothing
+  injected into the page - and hands each frame to `on_frame` as JPEG bytes
+  with the captured window's size. Needs an engine from `firefox-28` on;
+  `size=` bounds the frame (scaled down to fit, never up, default 1280x800)
+  and `quality=` the JPEG quality (default 80). `path=` (a video file) is
+  refused by name: the engine has no video encoder.
+
+### Fixed
+- **Two threads writing the Juggler pipe could splice two commands into one
+  line.** Frames are acknowledged from the reader thread while the caller's
+  thread dispatches input; the pipe now has a write lock, and a
+  `Connection.post` that sends without waiting for the reply.
+
 ## [0.12.3] - 2026-09-05
 
 ### Fixed

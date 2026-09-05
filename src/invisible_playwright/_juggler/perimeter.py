@@ -105,15 +105,17 @@ OUTSIDE = {
     "tracingStopChunk":                "tracing",
     "write":                           "tracing",
     "zip":                             "tracing",
-    # video
+    # video annotations. ⛔ `screencastStart` and `screencastStop` are NOT
+    # here any more: since the engine's screencast came back (firefox-28) the
+    # server answers them with live JPEG frames of the window. What stays out
+    # is the overlay the driver used to paint on the recording - chapters,
+    # action captions - which needs the recorder this package does not ship.
     "screencastChapter":               "video",
     "screencastHideActions":           "video",
     "screencastRemoveOverlay":         "video",
     "screencastSetOverlayVisible":     "video",
     "screencastShowActions":           "video",
     "screencastShowOverlay":           "video",
-    "screencastStart":                 "video",
-    "screencastStop":                  "video",
 }
 
 #: ⛔ ANSWERED THOUGH OUTSIDE. These are the ones the CLIENT sends on its own
