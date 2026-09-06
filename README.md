@@ -54,13 +54,14 @@ Supported platforms: **Windows x86_64**, **Linux x86_64 / arm64**. macOS is no l
 ### If you would rather prompt than script
 
 This page is the engine, as a Python library. There are two ways to use it
-without writing code, and both are one line:
+without writing code:
 
 - **From an MCP client you already have** (Claude Code, Claude Desktop,
-  Cursor): `claude mcp add stealth -- uvx invisible-playwright-mcp`. See
+  Cursor): `pip install invisible-playwright-mcp`, then
+  `claude mcp add --scope user stealth -- invisible-playwright-mcp`. See
   [invisible-playwright-mcp](https://github.com/feder-cr/invisible-playwright-mcp).
 - **With an interface and a model included**, needing only an OpenRouter key:
-  `uvx aihawk ui --openrouter-key sk-or-...`. See
+  `pip install aihawk`, then `aihawk ui --openrouter-key sk-or-...`. See
   [AIHawk](https://github.com/feder-cr/AIHawk).
 
 Same engine underneath, and the second is a client of the first.
