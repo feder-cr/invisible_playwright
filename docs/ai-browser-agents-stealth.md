@@ -224,7 +224,7 @@ this whole page is about.
 one. Pick on the agent loop, then fix the machine, then consider the engine.
 
 **Is there any agent route to an engine-level fingerprint?** Two, and they are not
-equivalent. `uvx invisible-playwright-mcp` launches through the engine, so the
+equivalent. `uvx aihawk` launches through the engine, so the
 seeded profile and the humanised pointer come with it. Microsoft's own Playwright
 MCP server takes a browser and an executable path, which runs the engine but
 carries no `firefox_user_prefs`, so every session on a given build shares one
