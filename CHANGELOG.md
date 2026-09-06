@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-09-06
+
 ### Changed
 - **The engine is `firefox-29`, through `invisible-core 29.19.0`.** It carries
   the screencast that `page.screencast.start(on_frame=...)` needs, so the
