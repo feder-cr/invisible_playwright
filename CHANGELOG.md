@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+- **The engine is `firefox-29`, through `invisible-core 29.19.0`.** It carries
+  the screencast that `page.screencast.start(on_frame=...)` needs, so the
+  feature shipped in 0.13.0 now has an engine that answers it, and the
+  full-window frame no longer carries the Windows resize border. Nothing
+  else moves: the pin follows the seal.
+
 ## [0.13.0] - 2026-09-05
 
 ### Added
