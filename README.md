@@ -58,7 +58,7 @@ without writing code, and both are one line:
 
 - **From an MCP client you already have** (Claude Code, Claude Desktop,
   Cursor): `claude mcp add stealth -- uvx invisible-playwright-mcp`. See
-  [invisible-playwright-mcp](https://github.com/feder-cr/invisible-playwright-mcp).
+  [the MCP server page](https://github.com/feder-cr/AIHawk/wiki/mcp-server).
 - **With an interface and a model included**, needing only an OpenRouter key:
   `uvx aihawk ui --openrouter-key sk-or-...`. See
   [AIHawk](https://github.com/feder-cr/AIHawk).
@@ -236,11 +236,11 @@ two around it are how most people reach it:
 
 - **[invisible_core](https://github.com/feder-cr/invisible_core)** - seed to
   fingerprint to preferences, plus proxy and geolocation. This package pins it.
-- **[invisible-playwright-mcp](https://github.com/feder-cr/invisible-playwright-mcp)**
-  - this engine as an MCP server, for any client that brings its own model.
-- **[AIHawk](https://github.com/feder-cr/AIHawk)** - an interface and a model,
-  from one command. A client of the server above, with no private path to the
-  browser.
+- **[AIHawk](https://github.com/feder-cr/AIHawk)** - this engine as an MCP
+  server (`uvx invisible-playwright-mcp`, for any client that brings its own
+  model) and, in the same package, an interface with a model included, from
+  one command. The interface is a client of the server, with no private path
+  to the browser.
 
 **The open-source neighbours**, and what each one is for.
 
