@@ -8,7 +8,8 @@ nav_order: 7
 # Using invisible_playwright with Microsoft's Playwright MCP
 
 **There is a server for this engine:**
-[`invisible-playwright-mcp`](https://github.com/feder-cr/invisible-playwright-mcp).
+[`invisible-playwright-mcp`](https://github.com/feder-cr/AIHawk/wiki/mcp-server),
+shipped inside AIHawk.
 One line, and it carries the seeded profile and the humanised pointer that the
 route on this page cannot:
 
@@ -115,7 +116,7 @@ knowing before you trust the session.
 ## Short answers to the questions that lead here
 
 **Is there an MCP server for this project?** Yes:
-[`invisible-playwright-mcp`](https://github.com/feder-cr/invisible-playwright-mcp),
+[`invisible-playwright-mcp`](https://github.com/feder-cr/AIHawk/wiki/mcp-server),
 `uvx invisible-playwright-mcp`. It launches through the engine, so the seeded
 profile and the humanised pointer come with it.
 
