@@ -243,3 +243,36 @@ summit diverge through a season, how often a resort's published depth moves at a
 track the calendar. The last one is the interesting one, and it needs the numerator and
 denominator kept separately, which is why lifts are stored as their original `"8 / 14"`
 string rather than a percentage.
+
+## Short answers to the questions that lead here
+
+**Why do my snow numbers jump between runs?** Usually the unit toggle. Resorts serve
+centimetres or inches depending on a control that remembers a previous choice, so a
+series that never pins the unit mixes two scales that differ by a factor of two and a
+half.
+
+**What does new snow mean on these pages?** Nothing, without the window it covers. New
+snow is measured over a period that varies by resort and sometimes by season, so store
+the window with the number or the figure is not comparable to anything.
+
+**Should I use my fetch time as the observation time?** No. Snow reports are published
+once or twice a day and the page says when. The report time is the fact; your fetch
+time only tells you when you looked.
+
+**The numbers have not changed in weeks. Is the scraper broken?** Check the calendar
+before the code. Out of season these pages often keep last season's figures frozen
+instead of clearing them, which reads as fresh data to anything that only looks at the
+numbers.
+
+**See also:** [How to scrape geotargeted content with
+Playwright](how-to-scrape-geotargeted-content-playwright.md), [How to scrape stock
+levels with Playwright](how-to-scrape-stock-levels-playwright.md), [How to rate limit
+your own Playwright scraper](how-to-rate-limit-your-scraper-playwright.md)
+
+## Sources
+
+- Playwright, Input, https://playwright.dev/python/docs/input - clicking a toggle and
+  waiting for the value to repopulate, checked for pinning the unit before any number
+  is read.
+- This project's page on stock levels, which carries the same distinction between an
+  absent measurement and a measurement of zero.

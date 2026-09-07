@@ -225,3 +225,38 @@ sailing that was scheduled on Monday and gone by Thursday is a cancellation, and
 the number a seasonal PDF can never give you: not what the operator plans to run, but what
 the operator actually ran. Storing every capture rather than updating in place is what
 makes that question answerable at all.
+
+## Short answers to the questions that lead here
+
+**Why does the same route return a different timetable on different days?** Because
+the season decides the timetable. Ferry operators publish per-date, not a single
+annual grid, so a query without an explicit date returns whatever the site thinks
+today is and a series built that way silently mixes seasons.
+
+**Do I need to scrape each direction separately?** Direction is part of a sailing's
+identity, not a column you can add afterwards. Operators often show both directions on
+one page, sometimes in two tables and sometimes in one with a toggle, so decide which
+you are reading before you store a row.
+
+**The date field ignores what I type. What now?** It is a calendar widget, not a text
+input. Open it and click the day, the way a person does. A written value leaves the
+widget's internal state unchanged and the search runs against the previous date.
+
+**Where do cancellations show up?** Separately from the timetable, usually as a notice
+banner or a status column, and they are the most interesting part of the data. A
+timetable without the disruption record describes an intention, not a service.
+
+**See also:** [Scrape date-picker calendars with
+Playwright](how-to-scrape-date-picker-calendar-playwright.md), [How to resume an
+interrupted scrape with
+Playwright](how-to-resume-an-interrupted-scrape-playwright.md), [How to rate limit
+your own Playwright scraper](how-to-rate-limit-your-scraper-playwright.md)
+
+## Sources
+
+- Playwright, Input, https://playwright.dev/python/docs/input - `locator.fill()`,
+  which focuses the element and fires an input event, against `press_sequentially()`,
+  which types character by character with an optional delay. Checked for why a written
+  date does not commit in a calendar widget.
+- This project's page on driving date pickers and calendar widgets, which this page
+  relies on instead of restating.

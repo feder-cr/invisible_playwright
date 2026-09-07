@@ -218,3 +218,34 @@ rest, rather than accumulating dockets because they were cheap to fetch. The val
 data is in answering a specific question about court activity; the risk in it is that a
 general archive of dockets is a general archive about people, and the second grows quietly
 out of the first if nobody decides otherwise.
+
+## Short answers to the questions that lead here
+
+**Can I search for cases by name?** This page does not, and that is deliberate. It
+looks up cases already identified by number. Bulk identification of people through a
+court portal is a different activity with different consequences.
+
+**Why is the docket numbering full of gaps?** Because courts skip numbers, add entries
+out of sequence and amend them later. Keep the court's sequence number exactly as
+given and never renumber: the gaps are part of the record.
+
+**The document did not download, it opened in a viewer.** That is the normal behaviour
+on these systems: attachments open a PDF in a viewer tab instead of triggering a
+download, so the download-handling route does not apply.
+
+**A case returned nothing. Does that mean it does not exist?** Not necessarily.
+Sealed, expunged and mistyped cases all render as the same absence, so keep the
+not-found branch explicit instead of treating it as an empty result.
+
+**See also:** [How to Handle a PDF That Opens in a New Tab with
+Playwright](how-to-handle-pdf-opens-new-tab-playwright.md), [Download and read PDFs
+linked from a page with Playwright](how-to-scrape-linked-pdfs-playwright.md), [How to
+rate limit your own Playwright scraper](how-to-rate-limit-your-scraper-playwright.md)
+
+## Sources
+
+- Playwright, Network, https://playwright.dev/python/docs/network - request
+  interception and response capture, checked for the case where a document opens in a
+  viewer instead of arriving as a download.
+- This project's pages on PDFs that open in a new tab and on scraping linked PDFs,
+  which carry the mechanics this page points at instead of repeating them.

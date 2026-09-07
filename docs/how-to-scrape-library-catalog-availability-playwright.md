@@ -233,3 +233,35 @@ interface does not:
 All three need history, which is why the write is append-only and the status string is
 kept verbatim. A table holding the current availability per title answers none of them,
 and is also the exact thing the library's own search page already does better.
+
+## Short answers to the questions that lead here
+
+**Can I just save the result URL and reload it later?** Usually not. Public catalogues
+carry the search in session state, so a replayed result URL returns an empty set or a
+fresh session. Run the query in the browser and read the results in the same session.
+
+**Why does the availability badge disagree with the holdings table?** The badge
+summarises, the table states. Availability is per copy and per branch, so a record
+showing available can still have nothing on the shelf at the branch you care about.
+
+**Should I normalise the status to available or not available?** Not at capture time.
+Library systems use a vocabulary that carries real distinctions - in transit, on hold,
+reference only, missing - and collapsing it to a boolean throws away the part that
+answers most questions.
+
+**Is any of this touching patron data?** No, and it should stay that way. Everything
+here works against the public catalogue with no login. A patron account is a different
+system with a different answer.
+
+**See also:** [How to handle cookie consent banners in
+Playwright](how-to-handle-cookie-consent-banners-playwright.md), [How to scrape
+paginated pages with Playwright](how-to-scrape-paginated-pages-playwright.md), [How to
+rate limit your own Playwright scraper](how-to-rate-limit-your-scraper-playwright.md)
+
+## Sources
+
+- Playwright, Locators, https://playwright.dev/python/docs/api/class-locator - the
+  locator model and clicking a result instead of navigating to its href, checked for
+  keeping a session token valid across a search and its record pages.
+- This project's pages on consent interstitials and on pacing, which describe the two
+  failure modes this page runs into most.

@@ -222,3 +222,33 @@ than another scrape: for two tariffs, the consumption at which their annual cost
 is the difference in standing charges divided by the difference in unit rates. That number
 is the actual advice a household needs, it is not published anywhere, and it is
 unreachable from the annual estimate the site puts in large type.
+
+## Short answers to the questions that lead here
+
+**Why does the quote form reject my inputs?** Usually order. These forms branch on
+whether you know your consumption, and the fields that appear depend on that answer,
+so filling them in the wrong sequence leaves a control the engine still expects.
+
+**Should I store one price per tariff?** No. A standing charge and a unit rate are
+separate numbers and the ranking between two tariffs flips depending on consumption.
+Keep them apart, and copy the inputs into every row even though it looks redundant.
+
+**Two runs an hour apart disagree. Which is right?** Both. A quote is a moment:
+tariffs change often and comparison sites cache aggressively, so the run timestamp
+belongs in the row and a disagreement is data about the market.
+
+**Can I follow the switch flow to get more detail?** No. Everything here is the public
+quote engine. A switch requires personal details and creates a real commercial action,
+which is a different activity entirely.
+
+**See also:** [Scrape a multi-step wizard flow with
+Playwright](how-to-scrape-multi-step-wizard-flow-playwright.md), [How to retry failed
+requests when scraping Playwright](how-to-retry-failed-requests-playwright.md), [How
+to scrape to JSON Lines with Playwright](how-to-scrape-to-json-lines-playwright.md)
+
+## Sources
+
+- Playwright, Input, https://playwright.dev/python/docs/input - `check()` and
+  `fill()`, checked for driving a branching form in the order the engine expects.
+- This project's page on multi-step wizard flows, which carries the general shape this
+  page applies to a pricing engine.

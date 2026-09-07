@@ -252,3 +252,37 @@ turns a live board into an answerable dataset:
 None of these come from a snapshot table holding today's board. They all come from the
 transitions, which is why the loop above writes changes rather than states, and why the
 last status travels with the disappearance.
+
+## Short answers to the questions that lead here
+
+**Why should I read the whole board in one evaluation?** Because the board rewrites
+itself while you read. Iterating the DOM row by row from Python crosses into the page
+once per call, and a refresh between two calls gives you half of one board and half of
+the next. One evaluation returns one consistent snapshot.
+
+**Scheduled, estimated, actual: which one do I store?** All of them, in separate
+fields. Collapsing them into a single time destroys the only thing a status board is
+for, which is the difference between what was planned and what happened.
+
+**What key identifies a row?** Flight number plus service day plus direction.
+Direction belongs in the key because a code-shared arrival and a departure can carry
+the same number at the same airport on the same day.
+
+**A flight disappeared from the board. Is that an error?** No, it is data. Boards show
+a window around now, so a flight leaves the board when it ages out. Record the
+disappearance with the last status you saw, or the series will look like the flight
+never landed.
+
+**See also:** [How to scrape virtual scrolling tables with
+Playwright](how-to-scrape-virtual-scrolling-tables-playwright.md), [How to retry
+failed requests when scraping Playwright](how-to-retry-failed-requests-playwright.md),
+[How to scrape without getting blocked](how-to-scrape-without-getting-blocked.md)
+
+## Sources
+
+- Playwright, Locators, https://playwright.dev/python/docs/api/class-locator -
+  `locator.evaluate_all`, which runs one piece of JavaScript over every matching
+  element, checked as the mechanism for taking a whole board in a single pass instead
+  of one round trip per row.
+- This project's page on virtual scrolling tables, for the case where the board is
+  windowed in the DOM as well as in time.
