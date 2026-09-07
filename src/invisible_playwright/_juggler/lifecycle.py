@@ -214,8 +214,14 @@ class Lifecycle:
 
     def wait_for_new_navigation(self, frame_id: str, previous: Optional[str],
                                 state: str = "load",
-                                timeout: float = 30.0) -> None:
-        """Wait for a navigation that is NOT the one already in progress.
+                                timeout: float = 30.0) -> Optional[str]:
+        """Wait for a navigation that is NOT the one already in progress, and
+        answer with the id of the one it waited for.
+
+        ⛔ THE ID IS RETURNED BECAUSE ONLY THIS FUNCTION KNOWS IT. The caller
+        needs it to answer `reload` / `go_back` with a Response, and reading
+        the frame's current navigation afterwards would be a different value
+        the moment the page navigates on its own. It is computed here anyway.
 
         ⛔ THIS IS THE HISTORY CASE, AND WITHOUT IT `go_back` IS A NO-OP THAT
         REPORTS SUCCESS. `Page.goBack` answers `{success: true}` the moment the
@@ -248,6 +254,7 @@ class Lifecycle:
             navigation = self.frames[frame_id].navigation
         self.wait_for_state(frame_id, state, navigation=navigation,
                             timeout=max(0.05, deadline - time.monotonic()))
+        return navigation
 
     def wait_for_main_frame(self, timeout: float = 20.0) -> str:
         """The main frame id, waiting for it to arrive.

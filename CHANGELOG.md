@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+- **`page.goto()` now answers with the Response, instead of always `None`.**
+  The navigation itself was never broken - the page loaded, the `response`
+  events carried the right statuses and `expect_response` worked - but the
+  return value was hardcoded to `None`, so `page.goto(url).status` was not
+  reachable. `page.reload()` answers with a Response too, and so does history
+  navigation, which shares that code path but is still held back by a separate
+  engine defect of its own. A redirect chain answers with the FINAL response,
+  and a same-document navigation still answers `None`, as upstream does.
+  Crawlee treats a `None` here as a failed load, so a `PlaywrightCrawler`
+  driven by this package failed every request; it now finishes them.
+
 ## [0.13.1] - 2026-09-06
 
 ### Changed
