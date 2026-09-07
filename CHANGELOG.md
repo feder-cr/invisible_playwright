@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.13.2] - 2026-09-08
+
 ### Fixed
 - **`page.goto()` now answers with the Response, instead of always `None`.**
   The navigation itself was never broken - the page loaded, the `response`
