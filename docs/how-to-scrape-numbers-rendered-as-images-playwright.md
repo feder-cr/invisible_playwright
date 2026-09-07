@@ -123,3 +123,96 @@ feed, a partner API, or a structured markup block the same page emits for search
 which is worth checking before any of the above:
 [extracting JSON-LD structured data](how-to-extract-json-ld-structured-data-playwright.md)
 takes about a minute to rule in or out.
+
+## A complete probe that tries the cheap routes in order
+
+```python
+import json, re, time
+from invisible_playwright import InvisiblePlaywright
+
+def recover_number(page, selector):
+    """Return (value, method) using the cheapest route that works."""
+    ld = page.eval_on_selector_all(
+        "script[type='application/ld+json']",
+        "els => els.map(e => e.textContent)",
+    )
+    for blob in ld:
+        try:
+            data = json.loads(blob)
+        except Exception:
+            continue
+        offers = (data.get("offers") if isinstance(data, dict) else None) or {}
+        if isinstance(offers, dict) and offers.get("price"):
+            return offers["price"], "json-ld"
+
+    probe = page.evaluate(PROBE, selector)
+    if probe:
+        for field in ("ariaLabel", "alt", "title", "srOnly", "describedBy"):
+            text = probe.get(field)
+            if text and re.search(r"\d", text):
+                return text.strip(), f"accessible:{field}"
+        for k, v in (probe.get("dataset") or {}).items():
+            if re.fullmatch(r"[\d.,]+", str(v)):
+                return v, f"dataset:{k}"
+
+    digits = page.evaluate(OFFSETS)
+    if digits and all(d.get("x") for d in digits):
+        return decode_sprite(digits), "sprite"
+
+    return None, "unresolved"
+
+with InvisiblePlaywright(seed=42) as browser, open("prices.jsonl", "a", encoding="utf-8") as out:
+    page = browser.new_page()
+    for url in product_urls:
+        page.goto(url, wait_until="domcontentloaded")
+        page.wait_for_selector(".price-image, .price", timeout=20000)
+        value, method = recover_number(page, ".price-image")
+        out.write(json.dumps({"url": url, "value": value, "method": method,
+                              "observed_at": time.time()}, ensure_ascii=False) + "\n")
+        out.flush()
+        page.wait_for_timeout(2000)
+```
+
+Recording `method` on every row is the part that makes this maintainable. When a site
+changes its rendering, the method column shows you exactly which pages moved from
+`accessible:alt` to `unresolved`, which is a far better signal than a column of nulls
+appearing with no explanation.
+
+## Why this technique exists, and what that implies
+
+Rendering a number as an image is expensive: it costs the site accessibility, translation,
+selectable text and search visibility for that field. Sites accept those costs for two
+different reasons, and the reason determines what you should do next.
+
+**Legacy or laziness.** A price baked into a promotional banner, a figure in a chart image,
+a table exported as a picture. There is no intent to stop anyone, the accessible label is
+usually present, and reading it is ordinary extraction.
+
+**Deliberate anti-extraction.** Per-session sprite shuffling, glyph-remapped fonts,
+canvas-drawn digits with no accessible layer. These cost the site real money in
+accessibility compliance, which is how you can tell the choice was intentional.
+
+The second case is the one worth naming clearly. This corpus is about making a browser
+behave like a browser so that defences aimed at non-browsers stop misfiring on you. That is
+a different thing from defeating a control whose only purpose is to prevent bulk
+extraction of one specific field, and the honest response there is to ask whether you have
+a relationship with the site that entitles you to the data: a contract, an API, a partner
+feed. The reasoning around that line runs through
+[scraping without getting blocked](how-to-scrape-without-getting-blocked.md).
+
+## If you do recognise, treat the output as a measurement
+
+Recognition output is not a fact, and the schema should say so:
+
+| field | note |
+|---|---|
+| `value` | null when confidence is below your threshold, never a guess |
+| `method` | `json-ld`, `accessible:alt`, `sprite`, `ocr`, `unresolved` |
+| `confidence` | only present for `ocr` |
+| `evidence` | path or hash of the element screenshot, for a human to check |
+
+A null with an image to look at is a workable row. A confidently wrong price is not, and it
+is the outcome that a pipeline without a threshold produces by default. Set the threshold
+high enough that the nulls annoy you, then fix the extraction rather than lowering the bar,
+because the alternative is a dataset whose errors are invisible and whose consumers have no
+way to find them.

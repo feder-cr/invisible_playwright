@@ -123,3 +123,98 @@ Scraping dockets for a defined question, on cases you can name, is the version o
 that is both legal in most places and defensible. Store it in something queryable such as
 [a SQLite database](how-to-scrape-into-a-database-playwright.md), keep the raw entry text,
 and keep the run's own metadata so you can say later exactly what you asked and when.
+
+## A complete run over a named case list
+
+```python
+import json, time
+from invisible_playwright import InvisiblePlaywright
+
+CASES = ["2026-CV-001234", "2026-CV-001987"]      # cases you can name and justify
+PACE_SECONDS, DAILY_CAP = 6, 200
+
+def already_done(path):
+    seen = set()
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                seen.add(json.loads(line)["case_number"])
+    except FileNotFoundError:
+        pass
+    return seen
+
+path = "dockets.jsonl"
+done = already_done(path)
+budget = DAILY_CAP
+
+with InvisiblePlaywright(seed=42) as browser, open(path, "a", encoding="utf-8") as out:
+    page = browser.new_page()
+    for case_number in CASES:
+        if case_number in done or budget <= 0:
+            continue
+        found = open_case(page, case_number)
+        record = {
+            "case_number": case_number,
+            "observed_at": time.time(),
+            "found": found,
+            "entries": docket_entries(page) if found else [],
+        }
+        if not found:
+            note = page.query_selector(".case-not-found")
+            record["not_found_text"] = note.inner_text().strip() if note else None
+        out.write(json.dumps(record, ensure_ascii=False) + "\n")
+        out.flush()
+        budget -= 1
+        time.sleep(PACE_SECONDS)
+```
+
+The daily cap is written into the loop rather than left to discipline. A court portal that
+decides you are abusive does not send a warning, and the cap is what keeps a long research
+project from ending on its second day.
+
+Keeping the `not_found_text` verbatim matters more here than elsewhere: sealed, expunged,
+transferred and mistyped all produce different wording, and that wording is the only
+evidence you will have about which one it was.
+
+## What these systems do when they decide you are a problem
+
+Court portals sit at the strict end of public infrastructure, and their responses are worth
+recognising because two of the three look like ordinary results.
+
+**A silent empty docket.** The case page renders with no entries rather than an error. Since
+a genuinely new case also has few entries, the difference is invisible unless you compare
+against a previous read. A case that had thirty entries yesterday and none today is a
+failed read, not a purged docket:
+
+```python
+    if previous.get(case_number) and not record["entries"]:
+        record["suspect"] = "entries vanished from a docket that had them"
+```
+
+**An interstitial that consumes the click.** Several portals put a terms page in front of
+the first search per session and again after a period of inactivity. A run that does not
+re-check for it after a pause submits its search into a page that is not the search page.
+
+**A hard block on the address.** This is the honest end state of ignoring the pace, and it
+is usually not reversible by waiting a few minutes. The general diagnosis order is in
+[scraping without getting blocked](how-to-scrape-without-getting-blocked.md), but the
+specific advice for court systems is different from most targets: the fix is almost always
+to slow down and narrow the question, not to look more like a browser.
+
+## The schema, and the retention decision that comes with it
+
+| table | key | holds |
+|---|---|---|
+| `case` | `court`, `case_number` | caption, type, filed date, current status |
+| `entry` | `court`, `case_number`, `sequence` | filed date, verbatim text, document references |
+| `run` | `run_id` | what was asked, when, and under what cap |
+
+The `run` table is unusual and worth keeping. Docket research is the kind of work where
+someone may later ask what you collected and why, and a log of the queries you made is a
+better answer than a reconstruction from the data.
+
+For retention, the defensible default is to keep the entries you analysed and drop the
+rest, rather than accumulating dockets because they were cheap to fetch. The value of this
+data is in answering a specific question about court activity; the risk in it is that a
+general archive of dockets is a general archive about people, and the second grows quietly
+out of the first if nobody decides otherwise.

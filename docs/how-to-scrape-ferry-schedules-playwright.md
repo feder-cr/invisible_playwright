@@ -128,3 +128,100 @@ volatility. The pacing rules are in
 Ferry operators are also small sites with real seasonal traffic spikes. Running the sweep
 overnight in the operator's own timezone is a courtesy that costs you nothing and keeps
 the run out of the window where it would actually be felt.
+
+## A complete sweep, resumable by construction
+
+```python
+import json, time
+from datetime import date, timedelta
+from invisible_playwright import InvisiblePlaywright
+
+ROUTES = ["north-crossing", "island-hop"]
+HORIZON = 60
+
+def already_done(path):
+    seen = set()
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                r = json.loads(line)
+                seen.add((r["route"], r["date"]))
+    except FileNotFoundError:
+        pass
+    return seen
+
+path = "sailings.jsonl"
+done = already_done(path)
+
+with InvisiblePlaywright(seed=42) as browser, open(path, "a", encoding="utf-8") as out:
+    page = browser.new_page()
+    for route in ROUTES:
+        for offset in range(HORIZON):
+            day = date.today() + timedelta(days=offset)
+            if (route, day.isoformat()) in done:
+                continue
+            rows = sailings_for(page, route, day)
+            out.write(json.dumps({
+                "route": route,
+                "date": day.isoformat(),
+                "observed_at": time.time(),
+                "sailings": rows,
+                "notices": [n.inner_text().strip()
+                            for n in page.query_selector_all(".service-notice, .disruption")],
+            }, ensure_ascii=False) + "\n")
+            out.flush()
+            page.wait_for_timeout(2500)
+```
+
+Reading back what is already on disk is a cheaper resume than a checkpoint file, because
+it cannot drift out of sync with the data it describes. Note that the record is written
+even when `sailings` is empty: a day with no service is a fact, and skipping the write
+would make it indistinguishable from a day the sweep never reached. The longer form of
+that argument is in
+[resuming an interrupted scrape](how-to-resume-an-interrupted-scrape-playwright.md).
+
+## Booking engines defend harder than timetable pages
+
+A ferry timetable lives inside a booking engine, and booking engines are protected because
+they are a target for inventory scraping and card testing. That shapes what works.
+
+**The date query is a real search, not a page view.** Each submission runs an availability
+lookup against live inventory, which is expensive for the operator and is exactly the
+request that gets rate limited first. Sixty days across two routes is 120 lookups, which
+is fine overnight and rude in a tight loop.
+
+**Refusal is often silent.** Rather than an error, you get the shell with an empty result
+region, which parses as a day with no sailings. That failure writes plausible rows and is
+never noticed, so guard on the positive marker:
+
+```python
+    page.wait_for_selector(".sailing, .no-sailings", timeout=20000)
+    if not page.query_selector(".sailing") and not page.query_selector(".no-sailings"):
+        raise RuntimeError("neither sailings nor a no-service marker: failed read")
+```
+
+**A real browser is the price of entry.** These engines fingerprint aggressively and a
+stripped client usually never reaches the timetable. Driving stock Playwright against a
+patched Firefox is what makes the query look like the query a passenger makes; the debug
+order when it stops working is in
+[scraping without getting blocked](how-to-scrape-without-getting-blocked.md).
+
+## The schema that answers "does this crossing actually run"
+
+Keep sailings nested under a query record rather than flattened into one table, or flatten
+with the query context copied down. Either way these five fields are what make the dataset
+worth having:
+
+| field | why |
+|---|---|
+| `route` and `direction` | two directions collide on time alone |
+| `date` | the query date, not the date you ran |
+| `status` | scheduled, cancelled, full, at the sailing level |
+| `observed_at` | the same date read twice tells you when it changed |
+| `notices` | the disruption text, per query, verbatim |
+
+The interesting analysis is the difference between two captures of the same date. A
+sailing that was scheduled on Monday and gone by Thursday is a cancellation, and that is
+the number a seasonal PDF can never give you: not what the operator plans to run, but what
+the operator actually ran. Storing every capture rather than updating in place is what
+makes that question answerable at all.

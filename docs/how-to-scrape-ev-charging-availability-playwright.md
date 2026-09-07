@@ -150,3 +150,110 @@ If you keep the connector-level rows with both timestamps, that limitation is vi
 the data itself, which is the point. Store it in something you can query by time, such as
 [a SQLite database written as you go](how-to-scrape-into-a-database-playwright.md), and
 resist the temptation to keep only the latest value per connector.
+
+## A complete poller, with the bounding box walked deliberately
+
+```python
+import json, time
+from invisible_playwright import InvisiblePlaywright
+
+BOXES = [                      # small boxes beat one big one: see the cap below
+    (51.44, -2.62, 51.47, -2.56),
+    (51.47, -2.62, 51.50, -2.56),
+]
+
+def harvest(page, box):
+    south, west, north, east = box
+    captured = []
+
+    def on_response(response):
+        if "station" in response.url.lower() and "/api/" in response.url:
+            try:
+                captured.append(response.json())
+            except Exception:
+                pass
+
+    page.on("response", on_response)
+    page.goto(f"https://example.com/map?sw={south},{west}&ne={north},{east}")
+    page.wait_for_timeout(4000)
+    page.remove_listener("response", on_response)
+    return captured
+
+with InvisiblePlaywright(seed=42) as browser, open("chargers.jsonl", "a", encoding="utf-8") as out:
+    page = browser.new_page()
+    while True:
+        for box in BOXES:
+            for payload in harvest(page, box):
+                stations = payload.get("stations") or payload.get("data") or []
+                if payload.get("truncated") or len(stations) >= 500:
+                    print("box capped, split it:", box)
+                for station in stations:
+                    for row in flatten(station):
+                        row["observed_at"] = time.time()
+                        out.write(json.dumps(row) + "\n")
+                out.flush()
+            page.wait_for_timeout(2000)
+        time.sleep(300)
+```
+
+Removing the listener at the end of each box matters more than it looks. Leaving it
+attached across boxes means responses from the previous query keep arriving into the next
+box's bucket, and you attribute chargers to a region they are not in. That ordering trap,
+and the related one where the response lands before you attach, are covered in
+[capturing XHR and API responses](how-to-capture-xhr-api-responses-playwright.md).
+
+The explicit cap check is there because a silently truncated response is the standard way
+these maps limit load. A box that returns exactly 500 stations is almost never a box that
+contains exactly 500 stations.
+
+## What a charging network sees, and why a poll is the hard case
+
+Most listing sites see a scraper once. A charger poller comes back every few minutes,
+forever, from the same session, asking for the same regions. That is the traffic shape
+that is easiest to identify, and no amount of fingerprint work makes a fixed-interval
+loop look like a person watching a map.
+
+Two things genuinely help, and they are about behaviour rather than identity.
+
+Vary the interval rather than sleeping a constant. A jittered wait around a target rate
+keeps the average where you want it without producing a metronome:
+
+```python
+import random
+time.sleep(300 + random.uniform(-45, 45))
+```
+
+Read only what changed. If the operator's payload carries a `last_updated`, skip stations
+whose value has not moved rather than re-querying their detail:
+
+```python
+    if station.get("last_updated") == seen.get(station["id"]):
+        continue
+```
+
+Underneath that, the browser still has to look like a browser, because these APIs are
+usually behind the same edge protection as the site. A patched Firefox driven by stock
+Playwright gets the JSON that a stripped client is refused, and the reasoning and debug
+order live in
+[scraping without getting blocked](how-to-scrape-without-getting-blocked.md).
+
+## The schema that makes utilisation answerable
+
+The reason to keep connector-level transitions rather than snapshots is that it makes the
+useful questions cheap:
+
+| question | what it needs |
+|---|---|
+| how often is this site full | transitions per connector, ordered |
+| which connectors are broken for weeks | a long run of `OUTOFORDER` with no change |
+| when is demand highest | transitions bucketed by hour of day |
+| is the operator's data stale | the gap between `reported_at` and `observed_at` |
+
+None of those are answerable from a table holding the current status per connector, which
+is the shape almost every first attempt produces. One row per state change, with
+`site_id`, `point_id`, `connector_id`, `standard`, `power_kw`, `status`, `observed_at`,
+`reported_at`, answers all four.
+
+Write it as [JSON Lines](how-to-scrape-to-json-lines-playwright.md) while collecting and
+load it into a database for querying. Appending is what makes an interrupted poll leave
+usable data instead of a hole, and a poll that runs for weeks will be interrupted.

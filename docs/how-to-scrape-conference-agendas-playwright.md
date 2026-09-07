@@ -135,3 +135,93 @@ Either way this is a small site with a spiky audience, so keep to the pacing in
 [rate limiting your own scraper](how-to-rate-limit-your-scraper-playwright.md) and prefer
 running outside the conference hours themselves, when the site is serving the people
 actually at the event.
+
+## A complete capture, days and sessions
+
+```python
+import json, time
+from invisible_playwright import InvisiblePlaywright
+
+def capture_agenda(page, url):
+    page.goto(url, wait_until="domcontentloaded")
+    page.wait_for_selector(".schedule-grid .session", timeout=20000)
+
+    tz_node = page.query_selector("meta[name='event-timezone'], .event-timezone")
+    tz = page.evaluate("e => e.content || e.textContent.trim()", tz_node) if tz_node else None
+
+    days, sessions = page.query_selector_all(".day-tabs [role='tab']"), []
+    if not days:
+        for s in page.evaluate(GRID):
+            sessions.append({**s, "day": None})
+    else:
+        for tab in days:
+            label = tab.inner_text().strip()
+            tab.click()
+            page.wait_for_function(
+                "() => document.querySelectorAll('.schedule-grid .session').length > 0")
+            page.wait_for_timeout(400)          # let the grid settle after the swap
+            for s in page.evaluate(GRID):
+                sessions.append({**s, "day": label})
+
+    return {"url": url, "event_timezone": tz,
+            "captured_at": time.time(), "sessions": sessions}
+
+with InvisiblePlaywright(seed=42) as browser, open("agenda.jsonl", "a", encoding="utf-8") as out:
+    page = browser.new_page()
+    agenda = capture_agenda(page, "https://example-conf.com/schedule")
+    out.write(json.dumps(agenda, ensure_ascii=False) + "\n")
+
+    for session in agenda["sessions"]:
+        if not session.get("href"):
+            continue
+        detail = session_detail(page, session["href"])
+        out.write(json.dumps({"session_href": session["href"], **detail,
+                              "captured_at": time.time()}, ensure_ascii=False) + "\n")
+        out.flush()
+        page.wait_for_timeout(1500)
+```
+
+Writing the whole agenda as one record per capture, rather than one row per session, is
+deliberate. Agendas are edited constantly in the final fortnight, and the interesting
+analysis is the diff between two captures: which sessions moved, which speakers dropped,
+which rooms changed. A row-per-session table updated in place erases exactly that.
+
+## Why conference sites break in the last two weeks
+
+These are usually built quickly on a platform, deployed once, and then edited under
+pressure. The failures are not defences.
+
+**The grid is rebuilt on every tab click.** Elements captured before the click are detached
+afterwards, so a Python-side loop holding handles across a tab change throws or reads
+stale nodes. Capturing each day in one evaluation, as above, avoids the whole class.
+
+**Session pages 404 while the grid still lists them.** A withdrawn talk is removed from the
+detail route before the schedule is regenerated. Record the failure as a row rather than
+letting it stop the run, and the disappearance becomes data about the event.
+
+**The timezone toggle changes the grid under you.** Hybrid events render either venue time
+or viewer time, and the control sometimes defaults from a stored preference. Read the
+resolved zone back after setting it rather than assuming, which is the same verify-the-lever
+discipline that applies to the unit toggles on other targets.
+
+Where a platform does put the schedule behind protection, which a few of the larger ones
+do, the page is worth a look before assuming a selector problem, using the order in
+[scraping without getting blocked](how-to-scrape-without-getting-blocked.md).
+
+## The shape that answers scheduling questions
+
+From captures, derive two tables:
+
+| table | key | holds |
+|---|---|---|
+| `session` | `event`, `day`, `track`, `start` | title, room, href, first and last seen |
+| `speaker` | `session_id`, `name` | affiliation, ordinal |
+
+Keeping speakers in their own table rather than a joined string is what makes the useful
+queries possible: who appears most across tracks, which affiliations dominate a programme,
+whether a speaker is double-booked against themselves. The last one happens more often than
+organisers would like, and it is only visible when track and time are both kept.
+
+The clash query is the one that justifies the grid work at the start of this page. Two
+sessions clash when they share a day and overlap in time on different tracks, and that is a
+single join once the track is a real column rather than a heading you read past.

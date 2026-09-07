@@ -127,3 +127,93 @@ School sites are small, often run by one person, and contain material about chil
 Take the calendar, which is published for parents, and leave the rest. There is rarely a
 reason for a scraper to touch newsletters, staff lists or photo galleries, and taking only
 the pages that answer your question is both the polite and the defensible default.
+
+## A complete run across several schools
+
+```python
+import hashlib, json, time
+from urllib.parse import urljoin
+from invisible_playwright import InvisiblePlaywright
+
+SCHOOLS = {
+    "1234": "https://example-school.org/term-dates",
+    "5678": "https://another-school.example/calendar",
+}
+
+def read_calendar(page, school_id, url):
+    page.goto(url, wait_until="domcontentloaded")
+    node = page.query_selector(FEED)
+    if node:
+        feed_url = urljoin(page.url, node.get_attribute("href")).replace("webcal://", "https://")
+        page.goto(feed_url)
+        raw = page.inner_text("pre") if page.query_selector("pre") else page.content()
+        return {"school_id": school_id, "format": "ics", "raw": raw}
+
+    pdf = page.query_selector("a[href$='.pdf']")
+    if pdf and not page.query_selector("table.term-dates"):
+        return {"school_id": school_id, "format": "pdf-only",
+                "pdf_url": urljoin(page.url, pdf.get_attribute("href"))}
+
+    rows = []
+    for tr in page.query_selector_all("table.term-dates tbody tr"):
+        cells = [td.inner_text().strip() for td in tr.query_selector_all("td")]
+        if len(cells) >= 2:
+            rows.append({"raw_label": cells[0], "raw_dates": cells[1]})
+    return {"school_id": school_id, "format": "html", "rows": rows}
+
+with InvisiblePlaywright(seed=42) as browser, open("terms.jsonl", "a", encoding="utf-8") as out:
+    page = browser.new_page()
+    for school_id, url in SCHOOLS.items():
+        record = read_calendar(page, school_id, url)
+        payload = json.dumps(record.get("rows") or record.get("raw") or "", sort_keys=True)
+        record["digest"] = hashlib.sha256(payload.encode()).hexdigest()
+        record["observed_at"] = time.time()
+        out.write(json.dumps(record, ensure_ascii=False) + "\n")
+        out.flush()
+        page.wait_for_timeout(3000)
+```
+
+The three-way branch is the point. A feed, an HTML table and a PDF-only page are different
+sources with different reliability, and recording which one you read is what lets you
+prefer the feed next time and flag the PDF-only schools for a human.
+
+## These sites fail by being small, not by defending
+
+Almost nothing here is an anti-bot problem. The failures are the ones small sites have.
+
+**The page is a link to a document.** Many schools publish the calendar only as a PDF or as
+an image of a table. The code above detects that rather than returning an empty row set,
+which is what a table-only parser does. Handling the document itself is
+[downloading and reading linked PDFs](how-to-scrape-linked-pdfs-playwright.md).
+
+**The calendar is a third-party embed.** Term dates frequently live inside an iframe from a
+calendar provider. A selector against the top document finds nothing while the dates are
+plainly on screen, and the fix is to read inside the frame:
+
+```python
+    frame = next((f for f in page.frames if "calendar" in (f.url or "")), None)
+    rows = frame.query_selector_all(".event") if frame else []
+```
+
+**The site is seasonally wrong.** Schools leave last year's dates up for months after they
+expire. The digest and the observation time make that visible: a calendar whose content has
+not changed while its dates have all passed is stale, not stable, and should be reported
+rather than stored as current.
+
+## The schema, and the merge that needs a source column
+
+Two levels: the capture, and the expanded days.
+
+| table | key | holds |
+|---|---|---|
+| `capture` | `school_id`, `observed_at` | format, digest, raw content or rows |
+| `day` | `school_id`, `date` | kind, raw_label, source (`district` or `school`) |
+
+The `source` column on the day table is what keeps a district calendar and a school's own
+overrides from silently contradicting each other. Training days are the field where they
+disagree most, and they are also the field parents most need right.
+
+Expanding to days at read time rather than at capture keeps the correction path open: when
+you discover that a particular school writes "w/c 14 October" meaning the whole week, you
+fix the expansion and re-derive, instead of re-scraping a hundred small sites that were
+kind enough to publish the dates in the first place.

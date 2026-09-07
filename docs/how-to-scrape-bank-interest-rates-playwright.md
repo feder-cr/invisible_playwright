@@ -141,3 +141,101 @@ in [rate limiting your own scraper](how-to-rate-limit-your-scraper-playwright.md
 and storing the history in
 [a SQLite database](how-to-scrape-into-a-database-playwright.md) gives you the one thing
 the bank's own page never shows: what the rate used to be.
+
+## A complete pass over several products
+
+```python
+import json, time
+from invisible_playwright import InvisiblePlaywright
+
+PRODUCTS = [("CA", "TFSA"), ("CA", "GIC"), ("CA", "SAVINGS")]
+
+def read_rates(page, region, product):
+    page.goto("https://example-bank.com/savings/rates", wait_until="domcontentloaded")
+    page.select_option("select#region", region)
+    page.select_option("select#product", product)
+    page.wait_for_function(
+        "() => document.querySelectorAll('table.rates tbody tr').length > 0")
+
+    node = page.query_selector(".rates-effective, .as-of-date")
+    effective = node.inner_text().strip() if node else None
+    kinds = page.eval_on_selector_all(
+        "table.rates thead th", "els => els.map(e => e.textContent.trim())")
+
+    rows = []
+    for parsed in page.evaluate(RESOLVE):
+        cells, notes = parsed["cells"], parsed["footnotes"]
+        if len(cells) < 2:
+            continue
+        rows.append({
+            "region": region, "product": product,
+            **parse_tier(cells[0]),
+            "rate_text": cells[1],
+            "rate_kind": kinds[1] if len(kinds) > 1 else None,
+            "footnotes": notes,
+            "effective_text": effective,
+            "observed_at": time.time(),
+        })
+    return rows
+
+with InvisiblePlaywright(seed=42) as browser, open("rates.jsonl", "a", encoding="utf-8") as out:
+    page = browser.new_page()
+    for region, product in PRODUCTS:
+        for row in read_rates(page, region, product):
+            out.write(json.dumps(row, ensure_ascii=False) + "\n")
+        out.flush()
+        page.wait_for_timeout(4000)
+```
+
+Reading the column headers into `rate_kind` rather than hardcoding "APY" is what keeps the
+dataset correct when the bank reorders its table or serves a different label by region.
+It costs one line and removes a whole class of silent mismatch.
+
+## Banks cache hard, and that is the failure to design for
+
+Retail banking sites are rarely hostile to a reader, and they are aggressively cached and
+heavily regionalised. Three consequences.
+
+**A stale page is the normal failure.** The request succeeds, the table renders, and the
+effective date is from last week. That is why `effective_text` is captured on every row
+rather than derived once: without it, a series shows a rate holding steady when the page
+simply was not refreshed.
+
+**The region control sometimes loses.** Where the site also infers a region from the
+visitor, selecting one in the dropdown can be overridden on the next navigation. Read the
+region back from the page after the table loads, and record what the page says rather than
+what you asked for:
+
+```python
+    shown = page.eval_on_selector("select#region", "e => e.value")
+    if shown != region:
+        row["region_requested"], row["region"] = region, shown
+```
+
+**Product pages sit behind an interstitial.** Regulatory splash screens and region pickers
+appear on first visit in several markets, and a run that does not clear them reads the
+splash instead of the rates. Handle it once per session the same way as any
+[cookie consent banner](how-to-handle-cookie-consent-banners-playwright.md).
+
+If a rate table does come back empty rather than stale, the page itself is the fastest
+diagnosis, in the order set out in
+[scraping without getting blocked](how-to-scrape-without-getting-blocked.md).
+
+## The schema, and the join that makes it useful
+
+One row per bank, region, product, tier and observation, with footnotes as an array:
+
+| field | why it earns its place |
+|---|---|
+| `min_balance` / `max_balance` | the tier, with null meaning open ended |
+| `rate_text` and parsed `rate` | the string survives a format change |
+| `rate_kind` | APY and APR are different quantities |
+| `footnotes` | resolved text, not markers |
+| `effective_text` | the bank's clock |
+| `observed_at` | yours, so staleness is measurable |
+
+The analysis this shape enables, and that the banks' own pages cannot, is the one comparing
+a headline rate against its conditions over time. Introductory rates that quietly shorten
+their bonus period, tiers whose thresholds drift upward, and footnotes that gain a
+requirement between two captures are all visible as a diff, and all invisible in a table
+that keeps only the current best rate per product.
