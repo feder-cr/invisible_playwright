@@ -133,7 +133,9 @@ are what you came for, print emulation is the one thing that will remove them.
 
 The full-URL trick deserves its own warning, because it is a gift that does not arrive.
 Generated content is not in the DOM. There is no node, so `text_content()` and `inner_text()`
-both skip it, and `getComputedStyle(el, "::after").content` is no substitute either: `attr()`
+both skip it, and
+[`getComputedStyle(el, "::after").content`](how-to-scrape-css-pseudo-element-content-playwright.md)
+is no substitute either: `attr()`
 resolves at used-value time, so the computed string can come back with the literal
 `attr(href)` still in it. Read `el.getAttribute("href")` and skip the detour.
 

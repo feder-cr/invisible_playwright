@@ -291,7 +291,8 @@ the pick-up and drop-off codes already normalised, so every section above become
 done by hand to rebuild what the file states. Scrape the HTML when no feed exists, when
 the feed lags the site, or when the site shows what the feed omits.
 
-A live departure board is also not a timetable. It shows predictions for the next half
+[A live departure board](how-to-scrape-flight-status-boards-playwright.md) is also not a
+timetable. It shows predictions for the next half
 hour and drops a journey once it has gone, so repeated scrapes give a record of
 predictions that cannot be diffed against a schedule. The same separation applies to
 disruption overlays: a struck-through time means "cancelled today" and belongs in its own
