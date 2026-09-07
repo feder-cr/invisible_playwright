@@ -257,3 +257,37 @@ is the shape almost every first attempt produces. One row per state change, with
 Write it as [JSON Lines](how-to-scrape-to-json-lines-playwright.md) while collecting and
 load it into a database for querying. Appending is what makes an interrupted poll leave
 usable data instead of a hole, and a poll that runs for weeks will be interrupted.
+
+## Short answers to the questions that lead here
+
+**Should I read the map pins or the network request behind them?** The request.
+Charger maps draw their pins from a JSON response, and the pins are a rendering of it
+that has already lost fields. Capture the response and you get the operator's own
+model, including the parts the map does not draw.
+
+**Why is my charger count wrong?** Almost always because a pin was treated as a
+charger. A pin is a site, a site holds several charging points, and a point holds
+several connectors. Availability lives at the connector, so a count taken at the pin
+level answers a different question.
+
+**How often should I poll charger status?** On the data's clock, not yours. Status
+changes on the scale of a charging session, so a ten-second poll produces almost
+entirely duplicate rows and looks like exactly what it is: a script that never sleeps.
+
+**Which timestamp should I store?** Both. When you read the value and when the
+operator says the value was true are different facts, and only the second one lets you
+tell a stale feed from a busy charger.
+
+**See also:** [How to capture XHR and API responses in
+Playwright](how-to-capture-xhr-api-responses-playwright.md), [How to rate limit your
+own Playwright scraper](how-to-rate-limit-your-scraper-playwright.md), [How to scrape
+into a SQLite database with Playwright](how-to-scrape-into-a-database-playwright.md)
+
+## Sources
+
+- Playwright, Network, https://playwright.dev/python/docs/network -
+  `page.expect_response()` and `page.route()`, checked for the response-capture
+  pattern this page uses and for attaching and detaching a listener around a single
+  query.
+- This project's page on capturing XHR and API responses, which covers the general
+  form that this page applies to a live availability feed.

@@ -238,3 +238,36 @@ which is a table that quietly rewrites its own history every time the carrier do
 For retention, delete captures once a parcel is delivered plus whatever window your use
 actually needs. A tracking archive is a movement record, and the honest default is to keep
 it only as long as it is answering a question.
+
+## Short answers to the questions that lead here
+
+**Why are the scan events out of order?** Because facilities upload in batches and a
+later scan can be written before an earlier one. Order is not guaranteed and neither
+is stability: a timeline can be revised between two reads, so store what you saw and
+when you saw it instead of assuming the last read is the truth.
+
+**Should I map the carrier's wording to my own status?** Keep both. Carriers use
+different vocabularies for the same physical event and change them without notice, so
+the carrier's words are the record and your status is a derivation you can redo when
+the mapping turns out to be wrong.
+
+**Why does the tracking page reject my URL?** Many carriers only accept a tracking
+number that was entered on the page, not one placed in the address bar. Type it into
+the field and submit the form.
+
+**How often should I check a parcel?** On the shipment's clock. Parcels produce events
+at handoffs, a few times a day at most, so a tight poll loop buys nothing and is the
+easiest possible thing for a carrier to spot.
+
+**See also:** [How to handle cookie consent banners in
+Playwright](how-to-handle-cookie-consent-banners-playwright.md), [How to rate limit
+your own Playwright scraper](how-to-rate-limit-your-scraper-playwright.md), [How to
+scrape without getting blocked](how-to-scrape-without-getting-blocked.md)
+
+## Sources
+
+- Playwright, Input, https://playwright.dev/python/docs/input - `locator.fill()` and
+  `press_sequentially()`, checked for entering a tracking number into a form that
+  refuses a value placed in the URL.
+- This project's page on scraping without getting blocked, for the debug order when a
+  read starts degrading instead of failing.

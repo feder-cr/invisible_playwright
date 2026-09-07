@@ -244,3 +244,37 @@ The `unparsed` kind is the field that makes this dataset honest. Every alternati
 invents a date for a listing that does not have one, and the cost of that invention is
 borne by whoever trusts the row. Surfacing "we could not read this deadline, here is what
 it said" is both easier to build and more useful than a confident wrong date.
+
+## Short answers to the questions that lead here
+
+**How should I store a deadline that is not a date?** As a shape that admits it.
+Scholarship deadlines are often rolling, or a term, or a phrase with a condition
+attached. Keep an unparsed branch: a pipeline that coerces everything into a date
+silently invents precision the source never had.
+
+**Can I compress the eligibility rules into fields?** Not without doing harm.
+Eligibility combines study level, field, nationality, residency, income and
+institution, and a student excluded by a field you dropped never finds that out. Keep
+the prose and derive alongside it.
+
+**Should I trust the aggregator's deadline?** Follow through to the provider. The
+aggregator row is a pointer, and the current deadline lives at the source, which is
+also where a withdrawn award disappears first.
+
+**How often is a refresh worth it?** On the deadline calendar. Providers update in a
+season and deadlines cluster, so a pass timed to that rhythm sees the changes; a daily
+pass mostly re-reads rows that have not moved.
+
+**See also:** [How to scrape multi-select facet filters with
+Playwright](how-to-scrape-multi-select-facets-playwright.md), [How to extract JSON-LD
+structured data with
+Playwright](how-to-extract-json-ld-structured-data-playwright.md), [How to rate limit
+your own Playwright scraper](how-to-rate-limit-your-scraper-playwright.md)
+
+## Sources
+
+- Playwright, Locators, https://playwright.dev/python/docs/api/class-locator - waiting
+  for a facet to repopulate a list with no navigation, checked for the filtering
+  behaviour these aggregators use.
+- This project's pages on multi-select facets and on JSON-LD, which cover the two
+  routes into an aggregator's own model of a listing.

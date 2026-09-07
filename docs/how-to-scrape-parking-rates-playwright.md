@@ -285,3 +285,39 @@ query it, or [JSON Lines](how-to-scrape-to-json-lines-playwright.md) if you will
 reprocess it. Either way, append rather than overwrite: a parking tariff that changed last
 month is the most interesting row in the table, and an updated-in-place record cannot tell
 you it ever moved.
+
+## Short answers to the questions that lead here
+
+**Why does the price I scraped not match what the garage charges?** Because a tariff
+table is a set of duration bands and the amount depends on when the car arrives and
+how long it stays. A single headline number is one band read out of context, and the
+small print underneath the table, the daily maximum and the minimum charge, usually
+outranks the table itself.
+
+**How do I know which tariff table I am looking at?** Read the scope, not just the
+rows. The same garage publishes weekday, weekend, event-day and overnight tables, and
+the page often names the scope once, above the table, then never again. Store the
+scope on every band you capture.
+
+**The rates only appear after I fill in a date. Is that a block?** No, it is the
+normal flow on most operator sites: the table is computed from the arrival and
+departure you enter. Drive the date control the way a person would and wait for the
+table to repopulate before reading it.
+
+**How fast can I crawl parking sites?** Slowly. These are small sites and a city-wide
+sweep at full speed is a visible load on infrastructure that was sized for a few
+hundred human visitors a day.
+
+**See also:** [How to scrape accordion and tab content with
+Playwright](how-to-scrape-accordion-and-tab-content-playwright.md), [How to rate limit
+your own Playwright scraper](how-to-rate-limit-your-scraper-playwright.md), [How to
+resume an interrupted scrape with
+Playwright](how-to-resume-an-interrupted-scrape-playwright.md)
+
+## Sources
+
+- Playwright, Locators, https://playwright.dev/python/docs/api/class-locator -
+  `evaluate_all` and the locator waiting model, checked for reading a whole table in
+  one pass instead of one call per row.
+- This project's pages on pacing and on resuming an interrupted run, which carry the
+  behaviour this page depends on instead of repeating it.

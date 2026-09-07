@@ -245,3 +245,37 @@ is the outcome that a pipeline without a threshold produces by default. Set the 
 high enough that the nulls annoy you, then fix the extraction rather than lowering the bar,
 because the alternative is a dataset whose errors are invisible and whose consumers have no
 way to find them.
+
+## Short answers to the questions that lead here
+
+**Where do I look before trying to read pixels?** The accessible layer. In practice
+one of `alt`, `aria-label`, a `data-` attribute or a visually hidden span carries the
+digits, because the site still has to be readable by a screen reader.
+
+**The image is one file for the whole number. Now what?** Check whether it is a
+sprite. A common technique renders each digit as a background offset into a single
+image, and the offsets decode to digits without any recognition.
+
+**The DOM text is there but wrong.** That is the third variant: a custom font whose
+glyph for one digit draws another. The text is misleading instead of missing, which is
+worse, because nothing looks broken.
+
+**When should I give up?** Sooner than feels comfortable, and that is a real answer.
+Sprite shuffling, per-session glyph remapping and an image with no accessible label
+are deliberate, and recognition output is a measurement with an error rate, not a
+fact.
+
+**See also:** [How to take full-page screenshots with
+Playwright](how-to-take-full-page-screenshots-playwright.md), [How to extract JSON-LD
+structured data with
+Playwright](how-to-extract-json-ld-structured-data-playwright.md), [How to scrape
+without getting blocked](how-to-scrape-without-getting-blocked.md)
+
+## Sources
+
+- MDN, `aria-label`,
+  https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA/Reference/Attributes/aria-label
+  - the attribute that most often carries the digits a site renders as an image,
+  checked as the first place this page looks.
+- Playwright, Locators, https://playwright.dev/python/docs/api/class-locator - reading
+  attributes and taking an element screenshot scoped to one node.

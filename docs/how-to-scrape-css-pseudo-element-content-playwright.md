@@ -271,3 +271,36 @@ Two columns for one visible string looks redundant and costs almost nothing. It 
 class of silent breakage into a visible one: a diff between the two columns is a fact about
 the site's markup, and a diff that suddenly disappears across a whole crawl is the earliest
 warning you will get that the page was redesigned under you.
+
+## Short answers to the questions that lead here
+
+**Why does the value come back with quotation marks?** Because `content` is a CSS
+value and not a string, so it arrives quoted and needs unwrapping. It can also come
+back as `none`, which means the pseudo-element is not generating anything at all.
+
+**Can `content` hold something that is not text?** Yes, and each form needs different
+handling: a counter, an attribute reference, a URL, or a concatenation of several of
+those. A parser that assumes a plain string quietly mangles all four.
+
+**Is reading this per element slow?** It costs a round trip each time. For a list,
+collect the values in a single evaluation in the page and return them together.
+
+**How do I find out whether a page uses this at all?** Ask once, before writing any
+selector, instead of discovering it from a column of missing values. Nothing here is a
+defence, so it fails by silence: the text is simply absent from what an extractor
+sees.
+
+**See also:** [How to scrape shadow DOM content with
+Playwright](how-to-scrape-shadow-dom-playwright.md), [Extract data from canvas charts
+with Playwright](how-to-extract-data-from-canvas-charts-playwright.md), [How to scrape
+without getting blocked](how-to-scrape-without-getting-blocked.md)
+
+## Sources
+
+- MDN, `Window.getComputedStyle()`,
+  https://developer.mozilla.org/en-US/docs/Web/API/Window/getComputedStyle - reading a
+  pseudo-element's computed style through the second argument, which is the mechanism
+  this page rests on.
+- MDN, the `content` property,
+  https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/content - the
+  value types the property accepts, checked for the four forms this page separates.

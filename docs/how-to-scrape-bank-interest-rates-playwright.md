@@ -239,3 +239,37 @@ a headline rate against its conditions over time. Introductory rates that quietl
 their bonus period, tiers whose thresholds drift upward, and footnotes that gain a
 requirement between two captures are all visible as a diff, and all invisible in a table
 that keeps only the current best rate per product.
+
+## Short answers to the questions that lead here
+
+**What do the little superscript markers next to a rate mean?** They point at a
+footnote further down the page, and the footnote frequently carries the condition that
+makes the rate real: a minimum balance, a term, a new-money-only clause. Resolve the
+marker to its text at capture time, while the pointer is still in front of you.
+
+**Is APR the same as APY?** No, and mixing them is the most common error in this data.
+Deposit products publish a yield that includes compounding; lending products publish a
+rate that does not. Read the column header into the row instead of hardcoding either.
+
+**The rate table has bands. What is the row?** The tier. Tier bounds are part of the
+rate, and a null upper bound means the open-ended top band. Keep the tier text as
+written too, because banks describe the same band in words that do not always match
+the numbers.
+
+**How fresh is a published rate?** Banks print an effective date, and it is the
+closest thing to a timestamp this data has. These pages are also cached hard, so the
+effective date and your fetch time can differ by days.
+
+**See also:** [How to scrape geotargeted content with
+Playwright](how-to-scrape-geotargeted-content-playwright.md), [How to handle cookie
+consent banners in Playwright](how-to-handle-cookie-consent-banners-playwright.md),
+[How to scrape into a SQLite database with
+Playwright](how-to-scrape-into-a-database-playwright.md)
+
+## Sources
+
+- Playwright, Locators, https://playwright.dev/python/docs/api/class-locator - driving
+  a product or region picker that changes content with no URL change, and waiting for
+  the table to repopulate before reading it.
+- This project's page on geotargeted content, which covers the region half of the same
+  problem.

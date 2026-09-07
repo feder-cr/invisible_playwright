@@ -256,3 +256,40 @@ The series is then one row per station, grade and observation, with `queried_loc
 `unit`, `currency`, `reported_age` and `observed_at`. That is enough to answer where fuel
 is cheapest today, how fast a price change propagates across a chain, and how stale a
 given site's data really is, which is the question the site itself will never answer.
+
+## Short answers to the questions that lead here
+
+**Why do two runs return different stations for the same site?** Because the page
+decides where you are before it shows you anything, and with no explicit location it
+decides from the exit IP. The data is not noisy, it is unlabelled: write the queried
+location into every row and the difference becomes readable.
+
+**Why does typing into the location box work when setting the value does not?**
+Location fields are usually autocomplete widgets that only commit on a real key
+sequence. A value written straight into the element leaves the widget's internal state
+empty, so the search runs against nothing.
+
+**Should I convert the price to a float at capture time?** No. The string carries the
+currency and the unit, and those are exactly what a float conversion throws away. A
+page can show a price per litre and a price per gallon in different regions, and a
+series that mixes them has a step nobody can explain.
+
+**How reliable are these prices?** Many fuel price sites are crowd-sourced, so the
+number is what a visitor said they paid. Capture the reported age next to it: a price
+from two hours ago and one from nine days ago are not comparable, and that gap is
+often the largest source of variance you have.
+
+**See also:** [Scrape autocomplete and typeahead inputs with
+Playwright](how-to-scrape-autocomplete-typeahead-playwright.md), [How to scrape
+geotargeted content with Playwright](how-to-scrape-geotargeted-content-playwright.md),
+[How to rate limit your own Playwright
+scraper](how-to-rate-limit-your-scraper-playwright.md)
+
+## Sources
+
+- Playwright, Input, https://playwright.dev/python/docs/input - `locator.fill()`,
+  which focuses the element and fires an input event, and `press_sequentially()`,
+  which types character by character with an optional delay. Checked for why an
+  autocomplete commits on typing and not on an assigned value.
+- This project's pages on autocomplete inputs and on geotargeted content, which carry
+  the two mechanics this page depends on.

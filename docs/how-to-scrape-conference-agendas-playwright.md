@@ -225,3 +225,37 @@ organisers would like, and it is only visible when track and time are both kept.
 The clash query is the one that justifies the grid work at the start of this page. Two
 sessions clash when they share a day and overlap in time on different tracks, and that is a
 single join once the track is a real column rather than a heading you read past.
+
+## Short answers to the questions that lead here
+
+**Where does the track name live in a grid agenda?** In the column header, once, and
+not in the cells. Read the header first and map each session to its column, or every
+session arrives without the one field that makes a grid a schedule.
+
+**The agenda prints times with no timezone. Which one applies?** The event's,
+essentially always. Agendas print local times bare, so resolve the event zone once and
+attach it to every session; your own machine's zone is the wrong answer and the
+easiest one to record by accident.
+
+**Why is my capture missing half the sessions?** Because the agenda splits by day
+behind tabs that swap the grid without changing the URL. The failure is quiet: you get
+a full, valid, complete-looking grid for one day.
+
+**How stable is a conference agenda?** Not stable at all in the final weeks. Rooms
+move, speakers cancel and sessions swap slots up to the morning of the event, which is
+why a capture is stored as a dated record and not as the truth.
+
+**See also:** [How to scrape accordion and tab content with
+Playwright](how-to-scrape-accordion-and-tab-content-playwright.md), [How to rate limit
+your own Playwright scraper](how-to-rate-limit-your-scraper-playwright.md), [How to
+scrape without getting blocked](how-to-scrape-without-getting-blocked.md)
+
+## Sources
+
+- MDN, the `time` element,
+  https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/time - the
+  `datetime` attribute as the machine-readable form of a printed time, checked for
+  where an agenda may carry a zone the visible text omits.
+- Playwright, Locators, https://playwright.dev/python/docs/api/class-locator - reading
+  a header row once and mapping cells to it, and driving tabs that swap content
+  without a navigation.

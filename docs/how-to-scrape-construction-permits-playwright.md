@@ -228,3 +228,36 @@ On the personal data, one practical default: keep `contractor` and drop `applica
 your question genuinely needs the individual. Contractor activity is commercial and is the
 subject of most legitimate analysis; applicant names are the part that makes a permit
 dataset a dataset about people.
+
+## Short answers to the questions that lead here
+
+**Why does my search return nothing when the same query works by hand?** Order. Permit
+search forms have dependent fields, and a type or status list only populates after the
+date range or the jurisdiction is set. Filling them out of order leaves a control
+empty and the search runs against a filter that was never applied.
+
+**Page two does nothing when I change the URL. Why?** Because paging is a form
+submission, not a navigation. Click the control and wait for the first row to change;
+waiting for a navigation returns immediately and you read page one twice.
+
+**Should I capture the current status or the whole history?** The history. These
+records exist to answer questions about duration - how long a permit sat in each
+review stage - and a single current status cannot answer any of them.
+
+**How do I know the portal is not silently capping my results?** Ask it for the count
+and compare. These systems cap without saying so, and a month that returns exactly the
+cap is a month you have not actually read.
+
+**See also:** [Scrape a multi-step wizard flow with
+Playwright](how-to-scrape-multi-step-wizard-flow-playwright.md), [How to resume an
+interrupted scrape with
+Playwright](how-to-resume-an-interrupted-scrape-playwright.md), [How to retry failed
+requests when scraping Playwright](how-to-retry-failed-requests-playwright.md)
+
+## Sources
+
+- Playwright, Locators, https://playwright.dev/python/docs/api/class-locator - waiting
+  for content to change after a form submission rather than waiting for a navigation,
+  checked for the paging behaviour these portals use.
+- This project's page on resuming an interrupted scrape, which this page depends on
+  because a months-long sequential crawl is the job that dies partway through.

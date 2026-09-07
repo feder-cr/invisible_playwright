@@ -217,3 +217,35 @@ Expanding to days at read time rather than at capture keeps the correction path 
 you discover that a particular school writes "w/c 14 October" meaning the whole week, you
 fix the expansion and re-derive, instead of re-scraping a hundred small sites that were
 kind enough to publish the dates in the first place.
+
+## Short answers to the questions that lead here
+
+**Is there a faster route than parsing the page?** Look for the feed first. Many
+schools publish the calendar as a subscribable feed, which is complete, dated and far
+less likely to change shape than a hand-built table.
+
+**Why is my last holiday day always wrong?** The inclusive end. A half-term written as
+one date to another includes the second date, and an exclusive range comparison drops
+it every single time.
+
+**Are all non-teaching days the same?** No, and parents care about the difference.
+Term calendars mix holidays, staff training days and closures, so keep the category
+the school gives instead of flattening them into one kind of day.
+
+**The district calendar and the school calendar disagree.** The school page wins.
+Districts publish a base calendar and individual schools override it, so record which
+source each day came from or the merge becomes unresolvable later.
+
+**See also:** [Download and read PDFs linked from a page with
+Playwright](how-to-scrape-linked-pdfs-playwright.md), [How to scrape to JSON Lines
+with Playwright](how-to-scrape-to-json-lines-playwright.md), [How to rate limit your
+own Playwright scraper](how-to-rate-limit-your-scraper-playwright.md)
+
+## Sources
+
+- IETF, RFC 5545, Internet Calendaring and Scheduling Core Object Specification,
+  https://datatracker.ietf.org/doc/html/rfc5545 - the iCalendar format these feeds
+  publish, checked for the inclusive and exclusive end semantics that this page warns
+  about.
+- This project's page on linked PDFs, for the schools that publish the calendar only
+  as a document.

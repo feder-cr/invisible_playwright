@@ -244,3 +244,36 @@ vehicles take this part. The second is the one a schema keyed on part number wit
 embedded compatibility blob cannot answer without unpacking every row, and it is the query
 that matters commercially, because it is the one that tells you how much inventory risk a
 part carries.
+
+## Short answers to the questions that lead here
+
+**How do I wait for a cascading dropdown correctly?** Wait on the option count of the
+next control, not on a fixed timeout. Each level repopulates the one below it, and a
+sleep long enough today is a race tomorrow.
+
+**What identifies a fitment row?** The whole path, not the part number. A part fits a
+combination, and the question runs in both directions: which parts fit this vehicle,
+and which vehicles take this part. Only the full path answers both.
+
+**Why keep the fitment notes as text?** Because they are the difference between a
+right part and a wrong one: a build-date cutoff, an engine code, a market, an
+equipment condition. A boolean fit with the qualifier discarded is worse than no
+answer.
+
+**Should I sweep the whole cross product?** No. Decide the slice explicitly. Every
+combination is a lookup against a real catalogue database, not a cached page, so the
+cost is carried by the catalogue and the sweep is the most visible thing you can do.
+
+**See also:** [How to capture XHR and API responses in
+Playwright](how-to-capture-xhr-api-responses-playwright.md), [How to resume an
+interrupted scrape with
+Playwright](how-to-resume-an-interrupted-scrape-playwright.md), [How to rate limit
+your own Playwright scraper](how-to-rate-limit-your-scraper-playwright.md)
+
+## Sources
+
+- Playwright, Locators, https://playwright.dev/python/docs/api/class-locator - waiting
+  on the state of a dependent control, checked for the cascade this page drives.
+- Playwright, Network, https://playwright.dev/python/docs/network -
+  `page.expect_response()`, for the catalogues that answer each cascade level with a
+  request you can read directly.

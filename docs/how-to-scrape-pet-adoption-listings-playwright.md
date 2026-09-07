@@ -235,3 +235,35 @@ Two honest caveats belong next to it. `disappeared` is not `adopted`, so any pub
 figure should say so. And animals that are relisted after a returned adoption appear twice
 with the same id, which is real signal rather than noise, but only if your analysis expects
 it rather than deduplicating it away.
+
+## Short answers to the questions that lead here
+
+**What should I key an animal on?** The shelter's own identifier, taken from the
+record URL. Names repeat, photographs change, and a hash of the visible fields moves
+the moment the shelter edits a description.
+
+**An animal vanished from the list. What happened?** That is the most valuable event
+on these sites and it has more than one cause: adopted, withdrawn, or filtered out by
+a default the site applied before you saw the page. Reconcile the set against the
+previous run and record the disappearance as its own event.
+
+**Am I seeing every animal?** Probably not on the first request. Shelter sites default
+to filters more often than most listing sites - species, adoptable status, location -
+so set the filters explicitly instead of accepting whatever the page opens with.
+
+**Should I download the photographs?** Keep the URL, not the file. Mirroring images
+costs a volunteer-run shelter real bandwidth and takes on a licensing question that
+the URL does not.
+
+**See also:** [Scrape load-more button pages with
+Playwright](how-to-scrape-load-more-button-playwright.md), [Scrape lazy-loaded images
+with Playwright](how-to-scrape-lazy-loaded-images-playwright.md), [How to rate limit
+your own Playwright scraper](how-to-rate-limit-your-scraper-playwright.md)
+
+## Sources
+
+- Playwright, Locators, https://playwright.dev/python/docs/api/class-locator - the
+  locator model used to enumerate cards and read a record URL, checked for keying on
+  the shelter's identifier instead of on visible text.
+- This project's pages on load-more pagination and lazy-loaded images, which cover the
+  two mechanics an aggregator adds on top of a plain shelter list.

@@ -235,3 +235,37 @@ unless both series carry the same window, the same interval and the same caveats
 mirrors and continuous integration. Keeping `version` in the key at least surfaces the
 usual explanation, which is that most of a popular library's traffic is one old pinned
 release being pulled by machines.
+
+## Short answers to the questions that lead here
+
+**Do I need a browser for download counts at all?** Often not, and that is the first
+thing to check. Several registries publish the numbers as a dataset or an endpoint,
+which is faster and more complete than any dashboard. Reach for a browser when the
+dashboard is the only published form.
+
+**Should I read the chart or the request behind it?** The request. It usually carries
+the window as parameters, which is the handle for getting more than the dashboard
+chooses to draw.
+
+**Why do recent days keep changing?** Registries revise the last few days as mirrors
+and logs settle. Append one row per day per observation instead of overwriting, or the
+revisions erase themselves.
+
+**Can I compare two packages by download count?** This is the tempting use and the
+least reliable one. The same headline number can be made of very different traffic, so
+keep the qualifiers the registry publishes in the row itself, where they stay attached
+to the number they qualify.
+
+**See also:** [How to capture XHR and API responses in
+Playwright](how-to-capture-xhr-api-responses-playwright.md), [Extract data from canvas
+charts with Playwright](how-to-extract-data-from-canvas-charts-playwright.md), [How to
+scrape to JSON Lines with Playwright](how-to-scrape-to-json-lines-playwright.md)
+
+## Sources
+
+- PyPI, Stats API, https://docs.pypi.org/api/stats/ - an example of a registry
+  publishing download data directly, checked for the first step this page recommends,
+  which is to look for the dataset before opening a browser.
+- Playwright, Network, https://playwright.dev/python/docs/network -
+  `page.expect_response()`, checked for taking the dashboard's own request instead of
+  its rendering.
