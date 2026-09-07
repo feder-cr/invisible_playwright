@@ -557,7 +557,15 @@ class FrameDispatcher(Dispatcher):
                                 "newDocument": {"request": None}})
         # ⛔ `goto` answers with a Response CHANNEL or null, never with a URL.
         # `_frame.py` calls `from_nullable_channel` on it.
-        return {"response": None}
+        #
+        # ⛔ AND IT WAS HARDCODED TO null UNTIL 2026-09-08, WHICH WAS THE WHOLE
+        # OF [B200]: the network layer was already right - the events, the
+        # statuses and `expect_response` all worked - and only the RETURN VALUE
+        # was missing, so nothing in this project saw it for a month because
+        # nothing in this project reads what `goto` answers. Crawlee does, and
+        # treats a None as a failed load, so every request it made failed.
+        return {"response": self.page.navigation_response(
+            result["navigationId"])}
 
     # ── reading ─────────────────────────────────────────────────────────────
     def op_title(self, params: Dict) -> Any:
@@ -1142,6 +1150,13 @@ class RequestDispatcher(Dispatcher):
     def __init__(self, server, page: "PageDispatcher", params: Dict) -> None:
         self.page = page
         self.request_id = params.get("requestId")
+        #: The navigation this request BELONGS to, or None when it is not a
+        #: document load. ⛔ `NetworkObserver.js` sets it only on the main
+        #: document channel, and hands the SAME id to every hop of a redirect
+        #: chain, so it identifies a navigation exactly rather than by
+        #: heuristic - which is what makes `PageDispatcher.navigation_response`
+        #: able to answer `goto` with the response of the document it loaded.
+        self.navigation_id = params.get("navigationId")
         self.raw_headers = _headers_array(params.get("headers"))
         self.response: Optional["ResponseDispatcher"] = None
         #: Filled by `Network.requestFailed`. ⛔ None until it fails: an
@@ -1170,7 +1185,7 @@ class RequestDispatcher(Dispatcher):
             # this is where somebody will come looking.
             **({"postData": params["postData"]}
                if params.get("postData") is not None else {}),
-            "isNavigationRequest": bool(params.get("navigationId")),
+            "isNavigationRequest": bool(self.navigation_id),
             "resourceType": _resource_type(params),
             "frame": page.frame_for(frame_id).channel,
         })
@@ -1475,6 +1490,16 @@ class PageDispatcher(Dispatcher):
         self.replayed_events = replayed
         self._frames: Dict[str, Any] = {}
         self._requests: Dict[str, Any] = {}
+        #: navigationId -> the document RequestDispatcher of that navigation.
+        #: ⛔ AN INDEX, NOT A SECOND COPY: the response itself keeps living on
+        #: the request, and this only answers "which request loaded navigation
+        #: N". It cannot be replaced by a scan of `_request_log`, which is
+        #: capped, nor of `_requests`, which is emptied on `requestFinished` -
+        #: and by the time `goto` stops waiting for `load` the document request
+        #: has finished. Capped like the logs, and a REDIRECT overwrites its
+        #: own entry hop by hop, so the last writer is the final hop, which is
+        #: the response Playwright answers with.
+        self._navigation_requests: Dict[str, Any] = {}
         # ⛔ CAPPED, and that is not a detail: a page printing in a loop
         # would exhaust the memory of the process DRIVING it. Playwright keeps
         # the same logs and caps them for the same reason.
@@ -1668,6 +1693,8 @@ class PageDispatcher(Dispatcher):
             request = RequestDispatcher(self.server, self, params)
             self._requests[params.get("requestId")] = request
             self._remember(self._request_log, request)
+            if request.navigation_id:
+                self._remember_navigation(request)
             self.context.emit("request", {"request": request.channel,
                                           "page": self.channel})
             if self.context.intercepting and params.get("isIntercepted"):
@@ -1736,6 +1763,44 @@ class PageDispatcher(Dispatcher):
         log.append(entry)
         if len(log) > PageDispatcher.LOG_LIMIT:
             del log[0]
+
+    def _remember_navigation(self, request: "RequestDispatcher") -> None:
+        """Index a document request by the navigation it belongs to.
+
+        ⛔ THE KEY IS RE-INSERTED, not merely overwritten, so that a redirect
+        chain keeps ONE entry and keeps it at the young end of the dict. A
+        plain assignment would leave the entry at the position of the first
+        hop, and the eviction below - which drops the oldest key - would then
+        be able to throw away a navigation that is still in progress.
+        """
+        index = self._navigation_requests
+        index.pop(request.navigation_id, None)
+        index[request.navigation_id] = request
+        while len(index) > PageDispatcher.LOG_LIMIT:
+            del index[next(iter(index))]
+
+    def navigation_response(self, navigation_id: Optional[str]) -> Any:
+        """The Response CHANNEL for a finished navigation, or None.
+
+        ⛔ None IS A REAL ANSWER, and Playwright gives it in exactly the cases
+        that reach here with nothing to return: a same-document navigation or
+        an anchor (no navigationId at all, so `goto` never even started a
+        document load), and a navigation whose document request failed or was
+        served without a response. Answering with an empty object instead
+        would turn "there is no response" into "here is a response with no
+        status", which is the shape of lie rule 12 is about.
+
+        The three cases collapse into ONE lookup on purpose: a `None` id, an
+        id nothing was indexed under, and an indexed request that has no
+        response yet all mean the same thing here. An explicit guard on the
+        id was written first and removed - it could not change the answer,
+        since `get(None)` misses like any other miss, so it was a second
+        place deciding a question this line already decides.
+        """
+        request = self._navigation_requests.get(navigation_id)
+        if request is None or request.response is None:
+            return None
+        return request.response.channel
 
     def _announce_file_chooser(self, params: Dict) -> None:
         """Build the handle the client expects and emit `fileChooser`.
@@ -1888,10 +1953,16 @@ class PageDispatcher(Dispatcher):
             # normal answer in Playwright, and raising would turn an ordinary
             # "there is nothing behind" into a failed script.
             return {"response": None}
-        self.lifecycle.wait_for_new_navigation(
+        # ⛔ THE ANCHOR IS THE ANSWER. History gives back no navigationId, so
+        # the wait is what discovers which navigation this was - and it is the
+        # only thing that can, since reading the frame afterwards would race a
+        # navigation the page started on its own. Returning it is what lets
+        # `reload` answer with a Response like `goto` does: the same [B200],
+        # which would otherwise be reopened here in a month.
+        navigation = self.lifecycle.wait_for_new_navigation(
             frame_id, previous, params.get("waitUntil") or "load",
             timeout=(params.get("timeout") or 30000) / 1000.0)
-        return {"response": None}
+        return {"response": self.navigation_response(navigation)}
 
     def op_go_back(self, params: Dict) -> Any:
         return self._history("Page.goBack", params)
