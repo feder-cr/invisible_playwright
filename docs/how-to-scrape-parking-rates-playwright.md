@@ -161,3 +161,127 @@ prefer one pass per day over a poll: tariffs change on the scale of months.
 
 The result is a table of bands, plus scopes, plus notes. It is more data than a single
 price, and it is the only form that still means the same thing tomorrow.
+
+## A complete run, one garage to storage
+
+Putting the pieces together, with the parts that matter in production: a browser that
+looks like a browser, a scope loop, and a write that happens per garage rather than at the
+end.
+
+```python
+import json, re, time
+from invisible_playwright import InvisiblePlaywright
+
+def read_bands(page):
+    bands = []
+    for row in page.query_selector_all("table.rates tbody tr"):
+        cells = [c.inner_text().strip() for c in row.query_selector_all("td")]
+        if len(cells) < 2:
+            continue
+        m = DURATION.search(cells[0])
+        if not m:
+            continue
+        bands.append({
+            "from_minutes": to_minutes(m.group("lo"), m.group("lo_unit") or m.group("hi_unit")),
+            "to_minutes": to_minutes(m.group("hi"), m.group("hi_unit")),
+            "label": cells[0],
+            "amount": cells[1],
+        })
+    return bands
+
+def scrape_garage(page, url):
+    page.goto(url, wait_until="domcontentloaded")
+    page.wait_for_selector("table.rates tbody tr, .rates-unavailable")
+    if page.query_selector(".rates-unavailable"):
+        return {"url": url, "observed_at": time.time(), "tariffs": [], "note": "no published rates"}
+
+    tabs = page.query_selector_all("[role='tab'], .rate-tabs button")
+    tariffs = []
+    if not tabs:
+        tariffs.append({"scope": "default", "bands": read_bands(page)})
+    else:
+        for tab in tabs:
+            scope = tab.inner_text().strip()
+            tab.click()
+            page.wait_for_selector("table.rates tbody tr")
+            tariffs.append({"scope": scope, "bands": read_bands(page)})
+
+    return {
+        "url": url,
+        "observed_at": time.time(),
+        "tariffs": tariffs,
+        "notes": [n.inner_text().strip()
+                  for n in page.query_selector_all(".rate-notes li, .rates-footnote")],
+    }
+
+with InvisiblePlaywright(seed=42) as browser, open("garages.jsonl", "a", encoding="utf-8") as out:
+    page = browser.new_page()
+    for url in garage_urls:
+        record = scrape_garage(page, url)
+        out.write(json.dumps(record, ensure_ascii=False) + "\n")
+        out.flush()
+        page.wait_for_timeout(3000)
+```
+
+The `flush` on every garage is deliberate. A run over a city is long enough to be
+interrupted, and a buffered file that dies with the process loses an hour of polite
+requests you will have to make again. The wider version of that argument is in
+[resuming an interrupted scrape](how-to-resume-an-interrupted-scrape-playwright.md).
+
+The `seed=42` is what makes two runs comparable. A fixed seed pins the browser identity,
+so a difference between Monday's rates and Tuesday's is a difference in the tariff rather
+than in which visitor the site thought it was serving.
+
+## Why parking sites block, and what actually helps
+
+Parking operators sit behind commodity edge protection more often than their size
+suggests, because their booking flows are a target for card testing. That has two
+consequences for a rate scraper.
+
+The first is that a plain HTTP client is usually refused before it sees a tariff table at
+all, which is why this page drives a real browser rather than requesting the page. A
+patched Firefox driven by stock Playwright presents a consistent TLS handshake, a
+plausible fingerprint and a real event stream, so the request that asks for the rates
+looks like the request a person's browser makes.
+
+The second is subtler and specific to this data. Protection frequently degrades rather
+than refuses: you get the page shell, the table renders empty or with placeholder dashes,
+and nothing signals an error. A scraper that only checks for an HTTP error records a
+garage with no tariffs.
+
+Guard on the positive signal rather than the absence of a negative one:
+
+```python
+    rows = page.query_selector_all("table.rates tbody tr")
+    parsed = [r for r in rows if DURATION.search(r.inner_text())]
+    if rows and not parsed:
+        raise RuntimeError("table present but no band parsed: treat as a failed read")
+```
+
+That check is the local version of a rule that runs through this whole corpus: a
+suppressed or emptied signal is a failure, not a result. The general form, and the order
+to debug it in, is in
+[scraping without getting blocked](how-to-scrape-without-getting-blocked.md).
+
+## A schema that survives the next redesign
+
+One row per band, with the scope and the garage attached, plus a separate table for notes:
+
+| column | example | why it is separate |
+|---|---|---|
+| `garage_id` | `central-01` | stable across redesigns, unlike the page URL |
+| `scope` | `Weekend` | the same garage has several tariffs |
+| `from_minutes` / `to_minutes` | `0` / `120` | the band, in one unit |
+| `amount_text` | `£4.50` | unparsed, so the currency survives |
+| `label` | `Up to 2 hours` | the original string, for auditing a bad parse |
+| `observed_at` | epoch seconds | tariffs change, and you want the history |
+
+Keeping `label` and `amount_text` unparsed is what lets you re-derive everything later
+when a site starts writing "2 hrs" instead of "2 hours". Deriving at read time costs
+nothing; re-scraping a city because you stored only a float costs a week.
+
+Store it in [a SQLite database](how-to-scrape-into-a-database-playwright.md) if you will
+query it, or [JSON Lines](how-to-scrape-to-json-lines-playwright.md) if you will
+reprocess it. Either way, append rather than overwrite: a parking tariff that changed last
+month is the most interesting row in the table, and an updated-in-place record cannot tell
+you it ever moved.

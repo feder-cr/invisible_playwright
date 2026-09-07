@@ -133,3 +133,114 @@ and most rows do not change for months. A weekly full pass plus a daily pass ove
 whose deadline is within a month covers the volatility at a fraction of the requests, and
 keeps you well inside the pacing described in
 [rate limiting your own scraper](how-to-rate-limit-your-scraper-playwright.md).
+
+## A complete pass, aggregator then provider
+
+```python
+import json, time
+from invisible_playwright import InvisiblePlaywright
+
+def aggregator_rows(page):
+    rows = []
+    for card in page.query_selector_all(".scholarship-card"):
+        def t(sel):
+            n = card.query_selector(sel)
+            return n.inner_text().strip() if n else None
+        provider = card.query_selector("a.provider-link, a[target='_blank']")
+        rows.append({
+            "source": "aggregator",
+            "title": t(".title"),
+            "amount_text": t(".amount"),
+            "deadline": parse_deadline(t(".deadline")),
+            "eligibility_chips": [c.inner_text().strip()
+                                  for c in card.query_selector_all(".eligibility .chip")],
+            "eligibility_text": t(".eligibility-full"),
+            "provider_url": provider.get_attribute("href") if provider else None,
+            "observed_at": time.time(),
+        })
+    return rows
+
+with InvisiblePlaywright(seed=42) as browser, open("scholarships.jsonl", "a", encoding="utf-8") as out:
+    page = browser.new_page()
+    page.goto("https://example-aggregator.com/scholarships")
+    page.select_option("select[name='level']", "undergraduate")
+    page.wait_for_selector(".scholarship-card")
+
+    rows = aggregator_rows(page)
+    for row in rows:
+        out.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+    for row in rows:
+        if not row["provider_url"]:
+            continue
+        try:
+            page.goto(row["provider_url"], wait_until="domcontentloaded", timeout=25000)
+        except Exception as exc:
+            out.write(json.dumps({"source": "provider", "of": row["title"],
+                                  "error": str(exc)[:120],
+                                  "observed_at": time.time()}) + "\n")
+            continue
+        out.write(json.dumps({
+            "source": "provider",
+            "of": row["title"],
+            "url": page.url,                       # after redirects: the real page
+            "deadline_text": first_text(page, ".deadline, .apply-by, time[datetime]"),
+            "observed_at": time.time(),
+        }, ensure_ascii=False) + "\n")
+        out.flush()
+        page.wait_for_timeout(3000)
+```
+
+Writing the provider record as a separate row rather than merging it into the aggregator's
+is the design decision that pays off. The disagreement between the two is the most useful
+field in the dataset: it tells you which aggregators are stale, which is what decides
+whether their rows are worth showing to anyone.
+
+Recording `page.url` after the navigation catches the other common case, where a provider
+link redirects to a general funding page because the specific scholarship has closed.
+
+## Aggregators defend their listings, providers do not
+
+Two very different targets in one pipeline, and they fail differently.
+
+**The aggregator is the commercial one.** Its listings are its product, so it is more
+likely to sit behind edge protection, to lazy-load cards, and to cap how deep the facets
+let you go. The card list frequently arrives after the shell renders, so waiting for the
+container rather than a card returns an empty page that parses cleanly.
+
+**The provider is a university or a foundation.** Those sites are slow, occasionally
+broken, and frequently redirect. The failure to plan for is not a block but a timeout, and
+the code above records it as a row rather than losing the aggregator's data because one
+provider was down.
+
+Where the aggregator does start refusing, the tell is usually a card count that drops
+rather than an error. Assert against the total the site itself prints:
+
+```python
+    claimed = page.inner_text(".results-count")          # "412 scholarships"
+    got = len(page.query_selector_all(".scholarship-card"))
+    if int(claimed.split()[0].replace(",", "")) > got and not page.query_selector(".load-more"):
+        raise RuntimeError(f"page claims {claimed} but rendered {got} cards")
+```
+
+The general order for diagnosing a degraded read is in
+[scraping without getting blocked](how-to-scrape-without-getting-blocked.md).
+
+## The schema that keeps a student from a dead deadline
+
+One row per listing per source per observation, with the deadline kept as an object rather
+than a date:
+
+| field | example |
+|---|---|
+| `deadline.kind` | `date`, `rolling`, `varies`, `relative`, `closed`, `unparsed` |
+| `deadline.date` | only present when `kind` is `date` |
+| `deadline.raw` | always, verbatim |
+| `eligibility_text` | the full prose, never only the chips |
+| `amount_text` | `"Up to $5,000 per year, renewable"` |
+| `source` | `aggregator` or `provider` |
+
+The `unparsed` kind is the field that makes this dataset honest. Every alternative design
+invents a date for a listing that does not have one, and the cost of that invention is
+borne by whoever trusts the row. Surfacing "we could not read this deadline, here is what
+it said" is both easier to build and more useful than a confident wrong date.

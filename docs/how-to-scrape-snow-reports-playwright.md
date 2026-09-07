@@ -133,3 +133,113 @@ the pacing advice in
 [rate limiting your own scraper](how-to-rate-limit-your-scraper-playwright.md) applies
 with the extra note that resort sites see genuine traffic spikes at 7am local time, which
 is precisely when a naive scheduler would fire.
+
+## A complete pass over several resorts
+
+```python
+import json, time
+from invisible_playwright import InvisiblePlaywright
+
+RESORTS = {
+    "example-alpine": "https://example-resort.com/snow-report",
+    "example-nordic": "https://another-resort.example/conditions",
+}
+
+def pin_units(page):
+    toggle = page.query_selector("[data-unit='cm'], .units-metric")
+    if toggle:
+        toggle.click()
+        page.wait_for_timeout(500)
+    node = page.query_selector(".depth-value")
+    return page.evaluate("e => e.dataset.unit || 'unknown'", node) if node else "unknown"
+
+def read_resort(page, resort_id, url):
+    page.goto(url, wait_until="domcontentloaded")
+    page.wait_for_selector(".depth-value, .report-closed", timeout=20000)
+    if page.query_selector(".report-closed"):
+        return [{"resort": resort_id, "state": "closed_for_season",
+                 "observed_at": time.time()}]
+
+    unit = pin_units(page)
+    reported = page.query_selector(".report-updated")
+    reported_text = reported.inner_text().strip() if reported else None
+
+    rows = []
+    for selector, point in POINTS.items():
+        node = page.query_selector(selector)
+        if not node:
+            continue
+        rows.append({
+            "resort": resort_id, "metric": "depth", "point": point,
+            "value_text": node.inner_text().strip(), "unit": unit,
+            "reported_text": reported_text, "observed_at": time.time(),
+        })
+    lifts = page.query_selector(".lifts-open")
+    if lifts:
+        rows.append({"resort": resort_id, "metric": "lifts",
+                     "value_text": lifts.inner_text().strip(),
+                     "reported_text": reported_text, "observed_at": time.time()})
+    return rows
+
+with InvisiblePlaywright(seed=42) as browser, open("snow.jsonl", "a", encoding="utf-8") as out:
+    page = browser.new_page()
+    for resort_id, url in RESORTS.items():
+        for row in read_resort(page, resort_id, url):
+            out.write(json.dumps(row, ensure_ascii=False) + "\n")
+        out.flush()
+        page.wait_for_timeout(5000)
+```
+
+The `closed_for_season` branch is what stops a July run from recording last winter's
+frozen numbers as today's conditions, which is the single most common defect in this kind
+of dataset.
+
+## Stale data is the failure here, not blocking
+
+Resort sites are rarely defended aggressively. What they do instead is serve heavily
+cached pages from a CDN, which produces a failure that looks nothing like a block and is
+much easier to miss: the request succeeds, the page renders, and the numbers are from
+yesterday morning.
+
+Guard on the report timestamp rather than on the response:
+
+```python
+def suspect_stale(rows, seen_before, max_repeats=3):
+    stamp = rows[0].get("reported_text")
+    if stamp and seen_before.get(rows[0]["resort"]) == stamp:
+        seen_before[f"{rows[0]['resort']}:count"] = seen_before.get(f"{rows[0]['resort']}:count", 0) + 1
+    else:
+        seen_before[rows[0]["resort"]] = stamp
+        seen_before[f"{rows[0]['resort']}:count"] = 0
+    return seen_before.get(f"{rows[0]['resort']}:count", 0) >= max_repeats
+```
+
+Three consecutive reads with an unmoved report time, during the season, means you are
+reading a cache or the resort has stopped publishing. Both are worth recording as a state
+rather than absorbing as unchanged conditions.
+
+The other resort-specific failure is the unit toggle silently not applying, which is why
+the code reads the unit back from the DOM after clicking rather than assuming the click
+worked. That is the same discipline as any lever in this corpus: verify the setting from
+inside the system you are measuring, or the arm is inert and its result means nothing.
+
+## The long-form schema, and what it answers
+
+One row per resort, metric, point and observation:
+
+| field | example | note |
+|---|---|---|
+| `resort` | `example-alpine` | your id, stable across their redesigns |
+| `metric` | `depth`, `new_snow`, `lifts` | separate metrics, never one column |
+| `point` | `base`, `mid`, `summit` | absent for metrics without an altitude |
+| `window_hours` | `24` or null | only for new snow, null when the label is vague |
+| `value_text` / `unit` | `"42"` / `cm` | the string and the unit, both kept |
+| `reported_text` | `"Updated 06:15"` | the resort's own clock |
+| `observed_at` | epoch | yours |
+
+With that grain, three questions become easy that a wide table cannot answer: how base and
+summit diverge through a season, how often a resort's published depth moves at all
+(several update weekly while claiming daily), and whether lift openings track snowfall or
+track the calendar. The last one is the interesting one, and it needs the numerator and
+denominator kept separately, which is why lifts are stored as their original `"8 / 14"`
+string rather than a percentage.

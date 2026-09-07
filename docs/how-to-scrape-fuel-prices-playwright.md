@@ -149,3 +149,110 @@ region. Writing it as you go, in
 [a SQLite database](how-to-scrape-into-a-database-playwright.md) or
 [JSON Lines](how-to-scrape-to-json-lines-playwright.md), also means an interrupted run
 leaves usable data rather than nothing.
+
+## A complete pass over several towns
+
+```python
+import json, re, time
+from invisible_playwright import InvisiblePlaywright
+
+PLACES = ["Bristol", "Bath", "Weston-super-Mare"]
+
+def set_location(page, place):
+    box = page.wait_for_selector("input[name='location'], input#search-location")
+    box.click()
+    box.fill("")
+    box.type(place, delay=90)
+    page.keyboard.press("Enter")
+    page.wait_for_selector(".station-list .station, .no-results")
+
+def harvest(page, place):
+    if page.query_selector(".no-results"):
+        return []
+    rows = []
+    for card in page.query_selector_all(".station-list .station"):
+        name = card.query_selector(".name").inner_text().strip()
+        address = card.query_selector(".address").inner_text().strip()
+        for fuel in card.query_selector_all(".fuel-row"):
+            price_text = fuel.query_selector(".price").inner_text().strip()
+            age = fuel.query_selector(".age")
+            rows.append({
+                "queried_location": place,
+                "station": name,
+                "address": address,
+                "grade": fuel.query_selector(".grade").inner_text().strip(),
+                "price_text": price_text,
+                "price": parse_price(price_text),
+                "reported_age": age.inner_text().strip() if age else None,
+                "observed_at": time.time(),
+            })
+    return rows
+
+with InvisiblePlaywright(seed=42) as browser, open("fuel.jsonl", "a", encoding="utf-8") as out:
+    page = browser.new_page()
+    page.goto("https://example.com/fuel-prices")
+    for place in PLACES:
+        set_location(page, place)
+        for row in harvest(page, place):
+            out.write(json.dumps(row, ensure_ascii=False) + "\n")
+        out.flush()
+        page.wait_for_timeout(4000)
+```
+
+The `box.fill("")` before typing is the line that stops the second town from being
+searched as "BristolBath". Autocomplete widgets keep their previous value and their
+internal selection, and clearing the field is what resets both.
+
+## Why fuel sites are unusually defensive
+
+These sites carry commercially valuable data that competitors want in bulk, so they tend
+to be better defended than their size suggests, and the defence is usually aimed at the
+request rather than the person. Three consequences shape the design above.
+
+**A side HTTP client rarely gets the list.** The search result is fetched by the page after
+the location commits, from an endpoint that expects the browser's context. Driving the
+real control in a real browser is what keeps the response coming, which is why the code
+types rather than building a URL.
+
+**Degradation looks like an empty town.** When the protection is unhappy the list renders
+with zero cards and no error. That is indistinguishable from a town with no stations
+unless you check the negative case explicitly, which is what the `.no-results` branch is
+for. Treat "cards absent and no-results absent" as a failed read rather than an empty one:
+
+```python
+    if not page.query_selector(".station-list .station") and not page.query_selector(".no-results"):
+        raise RuntimeError("neither stations nor a no-results marker: failed read")
+```
+
+**Your exit becomes part of the query.** Even with a location typed in, some sites blend
+the inferred position into ranking or availability. Pin the exit for a series rather than
+letting it rotate, or the same town will return different stations on different days for
+reasons that have nothing to do with fuel. The general form is in
+[scraping geotargeted content](how-to-scrape-geotargeted-content-playwright.md), and the
+debug order when a read degrades is in
+[scraping without getting blocked](how-to-scrape-without-getting-blocked.md).
+
+## Turning reports into a series you can trust
+
+Crowd-reported prices need one more step before they are comparable: a freshness filter
+applied at read time, not at capture.
+
+```python
+def usable(row, max_age_hours=48):
+    age = row.get("reported_age") or ""
+    m = re.search(r"(\d+)\s*(hour|day|week)", age, re.I)
+    if not m:
+        return False                      # unknown age: not comparable
+    n, unit = int(m.group(1)), m.group(2).lower()
+    hours = n * {"hour": 1, "day": 24, "week": 168}[unit]
+    return hours <= max_age_hours
+```
+
+Filtering at read time keeps the stale rows in the archive, where they still answer
+questions about reporting behaviour, while keeping them out of a price average that would
+otherwise be dominated by whichever station has the most enthusiastic reporter.
+
+The series is then one row per station, grade and observation, with `queried_location`,
+`unit`, `currency`, `reported_age` and `observed_at`. That is enough to answer where fuel
+is cheapest today, how fast a price change propagates across a chain, and how stale a
+given site's data really is, which is the question the site itself will never answer.

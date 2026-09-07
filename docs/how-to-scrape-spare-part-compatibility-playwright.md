@@ -133,3 +133,114 @@ Every combination is a lookup against a real catalogue database, not a cached pa
 deliberate delay between combinations and run outside the retailer's trading hours where
 you can. The reasoning, and why a self-imposed limit beats being told, is in
 [rate limiting your own scraper](how-to-rate-limit-your-scraper-playwright.md).
+
+## A complete resumable walk of one slice
+
+```python
+import json, time
+from invisible_playwright import InvisiblePlaywright
+
+TARGET_MAKES = ["Example Motors"]
+PATH = "fitment.jsonl"
+
+def done_paths(path):
+    seen = set()
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                r = json.loads(line)
+                seen.add((r["make"], r["model"], r["year"], r["variant"]))
+    except FileNotFoundError:
+        pass
+    return seen
+
+seen = done_paths(PATH)
+
+with InvisiblePlaywright(seed=42) as browser, open(PATH, "a", encoding="utf-8") as out:
+    page = browser.new_page()
+    page.goto("https://parts.example.com/fitment", wait_until="domcontentloaded")
+
+    for make in options(page, "select#make"):
+        if make["label"] not in TARGET_MAKES:
+            continue
+        choose(page, "select#make", make["value"], "select#model")
+        for model in options(page, "select#model"):
+            choose(page, "select#model", model["value"], "select#year")
+            for year in options(page, "select#year"):
+                choose(page, "select#year", year["value"], "select#variant")
+                for variant in options(page, "select#variant"):
+                    key = (make["label"], model["label"], year["label"], variant["label"])
+                    if key in seen:
+                        continue
+                    page.select_option("select#variant", variant["value"])
+                    page.click("button#findParts")
+                    page.wait_for_selector(".part-result, .no-fit", timeout=25000)
+
+                    base = dict(zip(("make", "model", "year", "variant"), key))
+                    parts = page.query_selector_all(".part-result")
+                    if not parts:
+                        out.write(json.dumps({**base, "result": "no_fit",
+                                              "observed_at": time.time()}) + "\n")
+                    for part in parts:
+                        note = part.query_selector(".fitment-note")
+                        out.write(json.dumps({
+                            **base,
+                            "part_number": part.query_selector(".sku").inner_text().strip(),
+                            "part_name": part.query_selector(".name").inner_text().strip(),
+                            "fitment_note": note.inner_text().strip() if note else None,
+                            "observed_at": time.time(),
+                        }, ensure_ascii=False) + "\n")
+                    out.flush()
+                    page.wait_for_timeout(2500)
+```
+
+Resuming from the written rows rather than a checkpoint file is what makes an interrupted
+walk safe to restart at any point, including after a crash that never got to write a
+checkpoint. Writing the `no_fit` row is what stops the resume from re-walking every
+combination that legitimately has no parts.
+
+## Catalogues protect fitment data specifically
+
+Fitment is the most valuable asset a parts retailer has, more than prices, because it is
+expensive to compile and it is what makes their search work. The defences reflect that.
+
+**The cascade is the rate limiter.** Each level costs a query, so a full walk is thousands
+of requests whatever the delay between them. Slicing by make is not only politeness, it is
+the difference between a run that completes and one that is cut off partway with an
+unusable partial dataset.
+
+**Refusal appears as an empty next level.** When the site decides to stop serving you, the
+model dropdown comes back with only its placeholder, which the code reads as a make with no
+models. Guard on it, because it is the failure that silently ends a sweep:
+
+```python
+    models = options(page, "select#model")
+    if not models:
+        raise RuntimeError(f"{make['label']}: no models returned, treat as a refusal")
+```
+
+**A stripped client is refused at the first cascade step.** The repopulation request is
+issued by the page and validated against its session. Driving the real controls in a real
+browser is what keeps the chain answering, and the diagnosis order when it stops is in
+[scraping without getting blocked](how-to-scrape-without-getting-blocked.md).
+
+Where a trade or bulk fitment feed exists, ask for it. It is a normal commercial request,
+it is exactly this data in a form built to be consumed, and it removes the whole problem.
+
+## The schema, and why it must be queryable in both directions
+
+One row per combination per part, with `no_fit` rows kept:
+
+| field | note |
+|---|---|
+| `make`, `model`, `year`, `variant` | the full path, never collapsed to a vehicle id |
+| `part_number`, `part_name` | the catalogue's own identifiers |
+| `fitment_note` | the qualifier that makes the fit conditional |
+| `result` | `no_fit` where the combination returned nothing |
+| `observed_at` | catalogues correct fitment, and corrections matter |
+
+Both directions then work with a single index each: which parts fit this vehicle, and which
+vehicles take this part. The second is the one a schema keyed on part number with an
+embedded compatibility blob cannot answer without unpacking every row, and it is the query
+that matters commercially, because it is the one that tells you how much inventory risk a
+part carries.

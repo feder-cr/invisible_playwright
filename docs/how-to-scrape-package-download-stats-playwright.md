@@ -138,3 +138,100 @@ cadence, the pacing rules in
 [rate limiting your own scraper](how-to-rate-limit-your-scraper-playwright.md) apply, and
 [JSON Lines](how-to-scrape-to-json-lines-playwright.md) is a good fit for an append-only
 series you will reprocess later.
+
+## A complete daily collector
+
+```python
+import json, time
+from invisible_playwright import InvisiblePlaywright
+
+PACKAGES = ["some-package", "another-package"]
+
+def collect(page, package):
+    captured = []
+
+    def on_response(response):
+        if any(k in response.url for k in ("/downloads", "/stats", "/metrics")):
+            try:
+                captured.append({"url": response.url, "body": response.json()})
+            except Exception:
+                pass
+
+    page.on("response", on_response)
+    page.goto(f"https://registry.example.com/package/{package}?range=12m&interval=day",
+              wait_until="domcontentloaded")
+    page.wait_for_selector("canvas, svg.chart", timeout=20000)
+    page.wait_for_timeout(2500)
+    page.remove_listener("response", on_response)
+
+    if not captured:                       # no JSON: fall back to the accessible layer
+        points = page.eval_on_selector_all(
+            "svg.chart [role='graphics-symbol'], svg.chart .datapoint",
+            "els => els.map(e => ({label: e.getAttribute('aria-label'), value: e.dataset.value}))",
+        )
+        return [{"package": package, "source": "accessible-layer", "points": points}]
+    return [{"package": package, "source": "json", **c} for c in captured]
+
+with InvisiblePlaywright(seed=42) as browser, open("downloads.jsonl", "a", encoding="utf-8") as out:
+    page = browser.new_page()
+    for package in PACKAGES:
+        for record in collect(page, package):
+            record["observed_at"] = time.time()
+            out.write(json.dumps(record, ensure_ascii=False) + "\n")
+        out.flush()
+        page.wait_for_timeout(4000)
+```
+
+Recording `source` alongside the numbers is what keeps a mixed dataset honest. A series
+built partly from the JSON endpoint and partly from chart labels has two different
+precisions in one column, and the only way to notice later is if the row says which it was.
+
+## Why the browser is needed for a number that looks public
+
+Download counts feel like open data, and the dashboard usually is. Two things still push
+this into browser territory.
+
+**The series endpoint expects the page.** Many registries check the referrer, a session
+cookie or a token minted by the page before serving the JSON. A direct request for the
+same URL returns an error or an empty series, which is why the code lets the page make the
+request and captures the response rather than replaying the URL.
+
+**Degradation is silent and looks like a quiet week.** Under protection the chart renders
+with no data and the page looks fine. A collector that stores whatever arrived writes zeros,
+and zeros in a download series are indistinguishable from a real collapse in usage. Guard
+positively:
+
+```python
+    if record["source"] == "json":
+        series = record["body"].get("downloads") or record["body"].get("data") or []
+        if not series:
+            raise RuntimeError("empty series returned: failed read, not a quiet week")
+```
+
+The order to debug that, cheapest first, is in
+[scraping without getting blocked](how-to-scrape-without-getting-blocked.md). And the point
+worth repeating from the top of this page: if the registry publishes the data as a dataset,
+none of this is necessary, and checking takes a minute.
+
+## The schema, and the comparison it refuses to make easy
+
+One row per package, version, date and observation:
+
+| field | note |
+|---|---|
+| `package`, `version` | version is null only when the registry offers no breakdown |
+| `date` | the registry's day, not yours |
+| `downloads` | the count as served |
+| `source` | `json` or `accessible-layer` |
+| `observed_at` | so a revision is visible as two rows for one day |
+
+Keeping the observation timestamp separate from the data date is what makes revisions
+detectable: the same `date` collected twice with different `downloads` is a registry
+correction, and that is a fact worth having rather than an inconsistency to overwrite.
+
+The comparison this schema deliberately does not make easy is the one people want most:
+package A against package B. You can write the query, and the answer will be misleading
+unless both series carry the same window, the same interval and the same caveats about
+mirrors and continuous integration. Keeping `version` in the key at least surfaces the
+usual explanation, which is that most of a popular library's traffic is one old pinned
+release being pulled by machines.

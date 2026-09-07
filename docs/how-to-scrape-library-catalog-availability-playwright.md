@@ -131,3 +131,105 @@ care about, poll them at a human interval, and use
 [the rate limiting rules](how-to-rate-limit-your-scraper-playwright.md) rather than
 running flat out. Availability changes when someone physically returns a book, which is a
 scale measured in days.
+
+## A complete watch over a shortlist
+
+```python
+import json, time
+from invisible_playwright import InvisiblePlaywright
+
+WATCHLIST = [
+    "the master and margarita",
+    "gödel escher bach",
+    "the making of the atomic bomb",
+]
+
+def search(page, query):
+    page.goto("https://catalog.example.org/")
+    dismiss_interstitials(page)
+    page.fill("input[name='q']", query)
+    page.press("input[name='q']", "Enter")
+    page.wait_for_selector(".result-item, .no-results")
+    return page.query_selector_all(".result-item")
+
+def dismiss_interstitials(page):
+    for sel in (".terms-accept", ".cookie-accept", ".branch-select-skip"):
+        node = page.query_selector(sel)
+        if node:
+            node.click()
+            page.wait_for_timeout(300)
+
+with InvisiblePlaywright(seed=42) as browser, open("holdings.jsonl", "a", encoding="utf-8") as out:
+    page = browser.new_page()
+    for query in WATCHLIST:
+        items = search(page, query)
+        if not items:
+            out.write(json.dumps({"query": query, "observed_at": time.time(),
+                                  "result": "no_match"}) + "\n")
+            continue
+        items[0].query_selector("a.title").click()
+        page.wait_for_selector("table.holdings tbody tr", timeout=15000)
+        for copy in holdings(page):
+            copy.update({"query": query, "record_url": page.url,
+                         "observed_at": time.time()})
+            out.write(json.dumps(copy, ensure_ascii=False) + "\n")
+        out.flush()
+        page.wait_for_timeout(4000)
+```
+
+Clicking the result rather than navigating to its `href` is what keeps the session token
+valid, and it is the difference between a script that works today and one that works next
+month. Note that `record_url` is stored anyway: it is useless as a link later, and it is
+the only way to tell which of three editions you actually read.
+
+## Why these systems fail in ways that look like data
+
+Library catalogues are rarely defended against scraping in the adversarial sense. They
+break for a duller reason: they are session-driven enterprise software running on modest
+hardware, and under load they degrade rather than refuse.
+
+Three degradations produce plausible wrong data, and each needs a positive check.
+
+**The session expires mid-run.** The next search returns the landing page instead of
+results, which parses as zero hits. Detect it by asserting the search box still exists
+after the results wait, and restart the session rather than recording an absence.
+
+**Holdings arrive late or not at all.** The record page renders complete without its
+holdings table, so a short timeout writes a book with no copies:
+
+```python
+    try:
+        page.wait_for_selector("table.holdings tbody tr", timeout=15000)
+    except Exception:
+        record = {"query": query, "result": "holdings_not_loaded", "observed_at": time.time()}
+```
+
+A distinct outcome, not an empty list. The two are opposite facts and only one of them is
+about the library.
+
+**A branch filter you did not set.** Some catalogues remember a branch from an earlier
+session and scope holdings to it silently. If a title you know is held system-wide comes
+back with one copy, check for a scope control before believing the number.
+
+None of these are anti-bot measures, which is worth saying plainly: not every failed read
+is a defence. The debug order in
+[scraping without getting blocked](how-to-scrape-without-getting-blocked.md) still applies,
+starting with the cheapest check, which here is a screenshot of what the page actually
+showed.
+
+## What the copy-level history is good for
+
+One row per copy per observation, keyed on `(record_url, branch, call_number)`, with the
+raw status string and the due date. That grain answers questions the library's own
+interface does not:
+
+- **How long is the real wait.** Not the hold queue length, but how many days pass between
+  a copy going out and coming back, averaged over months.
+- **Which branch actually stocks a subject.** Copy counts per branch over time, rather
+  than a single snapshot that reflects who happened to borrow that week.
+- **Whether a title is quietly disappearing.** Copies moving to `Missing` or `Withdrawn`
+  and never returning is a signal the catalogue does not surface anywhere.
+
+All three need history, which is why the write is append-only and the status string is
+kept verbatim. A table holding the current availability per title answers none of them,
+and is also the exact thing the library's own search page already does better.

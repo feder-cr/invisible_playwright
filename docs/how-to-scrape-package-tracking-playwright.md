@@ -139,3 +139,102 @@ someone's package went, and often where they live. Scrape numbers you have a rea
 hold, keep the retention short, and do not enumerate. Guessing tracking numbers to see
 what comes back is the behaviour these endpoints are defended against, and it is the one
 use of this page that is not worth having.
+
+## A complete watcher for a handful of parcels
+
+```python
+import json, time
+from invisible_playwright import InvisiblePlaywright
+
+def read_tracking(page, number):
+    page.goto("https://example-carrier.com/track")
+    dismiss_consent(page)
+    box = page.wait_for_selector("input[name='trackingNumber']")
+    box.click()
+    box.fill("")
+    box.type(number, delay=70)
+    page.keyboard.press("Enter")
+    page.wait_for_selector(".tracking-event, .not-found, .no-info", timeout=25000)
+
+    if page.query_selector(".not-found") or page.query_selector(".no-info"):
+        note = page.inner_text(".not-found, .no-info").strip()
+        return {"number": number, "events": [], "carrier_note": note}
+    return {"number": number, "events": timeline(page), "carrier_note": None}
+
+def dismiss_consent(page):
+    node = page.query_selector("#onetrust-accept-btn-handler, .consent-accept")
+    if node:
+        node.click()
+        page.wait_for_timeout(400)
+
+state = {}
+
+with InvisiblePlaywright(seed=42) as browser, open("parcels.jsonl", "a", encoding="utf-8") as out:
+    page = browser.new_page()
+    while parcels_in_flight:
+        for number in list(parcels_in_flight):
+            result = read_tracking(page, number)
+            merged = merge(state.get(number, []), result["events"])
+            if merged != state.get(number):
+                out.write(json.dumps({**result, "events": merged,
+                                      "observed_at": time.time()}, ensure_ascii=False) + "\n")
+                out.flush()
+                state[number] = merged
+            if merged and is_delivered(merged[-1]):
+                parcels_in_flight.discard(number)
+            page.wait_for_timeout(4000)
+        time.sleep(next_interval(merged, state.get(number)))
+```
+
+Writing only when the merged timeline changes is what keeps a multi-day watch from
+producing thousands of identical records. Dropping a parcel from the set once it is
+delivered is the other half: a delivered parcel never changes again, and continuing to
+poll it is pure noise on someone else's servers.
+
+## Why carrier endpoints are among the best defended
+
+Tracking pages are attacked constantly, because a valid tracking number is the entry
+point for parcel redirection fraud and for phishing that quotes a real shipment. The
+defences that result are aggressive, and three of them shape any honest scraper.
+
+**Enumeration is the thing they watch for.** Sequential or high-volume lookups from one
+source are the signature, and they are met with a hard block rather than a challenge. This
+is the strongest practical argument for the rule above: hold numbers you have a reason to
+hold, and the traffic shape stops looking like the attack.
+
+**A stripped client usually never sees a timeline.** The result region is fetched after the
+form commits, from an endpoint expecting the browser's context. Driving a real browser is
+what makes the request resolve, and a patched Firefox driven by stock Playwright presents
+the consistent handshake and fingerprint that a bare client cannot.
+
+**Refusal is frequently disguised as "no information available".** That message is also the
+genuine response for a parcel not yet scanned, so the two are indistinguishable without
+care. Keep the carrier's exact wording and, when it appears for a number that previously
+had events, treat it as a suspicious read rather than a regression:
+
+```python
+    if not result["events"] and state.get(number):
+        result["suspect"] = "timeline disappeared for a number that had events"
+```
+
+The general debug order, cheapest check first, is in
+[scraping without getting blocked](how-to-scrape-without-getting-blocked.md).
+
+## A schema that survives revisions
+
+Two tables rather than one. A capture table holding the whole timeline per read, and a
+derived event table keyed on the event's own identity:
+
+| table | key | holds |
+|---|---|---|
+| capture | `number`, `observed_at` | the full timeline as read, plus the carrier note |
+| event | `number`, `when_text`, `what`, `where` | one row per distinct scan, first and last seen |
+
+Keeping the captures is what lets you detect a carrier revising or removing a scan, which
+a merged-only view silently absorbs. Keeping the derived events is what makes the ordinary
+question fast. The cost is duplication, and it is small compared with the alternative,
+which is a table that quietly rewrites its own history every time the carrier does.
+
+For retention, delete captures once a parcel is delivered plus whatever window your use
+actually needs. A tracking archive is a movement record, and the honest default is to keep
+it only as long as it is answering a question.

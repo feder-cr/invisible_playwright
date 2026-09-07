@@ -133,3 +133,105 @@ faster for you, cheaper for them, and it comes with permission attached. Where y
 scrape, run once a day, respect the pacing in
 [rate limiting your own scraper](how-to-rate-limit-your-scraper-playwright.md), and keep
 the contact details of the site you are reading in case someone wants to ask you to stop.
+
+## A complete daily run with reconciliation
+
+```python
+import json, time
+from invisible_playwright import InvisiblePlaywright
+
+def load_previous(path):
+    ids, last = set(), {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                r = json.loads(line)
+                if r["type"] == "appeared":
+                    ids.add(r["shelter_id"]); last[r["shelter_id"]] = r
+                elif r["type"] == "disappeared":
+                    ids.discard(r["shelter_id"])
+    except FileNotFoundError:
+        pass
+    return ids, last
+
+path = "adoptions.jsonl"
+previous_ids, _ = load_previous(path)
+
+with InvisiblePlaywright(seed=42) as browser, open(path, "a", encoding="utf-8") as out:
+    page = browser.new_page()
+    page.goto("https://example-shelter.org/adopt")
+    page.select_option("select[name='species']", "any")
+    page.wait_for_selector(".animal-card, .no-animals")
+
+    while True:                                  # walk every page of the list
+        more = page.query_selector("button.load-more:not([disabled])")
+        if not more:
+            break
+        before = len(page.query_selector_all(".animal-card"))
+        more.click()
+        page.wait_for_function("n => document.querySelectorAll('.animal-card').length > n",
+                               arg=before)
+
+    rows = listing_rows(page)
+    run_at = time.time()
+
+    if previous_ids and len(rows) < 0.5 * len(previous_ids):
+        raise SystemExit("listing count halved: failed run, not a rescue")
+
+    for event in reconcile(previous_ids, rows, run_at):
+        out.write(json.dumps(event, ensure_ascii=False) + "\n")
+    out.flush()
+```
+
+Loading the previous state from the event log rather than a separate snapshot file keeps
+the two from drifting apart, and the halving guard is what stops a partial page load from
+being written as a mass adoption. That guard has saved more datasets than any selector in
+this page.
+
+## What goes wrong here is rarely a defence
+
+Shelter sites are small and mostly undefended, so the failures are ordinary web failures
+with unusually costly consequences for the data.
+
+**A slow list truncates itself.** The load-more loop above waits for the count to grow,
+which is the reliable signal. A fixed sleep on a slow volunteer-hosted site produces a
+short list, which reconciliation then reads as a wave of adoptions.
+
+**A filter resets between runs.** Some listing widgets reset to a default species or
+location when the session cookie expires. The filter is recorded per run for exactly this
+reason, and a run whose filters differ from the previous one should not be reconciled
+against it:
+
+```python
+    if run["filters"] != previous_run["filters"]:
+        run["reconciled"] = False       # comparable only to runs with the same filters
+```
+
+**An aggregator hides the shelter's own record.** Where you scrape an aggregator, the
+`shelter_id` may be the aggregator's, which changes when a shelter re-uploads. Prefer the
+originating shelter's page where the aggregator links to it, and record which source the
+id came from.
+
+If a run does start returning empty pages or challenges, the diagnosis order is the same
+as anywhere else and starts with looking at the page rather than guessing:
+[scraping without getting blocked](how-to-scrape-without-getting-blocked.md).
+
+## The event log, and the question it exists to answer
+
+Three event types, appended, keyed on the shelter's own identifier:
+
+| event | written when | carries |
+|---|---|---|
+| `appeared` | id not seen in the previous run | the full listing snapshot |
+| `updated` | a tracked field changed | which fields, old and new |
+| `disappeared` | id absent from this run | nothing but the id and the time |
+
+From that log, the waiting time distribution falls out directly: the gap between
+`appeared` and `disappeared` per animal. That is the number nobody publishes, it is the
+number shelters use to argue for funding, and it is invisible in any mirror of the current
+listings.
+
+Two honest caveats belong next to it. `disappeared` is not `adopted`, so any published
+figure should say so. And animals that are relisted after a returned adoption appear twice
+with the same id, which is real signal rather than noise, but only if your analysis expects
+it rather than deduplicating it away.
