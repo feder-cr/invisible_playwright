@@ -229,6 +229,35 @@ never explains it is blocking, which is why this page does not send you to
 [scraping without getting blocked](how-to-scrape-without-getting-blocked.md) first: that is
 the right guide when content is absent, not when it is visible and unreadable.
 
+## The wider family, and a gap nobody has written down
+
+Pseudo-element content is the easiest member of a family: text that a person can read and
+an extractor cannot. The harder member is the shadow DOM, and while researching that side
+we found something worth stating here, because it changes what you should expect from
+Playwright.
+
+Two Playwright issues describe what looks like two separate problems:
+
+- [#23047](https://github.com/microsoft/playwright/issues/23047) asks for locators to be
+  able to enter `mode: "closed"` shadow roots. Open since May 2023, 26 comments.
+- [#30816](https://github.com/microsoft/playwright/issues/30816) asks for
+  `Page.content()` to serialize shadow DOM at all, open or closed. Closed, 2 comments.
+
+They are the same underlying gap seen from two directions: the page's content is not fully
+reachable through the public API surface. **As of this writing, no third issue or pull
+request in that repository cites both.** The GitHub search
+`repo:microsoft/playwright 30816 23047` returns exactly two results, which are the two
+issues themselves, and #23047 never mentions serialization, `outerHTML`, `getHTML` or
+snapshots anywhere in its 26 comments.
+
+That matters practically rather than academically. It means the two symptoms get worked
+around separately, by people who do not know they are chasing one thing, and it explains
+why the advice you find for one of them never helps with the other. If your extraction is
+missing text, check both directions before concluding the page is doing something exotic:
+a pseudo-element, and a shadow root that neither the locator nor `page.content()` will show
+you. The traversal for the second is in
+[scraping shadow DOM content](how-to-scrape-shadow-dom-playwright.md).
+
 ## What to store, and why both forms
 
 | field | example | why keep it |
