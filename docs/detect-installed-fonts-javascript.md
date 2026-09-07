@@ -94,7 +94,7 @@ consumer operating system, and that mismatch is the signal.
 
 Claiming Windows in the user agent while the font vector is a Linux base image
 is a one-line contradiction, and it is exactly the kind of internal disagreement
-that [a browser that inspects consistency rather than values](how-to-test-bot-detection.md)
+that [a browser that inspects consistency, not values](how-to-test-bot-detection.md)
 records as a lie.
 
 The same probe list produces a different vector in each of these three cases:

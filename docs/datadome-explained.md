@@ -67,16 +67,16 @@ Same source: DataDome states its engine processes on the order of three
 trillion signals a day (2022 figure). A separate 2026 write-up from
 Scrapfly, a scraping infrastructure vendor, cites five trillion a day and
 "over 85,000 customer-specific and use-case-specific models," one set per
-protected site rather than one global model. Four years apart and not
+protected site instead of one global model. Four years apart and not
 necessarily in tension, but neither figure is audited, so treat both as
-vendor reporting rather than something this page verified independently.
+vendor reporting, not something this page verified independently.
 
 IP and ASN sit in the same layer conceptually: whether the address is
 residential, mobile or datacenter, its distance from the claimed timezone,
 how many recent requests share it. [What ASN and IP reputation actually
 score, and how fast it decays, is covered separately](asn-and-ip-reputation-in-bot-detection.md);
 DataDome's docs do not detail IP scoring, so this leans on the practitioner
-writeups rather than DataDome's own pages.
+writeups, not DataDome's own pages.
 
 ## The device check: what the JavaScript tag actually collects
 
@@ -114,7 +114,7 @@ lists, camera/microphone permission state, and two separate sets of
 User-Agent Client Hints. A vendor selling a bypass product has an obvious
 incentive to make its own reverse engineering sound thorough, so read this
 list as corroborated in outline, two unrelated writeups converge on canvas,
-WebGL, fonts and automation-framework checks, rather than verified line by
+WebGL, fonts and automation-framework checks, not verified line by
 line.
 
 DataDome's own **Device Check** feature is the name for the invisible

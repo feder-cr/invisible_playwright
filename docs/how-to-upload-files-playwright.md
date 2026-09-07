@@ -20,7 +20,7 @@ window. The part worth understanding is not the syntax, it is why the correct me
 also the safe one, and where it is not enough on its own.
 
 This page covers the two upload paths Playwright gives you, why both are handled at the
-driver level rather than by faking a page event, multiple files and in-memory buffers,
+driver level, not by faking a page event, multiple files and in-memory buffers,
 the one honest caveat about behaviour, and how to confirm the file actually attached.
 
 Everything here uses stock Playwright. `InvisiblePlaywright` returns a real

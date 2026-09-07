@@ -87,7 +87,7 @@ or from ordinary web content. Privileged reads are passed through untouched, so
 the screenshot is the real page, byte for byte. Web-content reads are
 substituted exactly as before, so the fingerprint stays spoofed. It is the same
 exemption boundary the browser's own canvas protection uses, applied to our own
-transform rather than invented for it.
+transform, not invented for it.
 
 The whole fix is that one distinction:
 
@@ -103,7 +103,7 @@ before. The screenshot got its page back and the fingerprint lost nothing.
 
 ## Reproduce it: capture the page and check the bytes
 
-The whole point of a seed is that a bug like this is reproducible rather than
+The whole point of a seed is that a bug like this is reproducible, not
 anecdotal. Fix the seed, capture, and assert two things at once: the screenshot
 is a sane size and it is a real image, not a wall of noise.
 
@@ -173,7 +173,7 @@ Worth stating plainly, because a "we stopped rewriting pixels" headline invites
 the wrong conclusion. The anti-fingerprint substitution is unchanged for every
 read that a detector can actually make. A page that draws to a canvas and hashes
 the result gets the same per-seed value it always did, so a canvas hash still
-looks like the spoofed machine rather than the host that built the binary. Only
+looks like the spoofed machine instead of the host that built the binary. Only
 the browser's own privileged captures, which no page and no detector can issue,
 were exempted.
 
@@ -198,7 +198,7 @@ spoofed, and both were proven on the shipped binary at the same seed.
 
 The general lesson outlives the bug: a defense that transforms output has to
 know who is asking, and the safest boundary to key on is one the platform
-already enforces rather than one you invent.
+already enforces in place of one you invent.
 
 ## Short answers to the questions that lead here
 

@@ -10,10 +10,10 @@ nav_order: 130
 # How to scrape wine and spirits catalogs with Playwright
 
 To scrape a wine and spirits catalog with Playwright, key every row by name, vintage
-and bottle size together rather than by name alone, treat the size selector the way
+and bottle size together, not by name alone, treat the size selector the way
 you would treat a variant selector on any e-commerce page and wait for its own price
 and stock response, pass the age gate once per browser context instead of solving it
-on every page, keep "NV" as a real vintage value rather than coercing it to null,
+on every page, keep "NV" as a real vintage value instead of coercing it to null,
 normalize each critic score to a common scale before averaging anything, and match
 the proxy exit to the region the catalog is gating its assortment on, since that is a
 different question from whether one item happens to be in stock.

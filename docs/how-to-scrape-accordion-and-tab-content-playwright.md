@@ -92,7 +92,7 @@ raises nothing, because an empty string is a legal value for an empty element. A
 forty panels finishes green, writes forty rows, and every row is blank.
 
 That is why the guard above is not decoration. An empty panel means your assumption about
-the page was wrong, and the run should stop and say so rather than fill a file with nothing.
+the page was wrong, and the run should stop and say so, not fill a file with nothing.
 
 ## aria-expanded and aria-controls beat class names
 

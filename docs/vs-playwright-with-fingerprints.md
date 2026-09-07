@@ -18,7 +18,7 @@ support, engine coverage, and whether an external service sits in your
 dependency chain.
 
 This page is for anyone weighing the two, and it leans on what
-`playwright-with-fingerprints`'s own README states directly rather than on
+`playwright-with-fingerprints`'s own README states directly, not on
 black-box testing.
 
 ## invisible_playwright vs playwright-with-fingerprints at a glance
@@ -38,7 +38,7 @@ device - and diverge on where the value is produced and where it lands.
 ## What playwright-with-fingerprints actually does
 
 playwright-with-fingerprints sources fingerprint values from a remote service and
-applies them through the page, rather than generating them locally. The plugin calls out to
+applies them through the page, not generating them locally. The plugin calls out to
 `FingerprintSwitcher`, a hosted service the same organisation runs, which returns
 a set of browser property values sourced from real devices. The plugin then
 replaces the corresponding properties in a running Chromium session with those

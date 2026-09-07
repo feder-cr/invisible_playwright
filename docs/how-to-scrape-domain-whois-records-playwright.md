@@ -11,7 +11,7 @@ nav_order: 140
 
 To scrape domain WHOIS records with Playwright, read the record page as labeled
 key-value lines instead of fixed positions, treat REDACTED FOR PRIVACY as a real
-value rather than a missing field, keep the raw EPP status code instead of
+value instead of a missing field, keep the raw EPP status code instead of
 paraphrasing it, bind creation, expiry and updated dates to their own labels, flag
 records that describe a privacy proxy instead of the actual registrant, and pace
 each lookup by whole seconds because the query itself, not the page around it, is
@@ -89,7 +89,7 @@ with InvisiblePlaywright(seed=42) as browser:
 ```
 
 Repeated labels, `Domain Status` and `Name Server` almost always appear more than
-once, collapse into a list rather than overwriting the earlier value. Everything
+once, collapse into a list instead of overwriting the earlier value. Everything
 downstream reads from `record` by name, never by an index into the raw text.
 
 ## REDACTED FOR PRIVACY is a value, not a missing field
@@ -149,7 +149,7 @@ next. There is no single schema to assume.
 
 Normalize before doing anything with the values: map the label variants you have
 actually seen onto a small set of canonical keys, and try each known date format
-in turn rather than committing to one.
+in turn instead of committing to one.
 
 ```python
 from datetime import datetime
@@ -204,7 +204,7 @@ def canonical_statuses(record):
 ```
 
 A domain frequently carries two or three statuses at once, so keep the result as
-a list rather than collapsing it to a single value.
+a list instead of collapsing it to a single value.
 
 ## Bind creation, expiry and updated dates to their own labels
 
@@ -264,9 +264,9 @@ def scrape_domains(domains, seed=42):
     return rows
 ```
 
-Treat a rate-limit response as a hard stop rather than something to retry right
+Treat a rate-limit response as a hard stop, not something to retry right
 away. Most lookup services signal it with a specific error string, a blank
-result, or a captcha page rather than an HTTP error code, and hammering past that
+result, or a captcha page, not an HTTP error code, and hammering past that
 signal tends to extend the block instead of working around it.
 
 ## Conclusion
@@ -296,7 +296,7 @@ value, distinct from a field the registry's format never includes at all.
 
 **The registrant email looks like a company, not a person. Why?** The domain
 likely routes through a privacy or proxy service, and the fields you are reading
-describe that service, not the actual owner. Flag records like this rather than
+describe that service, not the actual owner. Flag records like this instead of
 trusting the contact details at face value.
 
 **Can I paraphrase a domain status code to make it more readable?** No. EPP

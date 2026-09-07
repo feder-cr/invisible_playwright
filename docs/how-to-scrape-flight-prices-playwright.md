@@ -9,8 +9,8 @@ nav_order: 30
 
 # How to scrape flight prices with Playwright
 
-To scrape flight prices with Playwright, wait for the search to report itself complete
-rather than for the page to load or the network to go idle, then read the settled fare
+To scrape flight prices with Playwright, wait for the search to report itself complete,
+not for the page to load or the network to go idle, then read the settled fare
 matrix in one pass. Because a fare scan is many searches, run every one of them as the
 same seeded browser, so the endpoint feeding the fares sees one consistent device rather
 than a new machine each time.
@@ -20,7 +20,7 @@ submit an origin, a destination and a pair of dates, the navigation settles, and
 page is empty. Nothing you wanted is in the DOM yet. The fares are still arriving.
 
 This page is about that gap: why the results stream in after the page has finished
-loading, how to detect the moment they are actually complete rather than the moment the
+loading, how to detect the moment they are actually complete, not the moment the
 network went briefly quiet, and how to run a whole scan of dates without every search
 looking like a different device to the endpoint that is feeding you the fares.
 
@@ -59,7 +59,7 @@ The reliable approach is to watch the responses the search itself produces and w
 the one that says it is finished. Capturing those responses is the same technique used
 for any streamed API, covered in
 [how to capture XHR and API responses](how-to-capture-xhr-api-responses-playwright.md);
-here you use it to find the terminal message rather than to read the data.
+here you use it to find the terminal message, not to read the data.
 
 ```python
 from invisible_playwright import InvisiblePlaywright
@@ -149,7 +149,7 @@ as waiting on load, one layer up.
 ## Running a whole fare scan without looking like a new device each time
 
 Pin one seed for the entire scan and every search derives the same browser identity, so
-the whole run looks like one consistent device rather than a new machine on each request.
+the whole run looks like one consistent device in place of a new machine on each request.
 A single search is rarely the goal: you want a fortnight of departure dates, or the same
 route priced every morning, which is dozens or hundreds of searches. This is where the
 browser you run the scan with starts to matter as much as the waits.

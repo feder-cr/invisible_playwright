@@ -10,7 +10,7 @@ nav_order: 108
 # How to scrape currency exchange rates with Playwright
 
 **To scrape currency exchange rates with Playwright, capture the quote response the
-widget already fetches rather than reading the number it paints, and write a row
+widget already fetches instead of reading the number it paints, and write a row
 carrying the base code, the quote code, the side, the amount and a UTC arrival
 timestamp, because a bare "1.08" names one currency out of two, states no direction and
 hides which side of the spread produced it.**
@@ -184,7 +184,7 @@ store because it is easiest to reach.
 
 The three that matter are ordered. The feed's own `quoted_utc` is when the price was
 made, and it is the only one that belongs on a time axis. The HTTP `Date` header is the
-server clock at response time, at one second of resolution, so it brackets rather than
+server clock at response time, at one second of resolution, so it brackets, not
 measures. Your arrival stamp is when the bytes reached the browser, and it is the only
 one you can always produce.
 

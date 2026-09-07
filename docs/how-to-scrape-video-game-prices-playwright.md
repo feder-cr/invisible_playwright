@@ -10,7 +10,7 @@ nav_order: 139
 # How to scrape video game prices with Playwright
 
 To scrape video game prices with Playwright, key every row on the edition or SKU
-rather than the title text, capture the region and currency the storefront used to
+instead of the title text, capture the region and currency the storefront used to
 decide that price, record the final discounted price and the total percent-off
 exactly as shown instead of reconstructing the sale, publisher and bundle discounts
 stacked behind it, stamp the row with the moment you read it because a

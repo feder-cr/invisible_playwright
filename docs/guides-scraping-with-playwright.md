@@ -12,10 +12,10 @@ The rest of the Guides explain how a single surface gives you away. This group i
 other direction: a concrete task, in order, with the code that does it and the specific
 thing that breaks it.
 
-Every page here is written against a real browser rather than a generic recipe. The
+Every page here is written against a real browser instead of a generic recipe. The
 launch is a two-line change from stock Playwright, the browser returned is a real
 Playwright `Browser` with no wrapped subset to learn, and each how-to carries at least one
-mistake we made first, measured and fixed rather than assumed.
+mistake we made first, measured and fixed, not assumed.
 
 Start with [how to scrape without getting blocked](how-to-scrape-without-getting-blocked.md)
 for the model that orders the rest, then pick the task you have.
@@ -57,6 +57,8 @@ for the model that orders the rest, then pick the task you have.
 - [How to scrape shadow DOM content with Playwright](how-to-scrape-shadow-dom-playwright.md) - Locators pierce open shadow roots automatically; closed roots stay unreachable by design.
 - [Scrape a map-based search with Playwright](how-to-scrape-map-based-search-playwright.md) - Capture the bounding-box marker XHR, pan and zoom, grid the viewport to cover the area.
 - [How to scrape map-based local results with Playwright](how-to-scrape-map-based-local-results-playwright.md) - Drive the viewport, capture the bounds-keyed XHR per step, tile an area through an in-region proxy.
+
+- [Select from dropdowns with Playwright, native and custom](playwright-select-option-dropdowns.md) - select_option() drives a real select element; a custom listbox needs a click, a wait, then a second click.
 
 ## Extracting content and structured data
 
@@ -111,7 +113,7 @@ for the model that orders the rest, then pick the task you have.
 - [How to scrape EV charging availability with Playwright](how-to-scrape-ev-charging-availability-playwright.md) - Capture the status feed behind the map, keep the operator's timestamp apart from yours, store transitions not snapshots.
 - [How to scrape fuel prices with Playwright](how-to-scrape-fuel-prices-playwright.md) - Set the location explicitly, keep grade and unit with every price, and record whether the number was reported or observed.
 - [How to scrape snow reports with Playwright](how-to-scrape-snow-reports-playwright.md) - Pin the unit before reading, keep base and summit as separate measurements, and take the resort's own report time.
-- [How to scrape parking rates with Playwright](how-to-scrape-parking-rates-playwright.md) - Capture the tariff table as duration bands rather than a price, and keep the small print that outranks the table.
+- [How to scrape parking rates with Playwright](how-to-scrape-parking-rates-playwright.md) - Capture the tariff table as duration bands instead of a price, and keep the small print that outranks the table.
 - [How to scrape energy tariff comparisons with Playwright](how-to-scrape-energy-tariffs-playwright.md) - Drive the consumption form, keep standing charge and unit rate apart, and copy the inputs into every quoted row.
 - [How to scrape bank interest rates with Playwright](how-to-scrape-bank-interest-rates-playwright.md) - Resolve the footnote markers while you have the DOM, keep the balance tiers as rows, and take the effective date.
 - [How to scrape stock and financial data with Playwright](how-to-scrape-stock-and-financial-data-playwright.md) - Scrape fundamentals from tables, capture the live quote stream at the WebSocket or polling XHR.

@@ -12,7 +12,7 @@ nav_order: 42
 To scrape event and ticket listings with Playwright, wait for the availability request
 instead of the initial HTML, attach each event's declared source timezone and store UTC
 alongside it, step the calendar widget to reach future dates, and poll the state attribute
-rather than the visible label. The one thing that decides whether any of it runs is that
+instead of the visible label. The one thing that decides whether any of it runs is that
 the browser's timezone matches the proxy's exit IP.
 
 | What trips up an event scraper | The fix |

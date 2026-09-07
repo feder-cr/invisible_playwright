@@ -51,7 +51,7 @@ that happens to be all furniture and no article.
 ## Render first: wait for the body, then take page.content()
 
 The fix has two halves. Let the page finish rendering, then hand the *rendered*
-HTML to the extractor rather than the initial response.
+HTML to the extractor instead of the initial response.
 
 [`page.content()`](https://playwright.dev/python/docs/api/class-page#page-content)
 serialises the live DOM as it stands now, after scripts have run and injected
@@ -146,7 +146,7 @@ reading it *after* the body was injected.
 
 ## Why a real engine sees paragraphs an HTTP fetch never receives
 
-There is a reason this recipe uses a browser at all rather than `requests` plus
+There is a reason this recipe uses a browser at all, not `requests` plus
 readability. The clean-extraction problem and the not-getting-blocked problem
 share a root cause, and it is worth being explicit about.
 
@@ -168,7 +168,7 @@ wearing two hats.
 This is where a consistent, real-looking fingerprint earns its place. Because
 `InvisiblePlaywright` derives every surface - GPU, canvas, audio, fonts, screen
 - from one seed, `seed=42` gets you the same coherent machine on every run, so
-the same full article is served each time rather than the article once and a
+the same full article is served each time instead of the article once and a
 stripped variant the next. That reproducibility is also what makes a broken
 extraction debuggable: a failing run replays exactly instead of vanishing into
 the next random draw. The general version of "get the real page, not the bot
@@ -187,7 +187,7 @@ Three cheap checks catch most of the failures:
 
 - **Byline and headline survived.** These often sit in their own elements
   outside the main content block, and readability drops them more often than it
-  drops paragraphs. If you need the author, extract it separately rather than
+  drops paragraphs. If you need the author, extract it separately instead of
   hoping the summary kept it.
 - **It did not truncate at an inline widget.** A pull-quote, an embedded video,
   a subscribe box or a mid-article "related" card can look like the end of the

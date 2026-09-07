@@ -10,7 +10,7 @@ nav_order: 37
 # net::ERR_CONNECTION_REFUSED in Playwright
 
 `net::ERR_CONNECTION_REFUSED` means the machine at the other end of the address and port
-actively refused the connection: it answered with a TCP reset rather than staying silent.
+actively refused the connection: it answered with a TCP reset instead of staying silent.
 Chromium's own network error list defines it in five words, "A connection attempt was
 refused," code -102. `page.goto()` throws it fast, usually in well under a second, because
 a refusal is an immediate reply, not a wait for something that never comes.
@@ -27,7 +27,7 @@ on that exact port, or something is actively and deliberately rejecting the atte
 started, a service that crashed, or a port number that is simply wrong. Confirm the
 process is actually running and bound to the port you are navigating to.
 
-**A firewall or security group actively rejecting rather than silently dropping.** Some
+**A firewall or security group actively rejecting, not silently dropping.** Some
 firewall configurations answer a blocked port with a reset (refused) and others simply
 drop the packet (timeout). Which one you get depends on the device, not on Playwright.
 
@@ -40,7 +40,7 @@ it enough time, headless did not.
 [A GitHub Actions report](https://github.com/microsoft/playwright/issues/21414) and
 [a CircleCI report](https://github.com/microsoft/playwright/issues/20343) both show
 `ERR_CONNECTION_REFUSED` against `localhost` reproducing reliably in CI and not locally,
-which is the signature of an environment-specific networking difference rather than a
+which is the signature of an environment-specific networking difference instead of a
 code regression.
 
 ## The Docker and CI networking variant, in detail
@@ -65,8 +65,8 @@ instead, where nothing is listening, and gets refused. The same code works perfe
 developer's own machine, because there `localhost` genuinely is the machine running both
 the browser and the server, no namespace boundary in between, which is exactly why the
 bug reads as "nothing changed" when the entire network topology did. Port publishing
-(`-p 3000:3000`) does not fix this either if the server itself is bound to `127.0.0.1`
-rather than `0.0.0.0`: "the server is listening on 127.0.0.1 inside the container network
+(`-p 3000:3000`) does not fix this either if the server itself is bound to `127.0.0.1`,
+not `0.0.0.0`: "the server is listening on 127.0.0.1 inside the container network
 namespace" while the forwarded traffic arrives on the external interface, an address the
 server was never told to listen on. [A real report](https://github.com/microsoft/playwright/issues/24582)
 shows exactly this shape: the port listed as exposed in a Compose file, and the connection
@@ -89,7 +89,7 @@ the equivalent Compose `extra_hosts` entry.
    Playwright's process, the target service, and your own terminal can each be in a
    different network namespace, each with its own idea of `localhost`.
 3. **Check what interface the target service binds to**, and address other Compose
-   services by their service name rather than `localhost`, which does not cross
+   services by their service name, not `localhost`, which does not cross
    container boundaries at all.
 4. **In CI specifically, test from inside the runner**, since a firewall or security
    group there can behave differently from your own machine even when the code and the

@@ -20,7 +20,7 @@ A date-picker looks like a form field and behaves like an application. The value
 want is not in the DOM waiting to be read: it is behind a grid that shows one month at
 a time, hides the target date until you page forward to its month, greys out the days
 you are not allowed to pick, and commits the choice only when you click a rendered day
-cell rather than typing into the box.
+cell instead of typing into the box.
 
 This page is the mechanics of driving one of those with stock Playwright: how to page
 between months without losing the grid, how to tell an available cell from a disabled
@@ -66,7 +66,7 @@ The calendar shows one month. The date you want is some number of months ahead o
 is currently displayed, so the first job is to read the visible month, compare it to the
 target, and click the forward control the right number of times.
 
-Read the header rather than counting clicks blindly, because the picker may open on the
+Read the header instead of counting clicks blindly, because the picker may open on the
 current month or on the last month the user touched, and you cannot assume a starting
 point.
 
@@ -134,7 +134,7 @@ def available_day(page, day):
 
 If `available_day` returns `None`, that is data, not a failure: for an availability
 scrape, an unpickable day IS the answer for that date. Record it and move to the next
-one rather than retrying.
+one instead of retrying.
 
 ## Click to commit, and re-query after every render
 

@@ -12,9 +12,9 @@ nav_order: 66
 **To scrape search results from a form in Playwright, set the fields with `fill`, `type`
 and `select_option` so the page's own `input` and `change` handlers run, wait for the
 gated submit button to enable itself, then race the results container against the
-zero-results element so an empty answer is recorded rather than mistaken for a timeout.**
+zero-results element so an empty answer is recorded, not mistaken for a timeout.**
 Run that across the full set of queries under one seeded identity, at a human pace, so the
-whole matrix reads as one visitor searching rather than a swarm of machines.
+whole matrix reads as one visitor searching, not a swarm of machines.
 
 A lot of the data worth having is not on a page you can request by URL. It sits behind
 a search form: a couple of typed query fields, one or two dropdowns where the second
@@ -80,13 +80,13 @@ survives a site that checks harder than "is the field non-empty". The events the
 generate carry `isTrusted: true`, because a real input pipeline produced them. Events
 synthesized in page script report `isTrusted: false`, and a form that reads that flag
 can accept your keystrokes and silently score the submission. With this project the
-trust is genuine at the engine level rather than reconstructed in JavaScript, which is
+trust is genuine at the engine level, not reconstructed in JavaScript, which is
 the whole point of [why its clicks and keystrokes report isTrusted](playwright-clicks-istrusted.md).
 
 ## Get past a submit button that is gated
 
 **Wait for a gated submit button to enable itself once every field the site's own
-validation checks has actually been set, rather than forcing the click.** Once the
+validation checks has actually been set, not forcing the click.** Once the
 fields are set correctly the button usually enables itself, because you have satisfied
 the exact validation the gate was waiting on. The failure to plan for is the one where
 it does not: a required field you missed, an async validity check that has not
@@ -115,7 +115,7 @@ instead of parsed HTML.
 ## Tell a results grid from a zero-results page
 
 **After submit, wait for the results container or the zero-results element and race the
-two, so a genuine empty answer is recorded as data rather than mistaken for a slow load.**
+two, so a genuine empty answer is recorded as data, not mistaken for a slow load.**
 A row count of zero cannot, on its own, tell an empty result from a page that never
 finished loading.
 

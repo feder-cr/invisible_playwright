@@ -80,7 +80,7 @@ in a container where the venv's bin directory is not always where you
 expect it - see the [CLI reference](cli-reference.md) for both forms.
 
 Two environment variables are worth setting explicitly in a Dockerfile
-rather than discovering you need them from a failed build:
+instead of discovering you need them from a failed build:
 
 ```dockerfile
 # A CI runner or a corporate network that rate-limits or blocks anonymous
@@ -113,7 +113,7 @@ a desktop. The one thing every container hits regardless of which browser it run
 shared memory: containers default `/dev/shm` to 64 MB, and a browser will
 use more than that. Fix it with the run flag, not by disabling shared
 memory usage, because the flags that disable it change how the browser
-behaves rather than giving it room:
+behaves instead of giving it room:
 
 ```bash
 docker run --shm-size=1gb my-invisible-playwright-image
@@ -160,7 +160,7 @@ should match exactly: same user agent, same core count, same WebGL
 renderer string. Nothing about being inside a container changes any of
 them, because none of the three is read from the host - the renderer
 string, the font list behind it, the audio device and the screen values
-all come from the seeded profile rather than from what the container
+all come from the seeded profile, not from what the container
 actually has, which is the gap [the container detection
 page](playwright-docker-detection.md) describes as the one thing a stock
 setup cannot fix without help.
@@ -176,7 +176,7 @@ The one thing this does not fix, and will not: a container with no
 graphics hardware still renders in software. The renderer string is
 correct, the pixels behind it are still drawn by whatever rasterizer is
 actually present. That is a hardware question, not something any browser
-patch reaches, and it is covered honestly rather than glossed over in the
+patch reaches, and it is covered honestly, not glossed over in the
 page linked above.
 
 ## Conclusion
@@ -194,7 +194,7 @@ step above exists to prove rather than assume.
 ## Short answers to the questions that lead here
 
 **Do I need to install fonts in the Dockerfile?** No. The engine carries
-its own bundled font set rather than reading the container's, so you get
+its own bundled font set instead of reading the container's, so you get
 the same font list on a desktop and inside a container without installing
 anything extra. See [installation](installation.md) for what the wheel
 does and does not include.

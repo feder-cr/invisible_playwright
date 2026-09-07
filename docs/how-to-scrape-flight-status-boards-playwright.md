@@ -102,7 +102,7 @@ same number at the same airport. Service day belongs in the key because a flight
 scheduled at 23:50 and departing at 00:40 exists on two calendar days, and the board will
 show it under one of them in a way you do not control.
 
-Store status transitions rather than the last value:
+Store status transitions instead of the last value:
 
 ```python
     if previous.get(key, {}).get("status") != row["status"]:

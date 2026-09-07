@@ -25,7 +25,7 @@ count of reviews in the DOM is almost never the count on the page.
 This is a working order for getting all three right: read the rating from where it
 really lives, expand each review before you extract it, and page the "load more"
 button until there is genuinely nothing left. The examples use stock Playwright driven
-through this project, so the browser looks like a returning visitor rather than a fresh
+through this project, so the browser looks like a returning visitor instead of a fresh
 automated session on every request.
 
 ## Why the two fields you want are not in the text
@@ -151,7 +151,7 @@ a click worked is the text getting longer, not a navigation or a network respons
 `wait_for_function` on the block's own text length is the honest wait. Waiting a fixed
 number of milliseconds instead will sometimes read the block mid-expansion and capture a
 half-grown body. Second, clicking mutates the DOM, so re-query the buttons each pass
-rather than iterating a list captured once, and stop only when a whole pass expands
+instead of iterating a list captured once, and stop only when a whole pass expands
 nothing.
 
 ## Page the 'load more' XHR to a natural end
@@ -210,7 +210,7 @@ throttle is built to catch.
 A seed-stable fingerprint is the right first half of the answer. Because every surface
 this browser exposes is derived from one seed, every request in a run carries the same
 GPU, the same fonts, the same audio device and the same canvas hash, so the session
-reads as one returning visitor rather than a rotating swarm of strangers. Reuse the seed
+reads as one returning visitor instead of a rotating swarm of strangers. Reuse the seed
 and you are the same person across the whole crawl; that consistency is what a
 per-identity limiter measures you against, and here it measures a coherent visitor.
 

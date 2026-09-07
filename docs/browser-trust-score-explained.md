@@ -35,7 +35,7 @@ look. Line them up and the confusion evaporates:
   belongs to the same visitor as before. It is about linkability, not about looking
   automated.
 - **A reCAPTCHA v3 score** is a risk estimate between 0.0 and 1.0, built mostly from
-  behaviour and reputation rather than from what the DOM reports at all.
+  behaviour and reputation, not from what the DOM reports at all.
 
 | Number | The question it answers | What it reads | What moves it |
 |---|---|---|---|

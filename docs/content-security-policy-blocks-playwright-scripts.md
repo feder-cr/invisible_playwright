@@ -58,7 +58,7 @@ There are two different reasons you might reach for this flag, and only one of t
 survives contact with what the flag actually does.
 
 **Legitimate testing need: your own code, your own CSP.** If you are testing a page you
-control and the point of the test is the page's functionality rather than its CSP
+control and the point of the test is the page's functionality instead of its CSP
 configuration, bypassing CSP to let your own instrumentation or a third-party testing
 widget run is a reasonable, disclosed tradeoff. You know the header is there, you know
 you are turning it off for the test, and the production page a real visitor loads still
@@ -108,7 +108,7 @@ broader than most cases need.
 
 **Known limitation:** documented reports exist of `bypassCSP` not resolving every CSP or
 CORS error depending on the specific directive and browser version, so confirm the
-console warning is actually gone after setting the option rather than assuming the flag
+console warning is actually gone after setting the option instead of assuming the flag
 is unconditionally comprehensive.
 
 ## Diagnostic checklist
@@ -116,11 +116,11 @@ is unconditionally comprehensive.
 1. Check the browser console for a `Content-Security-Policy` message naming the refused
    directive before assuming your injection code is broken.
 2. Read the response's `content-security-policy` header directly to see the actual
-   policy rather than guessing from the symptom.
+   policy instead of guessing from the symptom.
 3. Confirm the refusal is `script-src` (or `default-src` covering it), not an unrelated
    directive that happens to also block something in your flow.
 4. Decide whether this is your own page under test or a third-party target, and apply
-   the tradeoff above rather than reaching for `bypass_csp` reflexively.
+   the tradeoff above instead of reaching for `bypass_csp` reflexively.
 5. After setting `bypass_csp=True`, re-check the console to confirm the specific warning
    is gone; a version-specific gap means it is not always comprehensive.
 

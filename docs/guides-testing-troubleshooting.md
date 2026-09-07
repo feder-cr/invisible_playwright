@@ -50,7 +50,11 @@ telling the difference before you ship a fix, not after.
 - [Playwright TargetClosedError: the causes and the fixes](playwright-targetclosederror-causes.md) - usually not a timeout; three specific Firefox and Juggler causes, their symptoms, and how to tell them apart.
 - [Firefox preferences that silently do nothing](firefox-prefs-not-applying.md) - a preference you set can be silently ignored with no error; the reasons in order, and how to confirm which one you hit.
 
+- [First Firefox launch fails on Windows, then works](first-firefox-launch-fails-then-works-windows.md) - The first launch of a freshly extracted build fails, every later one works: what Windows remembers between the two.
+- [Keep Playwright Firefox memory flat on long runs](playwright-firefox-memory-long-runs.md) - Memory that grows over a long run comes from unclosed contexts, an accumulating list, or one context kept too long.
+
 ## Canvas, screenshots and fingerprint noise
 
 - [Canvas fingerprint changes every run: use a seed](canvas-fingerprint-changes-every-run.md) - canvas, WebGL and audio hashes change each run; pass a fixed seed to make readbacks byte-identical.
 - [Playwright screenshot returns noise: readback fix](playwright-screenshot-returns-noise.md) - why page.screenshot() returned a noise PNG, and the principal-split canvas readback fix that made captures clean.
+- [Missing fonts in Docker break Playwright screenshots](playwright-firefox-fonts-docker.md) - A container ships almost no fonts, so text renders as boxes or as the wrong family.

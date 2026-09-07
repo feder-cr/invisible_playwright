@@ -29,7 +29,7 @@ So the useful question is not which is stealthier in the abstract. It is what ea
 does differently, where each is ahead, and which properties matter for your job.
 
 This page is written from Camoufox's own documentation and from ours. Where I could not
-verify something about their implementation, I say so rather than guessing.
+verify something about their implementation, I say so instead of guessing.
 
 ## invisible_playwright vs Camoufox at a glance
 
@@ -51,14 +51,14 @@ its own section below.
 
 Enough that the shared part is worth stating once.
 
-Both **compile Firefox from source and modify the C++**, rather than injecting JavaScript
+Both **compile Firefox from source and modify the C++**, not injecting JavaScript
 into the page. That single decision is what separates either of them from the page-level
 tools, and the reasons are the same in both cases:
 [an override is a function whose source can be printed](tostring-native-code-detection.md),
-[a worker asks the browser rather than your patch](web-workers-fingerprint.md), and
+[a worker asks the browser instead of your patch](web-workers-fingerprint.md), and
 [an injected script has to win a race it does not always win](navigator-webdriver-explained.md).
 
-Both **work with existing Playwright code**, so switching is a launch change rather than a
+Both **work with existing Playwright code**, so switching is a launch change in place of a
 rewrite.
 
 Both cover broadly the same surfaces: navigator, screen and viewport, WebGL parameters and
@@ -127,7 +127,7 @@ bundle, so the font list and the rendered glyph metrics are the same on a Linux 
 and on a Windows desktop. It is a heavier binary in exchange for a font surface that does
 not depend on the host at all.
 
-[Why fonts are a comparison rather than a count](headless-fonts-differ.md) explains why
+[Why fonts are a comparison instead of a count](headless-fonts-differ.md) explains why
 this surface is worth the weight either way.
 
 ## Where I could not verify a difference
@@ -137,19 +137,19 @@ on their side, so I am not claiming an advantage.
 
 **Pointer event fields.** Both projects advertise human-like mouse movement. This project
 sets `pointerType`, `pressure` and the trusted flag in the browser's own input handling,
-so the events carry what a real device produces rather than what a synthesiser guessed,
+so the events carry what a real device produces, not what a synthesiser guessed,
 which is [a different thing from drawing a good curve](human-mouse-movement.md). Whether
 Camoufox does the same at that level is not something their front page states and I have
 not read their source for it.
 
 **The automation layer's own artefacts.** We found and fixed four leaks in the driver
-rather than the engine: JIT-disabling timing, driver frames in stack traces, evaluated
+instead of the engine: JIT-disabling timing, driver frames in stack traces, evaluated
 code labelled as debugger evaluation, and a helper running in the page realm before the
 page. [Those are here](debugger-timing-detection.md). Any Playwright-driven Firefox has
 the same layer and therefore the same starting position, and I do not know which of them
 they have addressed.
 
-If you are choosing seriously, those are the two things worth testing yourself rather than
+If you are choosing seriously, those are the two things worth testing yourself instead of
 reading about.
 [The method for testing them](how-to-test-bot-detection.md) is the same for both.
 

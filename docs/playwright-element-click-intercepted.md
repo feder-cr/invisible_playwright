@@ -16,7 +16,7 @@ Error: locator.click: <element> intercepts pointer events
 Playwright checks, before every click, whether the element it is about to act on is
 actually the thing that would receive the click - "the hit target of the pointer event
 at the action point," in Playwright's own wording for the check. When something else
-occupies that point instead, the click is refused rather than sent somewhere silently
+occupies that point instead, the click is refused, not sent somewhere silently
 wrong. This is the "Receives Events" actionability check, and it exists for the same
 reason strict mode does: a click that lands on the wrong thing should fail loudly, not
 succeed against a target nobody asked for.
@@ -54,7 +54,7 @@ blind. Whatever handler fires belongs to the obstruction - or to nothing -
 while your script carries on believing the button was pressed, which is how a
 forced click turns one visible failure into a silent wrong path.
 
-Second, and this is the part worth internalizing rather than skipping past:
+Second, and this is the part worth internalizing instead of skipping past:
 clicking blind into an overlay is itself a tell, on any
 page instrumented to notice it. A cookie banner that gets clicked on its
 backdrop instead of its buttons, a modal whose own dismiss logic never ran

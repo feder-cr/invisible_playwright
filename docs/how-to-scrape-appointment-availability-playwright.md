@@ -12,7 +12,7 @@ nav_order: 100
 To scrape appointment availability with Playwright, capture the calendar response the
 page fetches for each week or month instead of reading the painted cells, key every row
 to the provider, the service type and the location it was resolved for, stamp it in UTC
-when the response lands, and stop at the grid rather than clicking a slot, because in
+when the response lands, and stop at the grid instead of clicking a slot, because in
 many systems selecting one places a hold that takes it away from every other visitor.
 
 An appointment grid looks like a published schedule and behaves like contested

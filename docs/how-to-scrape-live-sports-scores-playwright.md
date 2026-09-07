@@ -10,7 +10,7 @@ nav_order: 139
 # How to scrape live sports scores with Playwright
 
 To scrape live sports scores with Playwright, treat the score as one field inside a
-larger, time-stamped update rather than a number you read off the page: capture match
+larger, time-stamped update instead of a number you read off the page: capture match
 state alongside the score so a 0-0 reading means something, timestamp each update against
 the feed's own clock instead of your scrape time, allow the score to decrease after a
 video review instead of rejecting it as bad data, and match commentary events to the
@@ -23,7 +23,7 @@ This is a narrower problem than reading a scoreboard once or pulling post-match 
 covers reading the feed transport itself, switching parsers between live and finished
 formats, and holding a long session without tripping a rate check. This page assumes you
 have already solved that part and asks the harder question underneath it: once you are
-receiving updates, what makes an in-play score reading correct rather than merely recent.
+receiving updates, what makes an in-play score reading correct, not merely recent.
 
 ## Why a live score is a moving target, not a snapshot
 
@@ -184,7 +184,7 @@ it were a real overturned goal.
 ## Match commentary events to their own clock, not your scrape time
 
 Goals, cards and substitutions usually arrive on a separate timestamped stream from the
-scoreboard number itself, an event feed rather than the score endpoint. Each event
+scoreboard number itself, an event feed instead of the score endpoint. Each event
 carries its own minute, and that minute is what ties it to the score, not whatever time
 your scraper happened to read either stream.
 

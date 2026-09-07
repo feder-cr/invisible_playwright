@@ -10,7 +10,7 @@ nav_order: 132
 # How to scrape fitness class schedules with Playwright
 
 To scrape fitness class schedules with Playwright, read each row into a natural key
-of studio, class name, room and start time rather than trusting the row's own
+of studio, class name, room and start time instead of trusting the row's own
 occurrence id, fetch spots remaining and waitlist state from the separate endpoints
 that actually carry them instead of the rendered grid, walk the calendar forward one
 week per request because there is no week-agnostic feed, and stamp every pull with
@@ -37,7 +37,7 @@ two behave identically until you diff two weeks and every row looks new.
 Do not build a pipeline that assumes the id survives. Build the key out of the facts
 that describe the slot itself: studio, class name, room and the ISO start time
 carries the schedule's meaning, and the occurrence id becomes metadata you store
-alongside it rather than the thing you key on.
+alongside it, not the thing you key on.
 
 ```python
 from invisible_playwright import InvisiblePlaywright

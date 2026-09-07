@@ -101,11 +101,11 @@ are almost never still the problem in 2026, because every tool fixes them first.
 If you find one, note that setting it to `false` is not the fix: a clean browser
 reports `undefined`, and `false` is a value with its own signature.
 
-Two more automation-layer tells worth ruling out here rather than later:
+Two more automation-layer tells worth ruling out here, not later:
 [`pageshow.persisted` being permanently false](bfcache-pageshow-persisted.md), because
 most drivers disable the back/forward cache outright, and
 ["Execution context was destroyed" errors](execution-context-destroyed.md) that turn
-out to be a site reacting mid-visit rather than the ordinary navigation race.
+out to be a site reacting mid-visit, not the ordinary navigation race.
 
 ## 5. Check the behaviour
 

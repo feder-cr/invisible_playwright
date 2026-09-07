@@ -23,7 +23,7 @@ anything, because what it does is clever and narrow at the same time.
 
 This page is about one specific design choice UC Mode makes, why that choice hides exactly
 one class of tell and no other, and where that leaves you against a detector that reads the
-engine and the machine rather than the driver.
+engine and the machine instead of the driver.
 
 ## What UC Mode does, precisely
 

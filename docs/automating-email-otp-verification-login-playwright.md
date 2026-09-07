@@ -66,7 +66,7 @@ install. Its own documentation describes it plainly:
 > encapsulate a connection to an IMAP4 server and implement a large subset of the
 > IMAP4rev1 client protocol as defined in RFC 3501."
 
-Use `IMAP4_SSL` for the connection, and pass an explicit SSL context rather than the
+Use `IMAP4_SSL` for the connection, and pass an explicit SSL context instead of the
 default one - the standard library is direct about why:
 
 > "With the default ssl_context, the connection is encrypted but the server certificate

@@ -9,7 +9,7 @@ nav_order: 20
 # invisible_playwright vs hrequests
 
 hrequests pairs a TLS-impersonating HTTP client with a browser mode that launches
-someone else's anti-detect browser rather than driving one of its own; invisible_playwright
+someone else's anti-detect browser instead of driving one of its own; invisible_playwright
 is a single browser whose fingerprint comes from inside a patched engine it maintains
 directly, so there is no separate upstream project standing between the fingerprint and
 the page. hrequests, by daijro, is unusual among the tools on these comparison pages
@@ -74,9 +74,9 @@ exactly up to the point where the target expects a browser to have run something
 When hrequests escalates to its browser mode, it is not running its own stealth code.
 The default path launches Camoufox, a separately maintained Firefox build that patches
 the fingerprint into the C++ engine, the same layer this project uses, with a different
-identity model: Camoufox rotates a fresh device per session rather than deriving one
+identity model: Camoufox rotates a fresh device per session instead of deriving one
 from a seed. For a Chrome session hrequests hands off to Patchright instead, a fork of
-Playwright that patches the automation driver's CDP session rather than the engine or
+Playwright that patches the automation driver's CDP session instead of the engine or
 the page. By hrequests' own documentation, the Chrome path does not get fingerprint
 rotation, human-like mouse movement, or extension support, which is why the project
 recommends Firefox.

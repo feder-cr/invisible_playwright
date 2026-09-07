@@ -83,7 +83,7 @@ with InvisiblePlaywright(seed=42) as browser:
 Two details matter more than they look. First, click the calendar days, do not type into
 a read-only date input: many pickers ignore a value you set directly and only commit the
 range on a real click, so a typed date produces a search that silently uses today. Second,
-the mouse arriving at each day on a curved path rather than teleporting is not decoration
+the mouse arriving at each day on a curved path instead of teleporting is not decoration
 here. A rate scan fires the same occupancy widget dozens of times in a session, and a
 control that is always clicked at the exact same pixel with zero travel between clicks is
 one of the cheapest interaction signals a site can watch for.
@@ -117,7 +117,7 @@ Arming [`expect_response`](https://playwright.dev/python/docs/api/class-page#pag
 you click first and wait second, the response can arrive in the gap and you wait forever.
 Keying the predicate on both the URL fragment and `status == 200` matters too, because a
 rate call that comes back empty or with a non-200 is exactly the failure mode the next
-section is about, and you want to see it as a failure rather than silently read an empty
+section is about, and you want to see it as a failure, not silently read an empty
 body. For the general version of this timing problem, see [how to wait for the right
 signal instead of a fixed delay](how-to-wait-for-page-load-playwright.md).
 

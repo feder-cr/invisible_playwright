@@ -40,14 +40,14 @@ most of why people get confused by contradictory results.
 describes headless Chrome as it behaved around 2018, and every serious tool fixes
 those on day one. Passing it proves you are not running an unmodified headless browser.
 The interesting part is not the table: three canvas tests are also run inside an iframe
-and compared, which is a consistency check rather than a fingerprint check.
+and compared, which is a consistency check instead of a fingerprint check.
 
 **[CreepJS](creepjs-explained.md)** asks whether you are lying, not what you report. It
 takes a clean copy of the built-ins from a fresh iframe, inspects stack traces, walks
 descriptors and prototypes, and records a blocked probe as a lie by name. A high score
 means nothing here contradicts anything else here.
 
-**[BotD](botd-explained.md)** returns a verdict rather than a fingerprint, and most of its
+**[BotD](botd-explained.md)** returns a verdict, not a fingerprint, and most of its
 nineteen detectors are really asking which engine you are, by testing behaviours that
 differ between engines.
 
@@ -56,9 +56,9 @@ of roughly forty-one components. It answers "can I be recognised again", which i
 different question from "do I look automated". The commercial version adds signals the
 open-source library does not have.
 
-**[BrowserLeaks](browserleaks-explained.md)** is per-surface rather than a verdict:
+**[BrowserLeaks](browserleaks-explained.md)** is per-surface instead of a verdict:
 WebRTC, canvas, WebGL, fonts. It is the one to reach for when you want to read a
-specific value rather than a score.
+specific value in place of a score.
 
 None of these is a superset of the others, and a green result on one says nothing about
 the rest.

@@ -14,7 +14,7 @@ To extract JSON-LD structured data with Playwright, select every
 `all_text_contents()`, and `json.loads` it; then flatten any `@graph` array and filter
 by `@type` instead of trusting document order. It is less fragile than chasing CSS
 selectors, and an empty result is a useful signal that you were handed a blocked or
-simplified page rather than the real one.
+simplified page instead of the real one.
 
 Most scraping guides teach you to chase CSS selectors down through a layout that
 changes the week after you ship. There is often a cleaner record sitting on the same
@@ -48,7 +48,7 @@ The difference in practice:
 A class name changes, a wrapper `div` moves, a component re-renders with different
 attributes, and your selector-based extractor breaks. The JSON-LD block is a contract
 with search engines, so it changes far less often and, when it does, it changes in a
-documented shape rather than an arbitrary one.
+documented shape, not an arbitrary one.
 
 The one thing to know before you start: a page can carry several blocks of different
 `@type`, and they can be nested inside a `@graph` array. You cannot take the first
@@ -90,10 +90,10 @@ with InvisiblePlaywright(seed=42) as browser:
 ```
 
 `all_text_contents()` returns the text of every matching `<script>` tag, so you get
-all of them in one call rather than looping locators by hand. `json.loads` turns each
+all of them in one call instead of looping locators by hand. `json.loads` turns each
 into a Python object. The `seed=42` gives you a reproducible identity so that if one
 run gets the block and another does not, you can replay the exact same browser and
-find out why rather than blaming the random draw.
+find out why instead of blaming the random draw.
 
 ## Filter by @type, and walk the @graph
 

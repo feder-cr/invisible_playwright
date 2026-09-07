@@ -28,7 +28,7 @@ API and blocking-free operation.
 The thing it does well follows from that architecture. Because there is no
 chromedriver and no WebDriver protocol, the classic automation tells are gone:
 [`navigator.webdriver`](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/webdriver)
-reads as a normal browser rather than `true`, and the
+reads as a normal browser, not `true`, and the
 Selenium-era globals a driver used to inject are not there. That is a real and
 useful property, and it is [most of what "undetected" meant for the
 Chrome-CDP lineage](vs-nodriver.md).
@@ -45,7 +45,7 @@ you drive it with stock Playwright - every standard `page` method, sync or
 async, unchanged. The difference is not a page-level script that overrides
 properties after load. It is a browser whose fingerprint surfaces are generated
 together from a single seed, so canvas, WebGL, audio, the `navigator` fields,
-the fonts and the screen are consistent *with each other* rather than each
+the fonts and the screen are consistent *with each other*, not each
 patched in isolation.
 
 That cross-surface consistency is the point. A detector's strongest move is not

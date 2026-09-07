@@ -93,7 +93,7 @@ The browser is a real browser: a Firefox patched at the C++ level, driven by sto
 Playwright, presenting a consistent TLS handshake and fingerprint that a stripped-down
 client cannot. The feed comes back because the request that asked for it is
 indistinguishable from the request that asked for the page. If you want to keep the
-raw response bytes exactly as served rather than the serialized DOM,
+raw response bytes exactly as served instead of the serialized DOM,
 [capturing the response body directly](how-to-capture-xhr-api-responses-playwright.md)
 with `page.on("response")` is the companion technique, and it avoids any question of
 what the browser did to the document on the way in.
@@ -101,7 +101,7 @@ what the browser did to the document on the way in.
 One caveat worth stating plainly, because it is the honest one: whether the feed
 loads at all is downstream of whether the session looks real. If the HTML site is
 challenging you, the feed will challenge you too, and the fix is the same fix as for
-any blocked page rather than anything feed-specific. That whole order of operations is
+any blocked page, not anything feed-specific. That whole order of operations is
 [the checklist for scraping without getting blocked](how-to-scrape-without-getting-blocked.md),
 and it applies here unchanged.
 
@@ -117,7 +117,7 @@ other. The differences that matter:
 - **Atom** has no channel, each item is `<entry>`, the date is `<updated>` in
   ISO 8601 format per [RFC 4287](https://datatracker.ietf.org/doc/html/rfc4287), the
   body is `<content>` or `<summary>`, and the link is an
-  attribute (`<link href="...">`) rather than element text.
+  attribute (`<link href="...">`), not element text.
 
 So the first thing to do after parsing is look at the root element and decide which
 world you are in. Do not sniff the URL or the content type, read the tag. This is the
@@ -189,7 +189,7 @@ string you may still want to strip of tags depending on what you are storing.
 ## Handle media, dates and the fields that are not always there
 
 Feeds are permissive, and every field above can be absent on a given item. The parser
-above uses `findtext`, which returns `None` rather than raising, and guards
+above uses `findtext`, which returns `None` instead of raising, and guards
 `enclosure` and `content` before touching them, because a podcast item has an
 `<enclosure>` and a text-only post does not.
 

@@ -49,7 +49,7 @@ with InvisiblePlaywright(seed=42) as browser:
 ```
 
 In practice one of `alt`, `aria-label`, a `data-` attribute or a visually hidden span
-carries the digits. Check all of them rather than the first, because which one is used
+carries the digits. Check all of them instead of the first, because which one is used
 varies by framework and sometimes within a single page.
 
 ## Then check whether it is a sprite, not an image of a number
@@ -70,16 +70,16 @@ OFFSETS = """
 Each distinct offset maps to one digit. Calibrate once on a page where you know the value
 from elsewhere, build the offset-to-digit map, and every other page on that site decodes
 exactly. This is more reliable than recognition because it is a lookup, and it breaks
-loudly rather than silently when the site changes the sprite.
+loudly, not silently when the site changes the sprite.
 
 Be aware that the mapping is often deliberately shuffled per session or per page load, and
-in that case it is a defence rather than an artefact. That distinction matters for what you
+in that case it is a defence instead of an artefact. That distinction matters for what you
 do next.
 
 ## Custom fonts with remapped glyphs
 
 A third variant ships a font where the glyph for "7" draws a 3. The DOM text is then
-misleading rather than absent: you read a number and it is wrong, with no error anywhere.
+misleading, not absent: you read a number and it is wrong, with no error anywhere.
 
 The tell is a page-specific `@font-face` with an obfuscated family name applied to exactly
 the elements carrying figures. If you find one, the DOM text cannot be trusted for those

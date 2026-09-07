@@ -22,7 +22,7 @@ links, a tenth of the pages return an empty dict, and a few come back looking pe
 from a page that never actually loaded for you.
 
 This page is the four things that turn that one-liner into something you can trust:
-where the tags really live, why you must read the rendered head rather than the first
+where the tags really live, why you must read the rendered head instead of the first
 response, how to resolve a relative `og:image`, and the fallback chain to use when a
 key is simply absent. It ends on one honest caveat that is specific to running against
 sites that would rather you did not.

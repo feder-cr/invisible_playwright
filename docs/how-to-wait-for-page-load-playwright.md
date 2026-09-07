@@ -55,7 +55,7 @@ are pure timing:
   through two more URLs destroys contexts under you while you work against the first.
 
 The fix is not a longer sleep. It is to wait for the navigation instead of guessing, and
-to re-query handles after it rather than carrying a reference across one:
+to re-query handles after it instead of carrying a reference across one:
 
 ```python
 with page.expect_navigation():
@@ -91,8 +91,8 @@ page.wait_for_load_state("networkidle")   # may never settle; waits out the time
 
 `networkidle` is a signal about the network, and what you almost always care about is a
 signal about the content. Those are different questions, and the next two waits answer
-the one you actually have. When the signal you want is one specific network response
-rather than an element or a condition, there is a targeted wait for exactly that, covered
+the one you actually have. When the signal you want is one specific network response,
+not an element or a condition, there is a targeted wait for exactly that, covered
 in [wait for a specific API response in Playwright](wait-for-specific-api-response-playwright.md).
 
 ## wait_for_selector: wait for the thing you need
@@ -135,7 +135,7 @@ evaluates a predicate in the page until it returns truthy.
 
 The infinite-scroll case is the clearest example. There, the condition is content
 growth, and the reliable loop waits for `document.body.scrollHeight` to actually
-increase rather than sleeping between scrolls:
+increase instead of sleeping between scrolls:
 
 ```python
 def wait_for_growth(page, last_height, timeout_ms=10_000):

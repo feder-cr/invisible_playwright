@@ -9,7 +9,7 @@ nav_order: 94
 
 # How to scrape course catalogs with Playwright
 
-To scrape a course catalog with Playwright, treat it as a four-level tree rather than a
+To scrape a course catalog with Playwright, treat it as a four-level tree instead of a
 list of courses: walk department to course to section to meeting time, pin the term in
 the query string so every request describes the same academic period, read seat counts
 from the section endpoint instead of the rendered badge, and emit one row per section so
@@ -79,7 +79,7 @@ Put the term in the URL and never rely on the session:
 page.goto(f"{base}/search?term={term}&subject={dept}", wait_until="domcontentloaded")
 ```
 
-If the catalog keeps the term in a cookie or a POST body rather than the query string,
+If the catalog keeps the term in a cookie or a POST body, not the query string,
 set it once per context and assert it on every response before parsing. The assertion is
 cheap and the alternative is a silently mixed dataset.
 
@@ -92,7 +92,7 @@ The green "Open" pill on the results page is a rendering of a number the page al
 fetched. It is rounded, it is cached, and on many catalogs it stops updating once the
 section closes. The underlying call carries the real integers.
 
-Capture the response rather than the pixel:
+Capture the response instead of the pixel:
 
 ```python
 seats = {}

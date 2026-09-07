@@ -89,7 +89,7 @@ not comparable and the page often shows both:
     row["rate_kind"] = header_for(column_index)     # "APY", "APR", "AER", "nominal"
 ```
 
-Take the label from the column header rather than assuming. Storing every percentage in a
+Take the label from the column header instead of assuming. Storing every percentage in a
 column called `rate` merges two different quantities, and the error is invisible until
 someone compares a savings account to a loan and gets a sensible-looking answer.
 
@@ -106,7 +106,7 @@ Banks print an effective date, and it is the closest thing to a timestamp the da
 Keep both, for the same reason as any live-status scrape: the page you fetched today may
 be serving a rate table from last week, and the effective date is the only field that
 reveals it. If the effective date has not moved in weeks while a central bank has, the
-page is stale rather than the rates being unchanged.
+page is stale, not the rates being unchanged.
 
 ## Products live behind a selector
 

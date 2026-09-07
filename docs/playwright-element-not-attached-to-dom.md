@@ -30,7 +30,7 @@ replaced with a new one that looks the same.
 
 React, Vue and Angular all do this constantly and by design. A state update re-renders a
 component, and depending on how that component is keyed, the framework can tear down the
-existing DOM node and mount a fresh one rather than mutating the node in place, even when
+existing DOM node and mount a fresh one instead of mutating the node in place, even when
 the visible result is pixel-identical. Your old reference is now a detached node: it
 still exists as an object, it is still "visible" in the sense that its properties read
 back fine, and it is no longer part of the document tree that would receive a click.
@@ -46,14 +46,14 @@ Playwright's point of view nothing was wrong until the instant it tried to act.
 
 This is also why the failure is intermittent in a way that looks like flakiness: it
 depends on whether a re-render happens to land in that specific window on that specific
-run, which is a race against the framework's own render schedule rather than against the
+run, which is a race against the framework's own render schedule, not against the
 network.
 
 ## The ordinary fix: locators re-query, handles do not
 
 The Locator API exists specifically for this. A `Locator` stores how to find an element,
 not a reference to the element itself, so every action re-resolves it against the live
-DOM at the moment the action runs rather than trusting whatever it found earlier:
+DOM at the moment the action runs instead of trusting whatever it found earlier:
 
 ```python
 # fragile: element_handle is a snapshot, and a re-render invalidates it
@@ -82,9 +82,9 @@ assume React or Vue is the culprit:
 - **A conditional element that unmounts on its own schedule** - a toast, a tooltip, an
   autocomplete dropdown - closing itself between when you found it and when you acted on
   it. The fix is the same (a locator, acted on immediately), but the underlying cause is
-  a timed UI element rather than a state re-render.
+  a timed UI element in place of a state re-render.
 - **A list re-sorted or re-filtered between query and action**, where the node you found
-  is removed as part of an actual data change rather than a cosmetic re-render. Here the
+  is removed as part of an actual data change instead of a cosmetic re-render. Here the
   right fix is often to re-scope the locator after the action that triggers the sort, not
   just to swap a handle for a locator.
 

@@ -95,7 +95,7 @@ with InvisiblePlaywright(seed=42) as browser:
 ```
 
 Two habits worth keeping. Build the destination name from
-`suggested_filename` rather than from link text, and always assert a non-zero
+`suggested_filename`, not from link text, and always assert a non-zero
 size afterwards. An empty file that saved without raising is the download
 equivalent of a page that came back blank: it did not error, and it is still a
 failure.

@@ -63,7 +63,7 @@ The engine's mouse model handles per-action realism, not request cadence, so it 
 rate limit your loop for you. It is worth being precise about what the engine already does,
 because it covers one behaviour signal and not the other.
 
-Every click arcs the pointer to the target along a Bezier curve rather than teleporting to
+Every click arcs the pointer to the target along a Bezier curve instead of teleporting to
 the coordinate, which adds a realistic, variable latency to each action and is
 [movement that is produced rather than declared](human-mouse-movement.md). That defeats
 the pointer-teleport tell inside a page.

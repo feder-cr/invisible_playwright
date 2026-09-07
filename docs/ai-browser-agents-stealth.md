@@ -69,7 +69,7 @@ and `headless` on `BrowserProfile`. The surrounding code is Chrome executable di
 and Chrome profile handling, and the channel type is a Chromium channel.
 
 The useful move there is pointing `executable_path` at your **real installed Chrome**
-rather than the bundled Chromium, and pointing `user_data_dir` at a profile that has been
+instead of the bundled Chromium, and pointing `user_data_dir` at a profile that has been
 used. [The full version is here](browser-use-detection.md).
 
 ## Stagehand
@@ -77,7 +77,7 @@ used. [The full version is here](browser-use-detection.md).
 Exposes `executablePath` and documents it, which is more than most. The rest of the
 codebase is CDP: local CDP discovery, CDP tailing, a CDP client. Chromium references
 outnumber Firefox ones by a wide margin, and the Firefox mentions are in an OpenAPI
-schema and a client for someone else's API rather than in a launch path.
+schema and a client for someone else's API, not in a launch path.
 
 So the option exists and it expects a Chromium build.
 
@@ -97,7 +97,7 @@ documentation notes does not support Firefox, so that combination is largely ine
 ## Maxun
 
 Playwright is in the manifest and no executable path is exposed. As a no-code platform
-that is a coherent product decision rather than an oversight.
+that is a coherent product decision instead of an oversight.
 
 ## What applies regardless of the engine
 

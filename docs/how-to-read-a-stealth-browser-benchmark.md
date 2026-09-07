@@ -68,7 +68,7 @@ That matters for reading a benchmark because a table that lists five tools as fi
 independent data points, when three of them share a code ancestor or the same underlying
 CDP quirks, is reporting less independent evidence than it looks like it's reporting.
 Three rows agreeing is weaker evidence than it appears if the three rows are close
-cousins rather than three separate engineering efforts arriving at the same answer.
+cousins, not three separate engineering efforts arriving at the same answer.
 
 ## What a trustworthy report actually looks like, with a real example
 

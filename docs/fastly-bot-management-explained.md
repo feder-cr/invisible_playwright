@@ -38,7 +38,7 @@ Once loaded, the script's execution feeds three system signals a site owner can 
 | Signal | What it indicates |
 |---|---|
 | `SUSPECTED-BOT.HEADLESS` | Probable headless browser activity |
-| `SUSPECTED-BAD-BOT.HEADLESS` | Headless activity Fastly's model treats as malicious rather than merely automated |
+| `SUSPECTED-BAD-BOT.HEADLESS` | Headless activity Fastly's model treats as malicious, not merely automated |
 | `CLIENTSIDE-COOKIE-VALID` | The client-side script ran and produced a cookie, i.e. it is a real, executing browser environment |
 
 The cookie itself is named `_fs_cd_cp_` in Fastly's own docs, and its presence is how a site owner or a Fastly rule confirms the script actually executed rather than being blocked or skipped.
@@ -47,7 +47,7 @@ Handling then splits by inspection point: pre-cache rules can act on a `fastly.b
 
 ## Signals beyond headless detection
 
-Fastly's broader materials name additional categories without publishing the same level of implementation detail as the headless script: **client fingerprinting**, to "identify client types and detect bots designed for malicious activities," and **AI bot detection**, aimed specifically at "AI crawlers and fetchers" as their own traffic class. A 2024 addition, the `BOT-ANALYSIS` system signal, is documented only at the level of "a request that was analyzed for bots," without the finer distinctions Fastly gives the headless-specific signals; this page reports that limitation rather than guessing at what `BOT-ANALYSIS` adds beyond the headless triad.
+Fastly's broader materials name additional categories without publishing the same level of implementation detail as the headless script: **client fingerprinting**, to "identify client types and detect bots designed for malicious activities," and **AI bot detection**, aimed specifically at "AI crawlers and fetchers" as their own traffic class. A 2024 addition, the `BOT-ANALYSIS` system signal, is documented only at the level of "a request that was analyzed for bots," without the finer distinctions Fastly gives the headless-specific signals; this page reports that limitation instead of guessing at what `BOT-ANALYSIS` adds beyond the headless triad.
 
 ## What an engine answers honestly, and what stays server-side
 

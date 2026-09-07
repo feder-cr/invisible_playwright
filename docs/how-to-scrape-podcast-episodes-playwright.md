@@ -107,7 +107,7 @@ when there is no feed to fall back on, are in
 The feed has no window. It carries every item the host publishes, oldest to newest, in
 one document. The honest caveat is that some hosts cap a feed at the most recent N items
 by a setting on the show, so compare the item count in the XML against any total the page
-displays rather than assuming the archive is complete. A capped feed is still a longer
+displays instead of assuming the archive is complete. A capped feed is still a longer
 list than the player, and the cap is visible; the player's truncation is not.
 
 ## Parse the core fields and the podcast namespace together

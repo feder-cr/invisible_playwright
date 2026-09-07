@@ -71,13 +71,13 @@ something isn't in its bundle-only list, and each of those defaults quietly reac
 the host if you don't close it explicitly:
 
 - One backend's safety fallback, when the bundle is unreadable, is to fail toward an
-  empty list rather than the host - which breaks rendering visibly instead of leaking
+  empty list instead of the host - which breaks rendering visibly instead of leaking
   silently, the correct failure direction for a fingerprinting surface.
 - Another's default path, taken naively, falls straight through to a live host
   enumeration call the moment the bundle-only condition isn't satisfied.
 - The third had no bundle-only mode at all going in; it enumerates host and bundled
   fonts through the same single API call, so keeping the host out requires filtering
-  every result rather than skipping a call.
+  every result instead of skipping a call.
 
 Closing all three took a different patch per backend, because "don't enumerate the
 host" means something different to DirectWrite, to fontconfig, and to CoreText. There
@@ -89,7 +89,7 @@ CoreText's version of this fix shipped later than Windows' and Linux's, and not
 because it was harder to write. It was harder to *know was wrong*, because nobody
 doing the work had a Mac to run it on.
 
-**Layer one, found by reading the code rather than running it:** the block-at-birth
+**Layer one, found by reading the code instead of running it:** the block-at-birth
 hook that stops each backend from falling back to a live host enumeration had been
 wired into the Windows and Linux font backends, and simply never ported to CoreText.
 Reading the three backends side by side made that omission visible without running
@@ -108,7 +108,7 @@ built in. A hook that is correct and a build that never includes it produce the 
 observed nothing.
 
 Both layers are closed now, and CoreText enumerates the identical family set the
-other two backends do. The reason this is worth telling as one story rather than two
+other two backends do. The reason this is worth telling as one story, not two
 separate fixes: the first fix looked complete by every check available without a
 real Mac, and was not. The only thing that caught the second layer was an automated
 run on the actual operating system, checking the actual output, after the fix that
@@ -122,18 +122,18 @@ bundle, zero host fonts leaking through on either,
 [generic CSS families](https://www.w3.org/TR/css-fonts-4/) (serif, sans,
 monospace, and the per-script CJK generics) resolving to the same bundled fonts rather
 than collapsing to whatever the host happens to have. The same check on macOS runs in
-CI rather than locally, for the ordinary reason that not every setup has a Mac to test
+CI, not locally, for the ordinary reason that not every setup has a Mac to test
 on, and it has passed there too.
 
-The cost is real and worth naming rather than glossing over. The binary is
-meaningfully larger, because it now carries real font files rather than relying on
+The cost is real and worth naming instead of glossing over. The binary is
+meaningfully larger, because it now carries real font files instead of relying on
 whatever the OS already had installed. And a fixed bundle also fixes the family list
 in time: unlike a live host, the browser cannot pick up a font a real Windows Update
 might add later. Both are the price of an answer that has no per-platform seams to find.
 
-## Where it still leaks, named rather than hidden
+## Where it still leaks, named, not hidden
 
-Consistent with treating a suppressed signal as a fail rather than a pass, the honest
+Consistent with treating a suppressed signal as a fail instead of a pass, the honest
 gaps in this approach, found and not yet closed:
 
 - One backend's [CSS `local()`](https://www.w3.org/TR/css-fonts-4/) font lookup path

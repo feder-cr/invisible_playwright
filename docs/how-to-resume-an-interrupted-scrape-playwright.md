@@ -11,7 +11,7 @@ nav_order: 74
 
 To resume an interrupted Playwright scrape, write a small durable checkpoint after each
 unit of work, then on restart skip the work already done, re-validate the boundary item,
-and relaunch with the same seed so the site sees one returning visitor rather than a new
+and relaunch with the same seed so the site sees one returning visitor instead of a new
 one. Stock Playwright gives you the checkpoint and the resume path; a seeded fingerprint
 keeps the resumed run continuous.
 
@@ -26,7 +26,7 @@ There is a second failure most guides miss. If every restart launches a fresh br
 identity, the site does not see one job that hiccuped. It sees a new visitor appear each
 time the job restarts, which is a pattern in its own right. The fix for that is the same
 lever this project uses everywhere: a seeded, reproducible fingerprint, so a resumed run
-is the same visitor coming back rather than a new one arriving.
+is the same visitor coming back, not a new one arriving.
 
 ## Why a naive restart is the worst of both options
 
@@ -53,7 +53,7 @@ a paginated crawl it is the last page number and the last item ID on it. For a c
 it is the cursor token the server handed you. For a list of URLs it is the set of URLs
 already done.
 
-Two rules make it durable rather than decorative. Write it incrementally, after each unit
+Two rules make it durable, not decorative. Write it incrementally, after each unit
 of work, not once at the end where a crash guarantees you never reach it. And write it
 atomically, so a crash in the middle of writing the file cannot leave you with a
 half-written checkpoint that is worse than none.
@@ -142,7 +142,7 @@ def run():
 
 `done_ids` doing the dedup means the boundary page can be re-read safely: rows already
 written are skipped by ID, so re-validating costs you a re-fetch and never a duplicate. For
-larger runs, keep `done_ids` in a set-backed store (a SQLite table, a Redis set) rather than
+larger runs, keep `done_ids` in a set-backed store (a SQLite table, a Redis set) in place of
 a growing JSON array, but the shape is identical.
 
 If a page fails transiently rather than fatally, resuming the whole process is the wrong

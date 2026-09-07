@@ -21,7 +21,7 @@ A scraper that dies after a few hours almost never has a Python-side memory leak
 Python's own objects, the strings, the dicts, the lists you build, get
 garbage-collected the same way they would in any long-running script. What actually
 grows is the browser process the scraper is driving, and the growth follows a small
-number of predictable causes rather than a mystery leak in the language itself.
+number of predictable causes instead of a mystery leak in the language itself.
 
 ## What actually grows over a long run
 

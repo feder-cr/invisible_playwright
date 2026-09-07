@@ -67,7 +67,7 @@ timezone is several surfaces a detector cross-checks, not one value.
 
 ## Set the site's location the way a visitor does
 
-Drive the site's location selector rather than injecting a value. The selector is usually
+Drive the site's location selector instead of injecting a value. The selector is usually
 a control that opens, takes a typed city, and offers a suggestion to click:
 
 ```python
@@ -87,7 +87,7 @@ a pointer that traveled to the control, which is
 
 Once the feed is scoped, the cards are a repeating DOM structure and you read them in a
 loop. Because the feed is infinite and rotates, treat "how many cards" as "how many you
-scroll to", and dedupe on the listing's own id rather than on position, since positions
+scroll to", and dedupe on the listing's own id, not on position, since positions
 shift as new listings arrive:
 
 ```python
@@ -146,7 +146,7 @@ for listing in list(seen.values()):
 ```
 
 That the click looks human is not a slogan here, it is the whole reason a patched engine
-is doing the driving. The pointer travels to the control on a curved path rather than
+is doing the driving. The pointer travels to the control on a curved path instead of
 teleporting, which is [what human mouse movement means in practice](human-mouse-movement.md),
 and the resulting event is trusted rather than synthetic. Space the reveals out. A hundred
 reveal clicks a minute from one session is a velocity signal no fingerprint can launder.

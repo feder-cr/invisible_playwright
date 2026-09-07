@@ -19,7 +19,7 @@ underneath, the same mechanism.
 The short version: Enterprise is not a stricter widget. It is the same
 checkbox-or-invisible, escalate-to-a-puzzle model, given a visible risk score, custom
 challenge content, difficulty controls a free integration never sees, and a support
-contract, sold as a metered or negotiated product rather than embedded for free in
+contract, sold as a metered or negotiated product, not embedded for free in
 exchange for the puzzle answers themselves.
 
 ## Three tiers, not two
@@ -31,7 +31,7 @@ choosing among four fixed difficulty modes: "Easy, Medium, Difficult, and Auto."
 is a paid, self-serve tier priced, per hCaptcha's own pricing page, at "$99/month"
 billed annually or "$139/month" billed monthly, including 100,000 evaluations a month
 with overage at "$0.99/1K" beyond that, with a two-week free trial. **Enterprise** is
-custom-priced and sold through a sales contact rather than a checkout page.
+custom-priced and sold through a sales contact, not a checkout page.
 
 ## What Pro adds over Basic
 
@@ -49,10 +49,10 @@ score, or the analytics.
 
 ## What Enterprise adds on top of Pro
 
-This is the part that is a genuine capability gap rather than a bigger number on the
+This is the part that is a genuine capability gap instead of a bigger number on the
 same feature, and hCaptcha's own plans page names it directly: **private learning**,
 described as training detection models on an Enterprise customer's own traffic patterns
-rather than a shared, general model, plus **custom challenges** and **challenge content
+in place of a shared, general model, plus **custom challenges** and **challenge content
 control**, meaning an Enterprise account can bring its own images or questions instead
 of using hCaptcha's default challenge pool. hCaptcha's plans page also lists **human
 threat detection**, **difficulty tuning**, called out specifically as including the
@@ -71,7 +71,7 @@ gives that customer direct control over what the puzzle even looks like, and add
 operational scaffolding (SLA, SSO, reporting) an organization actually deploying this at
 scale asks for. None of it is a stricter version of the puzzle itself, it is control
 over when and how the puzzle appears, and how well the risk model fits one customer's
-own traffic rather than the general population hCaptcha sees.
+own traffic instead of the general population hCaptcha sees.
 
 | | Basic (free) | Pro | Enterprise |
 |---|---|---|---|

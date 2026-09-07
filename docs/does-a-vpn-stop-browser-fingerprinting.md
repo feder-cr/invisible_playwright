@@ -12,7 +12,7 @@ nav_order: 12
 No. A VPN changes one thing: the IP address the server sees. The browser
 fingerprint - canvas, WebGL, installed fonts, the user agent, the timezone, the
 hardware counters - is exactly what it was before you connected. Worse, a VPN can
-make a session look more suspicious rather than less, because it introduces a second
+make a session look more suspicious, not less, because it introduces a second
 story about where you are and gives a detector two stories to compare.
 
 This page is what a VPN moves, what it leaves in place, the specific way it can
@@ -35,7 +35,7 @@ different problem with a different owner.
 
 ## What a VPN leaves untouched
 
-Open any fingerprinting report through a VPN and read the fields rather than the
+Open any fingerprinting report through a VPN and read the fields, not the
 verdict. The address at the top has changed. Nothing below it has:
 
 - **[Canvas](https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API) and

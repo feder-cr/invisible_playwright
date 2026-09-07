@@ -83,7 +83,7 @@ year discrepancy described above, sitting live on every session.
 
 On 2026-04-28 we removed the override entirely and let Firefox emit its own
 compiled buildID, the one that tracks the binary. We ran it as an A/B knockout
-against reCAPTCHA v3, which returns a continuous risk score rather than a
+against reCAPTCHA v3, which returns a continuous risk score instead of a
 verdict, so a small change is measurable if you run enough of it. Removing the
 frozen date moved the [reCAPTCHA v3 score](recaptcha-v3-score.md) in the good
 direction:
@@ -93,11 +93,11 @@ direction:
 - `+0.155` on an isolated overnight single-variant run.
 
 The absolute numbers are small and they vary, which is exactly why we insist on
-many runs rather than one: this domain is non-deterministic and a single pass
+many runs, not one: this domain is non-deterministic and a single pass
 proves nothing. But the sign was consistent across every framing. Freezing the
 build date cost score. Letting it move with the binary recovered it. The
 "safe-looking" constant was the more detectable choice, measurably, and the fix
-was to stop setting the value at all rather than to set it to a cleverer one.
+was to stop setting the value at all, not to set it to a cleverer one.
 
 ## What the shipped build does instead
 

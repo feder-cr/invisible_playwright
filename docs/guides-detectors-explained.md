@@ -47,6 +47,8 @@ whether a browser is telling the truth about what it claims to be.
 - [hCaptcha Enterprise vs Standard](hcaptcha-enterprise-vs-standard.md) - the same mechanism, plus custom difficulty tuning, dedicated risk models and an SLA instead of the free tier's labeled-data economy.
 - [Cloudflare Bot Management, Explained](cloudflare-bot-management-explained.md) - the always-on scoring engine behind Cloudflare's edge, distinct from the Turnstile widget: a 1-99 bot score from JA3/JA4, HTTP fingerprinting, ML and behavior.
 
+- [Queue-it virtual waiting rooms, explained for automation](queue-it-virtual-waiting-room-explained.md) - How a virtual waiting room splits the redirect, the return token and the JavaScript half from the server half.
+
 ## What a fingerprint is and how accurate it is
 
 - [What is a browser fingerprint?](what-is-a-browser-fingerprint.md) - the join of dozens of low-entropy attributes that identify a browser with no cookie.

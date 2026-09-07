@@ -9,7 +9,7 @@ nav_order: 34
 
 # Anubis: The Proof-of-Work Firewall, Explained
 
-Every other vendor on this list is a commercial product whose internals have to be pieced together from reverse engineering, because the company that built it has no reason to publish them. Anubis is different: it is MIT-licensed, its full source is on GitHub, and its author writes publicly about why it exists and what it does not solve. This page is built almost entirely from primary material, its own repository, its own documentation, and a named security researcher's own published analysis, rather than practitioner reconstruction. Say that plainly, because it is the exception in this corpus, not the rule.
+Every other vendor on this list is a commercial product whose internals have to be pieced together from reverse engineering, because the company that built it has no reason to publish them. Anubis is different: it is MIT-licensed, its full source is on GitHub, and its author writes publicly about why it exists and what it does not solve. This page is built almost entirely from primary material, its own repository, its own documentation, and a named security researcher's own published analysis, not practitioner reconstruction. Say that plainly, because it is the exception in this corpus, not the rule.
 
 Anubis was created by Xe Iaso, a pseudonymous developer, in January 2025, after Amazon's web crawler overloaded Iaso's own Git server while ignoring `robots.txt` entirely. It is now maintained by Techaro. The name is the joke and the mechanic at once: Anubis, the Egyptian god who weighs the hearts of the dead, and the software "weighs the soul" of an incoming HTTP request before deciding whether it deserves to reach the backend at all.
 

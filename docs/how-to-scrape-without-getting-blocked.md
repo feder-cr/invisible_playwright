@@ -11,7 +11,7 @@ nav_order: 1
 Getting blocked is not one problem, it is at least five independent ones: the address,
 the handshake, the machine, the automation layer, and behaviour. Each needs a different
 fix, and the fastest way to stay blocked is to work on the wrong one first, in the order
-a vendor sells them rather than the order that is cheapest and most likely to be the
+a vendor sells them instead of the order that is cheapest and most likely to be the
 actual cause.
 
 Almost everyone arrives at this question with the same first move already made: rotate
@@ -71,7 +71,7 @@ hidden anything, you have manufactured a contradiction that a single query expos
 Consistency is the property that survives inspection, not novelty. The same logic runs
 through the exit: an address in one country with a browser insisting on another is
 [a mismatch that is cheap to detect and cheap to fix](timezone-proxy-mismatch.md), but
-only if everything is made to tell one story rather than rotated independently.
+only if everything is made to tell one story, not rotated independently.
 
 ## The tells no plugin can touch
 
@@ -87,7 +87,7 @@ stealth plugin ever written leaves them intact:
   while the user agent says it is, is decisive, and no property override reaches it.
 - **The behaviour.** A pointer that jumps between coordinates without passing through the
   space between, keystrokes at a uniform interval, a form filled in eighty milliseconds.
-  This is what explains a block that arrives minutes into a session rather than at the
+  This is what explains a block that arrives minutes into a session, not at the
   first request, and it needs [movement that is actually produced rather than
   declared](human-mouse-movement.md).
 

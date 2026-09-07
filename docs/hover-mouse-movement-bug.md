@@ -19,7 +19,7 @@ validating itself against the one call almost no real script makes.
 Every guide to human-like mouse movement measures the same thing: draw a curve, add
 jitter, check that the shape looks plausible. [The curve is the easy half](human-mouse-movement.md).
 This page is about a failure mode one level up, found by measuring the feature on the
-call scripts actually make rather than the one it's easiest to test with, and it
+call scripts actually make instead of the one it's easiest to test with, and it
 turned out the humanization had been validating itself against the wrong call the
 whole time.
 
@@ -45,7 +45,7 @@ That is a teleport with two extra samples decorating it, not a human path.
 
 ## Why the hit-target check eats the movement
 
-The mechanism is specific rather than mysterious. A hit-target check has to move the
+The mechanism is specific, not mysterious. A hit-target check has to move the
 pointer onto the target before it can confirm the target is really there. If the
 humanized path is generated *inside* that same step, the check consumes the distance
 first, and the path that runs afterward has almost nothing left to cover. The stroke

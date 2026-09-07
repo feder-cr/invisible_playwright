@@ -37,7 +37,7 @@ automation box: session A writes a value to the clipboard expecting to read it b
 later in the same test, and session B, running at the same time on the same machine,
 overwrites it first. The result is not a clean failure with an obvious cause. It is a
 test that reads back the wrong string and looks, to whoever is debugging it, like a
-logic bug in the test itself rather than two unrelated browser processes fighting over
+logic bug in the test itself, not two unrelated browser processes fighting over
 one piece of shared OS state.
 
 ## How the fix works: a per-context virtual clipboard

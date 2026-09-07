@@ -1,6 +1,6 @@
 ---
 title: "How to scrape library catalog availability with Playwright"
-description: "Scrape library catalogue availability with Playwright: read holdings per branch rather than per title, keep the loan status vocabulary the catalogue uses, and handle the session the OPAC hands you."
+description: "Scrape library catalogue availability with Playwright: read holdings per branch, not per title, keep the loan status vocabulary the catalogue uses, and handle the session the OPAC hands you."
 parent: "Scraping with Playwright"
 grand_parent: "Guides"
 nav_order: 154
@@ -19,7 +19,7 @@ run creates server-side state, results are addressed by a token that expires, an
 copied from one run frequently returns an empty result set in the next. Scraping them by
 saving result URLs produces a script that works once.
 
-This page covers driving the search rather than replaying URLs, reading holdings per
+This page covers driving the search instead of replaying URLs, reading holdings per
 copy, and keeping the catalogue's own status words instead of flattening them to a
 boolean.
 
@@ -54,7 +54,7 @@ token is still the one the server issued you.
 
 ## Holdings are per copy, per branch
 
-Open a record and read the holdings table rather than the availability badge:
+Open a record and read the holdings table instead of the availability badge:
 
 ```python
 def holdings(page):

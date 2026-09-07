@@ -11,7 +11,7 @@ nav_order: 138
 
 To scrape salary and pay scale data with Playwright, expand any tooltip or collapsed row
 before you read a figure, keep the period, currency, and base-versus-total flag attached
-to every value, store a range as two numbers rather than a collapsed midpoint, and tag
+to every value, store a range as two numbers instead of a collapsed midpoint, and tag
 each record with what kind of evidence it is: a figure typed by a job poster, one
 submitted by a site visitor, or a line from a government wage survey. Each of those needs
 its own sample size and collection date carried along with it, not folded into the
@@ -78,7 +78,7 @@ The number you see before that click is a sum. The numbers you want are the adde
 
 Drive the toggle the same way that page describes: read `aria-expanded` before clicking
 so you never re-close a panel the page already opened, and wait for text to land in the
-specific panel rather than trusting that the click alone was enough.
+specific panel instead of trusting that the click alone was enough.
 
 ```python
 def read_pay_breakdown(page, toggle_selector, panel_id):
@@ -103,7 +103,7 @@ def read_pay_breakdown(page, toggle_selector, panel_id):
 ```
 
 If the panel never appears, that is a real answer too: the page is not disclosing a
-breakdown, and `components` on that record stays `None` rather than an assumed split. A
+breakdown, and `components` on that record stays `None` instead of an assumed split. A
 figure with no visible breakdown is a blended total, and a blended total stored as if it
 were base pay will overstate every comparison against a job that lists base pay alone.
 
@@ -154,7 +154,7 @@ def parse_range(raw):
 ```
 
 A `(None, None)` result is the parser telling you the text was a single point value, not
-a failure. Route that case to `min_value == max_value` rather than discarding the row.
+a failure. Route that case to `min_value == max_value` instead of discarding the row.
 
 ## Self-reported figures and wage statistics are not the same evidence
 
