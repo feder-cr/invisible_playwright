@@ -1,0 +1,135 @@
+---
+title: "How to scrape scholarship listings with Playwright"
+description: "Scrape scholarship databases with Playwright: parse deadlines that are often not dates, keep eligibility criteria as text, and separate the aggregator's summary from the provider's own page."
+parent: "Scraping with Playwright"
+grand_parent: "Guides"
+nav_order: 161
+---
+
+
+# How to scrape scholarship listings with Playwright
+
+To scrape scholarship listings, treat the **deadline** as a field that is frequently not a
+date and the **eligibility** as text you must not compress. Those two fields carry all the
+decision value, and both are routinely written in ways that defeat a naive parser:
+"rolling", "varies by campus", "30 days before term start", "closed for 2026".
+
+There is a second structural point. Most scholarship data lives on aggregators that
+summarise a provider's own page, and the summary is often stale or subtly wrong. If your
+use is helping someone decide where to apply, capture the provider link and treat the
+aggregator row as an index entry rather than as the truth.
+
+This page covers deadlines that are not dates, eligibility that resists structuring, and
+following through to the source.
+
+## Parse the deadline into a shape that admits it is not a date
+
+```python
+import re
+from datetime import date
+
+RELATIVE = re.compile(r"(?P<n>\d+)\s+days?\s+before\s+(?P<anchor>.+)", re.I)
+
+def parse_deadline(text):
+    t = (text or "").strip()
+    low = t.lower()
+    if not t:
+        return {"kind": "unknown", "raw": text}
+    if "rolling" in low or "any time" in low:
+        return {"kind": "rolling", "raw": t}
+    if "varies" in low:
+        return {"kind": "varies", "raw": t}
+    if "closed" in low:
+        return {"kind": "closed", "raw": t}
+    m = RELATIVE.search(low)
+    if m:
+        return {"kind": "relative", "days_before": int(m.group("n")),
+                "anchor": m.group("anchor").strip(), "raw": t}
+    parsed = try_absolute(t)
+    if parsed:
+        return {"kind": "date", "date": parsed.isoformat(), "raw": t}
+    return {"kind": "unparsed", "raw": t}
+```
+
+The `unparsed` branch is the one that keeps the dataset honest. A pipeline that coerces
+everything into a date column has to invent something for "varies by campus", and whatever
+it invents will send someone to a deadline that does not exist.
+
+Absolute dates need care too: these listings mix `03/04/2026` in both conventions, often
+on the same aggregator, because providers submit them as free text. Where the site
+publishes a machine-readable date in an attribute, prefer it:
+
+```python
+    node = card.query_selector("time[datetime]")
+    iso = node.get_attribute("datetime") if node else None
+```
+
+## Eligibility is prose, and compressing it does harm
+
+Eligibility rules combine study level, field, nationality, residency, income, institution,
+sometimes demographic criteria and sometimes an essay requirement. Aggregators show them
+as chips, which loses the conjunctions: whether the criteria are all required or any of
+them qualify.
+
+Capture both forms:
+
+```python
+        "eligibility_chips": [c.inner_text().strip()
+                              for c in card.query_selector_all(".eligibility .chip")],
+        "eligibility_text": (card.query_selector(".eligibility-full").inner_text().strip()
+                             if card.query_selector(".eligibility-full") else None),
+```
+
+The chips are searchable; the text is correct. If you only keep one, keep the text. A
+student filtered out by a chip that dropped an "or" is a real cost, and it is invisible in
+the data.
+
+## The award amount has a shape too
+
+```python
+    "amount_text": "Up to $5,000 per year, renewable for 4 years"
+```
+
+Amounts carry a maximum, a period, a renewal and sometimes a count of awards. Store the
+string and derive numbers with the same explicit-unknown discipline as deadlines. A single
+`amount` float turns "up to" into "is", which is the most common way these datasets
+overstate what a student will receive.
+
+## Follow through to the provider
+
+The aggregator row should carry a link to the source, and the source is where the current
+deadline lives:
+
+```python
+    provider = card.query_selector("a.provider-link, a[rel='nofollow'][target='_blank']")
+    row["provider_url"] = provider.get_attribute("href") if provider else None
+```
+
+Where you visit the provider page, capture its own deadline and eligibility separately
+rather than overwriting the aggregator's. The disagreement between the two is useful
+information about how stale the aggregator is, and it is lost the moment you merge them.
+
+Many provider pages are university sites whose listings sit behind a search form; that is
+the pattern in
+[scraping search results by driving a form](how-to-scrape-search-results-form-playwright.md).
+
+## Filters, pagination and a rewarding shortcut
+
+Aggregators put the useful selection behind facets, which repopulate the list without a
+navigation, exactly like
+[multi-select facet filters](how-to-scrape-multi-select-facets-playwright.md). Set them
+explicitly and record what you set, because a filter left at a default silently narrows
+your dataset in a way no column reveals.
+
+The shortcut worth trying first: many of these listings are marked up with structured data
+for search engines, which gives you a clean object without parsing the cards at all. Check
+before writing selectors, using
+[extracting JSON-LD structured data](how-to-extract-json-ld-structured-data-playwright.md).
+
+## Refresh on the deadline calendar
+
+Scholarship data has a natural rhythm: providers update in a season, deadlines cluster,
+and most rows do not change for months. A weekly full pass plus a daily pass over rows
+whose deadline is within a month covers the volatility at a fraction of the requests, and
+keeps you well inside the pacing described in
+[rate limiting your own scraper](how-to-rate-limit-your-scraper-playwright.md).
