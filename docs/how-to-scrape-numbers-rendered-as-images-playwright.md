@@ -101,6 +101,35 @@ a full page. The general capture mechanics, including the traps around lazy cont
 scroll position, are in
 [taking full page screenshots](how-to-take-full-page-screenshots-playwright.md).
 
+⛔ **Do not detect change by hashing the PNG. We measured this and it nearly produced a
+false conclusion.** Building a canvas comparison bench, we hashed the PNG bytes of each
+capture and got **three different md5 values across three runs of the same page**, on
+unmodified retail Firefox. The obvious reading was that Firefox randomises canvas output
+by itself.
+
+It was wrong. The three PNG files had **identical byte length** and differing content: the
+variation was encoder metadata, not pixels. Decoding to a pixel array and comparing that
+instead, all three runs were **stable**, and so were the other two arms of the bench.
+
+The practical rule that falls out of it, for any pipeline that watches a rendered number
+for change:
+
+```python
+from PIL import Image
+import hashlib, io
+
+def pixel_digest(png_bytes):
+    img = Image.open(io.BytesIO(png_bytes)).convert("RGB")
+    return hashlib.sha256(img.tobytes()).hexdigest()      # pixels, not the file
+```
+
+A file hash answers "are these two files identical", which is not the question. The
+question is whether the image changed, and only the decoded pixels answer that. The same
+trap appears whenever a screenshot is used as evidence rather than as a picture, which is
+also why
+[a screenshot that comes back as noise](playwright-screenshot-returns-noise.md) is worth
+recognising as its own failure rather than as a changed page.
+
 Then treat the recognised value as a measurement with an error rate, not as a fact. Store
 the image path or hash next to the number so a suspicious row can be checked by a human,
 and set a confidence threshold below which you record a null rather than a guess.
