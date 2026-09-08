@@ -46,7 +46,9 @@ python -c "import json;from invisible_playwright import get_default_stealth_pref
 
 Regenerate it when you upgrade the package, since the pref set moves with the engine.
 Treat `prefs.json` as belonging to a specific seed and a specific version, and keep
-the seed written down next to it.
+the seed written down next to it. Which version it belongs to is not a convention
+either: [the engine is pinned by a seal](pinning.md), and the pairing that file
+describes is the one you are reproducing by hand here.
 
 ## Step two: launch
 
@@ -117,7 +119,9 @@ none of the extra is in the JSON:
   Python.
 - **The pin check.** The wrapper refuses to run a binary that does not match the
   version of the config that produced the prefs. Nothing enforces that pairing here.
-  If you upgrade the binary and keep an old `prefs.json`, nothing will tell you.
+  If you upgrade the binary and keep an old `prefs.json`, nothing will tell you, and
+  the way that goes wrong is quiet: prefs the engine no longer reads simply
+  [do not apply, with no error anywhere](firefox-prefs-not-applying.md).
 
 So this route is right when the surrounding system is already in Go or Java and
 rewriting it is not on the table. When the choice is open, Python gets you the parts

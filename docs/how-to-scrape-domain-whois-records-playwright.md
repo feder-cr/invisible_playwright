@@ -238,7 +238,10 @@ itself the expensive part of the exchange, not the page wrapped around it.
 Rate limits on WHOIS lookups are tighter than on most catalog pages for exactly
 that reason, and a pacing scheme copied from a catalog scraper, a random gap
 of a second or two, will get a lookup service returning empty answers or a
-captcha well before a similar gap trips a catalog site's limiter.
+captcha well before a similar gap trips a catalog site's limiter. When the
+limiter does answer, the response is usually a status code and not a page, and
+[the backoff that belongs in the middle of a run](how-to-handle-403-429-backoff-mid-scrape-playwright.md)
+is a different piece of work from the pacing that avoids reaching it.
 
 ```python
 import random
@@ -281,6 +284,12 @@ dates to their own labels, and pace every lookup on the assumption that the
 registry is doing real, expensive work for each one, because it is. The
 parsing is straightforward once each value is tied to the field that names it;
 the pacing is what decides whether you get to keep making requests at all.
+
+One record per domain, with a variable set of labels and a raw block kept
+alongside, is the shape
+[JSON Lines handles without a schema argument](how-to-scrape-to-json-lines-playwright.md):
+a ccTLD that carries three fields and a gTLD that carries twenty go into the
+same file without either one padding the other.
 
 ## Short answers to the questions that lead here
 

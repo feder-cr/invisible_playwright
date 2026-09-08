@@ -18,6 +18,11 @@ nothing here is a correction of somebody else's page.
 | TestCafe | yes | **no** | the `path:` browser provider |
 | Nightwatch | yes | **yes** | `firefox_binary` plus `moz:firefoxOptions.prefs` |
 
+TestCafe is the one exception in that column, and it is worth reading the row before
+wiring anything: a route that carries the engine and not the prefs gives you the
+build's own defaults on every launch, which is a different product from
+[one identity per session derived from a seed](reproducible-agent-browser-identity-seed.md).
+
 Get the two values first, the same way for all four:
 
 ```bash
@@ -155,7 +160,9 @@ The two things no route outside the Python wrapper carries:
 For test suites both are usually irrelevant, because a suite normally runs against a
 known environment and does not need to convince anything. Say so out loud when
 choosing: the reason to use this engine in a test runner is a realistic rendering and
-font stack, not evasion.
+font stack, not evasion. The font stack is the concrete half of that claim, and
+[what a page can measure about the fonts a machine has](detect-installed-fonts-javascript.md)
+is where the difference between a real one and a container's default shows up.
 
 ## Short answers to the questions that lead here
 

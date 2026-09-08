@@ -85,7 +85,9 @@ Open Stealth Browser
 ```
 
 This has the advantage that the prefs can never drift from the installed package,
-which is the failure mode a checked-in JSON file eventually produces. The cost is
+which is the failure mode a checked-in JSON file eventually produces: a stale pref
+name is not rejected, it is
+[accepted and then never read](firefox-prefs-not-applying.md). The cost is
 that `ensure_binary()` may download on the first run of a suite, so a CI job with a
 short timeout wants the `invisible-playwright fetch` step separately.
 
@@ -99,12 +101,14 @@ version and from the same seeded profile as everything else.
 `colorScheme` are all available there, and each one you set by hand is a value that
 now has to agree with the profile instead of being derived from it. If you are
 using a proxy, setting `timezoneId` to your own machine's zone is the classic way to
-break a session that was otherwise fine.
+break a session that was otherwise fine, and it breaks it in a way
+[a page can check against the IP in one line](timezone-proxy-mismatch.md).
 
 **One seed per identity, not per suite run.** A fixed seed makes a failing test
 reproducible: you can separate the site changing from the browser changing. If you
 need several identities in one suite, open several browsers with different seeds
-rather than rerolling.
+rather than rerolling. Which surfaces the number actually decides, and which it does
+not, is [written out on the seed's own page](reproducible-agent-browser-identity-seed.md).
 
 ## What this route gives up
 
