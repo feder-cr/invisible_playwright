@@ -98,6 +98,21 @@ the engine gives itself away in a dozen other places the header cannot reach. If
 genuinely need a mobile browser, the honest answer is a WebKit or Chromium context, not a
 Firefox one dressed up as a phone.
 
+### The screen the two browsers report
+
+![Two panels listing two values. The bundled Firefox reports a 1366 by 768 screen, the
+patched engine reports 1920 by 1080. The device pixel ratio is 1 in
+both.](https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/img/playwright-firefox-mobile-emulation-values.png)
+
+Two values, one page served from `127.0.0.1`. The screen differs and the device pixel
+ratio does not: both report `1`.
+
+That is the section's argument in two rows. The screen is decided below the client, so
+it changes when the engine changes, while `devicePixelRatio` stayed at `1` in both
+because neither run asked for anything else. A mobile preset that sets a ratio on the
+client cannot move the first number, and the two have to agree for the identity to hold
+together.
+
 ## The engine owns the screen size, not the client
 
 The screen size on a Firefox context belongs to the seeded engine, not to whatever a

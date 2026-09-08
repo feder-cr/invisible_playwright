@@ -56,6 +56,25 @@ the interesting shape: it does not ask a single question, it asks two and compar
 answers. That pattern, cross-checking two sources that must agree, is what everything
 modern is built on.
 
+## The same properties, read from both browsers
+
+![Two panels listing seven values read from a page served from localhost. The bundled
+Firefox reports navigator.webdriver true, zero plugins and a 1366 by 768 screen. The
+patched engine reports webdriver false, five plugins and a 1920 by 1080 screen. The
+notification permission, user agent, colour depth and platform are identical in
+both.](https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/img/sannysoft-explained-values.png)
+
+Seven of the values this page describes, read from one page served from `127.0.0.1`,
+first by Playwright's bundled Firefox and then by a patched engine. Three of the seven
+differ.
+
+The three that move are the three the table is really testing: `navigator.webdriver`
+goes from `true` to `false`, the plugin count from `0` to `5`, and the screen from
+`1366x768` to `1920x1080`. The four that do not move matter as much, because they show
+what this page is arguing: `Notification.permission`, the user agent, the colour depth
+and `navigator.platform` are already the same in both, so a row that agrees is not
+evidence of anything either way.
+
 ## Group two: the property dump
 
 The long list below the table is not pass/fail. It prints values:

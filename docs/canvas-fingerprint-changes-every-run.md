@@ -146,6 +146,27 @@ The second unseeded panel is also physically larger, because that session drew a
 different device pixel ratio. It is not only the readbacks that get redrawn per
 session: the device does.
 
+**Two things about that panel are worth stating precisely, because guessing them wrong
+sends you debugging the wrong thing.**
+
+**What changes on every unseeded launch is the device, not necessarily the readback.**
+Five unseeded launches, reading four values each: the screen alternated between
+1920x1080 and 2560x1440, the core count between 4 and 12, the device pixel ratio
+between 1 and 1.25. All five moved. The canvas readback, over the same five launches,
+returned the same value four times. So **two unseeded runs agreeing on a canvas hash is
+not evidence that your seed took effect** - it is the likelier outcome. Check a value
+that varies freely, like the screen or the core count, when you want to know whether a
+new identity was drawn.
+
+**And if you hash `toDataURL()`, you are partly hashing the PNG encoder.** On the
+bundled Firefox, three launches drawing the identical canvas returned three different
+`toDataURL()` hashes while `getImageData()` returned the same pixel bytes all three
+times. The pixels never moved; the encoded string did. A canvas hash that changes
+between two runs of a *stock* browser is usually this, not a fingerprinting defence, and
+it is not something `privacy.fingerprintingProtection` or `privacy.resistFingerprinting`
+explains: both were tested off and on, and the encoded string kept moving either way.
+Compare `getImageData` bytes when you want to know whether the drawing changed.
+
 Draw to a canvas, read it back with
 [`toDataURL()`](https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/toDataURL),
 and compare the hash across two launches with the same seed:

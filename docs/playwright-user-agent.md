@@ -24,6 +24,20 @@ This page covers what the string has to agree with, why rotation makes things wo
 rather than better, the Client Hints trap in Chromium, the one case where setting it is
 correct, and what to do instead.
 
+### The three strings, read from a real session
+
+![One panel listing three values read from the patched engine, headless: the full user
+agent string for Firefox 151.0 on Windows, navigator.platform Win32, and navigator.oscpu
+Windows NT 10.0 with Win64 and x64. A note says the bundled Firefox returned the same
+values.](https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/img/playwright-user-agent-values.png)
+
+The three strings that have to agree, read from one page served from `127.0.0.1`. The
+bundled Firefox returned the same three, so this panel is a reference rather than a
+comparison: it is what agreement looks like when nobody has touched anything.
+
+Change only the first line and the other two keep saying Windows in their own words.
+That is why the rotation advice in the next section is what it is.
+
 ## What the user agent has to agree with
 
 **Changing `navigator.userAgent` does not touch roughly eight other signals a page can

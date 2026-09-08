@@ -95,6 +95,21 @@ An empty or missing `navigator.oscpu` on a browser claiming to be Firefox is the
 both worlds: absent where Firefox is present, and therefore a tell that the identity is
 constructed rather than real. Presence with the right value is the only pass.
 
+### The three, agreeing
+
+![One panel listing three values read from the patched engine, headless:
+navigator.platform Win32, navigator.oscpu Windows NT 10.0 with Win64 and x64, and the
+full user agent for Firefox 151.0 on Windows. A note says the bundled Firefox returned
+the same values.](https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/img/navigator-platform-oscpu-consistency-values.png)
+
+All three read from one page served from `127.0.0.1`, and the bundled Firefox returned
+the same three, so the panel shows the agreed state rather than a difference.
+
+`Win32`, `Windows NT 10.0; Win64; x64` and a user agent naming Windows NT 10.0: three
+different spellings of one claim. The check in this section is that they keep spelling
+the same thing, and a screenshot of them agreeing is the baseline the check compares
+against.
+
 ## Measuring it: read all four and check they agree
 
 The test is short. Launch, read the four properties, and confirm they tell one story.

@@ -100,6 +100,20 @@ warm local machine you can lose on a loaded CI box.
 A value decided inside the engine has no race, because there is no moment before
 which it was something else.
 
+## What the two browsers actually return
+
+![Two panels listing three values. The bundled Firefox reports navigator.webdriver
+true, the patched engine reports false. Function.prototype.toString called on a native
+function returns the identical native-code string in both, and navigator.platform is
+Win32 in both.](https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/img/navigator-webdriver-explained-values.png)
+
+Three values, one page served from `127.0.0.1`, two browsers.
+
+Only the first line moves. `Function.prototype.toString` called on a native function
+returns the identical string in both, and `navigator.platform` is `Win32` in both. That
+is the whole point of the section above: the flag is the easy half, and the two
+browsers are indistinguishable on the check that usually catches a patched getter.
+
 ## What a real audit checks instead
 
 A real audit checks a whole fingerprint, not one boolean: descriptor hygiene,

@@ -89,6 +89,21 @@ as [what `navigator.vendor` and `navigator.productSub` report on Firefox](naviga
 which are wrong on a Chromium base pretending to be Firefox and correct on an actual
 Firefox build.
 
+### The answer, read from a session
+
+![One panel listing three values read from the patched engine, headless:
+navigator.getBattery is undefined, navigator.vendor is an empty string, and
+navigator.productSub is 20100101. A note says the bundled Firefox returned the same
+values.](https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/img/battery-api-fingerprint-firefox-values.png)
+
+`navigator.getBattery` is `undefined`, which is the answer to the title, and the bundled
+Firefox returns the same thing.
+
+The two Firefox constants sit next to it on purpose. A build that reports the empty
+`vendor` and `20100101` for `productSub`, and then hands a page a battery object, has
+contradicted itself with three property reads: the first two say Firefox and the third
+says something that is not one.
+
 ## Check it yourself in two lines
 
 Switching from stock Playwright is a two-line change, and after that every standard

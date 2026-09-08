@@ -183,6 +183,20 @@ is what this product bundles into the engine on all three platforms, so the same
 identity reports the same fonts whether the machine underneath is Windows, Linux or a
 container with nothing installed.
 
+### What the two browsers report before you change anything
+
+![Two panels listing two values. The bundled Firefox headless reports a 1366 by 768
+screen with 1366 by 720 available. The patched engine reports 1920 by 1080 with 1920 by
+1032 available. Both of the two values differ.](https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/img/how-to-scrape-headless-blocked-values.png)
+
+Both values differ, and the shape of the difference is the thing to notice. The bundled
+Firefox headless reports `1366x768`, a laptop resolution it uses whatever viewport you
+asked for, so every stock headless session on any machine claims the same display. The
+patched engine reports a declared `1920x1080`.
+
+Neither browser reports the host's actual monitor, which is the part people expect and
+do not get.
+
 ## Fix three: the screen and viewport numbers
 
 A headless browser has no monitor, so every screen value it reports was decided by

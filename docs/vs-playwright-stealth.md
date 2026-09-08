@@ -45,6 +45,20 @@ anomaly, checkable the same way.
 are altering values inside the exact runtime the opponent's code is also running in, and
 the opponent always gets to look at what you changed.
 
+## The one value that moves, and the one that does not
+
+![Two panels listing two values. navigator.webdriver differs between the bundled
+Firefox and the patched engine, true against false. Function.prototype.toString called
+on a native function returns the identical native-code string in
+both.](https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/img/vs-playwright-stealth-values.png)
+
+Two values, read from one page served from `127.0.0.1`.
+
+`navigator.webdriver` moves. `Function.prototype.toString` on a native function returns
+the identical string from both browsers, which is the comparison that matters when the
+fix is an init script: a patched getter has to survive being asked what it is, and a
+value decided inside the engine is never asked.
+
 ## What it never touches, by construction
 
 An init script cannot change what the font subsystem enumerates, what the GPU driver

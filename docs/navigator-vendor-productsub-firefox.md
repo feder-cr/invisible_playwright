@@ -126,6 +126,21 @@ patched Firefox driven by stock Playwright is Firefox in exactly the way these c
 test, so it inherits the correct answers without a line of spoofing code and without a
 getter anyone can catch out of place.
 
+## The two constants, read from both browsers
+
+![Two panels listing four values. navigator.vendor is an empty string and
+navigator.productSub is 20100101 in both the bundled Firefox and the patched engine.
+navigator.webdriver differs, true against false. Function.prototype.toString returns
+the same native-code string in both.](https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/img/navigator-vendor-productsub-firefox-values.png)
+
+The two brand constants come back identical from both browsers: `navigator.vendor` is
+the empty string and `navigator.productSub` is `20100101`, which is what this page says
+a real Firefox reports.
+
+That identity is the result, not a missing measurement. The only line that moves in the
+panel is `navigator.webdriver`, which belongs to a different subject entirely. A tool
+that had to reshape the two constants would show its work here; nothing had to.
+
 ## Reading them yourself with invisible_playwright
 
 Do not take the table on faith - read the fields off the browser you actually run, and
