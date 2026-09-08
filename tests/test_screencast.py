@@ -285,3 +285,58 @@ def test_the_rate_reaches_the_engine_from_the_public_api():
         assert not dropped, (
             "%s screencast.start() declares parameters it never passes on, so "
             "a caller setting them changes nothing: %s" % (what, dropped))
+
+
+@pytest.mark.e2e
+def test_asking_for_a_higher_rate_actually_delivers_more_frames(firefox_binary):
+    """⛔ THE PARAMETER REACHES THE ENGINE, which the unit test cannot say. That
+    one proves the wrapper puts a number on the wire; only a real engine can say
+    the number does anything, and a lever nobody verified from inside the system
+    it moves is a lever this project has been fooled by before.
+
+    Interleaved is not possible here - a screencast is per page and the rate is
+    fixed at start - so the arms are two pages of the same browser, same page
+    served, same duration, and the assertion is on the RATIO rather than on
+    either count: the absolute rate depends on the machine, and the claim is
+    that asking for more gets more.
+
+    Measured 2026-09-08 on this machine: 10 asked delivered 9.6-9.8 fps, 25
+    asked delivered 23.8-24.0. The floor below is deliberately far from that -
+    it is testing that the lever is connected, not re-measuring it.
+    """
+    srv = socketserver.TCPServer(("127.0.0.1", 0), _serve(PAGE))
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    url = "http://127.0.0.1:%d/" % srv.server_address[1]
+    from invisible_playwright import InvisiblePlaywright
+
+    def count(page, fps, seconds=3.0):
+        got = []
+
+        def on_frame(frame):
+            got.append(frame)
+
+        page.goto(url)
+        try:
+            page.screencast.start(on_frame=on_frame, fps=fps)
+        except Exception as refused:
+            if "Page.startScreencast" in str(refused) and "not supported" in str(refused):
+                pytest.skip("this engine has no screencast (it needs "
+                            "firefox-28 or later): %s" % refused)
+            raise
+        time.sleep(seconds)
+        page.screencast.stop()
+        return len(got)
+
+    try:
+        with InvisiblePlaywright(seed=42, binary_path=firefox_binary,
+                                 headless=True) as browser:
+            slow = count(browser.new_page(), 5)
+            fast = count(browser.new_page(), 25)
+    finally:
+        srv.shutdown()
+
+    assert slow and fast, "no frames at all: %d and %d" % (slow, fast)
+    assert fast > slow * 1.5, (
+        "asking for 25 frames a second delivered %d in three seconds and "
+        "asking for 5 delivered %d: the rate the caller asks for is not "
+        "reaching the engine" % (fast, slow))
