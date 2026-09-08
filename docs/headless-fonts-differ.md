@@ -60,6 +60,42 @@ differs will report a different *set* of fonts as installed, even though nothing
 installed or removed. Two containers from the same image can disagree if their
 fontconfig caches were built at different times.
 
+## What this looks like on one Windows machine, measured
+
+![Four renderings of the same font sample page. Playwright's bundled Firefox in headful
+mode, the same build in headless mode where 3.05% of the pixels differ, an amplified
+difference map showing that the differing pixels are whole rows of text rather than
+stray edges, and the patched engine, which returns an identical frame in both
+modes.](https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/img/headless-fonts-headful-vs-headless.png)
+
+The three causes above are usually argued from Linux and fontconfig. They show up on
+Windows too, and the difference is measurable on one machine with nothing installed
+or removed in between.
+
+The bench serves a single page from `127.0.0.1` and renders it four times at the same
+viewport: the bundled Firefox headful and headless, then a patched Firefox headful and
+headless. Same URL, same host, same session.
+
+The bundled build disagrees with itself between the two modes on **8,989 of 294,400
+pixels, or 3.05% of the frame**. The shape of that disagreement is the useful part.
+Every sample row keeps its exact height, so no glyph got taller. The rows *drift
+downward* instead, by 0, 1, 1, 2, 2, 2, 2 and 3 pixels from the first sample to the
+eighth.
+
+That drift is the mechanism behind a screenshot test that passes on a laptop and fails
+in CI. Line boxes round to slightly different heights, the error accumulates, and an
+element halfway down a long page has moved further than one near the top. A tolerance
+tuned on the first viewport will not hold at the bottom.
+
+The patched engine returned the same frame in both modes, byte for byte, and did so on
+three repeats of the whole bench. It declares its own font set instead of reading the
+host's, so a headless environment has nothing left to be missing.
+
+One row shows what that costs. `Arial Narrow` is installed on the host, so the bundled
+build renders it narrow; the patched engine does not carry that face and falls back, so
+the same row comes out wide. Host independence and host fidelity pull in different
+directions, and this is where they part.
+
 ## Why any of it matters beyond flaky screenshots
 
 Fonts are one of the highest-entropy signals a browser exposes, and unlike most of
