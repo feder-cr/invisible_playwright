@@ -50,6 +50,38 @@ The related traps:
   the numbers differ from Windows and should match whatever platform you claim.
 - A machine claiming Windows with a macOS-shaped available area is a contradiction.
 
+## What the numbers actually are, on one machine
+
+![Four panels listing screen, avail, outer and inner sizes plus device pixel ratio and
+colour depth. The bundled Firefox headless reports a 1366 by 768 screen at two
+different viewports without the screen changing. The same build headful reports the
+host display. The patched engine reports a declared 1920 by 1080 display. All four
+report a 48 pixel gap between height and
+availHeight.](https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/img/screen-values-four-arms.png)
+
+Before applying the check above, it is worth knowing what it returns today. One
+Windows machine, one page served from `127.0.0.1`, four sessions.
+
+**The taskbar check does not fire on this browser.** Playwright's bundled Firefox,
+headless, reports `1366x768` with `availHeight` of `720`: a 48 pixel gap, the same gap
+the headful window reports. So `availHeight === height` is a real class of tell and
+this particular browser is not an example of it. Test the browser you actually run
+rather than inheriting the example.
+
+**What is a tell here is that the screen is a constant.** The first two panels are the
+same build at viewports of 430x200 and 1000x700, and the display stays `1366x768`
+through both. It is not derived from anything you asked for, and it is the same laptop
+resolution in every stock headless session. A detector does not need the taskbar
+comparison when the value itself never moves.
+
+One sharp edge worth stating, because it is ours: with the patched engine, **an
+explicit `viewport` leaves `outerWidth` reporting the declared window while
+`innerWidth` follows what you asked for.** Measured at viewport 430x200 the pair reads
+1920x1032 against 430x200, which is 1490 pixels of browser chrome and no real window
+looks like that. With `no_viewport=True`, the panel above, the same pair reads 1920x1032
+against 1920x947, an 85 pixel difference that is an ordinary tab strip and address bar.
+If the identity matters more than the exact page size, do not pin the viewport.
+
 ## The relationships that have to hold
 
 **The viewport cannot be bigger than the screen.** `innerWidth` greater than

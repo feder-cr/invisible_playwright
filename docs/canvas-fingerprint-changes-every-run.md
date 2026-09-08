@@ -33,8 +33,11 @@ audio pipeline draw the same thing every time.
 
 In this browser, those three readbacks are overwritten before they reach your code.
 The value you read is a pure function of one number: an internal hardware seed the
-wrapper derives from the identity seed of the session. Same seed in, same bytes out.
-Different seed, different bytes.
+wrapper derives from the identity seed of the session. Same seed in, same bytes out,
+which is the direction you can rely on. The reverse does not hold as neatly: two
+different identity seeds can land on the same hardware seed and hand you the same
+readback, so a changed seed is not a guarantee of changed bytes. If you need two
+sessions to look like two machines, check the readback rather than assuming it.
 
 So when you launch without passing a seed, each session gets a new one, and the three
 hashes move together in a self-consistent way. That is not the spoof failing. That is
@@ -122,6 +125,26 @@ Do not take the determinism on faith. The whole point of the earlier troubleshoo
 pages is that you [assert the presence of the right value rather than the absence of a
 wrong one](how-to-test-bot-detection.md), and this is a case where you can measure the
 right value directly.
+
+![Four sessions of the same page served from localhost. Two sessions launched without
+a seed report different canvas and WebGL readback hashes and even a different device
+pixel ratio, while two sessions launched with the same seed report identical hashes and
+identical
+pixels.](https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/img/canvas-seed-vs-no-seed.png)
+
+Four sessions above, one page served from `127.0.0.1`, hashes computed inside the page
+so the numbers and the picture come from the same run. The two unseeded sessions
+disagree on both readbacks. The two seeded ones agree on both, and their screenshots
+are identical pixel for pixel, 0 of 79,800 differing.
+
+The detail worth noticing is that the drawing looks the same in all four panels. Your
+eye cannot separate them; the hash separates them immediately. That is the shape of
+this whole surface: the readback is not the picture, and a page that hashes it is not
+looking at what you are looking at.
+
+The second unseeded panel is also physically larger, because that session drew at a
+different device pixel ratio. It is not only the readbacks that get redrawn per
+session: the device does.
 
 Draw to a canvas, read it back with
 [`toDataURL()`](https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/toDataURL),

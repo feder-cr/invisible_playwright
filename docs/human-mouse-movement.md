@@ -88,7 +88,33 @@ But consider what a behavioural check can compare, once you have a curve:
 So the curve is necessary and not sufficient, which is the same shape as every other
 part of this subject.
 
-## How this project does it
+## The same three layers, measured on one page
+
+![Three panels of the same target page served from localhost, each recording the
+pointer events it received and drawing a dot per event. One driver move() call leaves
+two events and no path. A driver move with forty steps leaves an evenly spaced straight
+line with only three distinct movementX values. The patched engine's input path leaves
+unevenly spaced dots with twenty-six distinct movementX values. All three report
+isTrusted true.](https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/img/mouse-path-driver-vs-engine.png)
+
+One page served from `127.0.0.1`, one target, three ways of reaching it. The page draws
+a dot per `pointermove` and prints the fields it actually received, so the picture and
+the numbers come from the same run.
+
+The first thing the panels settle is a negative: **`isTrusted` is `true` in all three,
+and so `isTrusted` does not separate the driver from the engine.** It only separates
+both of them from page script. A check that stops at the trusted flag has not
+distinguished anything here.
+
+What does separate them is the deltas. The evenly stepped driver path produces **three
+distinct `movementX` values across 41 events**, because a straight line walked in equal
+steps reports the same delta almost every time. The engine's path produces **26 distinct
+values across 34 events**. Same trusted flag, same `pointerType`, same `pressure`, and a
+completely different distribution underneath.
+
+And notice what the third panel is not: it is not a graceful arc. The dots stay roughly
+on the line to the target, clustered at the start and irregular the rest of the way.
+That is the point of this page in one image. The shape was never the hard part.
 
 Two pieces, and the split is deliberate.
 
