@@ -139,6 +139,31 @@ keep doing that for those reasons. Choose between them on isolation, not on
 whether the fingerprint comes out right, because now it comes out right either
 way.
 
+## The two calls, side by side, today
+
+![Three panels listing screen, avail, outer and inner sizes. The bundled Firefox opened
+with browser.new_page reports an inner size of 1280 by 720 on a 1366 by 768 screen. The
+same build opened with new_context and no viewport reports 1366 by 683. The patched
+engine opened with browser.new_page reports 1920 by 947, the same as its own
+new_context.](https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/img/new-page-vs-new-context-viewport.png)
+
+One page served from `127.0.0.1`, three sessions, headless throughout.
+
+The first panel is the default this page is about, still there: `browser.new_page()` on
+the bundled Firefox reports **1280x720** on a screen it claims is 1366x768. The second
+panel is the same build asked for a context with no viewport, and the inner size becomes
+1366x683, which is a window on that screen rather than a number from a config file.
+
+The first panel also carries a second, quieter contradiction, and it is the kind this
+page is really about: `outerHeight` reads **805** while `availHeight` reads **720**. The
+window is taller than the space the operating system says is available. No maximised
+window on a real desktop does that.
+
+The third panel is the check on our side, which is the part we owe you rather than
+Playwright: `browser.new_page()` on the patched engine reports 1920x947, the same
+numbers its own `new_context` produces. The convenience call no longer picks up a
+default nobody chose.
+
 ## How to check your own setup for the same shape of bug
 
 Whatever tool you use, the check is the same three lines and it takes a session,
