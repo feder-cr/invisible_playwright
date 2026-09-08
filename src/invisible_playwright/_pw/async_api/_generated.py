@@ -7809,6 +7809,7 @@ class Screencast(AsyncBase):
         path: typing.Optional[typing.Union[pathlib.Path, str]] = None,
         quality: typing.Optional[int] = None,
         size: typing.Optional[ScreencastSize] = None,
+        fps: typing.Optional[int] = None,
     ) -> "AsyncContextManager":
         """Screencast.start
 
@@ -7830,6 +7831,10 @@ class Screencast(AsyncBase):
             may be smaller than these bounds. If a screencast is already active (e.g. started by tracing or video recording),
             the existing configuration takes precedence and the frame size may exceed these bounds or this option may be
             ignored. If not specified the size will be equal to page viewport scaled down to fit into 800×800.
+        fps : Union[int, None]
+            Frames per second to ask the engine for. The wrapper's default is 10; the engine will go up to 25. Ask for
+            more when somebody is watching the window live, and less for a batch job that never looks at a frame - the
+            bandwidth follows the rate, measured at 257 KB/s for 10 and 629 KB/s for 25.
 
         Returns
         -------
@@ -7842,6 +7847,7 @@ class Screencast(AsyncBase):
                 path=path,
                 quality=quality,
                 size=size,
+                fps=fps,
             )
         )
 

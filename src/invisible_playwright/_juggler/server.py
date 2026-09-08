@@ -2351,6 +2351,19 @@ class PageDispatcher(Dispatcher):
     #: around 100 KB. Frames are never scaled up.
     SCREENCAST_DEFAULT_SIZE = {"width": 1280, "height": 800}
     SCREENCAST_DEFAULT_QUALITY = 80
+
+    #: Frames per second when the caller does not ask for a rate.
+    #:
+    #: ⛔ TEN AND NOT TWENTY-FIVE, and the caller can ask for either. Measured
+    #: 2026-09-08 on the same page, interleaved arms: asking for 10 delivers
+    #: 9.6-9.8 fps and 257 KB/s, asking for 25 delivers 23.8-24.0 and 629 KB/s.
+    #: Raising the constant would impose two and a half times the bandwidth on
+    #: every consumer to serve the one that is watching, and a batch job that
+    #: never looks at a frame would pay it too. So the default stays where it
+    #: is and somebody watching a window says so.
+    #:
+    #: The engine's own default is 25 (`fps || 25` in TargetRegistry.js); this
+    #: number is the wrapper's opinion, not the engine's.
     SCREENCAST_FPS = 10
 
     def op_screencast_start(self, params: Dict) -> Any:
@@ -2392,12 +2405,22 @@ class PageDispatcher(Dispatcher):
         quality = params.get("quality")
         if quality is None:
             quality = self.SCREENCAST_DEFAULT_QUALITY
+        # ⛔ THE CALLER'S RATE, WHERE THIS IGNORED IT. The engine takes an `fps`
+        # and this passed the constant unconditionally, so `screencast.start()`
+        # had no way to ask for more - a live view got ten frames a second
+        # whatever it wanted, which is what made the pane feel slow after the
+        # client's own pause was fixed. Same shape as `quality` and `size`
+        # above: the caller decides, the constant is what happens when nobody
+        # does.
+        fps = params.get("fps")
+        if fps is None:
+            fps = self.SCREENCAST_FPS
         result = self.send("Page.startScreencast", {
             "width": int(size["width"]),
             "height": int(size["height"]),
             "quality": int(quality),
             "fullWindow": True,
-            "fps": self.SCREENCAST_FPS,
+            "fps": int(fps),
         })
         self._screencast_id = result["screencastId"]
         # The client's `start()` reads an optional `artifact` from the reply
