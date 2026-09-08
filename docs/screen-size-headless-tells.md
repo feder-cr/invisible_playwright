@@ -52,21 +52,22 @@ The related traps:
 
 ## What the numbers actually are, on one machine
 
-![Four panels listing screen, avail, outer and inner sizes plus device pixel ratio and
+![Three panels listing screen, avail, outer and inner sizes plus device pixel ratio and
 colour depth. The bundled Firefox headless reports a 1366 by 768 screen at two
-different viewports without the screen changing. The same build headful reports the
-host display. The patched engine reports a declared 1920 by 1080 display. All four
-report a 48 pixel gap between height and
-availHeight.](https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/img/screen-values-four-arms.png)
+different viewports without the screen changing. The patched engine reports a declared
+1920 by 1080 display. All three report a 48 pixel gap between height and
+availHeight.](https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/img/screen-values-three-arms.png)
 
 Before applying the check above, it is worth knowing what it returns today. One
-Windows machine, one page served from `127.0.0.1`, four sessions.
+Windows machine, one page served from `127.0.0.1`, three headless sessions shown, and a
+headful one measured alongside them but not printed here, because a headful window
+reports the display of whichever machine it ran on.
 
 **The taskbar check does not fire on this browser.** Playwright's bundled Firefox,
-headless, reports `1366x768` with `availHeight` of `720`: a 48 pixel gap, the same gap
-the headful window reports. So `availHeight === height` is a real class of tell and
-this particular browser is not an example of it. Test the browser you actually run
-rather than inheriting the example.
+headless, reports `1366x768` with `availHeight` of `720`: a 48 pixel gap, and the
+headful session measured beside it reported the same 48. So `availHeight === height` is
+a real class of tell and this particular browser is not an example of it. Test the
+browser you actually run rather than inheriting the example.
 
 **What is a tell here is that the screen is a constant.** The first two panels are the
 same build at viewports of 430x200 and 1000x700, and the display stays `1366x768`
