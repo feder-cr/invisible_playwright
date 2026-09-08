@@ -73,7 +73,9 @@ reproduce a session from.
 That distinction matters more than it sounds. Sharing one identity across every user
 of a build is its own signal. If you need a per-session machine, the MCP route is not
 the one; drive the browser from Python with `InvisiblePlaywright(seed=...)` instead,
-where the prefs are generated and applied for you.
+where the prefs are generated and applied for you, or use
+[an MCP server that launches through the engine](mcp-browser-server-stealth-firefox.md)
+and therefore has the profile to give.
 
 ## Making the prefs work anyway
 
@@ -103,7 +105,9 @@ applies it over the profile's own prefs.
 
 This is a workaround, not the supported path. It pins one identity for that profile
 rather than one per session, and the profile keeps cookies and storage between runs,
-which is either what you wanted or a correlation problem depending on the job.
+which is either what you wanted or a correlation problem depending on the job. If it
+is what you wanted, [persistent profiles have their own page](persistent-profiles.md)
+covering what survives a restart and what does not.
 
 ## Checking it worked
 

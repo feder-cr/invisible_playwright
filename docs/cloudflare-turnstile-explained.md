@@ -46,7 +46,9 @@ probing for web APIs, and other checks aimed at browser quirks and human behavio
 family of idea as Hashcash: spend a measurable amount of CPU on something that is
 cheap for the server to verify. A script that can run arbitrary JavaScript pays this
 cost the same as a real browser does; a client with no JS engine at all cannot pay it
-and never produces a token.
+and never produces a token. A gate built on that idea alone exists in the open, and
+[Anubis is readable end to end](anubis-proof-of-work-explained.md) in a way Turnstile
+is not, which makes it the cheapest way to see what this layer can and cannot decide.
 
 **Proof-of-space** is the storage-based cousin of the same idea, trading disk or
 memory instead of CPU cycles.
@@ -58,7 +60,10 @@ page claims to be. Cloudflare does not publish the exact list of properties it r
 and the widget script itself is not meant to be human-readable, so anyone claiming a
 precise inventory of what it checks is going further than Cloudflare's own
 documentation does. What is documented is the shape of the approach, not the field
-names.
+names. The shape is the part worth internalising: a value being wrong matters less
+than two values disagreeing, which is why a mismatch like
+[a platform string that contradicts the oscpu beside it](navigator-platform-oscpu-consistency.md)
+is a stronger signal than either field on its own.
 
 The point of running all of this before showing anything is stated plainly in
 Cloudflare's docs too: the goal is to "fine-tune the difficulty of the challenge to
@@ -89,7 +94,10 @@ When Managed mode does decide to show something, Cloudflare's own documentation
 describes it as a "simple checkbox that the visitor must click to proceed", explicitly
 not an image puzzle or text to transcribe. This is the point worth being precise
 about: the checkbox is not another fingerprint probe layered on top of the earlier
-ones. It is a click, gated behind whatever risk score the earlier signals produced.
+ones. It is a click, gated behind whatever risk score the earlier signals produced,
+and a click carries its own provenance:
+[a click dispatched from page JavaScript is never trusted](playwright-clicks-istrusted.md),
+while one produced by the driver or the engine is.
 
 That distinction matters for what a real engine can and cannot do about it. Everything
 in the non-interactive layer, the proof-of-work, the API probing, the consistency

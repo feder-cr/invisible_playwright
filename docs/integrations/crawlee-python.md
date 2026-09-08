@@ -144,7 +144,10 @@ if __name__ == '__main__':
 and matching headers, on the assumption that it controls the browser's identity.
 Here it does not: the identity is compiled into the engine and derived from the
 seed. Leaving the generator on produces two independent opinions about who this
-browser is, and the disagreement between them is exactly what detectors read.
+browser is, and the disagreement between them is exactly what detectors read. It is
+the same failure a stealth plugin runs into when it patches values on top of an
+engine that already reports them,
+[which is the whole subject of the comparison with playwright-extra](vs-playwright-extra-stealth.md).
 
 **The seed decides whether a failure is debuggable.** With `seed=None` every run is
 a different machine, so a failing run tells you nothing: you cannot separate the
@@ -165,12 +168,17 @@ receives. A SOCKS5 endpoint has to reach `get_default_stealth_prefs` through its
 engine reads, and it must not also reach Playwright: Playwright configures the
 proxy itself, without the SOCKS credentials, and that configuration wins over the
 preferences. HTTP and HTTPS are the other way round and go through Playwright's
-own `proxy=` argument.
+own `proxy=` argument. That asymmetry is not a Crawlee quirk:
+[why SOCKS5 credentials have to arrive as preferences](playwright-socks5-proxy-authentication.md)
+explains where Playwright drops them, and it applies to every route on this list.
 
 If you use one, leave locale and timezone on their defaults. They resolve from the
 exit IP and not from the host machine, which is what keeps the JS timezone, the
 language list and the IP in agreement. Setting them by hand to your own machine's
 values is how a session ends up claiming one country while leaving from another.
+The resolution happens against
+[a GeoIP database carried locally](offline-geoip-timezone-proxy.md), so it costs no
+extra request and nothing external learns which exit you are using.
 
 ## When this is the wrong tool
 

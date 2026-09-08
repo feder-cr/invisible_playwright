@@ -13,8 +13,11 @@ nav_order: 33
 failed. Chromium's own network error list defines it as "an operation was aborted
 (due to user action)," and the cancelling "action" is very often something your own
 page, your own script, or Playwright's own navigation handling did on purpose. This
-is the one error on this page's list of siblings that is frequently not a problem at
-all, and treating every occurrence as a bug wastes time chasing something that
+is the one error in the `net::ERR_` family that is frequently not a problem at
+all. [ERR_CONNECTION_RESET](err-connection-reset-playwright.md) and
+[ERR_HTTP2_PROTOCOL_ERROR](err-http2-protocol-error-playwright.md) report a
+connection that genuinely broke; this one usually reports one that was closed on
+purpose, and treating every occurrence as a bug wastes time chasing something that
 already worked.
 
 ## The causes that are usually fine
@@ -61,7 +64,10 @@ in-flight navigation rather than the intended third-party request.
 **`page.close()` was called while a navigation was still in flight.** Closing the
 page tears down whatever requests it had open; if that happens mid-navigation on
 purpose or by an unrelated timeout, the abort is real and the navigation that was
-racing it never gets a result.
+racing it never gets a result. When the teardown came from the browser or the
+context disappearing under you, the exception that surfaces first is usually
+[TargetClosedError](playwright-targetclosederror-causes.md), and the abort is the
+second thing you see.
 
 **A route handler that never resolves.** A `page.route()` interceptor that neither
 calls `route.continue()`, `route.fulfill()`, nor `route.abort()` leaves a request
@@ -92,7 +98,10 @@ of browser realness changes whether it fires. It is a navigation-lifecycle signa
 that fires identically on a stock Playwright Chromium, a stock Firefox, and this
 project's patched build, because the cancellation is decided by request-handling
 logic in the engine, on your own code's instruction, not by anything about how real
-the browser's identity looks to a remote site.
+the browser's identity looks to a remote site. The error that does carry that
+second meaning is a different one:
+["Execution context was destroyed" can be a navigation you did not ask for](execution-context-destroyed.md),
+which is worth reading before deciding an abort was a block.
 
 ## Short answers to the questions that lead here
 

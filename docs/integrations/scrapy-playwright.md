@@ -152,7 +152,10 @@ not per request. It comes from the engine's real version and the seeded profile,
 overriding only that string is the classic way to make a browser contradict itself.
 
 **Do not run another stealth layer.** If something else patches `navigator` from
-inside the page, it is now arguing with an engine that has already answered.
+inside the page, it is now arguing with an engine that has already answered. The
+argument is visible from the page, which is why
+[a patch applied from JavaScript and a value produced by the engine](playwright-stealth-levels.md)
+are not two ways of doing the same thing.
 
 **One seed per identity, not per run.** A fixed seed makes a failure reproducible,
 which is the difference between bisecting a problem and guessing at it. For many
@@ -174,6 +177,8 @@ carries are used for an HTTP 407 challenge, and the SOCKS handshake reads its
 credentials from the proxy prefs, which nothing on that route writes. So on route
 two an authenticated SOCKS endpoint fails to connect while an unauthenticated one
 works. Use `http(s)://` there, or take route one.
+[The full account of where the credentials get dropped](playwright-socks5-proxy-authentication.md)
+is worth reading before assuming a working proxy is a broken one.
 
 On route one, leave locale and timezone on `auto` so they follow the exit. On route
 two they cannot follow anything, which is the main reason to prefer route one when a
@@ -183,7 +188,10 @@ proxy is involved at all.
 
 If the target needs Chromium, use a Chromium backend. If a page does not need
 JavaScript, plain Scrapy is an order of magnitude faster and no fingerprint is
-involved at all.
+involved at all. Reach for this backend when a fingerprint is genuinely in play, and
+when it is, the order to work through
+[the layers a block can come from](how-to-scrape-without-getting-blocked.md) decides
+what to change first, which is rarely the setting people reach for.
 
 ## Short answers to the questions that lead here
 

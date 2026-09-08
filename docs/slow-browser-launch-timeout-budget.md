@@ -35,7 +35,9 @@ bounded, tested, working exactly as configured.
 
 That's the trap. A timeout on each request answers "how long do I wait for this one
 server to respond." It says nothing about "how long am I willing to wait for the step
-as a whole to finish." With three endpoints in the list and a ten-second timeout on
+as a whole to finish." What a launch resolves from the network is the reason the
+delay lands there and not on a page load, and part of it is
+[deriving the timezone and locale from the proxy's exit](offline-geoip-timezone-proxy.md). With three endpoints in the list and a ten-second timeout on
 each, the worst case was three sequential ten-second waits plus connection overhead -
 correctly bounded per-request, and entirely unbounded as a caller-facing guarantee.
 Every piece was well-behaved. Their sum was not something anyone had actually put a

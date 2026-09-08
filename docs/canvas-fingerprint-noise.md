@@ -133,6 +133,22 @@ pixel: [`measureText()` and its ten-plus numeric fields](measuretext-textmetrics
 which fail the same way for the same reason if the noise added to them accumulates
 instead of staying bounded.
 
+## Substitution, seen on one page
+
+![Two panels listing three values. The canvas pixel hash differs between the bundled
+Firefox and the patched engine. The measureText width is 115.65 px in both, and both
+report that the screen and the viewport differ.](https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/img/canvas-fingerprint-noise-values.png)
+
+One page served from `127.0.0.1`, three values, two browsers. The canvas pixel hash
+moves and the text width does not: `measureText` returns `115.65 px` in both.
+
+That pairing is the distinction this page is built on. A substituted readback changes
+what comes out of the canvas without changing the layout metrics the same text produces,
+so a detector comparing the two does not find the mismatch that per-call noise creates.
+The hash comes from `getImageData` bytes on purpose: `toDataURL` output moves between
+launches on the bundled browser too, for encoder reasons that have nothing to do with
+the drawing.
+
 ## Checking your own
 
 ```js

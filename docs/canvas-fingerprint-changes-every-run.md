@@ -33,8 +33,11 @@ audio pipeline draw the same thing every time.
 
 In this browser, those three readbacks are overwritten before they reach your code.
 The value you read is a pure function of one number: an internal hardware seed the
-wrapper derives from the identity seed of the session. Same seed in, same bytes out.
-Different seed, different bytes.
+wrapper derives from the identity seed of the session. Same seed in, same bytes out,
+which is the direction you can rely on. The reverse does not hold as neatly: two
+different identity seeds can land on the same hardware seed and hand you the same
+readback, so a changed seed is not a guarantee of changed bytes. If you need two
+sessions to look like two machines, check the readback rather than assuming it.
 
 So when you launch without passing a seed, each session gets a new one, and the three
 hashes move together in a self-consistent way. That is not the spoof failing. That is
@@ -122,6 +125,47 @@ Do not take the determinism on faith. The whole point of the earlier troubleshoo
 pages is that you [assert the presence of the right value rather than the absence of a
 wrong one](how-to-test-bot-detection.md), and this is a case where you can measure the
 right value directly.
+
+![Four sessions of the same page served from localhost. Two sessions launched without
+a seed report different canvas and WebGL readback hashes and even a different device
+pixel ratio, while two sessions launched with the same seed report identical hashes and
+identical
+pixels.](https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/img/canvas-seed-vs-no-seed.png)
+
+Four sessions above, one page served from `127.0.0.1`, hashes computed inside the page
+so the numbers and the picture come from the same run. The two unseeded sessions
+disagree on both readbacks. The two seeded ones agree on both, and their screenshots
+are identical pixel for pixel, 0 of 79,800 differing.
+
+The detail worth noticing is that the drawing looks the same in all four panels. Your
+eye cannot separate them; the hash separates them immediately. That is the shape of
+this whole surface: the readback is not the picture, and a page that hashes it is not
+looking at what you are looking at.
+
+The second unseeded panel is also physically larger, because that session drew at a
+different device pixel ratio. It is not only the readbacks that get redrawn per
+session: the device does.
+
+**Two things about that panel are worth stating precisely, because guessing them wrong
+sends you debugging the wrong thing.**
+
+**What changes on every unseeded launch is the device, not necessarily the readback.**
+Five unseeded launches, reading four values each: the screen alternated between
+1920x1080 and 2560x1440, the core count between 4 and 12, the device pixel ratio
+between 1 and 1.25. All five moved. The canvas readback, over the same five launches,
+returned the same value four times. So **two unseeded runs agreeing on a canvas hash is
+not evidence that your seed took effect** - it is the likelier outcome. Check a value
+that varies freely, like the screen or the core count, when you want to know whether a
+new identity was drawn.
+
+**And if you hash `toDataURL()`, you are partly hashing the PNG encoder.** On the
+bundled Firefox, three launches drawing the identical canvas returned three different
+`toDataURL()` hashes while `getImageData()` returned the same pixel bytes all three
+times. The pixels never moved; the encoded string did. A canvas hash that changes
+between two runs of a *stock* browser is usually this, not a fingerprinting defence, and
+it is not something `privacy.fingerprintingProtection` or `privacy.resistFingerprinting`
+explains: both were tested off and on, and the encoded string kept moving either way.
+Compare `getImageData` bytes when you want to know whether the drawing changed.
 
 Draw to a canvas, read it back with
 [`toDataURL()`](https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/toDataURL),
@@ -217,6 +261,12 @@ after launch and log it. Passing that number back reproduces the same device.
 **Should the seed match my persistent profile?** Yes. A profile that returns with the
 same cookies but a different fingerprint is a contradiction. Keep one stable seed per
 durable identity.
+
+**Should I hash `toDataURL()` or `getImageData()`?** `getImageData`, if you want to know
+whether the drawing changed. Three launches of the bundled Firefox drawing the same
+canvas returned three different `toDataURL` hashes and the same pixel bytes every time:
+the encoded string moves on its own, so a data URL hash reports changes the canvas never
+made.
 
 ## Sources
 

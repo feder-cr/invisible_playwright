@@ -81,6 +81,21 @@ a real AudioContext output, and Windows screen metrics with a plausible availabl
 and device pixel ratio. Those answers are the same whether the host is your laptop or a
 Linux container, because they are presented by the browser rather than read from the box.
 
+## What each browser answers on the same page
+
+![Two panels listing three values. navigator.webdriver differs, true against false. The
+AudioContext sample rate is 48000 Hz in both. navigator.platform is Win32 in
+both.](https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/img/can-a-website-tell-you-are-on-a-server-values.png)
+
+Three values from one page served from `127.0.0.1`. The audio sample rate is `48000 Hz`
+in both browsers and the platform string is `Win32` in both, so neither of those two is
+the server tell on this host.
+
+That is worth showing precisely because the section above is about a machine looking
+like a server rather than a desktop. On a real desktop with a real audio device the
+sample rate is ordinary in both, and the value that separates the two runs is the
+automation flag, which is not a server signal at all.
+
 ## What invisible_playwright presents instead
 
 The launch is two lines, and the browser you get back is a real Playwright

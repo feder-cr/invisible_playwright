@@ -37,6 +37,13 @@ downstream date is now wrong under the right label. The fix is to match on
 the label text itself, normalize it through a small alias table, and only then
 read the adjacent value.
 
+Check one thing before writing any of it, because it can make the whole section
+unnecessary: some patent and publication databases ship the same bibliographic
+fields as machine-readable metadata in the page, and
+[a JSON-LD block already carries its own labels](how-to-extract-json-ld-structured-data-playwright.md).
+Where it is present it is the better read, and the selector work below is the
+fallback for pages that do not have one.
+
 ```python
 import re
 from datetime import datetime
@@ -255,6 +262,12 @@ jurisdiction for what is nominally the same invention. The assembly step pulls
 the shared invention-level fields once, then attaches jurisdiction-specific
 fields per member, so a query for "every active family member in this
 jurisdiction" does not require reconstructing the family from scratch.
+
+The traversal underneath is the ordinary one:
+[a list page whose entries each open a detail page](how-to-crawl-list-to-detail-pages-playwright.md),
+with the wrinkle that here one detail page can expand into several rows. Getting
+the list-to-detail walk right first makes the family expansion a step you add on
+top instead of a special case tangled into the crawl.
 
 ```python
 def scrape_patent_record(url, browser):

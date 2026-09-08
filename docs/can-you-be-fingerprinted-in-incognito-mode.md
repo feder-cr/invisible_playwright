@@ -80,6 +80,22 @@ the folder.
 This is not a bug in private mode. Private mode never promised a new identity. It
 promised no leftover state, and it delivers that.
 
+## What changes when the values change
+
+![Two panels listing three values. localStorage is available in both browsers, and both
+report that the screen and the viewport differ, so neither looks like
+resistFingerprinting is on. The canvas pixel hash differs between the two
+panels.](https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/img/can-you-be-fingerprinted-in-incognito-mode-values.png)
+
+Three values, read from one page served from `127.0.0.1`. `localStorage` is available in
+both, which is the point of the section above: private mode is about state, and this
+probe is not reading state.
+
+The line that moves is the canvas, hashed from `getImageData` bytes rather than from
+`toDataURL`, and the reason for that choice is measured in
+[why a canvas hash changes between runs](canvas-fingerprint-changes-every-run.md): the
+encoded string moves on its own even when the pixels do not.
+
 ## Changing the values themselves, not clearing storage
 
 If the problem is that the fingerprint values are stable and readable, the fix is to

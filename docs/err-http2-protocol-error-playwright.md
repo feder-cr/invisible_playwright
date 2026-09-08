@@ -46,7 +46,10 @@ string while driving Firefox? Look for those two names in your logs instead.
 - **ALPN disagrees with what actually gets spoken.** HTTP/2 is negotiated in the TLS
   handshake's ALPN extension. A proxy that terminates TLS and re-negotiates outbound can
   advertise `h2` to your client while speaking something else to the origin, so the
-  session starts as HTTP/2 and cannot stay one.
+  session starts as HTTP/2 and cannot stay one. A proxy doing that also replaces the
+  handshake the destination sees with its own, so the
+  [JA3 and JA4 fingerprint](ja3-ja4-tls-fingerprint.md) arriving there is the proxy's,
+  which matters separately from whether the session survives.
 - **A server-side HTTP/2 config problem, unrelated to your proxy.** HTTP/2 enforces
   header rules HTTP/1.1 never did: no invalid bytes in a header value, a fixed
   pseudo-header order, framing from RFC 9113 a lenient HTTP/1.1 stack never checked. A
@@ -55,11 +58,18 @@ string while driving Firefox? Look for those two names in your logs instead.
 - **The "error" is not an error.** More than one report traces this exact code to a
   server sending `RST_STREAM` deliberately, as an anti-automation response rather than a
   protocol accident. The browser reports both cases identically: a stream closed with
-  `PROTOCOL_ERROR` before delivering anything.
+  `PROTOCOL_ERROR` before delivering anything. If that is what happened, the thing
+  worth reading is not the framing rules but
+  [what an HTTP/2 connection reveals about the client that opened it](http2-fingerprint-detection.md),
+  since the frame order and settings are themselves a fingerprint.
 
 A smaller set of reports describe the error only in headless mode, disappearing
 headful, proxy or no proxy. That is in Playwright's own tracker with no confirmed root
-cause; treat it as something to test for, not an explanation to assume.
+cause; treat it as something to test for, not an explanation to assume. It is also the
+one shape on this page where
+[the separate question of what headless changes](is-playwright-headless-detectable.md)
+is worth a look, because a mode-dependent failure with no protocol explanation is the
+signature of something reading the client and not the frames.
 
 ## How to actually find out which one it is
 

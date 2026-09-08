@@ -94,6 +94,12 @@ Store the reading exactly as the feed reported it, with its own timestamp, and s
 cadence as data rather than assuming it. A downstream consumer that genuinely needs a
 fixed grid can resample from the as-reported table at query time.
 
+One row per observation, with whichever variables that station actually reports and no
+padding for the ones it does not, is the case
+[JSON Lines was already the right container for](how-to-scrape-to-json-lines-playwright.md):
+a station reporting three variables and one reporting twenty append to the same file,
+and a partial run leaves a file that still parses.
+
 ```python
 def rows_from_feed(feed, variable_map):
     """Emit one row per (variable) per observation, using the feed's own timestamps.
@@ -198,6 +204,11 @@ A historical archive is almost never paginated by row count the way a search res
 list is. It is paginated by day or by month, so a request asks for one calendar period
 and gets back everything that station reported in it. A five-year pull across one
 station is roughly sixty separate requests, one per month, not one long scroll.
+
+Sixty requests is long enough that something will interrupt one of them, and a
+calendar walk has the property that makes recovery cheap: the period is the key, so
+[a run can pick up from the period it stopped on](how-to-resume-an-interrupted-scrape-playwright.md)
+without re-reading the years already stored.
 
 Walk the calendar explicitly and issue one request per period. `page.request` shares
 the browsing context's cookies with a plain HTTP call, so an archive endpoint gated

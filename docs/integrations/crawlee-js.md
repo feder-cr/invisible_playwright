@@ -78,7 +78,10 @@ one compiled into the engine and derived from the seed.
 Two independent opinions do not average out. They disagree, and the disagreement
 between a generated header set and an engine-level fingerprint is a stronger signal
 than either being slightly unusual on its own. Turn it off and let one component own
-the identity.
+the identity. The reason a disagreement outweighs an oddity is
+[in what a fingerprint is actually made of](what-is-a-browser-fingerprint.md): it is
+read as a set of values that have to corroborate each other, not as a list of fields
+scored one at a time.
 
 The same argument applies to `userAgent` anywhere in your config: do not set it.
 
@@ -89,7 +92,8 @@ and `launchOptions` is typed to accept `launchPersistentContext` parameters too,
 `userDataDir` belongs there. Pair a stable profile with a stable seed: the profile
 keeps cookies and storage, the seed keeps the machine those cookies belong to. One
 without the other is a session whose history and hardware disagree about how long it
-has existed.
+has existed. Which number to write down and where to keep it is
+[the seed's own page](reproducible-agent-browser-identity-seed.md).
 
 ## What this route gives up
 
@@ -105,7 +109,9 @@ The same two things every non-Python route gives up:
 That second point matters more in Crawlee than in most places, because rotating
 proxies is a normal thing to do here. If your proxy pool spans countries, either
 generate a `prefs.json` per region and select it per session, or accept that the
-timezone will be wrong for most of them.
+timezone will be wrong for most of them, which is
+[a mismatch a page can check in one line](timezone-proxy-mismatch.md) and not a
+subtlety anyone has to dig for.
 
 ## Checking it worked
 

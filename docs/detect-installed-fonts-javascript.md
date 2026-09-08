@@ -56,6 +56,36 @@ useful to a detector: it is stable for one machine, and it varies between
 machines, because the installed-font set is one of the more distinctive things
 about a device.
 
+### The blind spot in that snippet, measured
+
+The probe above is the one detectors use, and it has a false negative worth knowing
+before you trust its output: **a family that IS the fallback is invisible to it.**
+
+![The probe run on one Windows machine across three browsers, each testing ten
+families against two different fallbacks. Segoe UI, Calibri, Cambria and Tahoma read
+present against both fallbacks. Consolas reads absent against the monospace fallback
+and present against the serif one. An invented control family reads absent
+everywhere. All three browsers return the same
+answer.](https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/img/font-presence-probe-three-arms.png)
+
+Run that exact function over ten families with `monospace` as the fallback, on Windows,
+and Consolas comes back **absent**. Consolas is installed. It is also what `monospace`
+resolves to on that machine, so the candidate width and the baseline width are the same
+number, and the comparison reads "fell back" when nothing fell back.
+
+Swap the fallback to `serif` and the same family reads **present**, on the same page in
+the same session. The invented control family stays absent under both, which is what
+makes the Consolas row a finding, not a broken probe.
+
+So the rule stated above holds with one exception: an identical width means the
+candidate did not render *or* the candidate is the fallback. A detector that probes
+against a single generic will systematically miss whichever family that generic points
+at, and which family that is depends on the platform.
+
+The other thing the three panels show is that the answer does not move. The bundled
+Firefox headful, the same build headless, and an engine carrying its own font set all
+return the same ten bits on this host.
+
 ## Why this is different from hashing measureText
 
 It is easy to lump this in with `measureText` fingerprinting, but the two probe
@@ -240,6 +270,12 @@ answer the way a specific real desktop would, not to answer no to everything.
 font set is built from one manifest on every OS, and the width for a run carries a
 single bounded, seed-derived offset instead of the host rasterizer's metrics, so
 the numbers track the seed rather than the operating system.
+
+**Why does the probe say a font is missing when I know it is installed?** Because the
+candidate is the fallback. Measured on Windows: `Consolas` reads absent against a
+`monospace` fallback and present against a `serif` one, in the same session, since
+`monospace` resolves to Consolas there and the two widths match. Probe against a second
+generic before believing an absent.
 
 ## Sources
 

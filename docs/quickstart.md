@@ -77,7 +77,9 @@ with InvisiblePlaywright(seed=42) as browser:
 
 This is the difference between debugging a failure and guessing at one: same seed,
 same browser, so a failing run can be replayed exactly rather than hoping the next
-random draw reproduces it.
+random draw reproduces it. The seed reaches the browser layer and stops there, and
+[what it does not pin](reproducible-agent-browser-identity-seed.md) is the half worth
+reading before treating a stable fingerprint as a finished job.
 
 ## Short answers to the questions that lead here
 

@@ -78,6 +78,9 @@ The helper API does not change, and that is the point of doing it at this layer.
 version and from the same seeded profile as everything else. Overriding only that
 string is the standard way to make a browser contradict itself, and CodeceptJS makes
 it easy to do by accident because `userAgent` sits right next to the options above.
+Why one string on its own is the weakest thing to change is
+[its own subject](is-changing-user-agent-enough.md), and worth reading once before
+deciding you need the option.
 
 **One seed per identity, not per run.** A fixed seed makes a failing test
 reproducible: you can tell the site changing from the browser changing. Rerolling per
@@ -95,7 +98,10 @@ The same two things every non-Python route gives up, and you should know them be
 you pick this layer:
 
 - **Humanised pointer motion.** The preference enables it, but the paths are drawn
-  by the Python driver from the seed. From CodeceptJS the pointer still teleports.
+  by the Python driver from the seed. From CodeceptJS the pointer still teleports,
+  which matters only against a site that watches behaviour:
+  [what a pointer event carries besides coordinates](human-mouse-movement.md) says
+  which half of that you keep here and which you lose.
 - **Timezone and locale resolved from the proxy exit.** Those are computed at launch
   by the Python wrapper. Here you get whatever `prefs.json` was generated with, so a
   proxy in another country will disagree with the browser unless you regenerate per
@@ -111,7 +117,9 @@ Add a scenario that visits a fingerprint page and asserts on the user agent and 
 WebGL renderer. The user agent should say Firefox and the version should match
 `invisible-playwright version`. If the renderer comes back as a software or basic
 renderer, either the prefs did not load or the machine has no GPU, and both are worth
-knowing before the suite reports green.
+knowing before the suite reports green:
+[which renderer strings a real machine actually reports](webgl-renderer-strings.md)
+is the reference for telling one of those two from the other.
 
 ## Short answers to the questions that lead here
 

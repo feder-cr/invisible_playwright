@@ -107,7 +107,15 @@ def rewrite(body):
     # `[a-z0-9/-]` and an optional `.md`: a link into a subdirectory carries the
     # slash and may or may not carry the extension, and the first version of
     # this pattern matched neither.
-    return re.sub(r'\]\(([a-z0-9/\-]+)(?:\.md)?(#[A-Za-z0-9\-]+)?\)', repl, body)
+    #
+    # The underscore is in BOTH classes because a heading like "What
+    # invisible_playwright does and does not do here" produces the anchor
+    # `#what-invisible_playwright-does-...`, and an anchor the pattern cannot
+    # match makes the WHOLE link fail to rewrite: it ships to the wiki as
+    # `](geetest-v4-explained.md#...)`, which is a dead link, not a link with a
+    # bad anchor. Measured on 2026-09-08: one such link across 463 pages, and it
+    # was invisible because the page renders fine and only the target 404s.
+    return re.sub(r'\]\(([a-z0-9_/\-]+)(?:\.md)?(#[A-Za-z0-9_\-]+)?\)', repl, body)
 
 def with_pixel(name, body):
     """Put the page's view counter just under its H1.

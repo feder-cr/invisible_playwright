@@ -61,6 +61,22 @@ a Firefox user agent painted over it, or a spoofing layer that forgot to delete 
 property that should never have been there. Both expose `navigator.connection` and both
 get caught by its mere presence.
 
+## Three absences and one difference
+
+![Two panels listing four values. navigator.connection, navigator.getBattery and
+navigator.userAgentData are all undefined in both the bundled Firefox and the patched
+engine. navigator.webdriver differs, true against
+false.](https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/img/navigator-connection-network-information-firefox-values.png)
+
+`navigator.connection` is `undefined` in both browsers, which is the answer this page
+gives, and the panel puts two more absences next to it: `navigator.getBattery` and
+`navigator.userAgentData` are `undefined` too.
+
+Three absences in a row is the useful shape here. A build that claims Firefox and
+returns a value for any of the three has contradicted itself, and the contradiction
+costs a detector one property read. The only line that differs between the two panels
+is `navigator.webdriver`.
+
 ## Reading it with invisible_playwright
 
 invisible_playwright is a real Firefox patched at the C++ level and driven by stock
