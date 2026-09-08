@@ -41,13 +41,13 @@ internally consistent identity per session - GPU, canvas, audio, fonts, screen, 
 concrete things move:
 
 - **The engine the screenshots come from.** The pixels the model sees are rendered by a
-  browser whose fingerprint, TLS handshake and driver layer read as a genuine Firefox
-  rather than as an automation build announcing itself. This is why it clears most
+  browser whose fingerprint, TLS handshake and driver layer read as a genuine Firefox,
+  not as an automation build announcing itself. This is why it clears most
   fingerprint, TLS and driver-layer checks: it is built to look like a real browser
   driven by a real person, not to suppress signals. A suppressed or blank surface is its
   own tell, so the goal is a present, plausible value, not a missing one.
 - **The page the clicks land on.** Coordinate clicks arrive on a page inside that engine,
-  and pointer motion between them follows a Bezier curve rather than teleporting from
+  and pointer motion between them follows a Bezier curve instead of teleporting from
   point to point.
 
 What it does not touch is equally important, and the next section is about that.

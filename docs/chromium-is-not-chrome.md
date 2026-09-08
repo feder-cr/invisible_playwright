@@ -8,7 +8,7 @@ nav_order: 3
 
 # Chromium is not Chrome, and detectors know the difference
 
-**Short answer:** no, they are not the same, and the gap moved in 2026 rather than closing.
+**Short answer:** no, they are not the same, and the gap moved in 2026 instead of closing.
 Playwright's default Chromium - Chrome for Testing since v1.57 - now plays the same
 H.264/AAC codecs as real Chrome, checked directly in a live session. It still fails
 Chrome's [Widevine DRM check](https://developer.mozilla.org/en-US/docs/Web/API/Encrypted_Media_Extensions_API), and that part cannot be patched from JavaScript because it is
@@ -20,16 +20,16 @@ The gap is real, it moved in 2026, and one part of it is still a **compiled-in c
 that a page can test for directly and that no amount of JavaScript patching can produce.
 
 This page is what Playwright actually ships today, what changed and what didn't, why the
-part that remains cannot be patched, why spoofing the user agent makes it worse rather than
+part that remains cannot be patched, why spoofing the user agent makes it worse, not
 better, and why Firefox has no equivalent gap.
 
-## What Playwright ships today, checked directly rather than assumed
+## What Playwright ships today, checked directly, not assumed
 
 Playwright's own browser documentation used to be the whole answer: the default managed
 Chromium was an open-source build, missing the proprietary parts Google adds on top. As of
 [Playwright 1.57](https://playwright.dev/docs/release-notes), that changed. The default managed binary - launched with no `channel` set
 at all - is now **Chrome for Testing**, Google's own dedicated distribution for automated
-testing, pinned to the Playwright version rather than auto-updating.
+testing, pinned to the Playwright version instead of auto-updating.
 
 Chrome for Testing is not the stripped-down build the old default was. It ships the same
 proprietary codec support as the Chrome a real visitor runs. Checked directly, in a live

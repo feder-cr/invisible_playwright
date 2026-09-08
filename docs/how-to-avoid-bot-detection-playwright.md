@@ -16,7 +16,7 @@ and its neighbours is real, it is worth doing, and it is also the cheapest thing
 detector checks. The durable tells are not values you can redefine from a page
 script. They are outputs a real machine produces and a script cannot: what the
 engine actually renders, what it can actually decrypt, how a pointer actually moves.
-Building toward that from the start, rather than patching properties after a block
+Building toward that from the start, not patching properties after a block
 shows up, is the difference this page is about.
 
 This page is written for before you launch a session, not after one gets blocked. If
@@ -43,14 +43,14 @@ ceiling:
 
 [The full breakdown of what each level can and cannot reach is
 here](playwright-stealth-levels.md). The proactive move is to pick a level
-deliberately, before you write a line of scraping code, rather than discovering the
+deliberately, before you write a line of scraping code, not discovering the
 ceiling of level 1 three weeks into a project when a site starts checking something
 a page script cannot touch.
 
 ## Start from what a level-1 patch actually buys you
 
 `navigator.webdriver` is the property everyone reaches for first, and it is worth
-doing correctly rather than skipping. The naive version looks like this:
+doing correctly instead of skipping. The naive version looks like this:
 
 ```python
 from playwright.sync_api import sync_playwright
@@ -90,13 +90,13 @@ none of them are JavaScript properties:
 - **The behaviour.** How the pointer moves, how a form gets filled, whether the page
   is ever scrolled.
 
-This is the argument for moving down a level rather than writing a longer init
+This is the argument for moving down a level instead of writing a longer init
 script. A property can be redefined by anyone with a console. An output has to be
 produced by something that actually has the capability being tested.
 
 ## The capability check a Playwright property patch cannot pass
 
-A capability check asks the browser to do something rather than report something,
+A capability check asks the browser to do something, not report something,
 which is why a page-level patch cannot pass one. Here is a concrete version you can
 run yourself against whatever Playwright launches today.
 
@@ -124,7 +124,7 @@ with sync_playwright() as p:
 
 On a default managed Chromium this prints `no`. Setting the user agent to claim
 Chrome does not change the answer, because the missing piece is a DRM module, not a
-string. [The full argument, including why this is a capability rather than a
+string. [The full argument, including why this is a capability, not a
 value and what closes it, is here](chromium-is-not-chrome.md). No `add_init_script`
 reaches this, because there is no property to redefine. The module either exists in
 the binary or it does not.

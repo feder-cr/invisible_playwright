@@ -13,7 +13,7 @@ To scrape weather station data with Playwright, capture the underlying observati
 feed instead of parsing the rendered table, convert every timestamp to UTC once using
 the offset the feed itself carries, keep each reading tagged with a station id, a
 timestamp, a timezone and a variable name, store it at the interval the station
-actually reported rather than resampling it to a fixed grid, and read the station
+actually reported instead of resampling it to a fixed grid, and read the station
 status field to tell a missing reading apart from a station that went offline.
 
 A weather dashboard looks like the simplest scraping target there is: a table of
@@ -79,7 +79,7 @@ with InvisiblePlaywright(seed=42) as browser:
 
 Keep the original offset alongside the converted timestamp. If a station later turns
 out to have the wrong offset in its metadata, you can recompute every stored row from
-the value you kept rather than re-scraping the archive. Converting without recording
+the value you kept instead of re-scraping the archive. Converting without recording
 what you converted from is a one-way trip.
 
 ## Store readings as reported, never resampled to a fixed grid

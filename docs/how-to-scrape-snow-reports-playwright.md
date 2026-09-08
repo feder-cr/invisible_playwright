@@ -25,7 +25,7 @@ keeping the resort's own report timestamp.
 
 ## Pin the unit before reading any number
 
-Set the toggle explicitly rather than trusting the default:
+Set the toggle explicitly instead of trusting the default:
 
 ```python
 from invisible_playwright import InvisiblePlaywright
@@ -43,7 +43,7 @@ with InvisiblePlaywright(seed=42) as browser:
 ```
 
 Then record the unit with every row, even after pinning it. A toggle that failed to click
-leaves the page in the other unit and your rows still say what you intended rather than
+leaves the page in the other unit and your rows still say what you intended, not
 what you read. Reading the unit back from the DOM after the click is the version that
 catches that.
 
@@ -85,7 +85,7 @@ and sometimes by season:
         {"metric": "new_snow", "window_hours": 24, "value_text": "12", "unit": "cm"}
 ```
 
-Read the window from the label next to the number rather than assuming 24 hours. Sites
+Read the window from the label next to the number instead of assuming 24 hours. Sites
 write "Last 24h", "Overnight", "Since 5pm" and "48 hour total" in the same widget across a
 handful of resorts, and "Overnight" is not a fixed duration at all. When the label does
 not resolve to a number of hours, keep it as text and leave `window_hours` null. A null is

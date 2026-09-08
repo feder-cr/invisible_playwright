@@ -56,7 +56,7 @@ They are what the engine genuinely is. You can set `navigator.userAgent` to a cu
 Chrome string, and the first canvas or WebGL read disagrees with it, because the pixels
 come from somewhere the header cannot touch. This is the same failure mode as
 [a renderer string that says NVIDIA while the pixels say software](renderer-string-vs-render.md),
-except here the entire engine is the mismatch rather than one field of it.
+except here the entire engine is the mismatch instead of one field of it.
 
 It is also why "Splash plus a stealth plugin" does not close the gap. A page-level
 plugin rewrites the answers JavaScript gives to a handful of known questions. It does

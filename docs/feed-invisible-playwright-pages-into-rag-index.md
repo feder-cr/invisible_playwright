@@ -41,7 +41,7 @@ your index is empty, but no amount of waiting for JavaScript fixes it, because t
 JavaScript was never allowed to run.
 
 A real browser addresses both at once: it executes the page's JavaScript, and it makes a
-request that reads as a genuine Firefox rather than a script. That is the whole reason to
+request that reads as a genuine Firefox instead of a script. That is the whole reason to
 put a browser in front of the index instead of an HTTP loader.
 
 ## The fetch stage: render with a real browser fingerprint

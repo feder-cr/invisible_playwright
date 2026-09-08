@@ -83,7 +83,7 @@ The hang follows from `response.finished()` semantics, which resolve when the re
 finishes, plus that open issue, and it is widely reported by people who hit it. It is a
 strong inference and not a measurement of mine. Spend ten lines reproducing it against
 your own stream before you build anything on the claim, and put a timeout around the
-reproduction so confirming it costs a few seconds rather than an evening. For requests
+reproduction so confirming it costs a few seconds instead of an evening. For requests
 that do end, [capturing XHR and API responses](how-to-capture-xhr-api-responses-playwright.md)
 is the hook that works.
 

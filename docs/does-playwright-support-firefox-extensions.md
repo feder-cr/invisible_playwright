@@ -18,7 +18,7 @@ not a launch-time argument Playwright resolves for you.
 
 This gets asked because the Chromium path is well documented and looks like it should
 generalize, and because the honest answer involves a handful of old, still-open
-GitHub issues rather than a clean feature page. Here is what Playwright actually
+GitHub issues instead of a clean feature page. Here is what Playwright actually
 supports, what does not work, and the one route that does.
 
 ## What Playwright's documented extension support actually is

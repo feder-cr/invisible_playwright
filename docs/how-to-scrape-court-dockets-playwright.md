@@ -1,6 +1,6 @@
 ---
 title: "How to scrape court docket listings with Playwright"
-description: "Scrape public court dockets with Playwright: work case by case rather than by enumeration, capture the docket entries as an ordered record, and handle the documents that open in a viewer."
+description: "Scrape public court dockets with Playwright: work case by case, not by enumeration, capture the docket entries as an ordered record, and handle the documents that open in a viewer."
 parent: "Scraping with Playwright"
 grand_parent: "Guides"
 nav_order: 160

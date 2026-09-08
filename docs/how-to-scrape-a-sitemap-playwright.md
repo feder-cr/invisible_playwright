@@ -9,7 +9,7 @@ nav_order: 63
 
 # How to scrape a sitemap.xml with Playwright
 
-To scrape a `sitemap.xml` with Playwright, treat it as a tree rather than a flat list: read
+To scrape a `sitemap.xml` with Playwright, treat it as a tree instead of a flat list: read
 the root element to tell a `<sitemapindex>` from a `<urlset>`, recurse into the child
 sitemaps, decompress any `.xml.gz` leaves, and key each URL on its `<lastmod>` so later runs
 recrawl only what changed. Fetch the whole tree through the browser context, because the file
@@ -56,7 +56,7 @@ A **sitemap index** is a table of contents whose `<loc>` values point at more si
 
 The single most common way this code breaks is iterating a document as if it were a url set
 when it is really an index. You get a list of `<loc>` values that look like URLs, you crawl
-them, and every one is another XML file rather than a page. So the rule is: read the root
+them, and every one is another XML file, not a page. So the rule is: read the root
 element first and branch on it. Never assume the shape.
 
 Child sitemaps are frequently gzip-compressed and served as `.xml.gz`, because an
@@ -75,7 +75,7 @@ driving, it returns the file.
 So fetch it through the browser context.
 [Playwright's request API](https://playwright.dev/python/docs/api/class-apirequestcontext) sends
 the fetch through the same browser network stack, sharing its cookies, its proxy, and its
-engine-level handshake, which is the whole point of using a patched engine rather than a
+engine-level handshake, which is the whole point of using a patched engine instead of a
 header generator. With `invisible_playwright` that browser is a real Firefox patched at the
 C++ level and driven by stock Playwright, so switching to it is the launch line and nothing else:
 
@@ -99,7 +99,7 @@ def fetch_xml(page, url):
     return ET.fromstring(raw)
 ```
 
-`resp.body()` gives you the raw bytes rather than a decoded string, which matters because a
+`resp.body()` gives you the raw bytes in place of a decoded string, which matters because a
 `.xml.gz` leaf is not text yet. Checking the
 [two-byte gzip magic](https://datatracker.ietf.org/doc/html/rfc1952) and calling
 `gzip.decompress` handles the compressed case; a file the server already decompressed for you

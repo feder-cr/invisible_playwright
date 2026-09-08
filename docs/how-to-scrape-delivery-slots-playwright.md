@@ -51,7 +51,7 @@ row = {
 ```
 
 Those first three fields are part of what the row asserts. Without them, two readings
-taken an hour apart describe two different questions rather than a change in
+taken an hour apart describe two different questions instead of a change in
 availability, and the series you build on top of them measures your own inputs.
 
 ## Read the grid response, not the rendered cells

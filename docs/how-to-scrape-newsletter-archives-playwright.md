@@ -12,7 +12,7 @@ nav_order: 129
 To scrape newsletter archives with Playwright, page through the archive index until a
 page comes back empty or its first item repeats the item from the page before, since
 these archives almost never print a total to stop at, read each issue from the hosted
-rendering the archive actually serves rather than assuming it matches what a subscriber
+rendering the archive actually serves instead of assuming it matches what a subscriber
 got by email, and treat the date shown on the archive as the date the issue was added to
 that archive, not the date it was sent, until you confirm the two agree.
 

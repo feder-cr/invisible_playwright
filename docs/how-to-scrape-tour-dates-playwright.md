@@ -1,6 +1,6 @@
 ---
 title: "How to scrape concert and tour dates with Playwright"
-description: "Scrape concert and tour dates with Playwright: key rows on the event URL so a postponement does not vanish, timestamp every status read, and treat a cancelled badge as its own state rather than an absence."
+description: "Scrape concert and tour dates with Playwright: key rows on the event URL so a postponement does not vanish, timestamp every status read, and treat a cancelled badge as its own state instead of an absence."
 parent: "Scraping with Playwright"
 grand_parent: "Guides"
 nav_order: 134
@@ -65,7 +65,7 @@ with InvisiblePlaywright(seed=42) as browser:
     print(row)
 ```
 
-Reading the machine-readable `data-state` attribute rather than the visible label
+Reading the machine-readable `data-state` attribute, not the visible label
 matters here for the same reason it matters on a single-event listing: the label
 is copy, and copy gets restyled and localized. The state attribute is the site's
 own canonical value, and it is what you diff against on the next visit. Once
@@ -121,7 +121,7 @@ scraper that expects a purchase link and it looks exactly like an error, a broke
 selector, a dead endpoint, when the page is doing precisely what it was built to
 do.
 
-The fix is to read the on-sale timestamp explicitly and branch on it, rather than
+The fix is to read the on-sale timestamp explicitly and branch on it, not
 treating a missing link as a failure to retry.
 
 ```python

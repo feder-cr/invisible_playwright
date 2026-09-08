@@ -17,7 +17,7 @@ decision value, and both are routinely written in ways that defeat a naive parse
 There is a second structural point. Most scholarship data lives on aggregators that
 summarise a provider's own page, and the summary is often stale or subtly wrong. If your
 use is helping someone decide where to apply, capture the provider link and treat the
-aggregator row as an index entry rather than as the truth.
+aggregator row as an index entry, not as the truth.
 
 This page covers deadlines that are not dates, eligibility that resists structuring, and
 following through to the source.

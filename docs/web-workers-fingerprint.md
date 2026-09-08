@@ -25,7 +25,7 @@ does differently, and how to check your own.
 ## A worker is a separate realm with its own navigator
 
 A worker created from a script or blob URL gets its own `navigator`, populated by the
-browser for that worker rather than copied from the document. Reading it from inside the
+browser for that worker, not copied from the document. Reading it from inside the
 worker shows what the browser decided independently of any page-level patch:
 
 ```js

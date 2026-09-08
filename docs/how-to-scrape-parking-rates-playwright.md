@@ -1,6 +1,6 @@
 ---
 title: "How to scrape parking rates with Playwright"
-description: "Scrape parking garage rates with Playwright: read the tariff table as duration bands rather than prices, resolve the band an arrival time falls into, and keep the rules that override the table."
+description: "Scrape parking garage rates with Playwright: read the tariff table as duration bands, not prices, resolve the band an arrival time falls into, and keep the rules that override the table."
 parent: "Scraping with Playwright"
 grand_parent: "Guides"
 nav_order: 150
@@ -9,7 +9,7 @@ nav_order: 150
 
 # How to scrape parking rates with Playwright
 
-To scrape parking rates, capture the tariff **table** rather than a price: a garage does
+To scrape parking rates, capture the tariff **table**, not a price: a garage does
 not have "a rate", it has duration bands whose boundaries move by day of week and time
 of arrival. Read every row as a triple of lower bound, upper bound and amount, record
 the day and time window each table applies to, and keep the override rules printed
@@ -92,7 +92,7 @@ Record the scope with the bands, and drive the control to collect the others:
         tariffs.append({"scope": scope, "bands": read_bands(page)})
 ```
 
-Click the control rather than fetching a variant URL you guessed. The tab often triggers
+Click the control instead of fetching a variant URL you guessed. The tab often triggers
 a request whose response the page merges into the table, and driving the real control is
 also the version that behaves like a visitor. The same reasoning applies to any
 [tabbed or accordion content](how-to-scrape-accordion-and-tab-content-playwright.md), where
@@ -125,7 +125,7 @@ minimum charge, a grace period, a different rate after midnight, an early-bird r
 requires arriving before a cutoff. These are prose, not rows, and they routinely
 contradict the table above them.
 
-Capture them verbatim rather than trying to parse them:
+Capture them verbatim instead of trying to parse them:
 
 ```python
     notes = [n.inner_text().strip()
@@ -147,7 +147,7 @@ order, wait for the result region, then read.
 
 **Rates are location-scoped even on the same site.** A chain publishes the same page
 shell for every garage and fills the numbers per location, sometimes from your inferred
-position rather than the URL. If the figures change when the exit IP changes, the page is
+position instead of the URL. If the figures change when the exit IP changes, the page is
 reading a location you did not set, and the fix is the one in
 [scraping geotargeted content](how-to-scrape-geotargeted-content-playwright.md).
 

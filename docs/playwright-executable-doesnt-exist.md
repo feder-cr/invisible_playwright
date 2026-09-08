@@ -50,7 +50,7 @@ platform. The error looks identical because from Playwright's point of view the 
 the expected path is simply not there in a runnable form for this OS.
 
 **How to confirm it:** run `playwright install` as an explicit step inside the same
-Dockerfile or CI job that later launches the browser, rather than assuming a cache
+Dockerfile or CI job that later launches the browser, not assuming a cache
 copied in from elsewhere is compatible. Playwright's official images run this step
 during the image build specifically so the browsers match the container's own platform.
 
@@ -60,7 +60,7 @@ On a fresh Linux CI runner or a minimal container image, the browser binary itse
 be present at the exact path Playwright expects and still fail to start, because the
 shared libraries it links against are not installed. This produces a launch failure that
 gets reported and searched for alongside "Executable doesn't exist," even though the
-underlying gap is missing OS packages rather than a missing binary.
+underlying gap is missing OS packages, not a missing binary.
 
 ```bash
 playwright install --with-deps chromium   # binary + the system libraries it needs

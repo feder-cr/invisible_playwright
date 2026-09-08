@@ -13,9 +13,9 @@ To scrape clinical trial listings with Playwright, timestamp every status read s
 status field decays between visits, carry both the registry's own identifier and any
 international identifier the same trial carries in a different country's registry, keep
 eligibility criteria as a list of text strings instead of parsed logic, store enrollment
-as a target figure with its actual-or-anticipated label rather than a headcount, extract
+as a target figure with its actual-or-anticipated label instead of a headcount, extract
 one recruiting status per listed site instead of one per trial, and log the absence of a
-results section as unreported rather than unfinished.
+results section as unreported, not unfinished.
 
 A trial listing reads like a fact sheet and behaves like several records glued onto one
 page. The status line, the enrollment number, the site table and the results tab each

@@ -1,6 +1,6 @@
 ---
 title: "How to scrape package tracking status with Playwright"
-description: "Scrape parcel tracking with Playwright: capture the event timeline rather than the headline status, keep the carrier's own wording, and poll on the shipment's clock instead of yours."
+description: "Scrape parcel tracking with Playwright: capture the event timeline instead of the headline status, keep the carrier's own wording, and poll on the shipment's clock instead of yours."
 parent: "Scraping with Playwright"
 grand_parent: "Guides"
 nav_order: 155
@@ -9,7 +9,7 @@ nav_order: 155
 
 # How to scrape package tracking status with Playwright
 
-To scrape tracking, capture the **event timeline** rather than the headline status. A
+To scrape tracking, capture the **event timeline**, not the headline status. A
 tracking page shows one summary word at the top, and that word is a carrier's
 interpretation of a list of scans underneath it. The list is the data. The summary is a
 derived field you can always recompute, and it is the field carriers change the wording

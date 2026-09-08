@@ -65,7 +65,7 @@ most of why people get confused.
 - **ClientRects.** Reads the sub-pixel bounding boxes of positioned elements with
   [`getClientRects()`](https://developer.mozilla.org/en-US/docs/Web/API/Element/getClientRects).
   Like canvas, the exact fractional geometry varies with the
-  rendering stack, so it is a fingerprint rather than a setting.
+  rendering stack, so it is a fingerprint instead of a setting.
 
 There are more pages - TLS, HTTP headers, geolocation, DNS - but these five are the ones
 people arrive worried about, and they are all raw-value readouts with no cross-check

@@ -68,7 +68,7 @@ Wi-Fi, because the check that would have told them apart is the check you disabl
 
 The narrower, safer alternative when the actual goal is trusting one specific proxy
 is installing that proxy's own root CA certificate into the browser's trust store,
-so only that one issuer becomes trusted rather than every issuer becoming
+so only that one issuer becomes trusted, not every issuer becoming
 irrelevant. Where that is not practical, the operationally honest habit is scoping
 `ignoreHTTPSErrors` to sessions that are genuinely, deliberately behind a proxy you
 control, never to a context whose traffic might also touch a network you do not

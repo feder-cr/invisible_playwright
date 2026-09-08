@@ -70,7 +70,7 @@ with InvisiblePlaywright(seed=42) as browser:
     page.wait_for_selector("[data-testid='listing-card']")
 ```
 
-Waiting for a concrete element rather than a load event matters more here than on a static
+Waiting for a concrete element instead of a load event matters more here than on a static
 page, because the grid arrives after the document does. The difference between the load
 events and why `networkidle` misleads on a feed like this is covered in [how to wait for a
 page to load](how-to-wait-for-page-load-playwright.md); on a faceted search the honest

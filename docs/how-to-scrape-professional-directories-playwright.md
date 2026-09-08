@@ -10,8 +10,8 @@ nav_order: 111
 # How to scrape professional directories with Playwright
 
 To scrape a professional directory with Playwright, make the row a person-at-location pair
-keyed on the registration number rather than the name, read the credential badges out of
-their `title` attributes rather than their text, sweep the letter and specialty partitions
+keyed on the registration number instead of the name, read the credential badges out of
+their `title` attributes, not their text, sweep the letter and specialty partitions
 the site offers while expecting them to overlap, and keep the last-verified date the
 response carries so a stale record is visibly stale instead of quietly wrong.
 
@@ -22,7 +22,7 @@ the appointment. Neither of those is the row you want, and picking either one as
 throws away records on the first run.
 
 Two things separate this from an ordinary listing crawl. The identifier is a licence number
-rather than a product id, and it is the only field in the record that does not drift. And
+instead of a product id, and it is the only field in the record that does not drift. And
 the rows are people, which constrains what you should collect before you write the schema.
 
 ## The row is a person at a location
@@ -68,7 +68,7 @@ directory that simply does not publish the flag into a register where nobody has
 Names collide and names change. The number does neither.
 
 In a register with tens of thousands of entries, two people sharing a surname and an initial
-in the same city is ordinary rather than rare. Names also move: a marriage, a transliteration
+in the same city is ordinary, not rare. Names also move: a marriage, a transliteration
 that gains or loses a letter, a middle initial the card prints on one page and omits on the
 next, a title that is sometimes part of the name field and sometimes its own column. A crawl
 keyed on the name silently merges two people, then silently splits one, and both failures
@@ -87,7 +87,7 @@ city, because both halves of it move.
 ## Credential badges hide in the title attribute, not in the text
 
 The specialty, the qualification and the accepting-new-clients flag are often an icon, and
-the meaning sits in an attribute rather than in a text node. `inner_text()` returns an empty
+the meaning sits in an attribute, not in a text node. `inner_text()` returns an empty
 string, the field looks absent, and you record a null for something the page displayed
 plainly to a reader.
 
@@ -124,7 +124,7 @@ anything at all.
 That fourth case is where this stops working, and it is worth being blunt about. If the
 meaning is carried only by a background image in the stylesheet, the card cannot tell you
 what the badge means. Resolve the class once against the page's own legend, keep the mapping
-as data rather than as a guess, and if there is no legend, write the class and leave the
+as data, not as a guess, and if there is no legend, write the class and leave the
 field null. A null is recoverable. A `False` invented for an unreadable badge is a false
 statement about a person that no later run will notice.
 
@@ -136,7 +136,7 @@ than by page number, and those partitions are not a clean cut of the set.
 They overlap in both directions. A practitioner registered in two specialties appears under
 both. A double-barrelled surname is filed under either half depending on how the record was
 entered. A person practising in two regions comes back from each region filter. Treat a
-partition as a query rather than as a slice, the same reframing that
+partition as a query, not as a slice, the same reframing that
 [store locator pages](how-to-scrape-store-locator-pages-playwright.md) need for radius search,
 and the duplicates stop being a defect to design away.
 
@@ -180,7 +180,7 @@ A register keeps the record after the person moves. The registration is still va
 nothing about the entry looks wrong; the address hanging off it is fourteen months old. The
 card renders the address and not the date, because a date makes the directory look worse than
 it is. The search response behind the card frequently carries that date anyway, as
-`lastVerified`, `updatedAt` or `dataAsOf`, because the template dropped the field rather than
+`lastVerified`, `updatedAt` or `dataAsOf`, because the template dropped the field in place of
 the API.
 
 ```python
@@ -198,7 +198,7 @@ def on_response(resp):
 page.on("response", on_response)
 ```
 
-Read the date off `records`, not off the DOM, and keep it next to your crawl date rather than
+Read the date off `records`, not off the DOM, and keep it next to your crawl date, not
 instead of it. A row collected today from a record the register last checked two years ago is
 a different fact from one checked last week, and only the pair says which you are holding.
 Parse the date once at the edge, since it arrives in whatever format the page prefers:
@@ -209,7 +209,7 @@ alike is in
 
 Where this stops: a directory that publishes no date leaves you unable to separate fresh from
 stale at all. Re-crawling does not rescue you, because an unchanged record is exactly what a
-stale record looks like. Record the absence of the field rather than inferring a freshness you
+stale record looks like. Record the absence of the field instead of inferring a freshness you
 cannot see.
 
 ## A second run reconciles, it does not overwrite
@@ -243,7 +243,7 @@ def reconcile(previous, current, partitions_completed, run_date):
 time and this run completed `letter:m` without it, that is a real signal about the person. If
 this run never finished `letter:m`, the absence says nothing about the person and everything
 about the crawl, and an empty `absent_from` list is what tells the two apart. Retire a pair
-only after several runs of absence from partitions you completed, and flag it rather than
+only after several runs of absence from partitions you completed, and flag it instead of
 deleting it, because a practitioner on leave comes back. The incremental run this sits inside
 is in [scraping only new items](how-to-scrape-only-new-items-incremental-playwright.md).
 

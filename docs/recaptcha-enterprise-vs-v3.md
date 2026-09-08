@@ -11,7 +11,7 @@ nav_order: 31
 
 This page assumes you already know what reCAPTCHA v3's score measures and why a fresh automated browser scores badly even with a clean fingerprint. [That is covered in full on its own page](recaptcha-v3-score.md), and this one does not repeat it. What follows is specifically what changes when a site upgrades to the Enterprise tier: what Enterprise adds, what it costs, and which parts are still, underneath, the same score-based model.
 
-The short version: Enterprise is not a stricter v3. It is v3's scoring model wrapped in an assessment API that explains itself, extended with account-level behavioral detection v3 does not have, and sold as a metered Google Cloud product rather than a free embed.
+The short version: Enterprise is not a stricter v3. It is v3's scoring model wrapped in an assessment API that explains itself, extended with account-level behavioral detection v3 does not have, and sold as a metered Google Cloud product instead of a free embed.
 
 ## The core score has not changed, what you get back has
 
@@ -19,9 +19,9 @@ Both products are built on the same underlying idea: a request gets a risk score
 
 **reCAPTCHA v3, free tier:** a score, and that is close to the whole payload. The site decides what to do with a 0.1 versus a 0.9 on its own, without Google explaining why the number landed where it did.
 
-**reCAPTCHA Enterprise:** the score plus, per Google's own account, **score reasons**, specific factors annotating why an assessment came out where it did, and **risk analysis** that goes beyond a bare number into an explainable assessment. One community writeup on Google's own developer forum frames it as "detailed risk analysis, score reasons, fraud detection signals" layered on top of v3's model rather than replacing it. Migrating an existing v3 integration to Enterprise, per Google's own materials, can be done "in 5-10 minutes without code changes" for the score-based path, because the underlying score contract does not change; what changes is the tier of API you are calling and what comes back in the response.
+**reCAPTCHA Enterprise:** the score plus, per Google's own account, **score reasons**, specific factors annotating why an assessment came out where it did, and **risk analysis** that goes beyond a bare number into an explainable assessment. One community writeup on Google's own developer forum frames it as "detailed risk analysis, score reasons, fraud detection signals" layered on top of v3's model instead of replacing it. Migrating an existing v3 integration to Enterprise, per Google's own materials, can be done "in 5-10 minutes without code changes" for the score-based path, because the underlying score contract does not change; what changes is the tier of API you are calling and what comes back in the response.
 
-Enterprise also formalizes three key types rather than one implicit mode: **score-based** keys (v3's model, silent), **checkbox** keys (an explicit widget, which Google's own documentation now recommends against: "We do not recommend using checkbox keys because they increase user friction and don't significantly improve accuracy"), and **policy-based challenge** keys, which combine the score with configurable thresholds per action to decide automatically when to escalate to a visible challenge, rather than leaving that decision entirely to the integrating site's own code.
+Enterprise also formalizes three key types instead of one implicit mode: **score-based** keys (v3's model, silent), **checkbox** keys (an explicit widget, which Google's own documentation now recommends against: "We do not recommend using checkbox keys because they increase user friction and don't significantly improve accuracy"), and **policy-based challenge** keys, which combine the score with configurable thresholds per action to decide automatically when to escalate to a visible challenge, rather than leaving that decision entirely to the integrating site's own code.
 
 ## Account Defender: the feature v3 has no equivalent of
 

@@ -40,7 +40,7 @@ not before a tunnel opened.
 Chromium's error list places several related, more specific failures right next to this
 one, and which one you actually see narrows the cause: `ERR_MISSING_AUTH_CREDENTIALS`
 (-341), "No Kerberos credentials were available during HTTP Authentication," the
-GSSAPI-specific case of having nothing to offer for a Negotiate challenge rather than
+GSSAPI-specific case of having nothing to offer for a Negotiate challenge instead of
 offering something that gets rejected; `ERR_UNSUPPORTED_AUTH_SCHEME` (-339), "An HTTP
 Authentication scheme was tried which is not supported on this machine," a platform gap
 rather than wrong credentials; and `ERR_MALFORMED_IDENTITY` (-329), "The identity used

@@ -20,7 +20,7 @@ That single fact turns the Battery API into a small but reliable consistency che
 page that claims to be Firefox in its user agent, and then successfully obtains a
 battery object, has not measured your battery. It has caught a browser that is lying
 about what it is. This page explains why that happens, why the honest answer is to have
-no Battery API rather than a convincing fake one, and how a genuine Firefox build gets
+no Battery API instead of a convincing fake one, and how a genuine Firefox build gets
 that for free.
 
 ## What the Battery Status API was, and why Firefox dropped it

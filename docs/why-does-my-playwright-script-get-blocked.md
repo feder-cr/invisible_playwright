@@ -46,7 +46,7 @@ fix so often changes nothing: you improved a layer that was already passing.
 
 invisible_playwright addresses the first layer directly, and only the first. It drives a
 Firefox patched at the C++ level, so the engine, the TLS handshake and the driver surface
-read as a genuine Firefox rather than an automated one, and every reported surface is
+read as a genuine Firefox instead of an automated one, and every reported surface is
 derived together from one seed so the values agree with each other and with the operating
 system they claim. The switch from stock Playwright is two lines, and every Playwright
 method you already use keeps working:
@@ -66,7 +66,7 @@ The `browser` object is a real Playwright `Browser`, so `new_page`, `goto`, `cli
 identity reproducible: the same seed yields the same GPU, the same canvas hash, the same
 fonts every run, which is what turns a flaky "sometimes blocked" failure into one you can
 replay and bisect. That is the mechanism behind why the browser-check layer passes -
-consistency, not any single magic value. If you want to see it measured rather than
+consistency, not any single magic value. If you want to see it measured, not
 asserted, [how to test whether your browser is detected](how-to-test-bot-detection.md)
 walks through comparing the report against a stock browser field by field, and
 [the one-site checklist](playwright-detected-as-bot.md) is the order to work a block in.
@@ -106,7 +106,7 @@ Some blocks are not about who you are but how much you ask for. A single identit
 requests far faster than a person could, or opening many sessions in a short window, trips
 a velocity signal that no fingerprint work can hide - because the fingerprint was fine, the
 volume was not. We have flagged our own product this way during testing, hammering one
-scoring endpoint from one address, and the flag belonged to the harness rather than the
+scoring endpoint from one address, and the flag belonged to the harness instead of the
 browser.
 
 The fix is pacing and spreading, not stealth: fewer actions per minute, real gaps between

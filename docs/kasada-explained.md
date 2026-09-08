@@ -20,7 +20,7 @@ is solid, that is said plainly. Where it is not, that is said too.
 
 Kasada ships a JavaScript file to the browser (reverse-engineers have referred to it as
 `p.js` or `ips.js`, and the exact filename varies by integration) built around a custom
-bytecode virtual machine rather than plain obfuscated JS. A 2026 reverse-engineering
+bytecode virtual machine, not plain obfuscated JS. A 2026 reverse-engineering
 writeup from [kernel.sh](https://www.kernel.sh/blog/detection) describes decoding a file
 of roughly 449KB, most of it a 437KB encoded string table, wrapped in time-based seeds,
 integrity checksums, custom alphabet encoding and per-site variants. The actual challenge
@@ -41,8 +41,8 @@ The strings kernel.sh recovered show it probing a wide mix of surfaces: ordinary
 properties like `navigator.webdriver` and `screen.width`, deeper browser APIs like
 `RTCPeerConnection` and `getBattery`, and canvas fingerprinting primitives. The decoded
 output also contains internal rule names (the writeup gives examples such as `bot606`
-and `bot1375_mfsk`), which is evidence of a large, named catalog of detection rules
-rather than a handful of ad hoc checks. Worth being precise about what that evidence
+and `bot1375_mfsk`), which is evidence of a large, named catalog of detection rules,
+not a handful of ad hoc checks. Worth being precise about what that evidence
 actually shows: the rule names surfaced in decoding, the logic behind each named rule did
 not, so this page can say the ruleset is broad and cannot say what any one named rule
 specifically tests.
@@ -86,7 +86,7 @@ plus a version marker pinning which challenge revision issued them. A 2023 [ZenR
 writeup](https://www.zenrows.com/blog/kasada-bypass) names an overlapping but not
 identical header set. That disagreement is itself a small piece of evidence that Kasada's
 exact header names have shifted across integrations and time, which fits a vendor that
-rotates its client script on its own schedule rather than freezing an external contract.
+rotates its client script on its own schedule instead of freezing an external contract.
 
 The point that survives the naming disagreement is the one worth taking away: this is not
 a check that runs once at page load and then stops watching. The computational challenge

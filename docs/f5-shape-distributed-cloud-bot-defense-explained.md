@@ -23,7 +23,7 @@ The collection code is not a plain script a browser's devtools can read line by 
 
 F5's own phrasing: "Bot Defense examines the telemetry collected from requests before they are permitted to reach your application." A bot detection rule, in F5's own terms, "contains criteria that Bot Defense uses to determine whether a transaction is from a human or automated source," and that determination is made before the origin server does anything with the request at all.
 
-Two outcomes follow. For traffic Bot Defense calls human or an explicitly allowed automated source, "Bot Defense adds a custom HTTP request header to the request and allows the traffic to continue to the origin," which gives the origin application a signal it can check without having to run its own detection. For traffic it calls automated, the configured mitigation, monitor, block, or redirect, applies instead; F5's docs describe this as configurable per endpoint policy rather than a single global switch.
+Two outcomes follow. For traffic Bot Defense calls human or an explicitly allowed automated source, "Bot Defense adds a custom HTTP request header to the request and allows the traffic to continue to the origin," which gives the origin application a signal it can check without having to run its own detection. For traffic it calls automated, the configured mitigation, monitor, block, or redirect, applies instead; F5's docs describe this as configurable per endpoint policy instead of a single global switch.
 
 ## The 2020 shift, and what F5's newer material adds
 

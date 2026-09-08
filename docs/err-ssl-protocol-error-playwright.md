@@ -42,7 +42,7 @@ on a failure that happens a step earlier than anything it controls.
 **A cipher suite or TLS version neither side supports.** The client offers a set of
 ciphers and protocol versions in its ClientHello; if the server's own configuration has
 no overlap with what was offered, at whatever versions each side is willing to speak,
-the handshake fails outright rather than falling back gracefully. This is common on
+the handshake fails outright instead of falling back gracefully. This is common on
 older or misconfigured servers, and on modern servers being reached by an outdated or
 deliberately restricted client.
 
@@ -66,7 +66,7 @@ reach.
 
 **A port or scheme mismatch.** Requesting `https://` against a port actually serving
 plain HTTP, or the reverse, produces bytes that do not parse as the protocol either side
-expected, which surfaces as a protocol-level failure rather than a clean rejection.
+expected, which surfaces as a protocol-level failure, not a clean rejection.
 
 **HTTP/3 or QUIC negotiation failing where HTTP/2 or HTTP/1.1 would have worked.**
 Cloudflare's own documentation names HTTP/3 incompatibility as a distinct cause
@@ -90,7 +90,7 @@ forcing an older protocol.
 5. **Do not reach for `ignoreHTTPSErrors` first.** It has no effect on a handshake that
    never produced a certificate to evaluate; testing it and seeing no change, the way
    the real report above did, is itself useful confirmation the failure is
-   protocol-level rather than trust-level.
+   protocol-level, not trust-level.
 
 ## What Firefox reports instead
 

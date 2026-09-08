@@ -14,7 +14,7 @@ WebSocket and read each price from the frames it delivers, not from the DOM node
 live ticker overwrites that node several times a second, so the value you read back is
 stale the instant you have it. Handle the ranked market-cap table as a separate
 scroll-and-collect job, and hold the connection open with a stable browser identity so
-that a dropped-and-reconnected feed reads as one steady client rather than a churn of
+that a dropped-and-reconnected feed reads as one steady client instead of a churn of
 new devices.
 
 Before writing a line of code, though: if the exchange or aggregator you are reading
@@ -26,8 +26,8 @@ and you have to get them out of a live browser without capturing garbage.
 That case is harder than it looks, for a reason specific to prices: they do not sit
 still. A crypto ticker updates many times a second over a persistent WebSocket, and
 the number you see in the DOM is the tail end of a stream that has already moved on by
-the time your `text_content()` call returns. This page is about reading the stream
-rather than the tail, paging the market table as a separate job, and keeping the
+the time your `text_content()` call returns. This page is about reading the stream,
+not the tail, paging the market table as a separate job, and keeping the
 connection alive long enough to matter.
 
 ## Why the DOM value is a race you lose

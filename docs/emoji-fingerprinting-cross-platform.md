@@ -10,7 +10,7 @@ nav_order: 10
 # Emoji fingerprinting: why emoji look the same on any OS
 
 Emoji look the same on any OS in Firefox because Firefox draws colour emoji from
-its own bundled font rather than the platform's, so the render is host-independent.
+its own bundled font instead of the platform's, so the render is host-independent.
 That is worth explaining, because emoji are otherwise one of the oldest
 operating-system tells there is. The same code point is drawn from a different font
 on each platform, and those fonts do not agree on a single pixel: Windows renders
@@ -48,7 +48,7 @@ operating system's emoji font at all. It ships its own colour-emoji font, based 
 Twemoji, inside the browser package, and it rasterises colour emoji from that
 bundled file on every platform it runs on. A stock Firefox on Windows, a stock
 Firefox on macOS and a stock Firefox on Linux all draw the same emoji from the
-same font, because the font travels with the browser rather than coming from the
+same font, because the font travels with the browser instead of coming from the
 host.
 
 That is a structural difference from Chrome, which defers to the platform emoji
@@ -63,7 +63,7 @@ assume. The engine has already made the render host-independent.
 This project builds on that property deliberately. To make text match Windows on
 any host, the build bundles a set of real Windows font files and exposes only
 those families, so a Linux server draws Latin, CJK and the rest from genuine
-Windows glyphs rather than from whatever the host happens to have installed. The
+Windows glyphs, not from whatever the host happens to have installed. The
 same idea is covered in detail under [bundled fonts that render the same on every OS](bundled-fonts-cross-platform.md).
 
 The emoji font is treated differently, and on purpose. The colour-emoji file is

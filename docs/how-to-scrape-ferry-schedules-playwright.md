@@ -1,6 +1,6 @@
 ---
 title: "How to scrape ferry schedules with Playwright"
-description: "Scrape ferry timetables with Playwright: query by date because sailings are seasonal, keep the route direction as part of the key, and record cancellations as data rather than as missing rows."
+description: "Scrape ferry timetables with Playwright: query by date because sailings are seasonal, keep the route direction as part of the key, and record cancellations as data, not as missing rows."
 parent: "Scraping with Playwright"
 grand_parent: "Guides"
 nav_order: 153
@@ -9,9 +9,9 @@ nav_order: 153
 
 # How to scrape ferry schedules with Playwright
 
-To scrape a ferry timetable, query it **date by date** rather than pulling a published
+To scrape a ferry timetable, query it **date by date** instead of pulling a published
 schedule page, keep the direction in the key, and treat a sailing that disappears as an
-event rather than as an absence. Ferry schedules are seasonal, weather-dependent and
+event, not as an absence. Ferry schedules are seasonal, weather-dependent and
 frequently amended, which makes them one of the few timetable types where yesterday's
 capture genuinely does not describe today.
 

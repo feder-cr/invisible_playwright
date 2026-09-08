@@ -10,7 +10,7 @@ nav_order: 26
 # How to scrape job postings with Playwright
 
 To scrape job postings with Playwright, drive the board's faceted search controls instead
-of walking URLs, wait for the specific results XHR rather than for `networkidle`, and read
+of walking URLs, wait for the specific results XHR, not for `networkidle`, and read
 each posting from its `JobPosting` JSON-LD instead of brittle card selectors. Run the whole
 sweep under one stable browser identity so the board sees a returning visitor, and pace it
 so the request volume does not give you away.

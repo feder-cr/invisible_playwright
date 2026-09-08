@@ -33,7 +33,7 @@ group is a walk across a set somebody else defined, which is the job in
 
 A slider hands you two numbers and the space between them. There is no vocabulary to
 enumerate, so the buckets are not discovered, they are invented by you. Every boundary in your
-output is an artifact of your crawl rather than a property of the site.
+output is an artifact of your crawl instead of a property of the site.
 
 So a range row carries five things, not two: the lower bound, the upper bound, whether each
 end is open or closed, the count, and the state URL that produced it.

@@ -60,7 +60,7 @@ async with InvisiblePlaywright(seed=42) as browser:
 
 `full_page=True` captures the entire scrollable document, not just the viewport. Under
 the hood Playwright resizes the capture to the full content height and paints the whole
-thing, so a tall page comes back as one tall PNG rather than the slice you can see.
+thing, so a tall page comes back as one tall PNG instead of the slice you can see.
 
 Two things routinely make that image wrong, and neither is a bug in the screenshot call:
 

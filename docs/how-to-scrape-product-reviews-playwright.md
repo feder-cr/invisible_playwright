@@ -78,7 +78,7 @@ with InvisiblePlaywright(seed=42) as browser:
 The `wait_for_selector` on a real review row is the important line. A verdict-style
 check ("no error thrown") would pass on a container that never filled. Assert that a
 review is actually present, the same principle as
-[testing for the signal you want rather than the absence of one you do not](how-to-test-bot-detection.md).
+[testing for the signal you want instead of the absence of one you do not](how-to-test-bot-detection.md).
 
 ## Drive the widget's own pagination and sort
 

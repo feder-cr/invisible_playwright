@@ -69,7 +69,7 @@ are consistency gaps: a headless context with no real GPU, a screen size no disp
 list or font set that does not match the claimed platform. Each is a small addition to the
 score, and together they are the fingerprint contribution.
 
-You can see this contribution directly rather than taking it on faith. Open the same
+You can see this contribution directly instead of taking it on faith. Open the same
 detector page in your automated browser and in a stock browser on the same machine, and
 diff the reports field by field. The
 [method for doing that comparison honestly](how-to-test-bot-detection.md) is worth reading

@@ -10,9 +10,9 @@ nav_order: 124
 # How to scrape public tender notices with Playwright
 
 **To scrape public tender notices with Playwright, key every row on the notice
-identifier plus the lot identifier rather than on the buyer and the title, take each
+identifier plus the lot identifier, not on the buyer and the title, take each
 deadline from the offset-bearing value in the underlying response instead of the string
-the page rendered, filter on classification codes rather than free-text titles, and make
+the page rendered, filter on classification codes, not free-text titles, and make
 every re-scrape reconcile a revision and a status onto the existing row instead of
 appending a new one.** Notices are documents about a procurement, not the procurement
 itself, and that distinction decides the whole schema.
@@ -120,7 +120,7 @@ Worse, some portals convert the deadline to the client's clock before painting i
 browser timezone is derived from the egress IP, so two exits produce two different
 deadlines for the same notice, and neither of them is what the buyer published. That is a
 [timezone and locale mismatch](timezone-proxy-mismatch.md) turned into a data error
-rather than a detection one.
+instead of a detection one.
 
 The value with the offset usually exists, just not in the text node. It is in the JSON the
 detail view fetches, or in the `datetime` attribute of a `<time>` element while the

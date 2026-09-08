@@ -15,7 +15,7 @@ on the next one, because a fixed sleep is a guess about a network and a render p
 you do not control.
 
 This page is the loop that does not guess: how to wait for content to actually arrive,
-how to know when the page is really done rather than just slow, how to dedupe what you
+how to know when the page is really done, not just slow, how to dedupe what you
 collect, and the part generic scroll tutorials skip entirely - a perfectly mechanical
 scroll loop is itself something a page can notice, and the block that shows up minutes
 into a session is usually that, not your fingerprint.
@@ -119,7 +119,7 @@ exists.
 ## Deduplicating items across scrolls
 
 Scroll-and-collect naturally re-reads items you already have, because the DOM keeps
-everything loaded so far rather than replacing it. Track what you have already recorded
+everything loaded so far instead of replacing it. Track what you have already recorded
 by a stable identifier, not by position:
 
 ```python
@@ -142,7 +142,7 @@ def harvest(page):
         })
 ```
 
-Call `harvest(page)` after each successful growth round rather than only once at the end.
+Call `harvest(page)` after each successful growth round, not only once at the end.
 Two reasons: it lets you inspect progress while the loop still runs, and it means a crash
 or a block partway through still leaves you with everything collected up to that point
 instead of nothing.
@@ -163,7 +163,7 @@ read anything, and fires at a rate no human scrolling with a mouse or trackpad p
 that is a behavioral signature, and it is a different layer entirely from the fingerprint.
 [The checklist for one-site detection](playwright-detected-as-bot.md) puts behavior at
 step five for a reason: blocks that arrive **after an interaction**, minutes into a
-session rather than at the first request, are usually this rather than anything about the
+session, not at the first request, are usually this, not anything about the
 browser's reported GPU or fonts. A perfectly consistent fingerprint does not help if the
 scrolling pattern on top of it is the part that stood out.
 
@@ -177,7 +177,7 @@ looked fine to a check that was only watching for an exception.
 
 The fix is the same one this project applies to pointer movement: vary the motion instead
 of repeating it, and derive the variation from a seed so a run that misbehaves can be
-replayed rather than re-guessed.
+replayed, not re-guessed.
 
 ```python
 import random
@@ -197,14 +197,14 @@ with sf as browser:
 
 That pause is not the thing telling you content arrived - `wait_for_function` still is,
 exactly as before. It only changes how long the loop dwells between wheel events, so the
-gaps look like a device scrolling rather than a timer firing at a fixed interval. Wire
+gaps look like a device scrolling instead of a timer firing at a fixed interval. Wire
 `human_scroll_step` in as the scroll action inside `scroll_until_stable` and the growth
 check around it does not change at all.
 
 The same idea already ships for clicks and hovers: [humanized mouse
 movement](human-mouse-movement.md) is on by default in this project, driven from the same
 per-session seed, so the arc to a button and the pacing of a scroll come from one
-consistent identity rather than two unrelated randomizers. Bezier curves get the pointer
+consistent identity, not two unrelated randomizers. Bezier curves get the pointer
 path right; what actually gets read on a scroll loop is closer to timing than shape, since
 a wheel event does not carry the same rich field set a pointer move does - but a constant
 interval is exactly as loud as a teleporting cursor, and for the same reason.
@@ -238,7 +238,7 @@ a bug.
 
 An infinite-scroll loop that works on every page you throw it at waits for the DOM to
 actually grow and for the network to actually settle, stops on a streak of flat rounds
-rather than one, and keys its dedup on an identifier rather than position. None of that
+instead of one, and keys its dedup on an identifier, not position. None of that
 is specific to this project; it is just Playwright used the way its own waiting primitives
 are meant to be used.
 

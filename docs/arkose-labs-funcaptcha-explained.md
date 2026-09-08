@@ -17,9 +17,9 @@ This is one of the vendors in this corpus closer to an actual CAPTCHA than to a 
 
 ## What Arkose's own materials say, and where they stop
 
-Arkose's own public site describes its detection in terms of scale and adaptivity rather than mechanism: "225+ risk signals," "dynamic challenges that evolve in real time to counter emerging attack vectors," and device identification that combines "deterministic methods with machine learning similarity detection." Its own numbers past that point are business outcomes, not technical detail, customer satisfaction figures, dollar savings, account-growth multipliers, not the field names or scoring weights behind the 225 signals.
+Arkose's own public site describes its detection in terms of scale and adaptivity, not mechanism: "225+ risk signals," "dynamic challenges that evolve in real time to counter emerging attack vectors," and device identification that combines "deterministic methods with machine learning similarity detection." Its own numbers past that point are business outcomes, not technical detail, customer satisfaction figures, dollar savings, account-growth multipliers, not the field names or scoring weights behind the 225 signals.
 
-That is a real limit on what this page can say with a straight face. Arkose does not publish, in the materials checked for this page, the specific list of what those 225+ signals are or how the risk engine weighs them. What follows past this point comes from independent, practitioner-level reverse engineering rather than Arkose's own documentation, and is marked as such.
+That is a real limit on what this page can say with a straight face. Arkose does not publish, in the materials checked for this page, the specific list of what those 225+ signals are or how the risk engine weighs them. What follows past this point comes from independent, practitioner-level reverse engineering, not Arkose's own documentation, and is marked as such.
 
 ## What practitioner reverse engineering has converged on
 

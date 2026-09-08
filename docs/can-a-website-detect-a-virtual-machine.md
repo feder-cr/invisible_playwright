@@ -54,7 +54,7 @@ string](https://developer.mozilla.org/en-US/docs/Web/API/WEBGL_debug_renderer_in
 says so in plain text: a basic or generic renderer name, or the well-known software
 rasterizer strings. A real desktop reports a specific GPU model from a specific vendor.
 This is the single loudest VM tell
-in the browser, because it is a string you can read directly rather than a statistic
+in the browser, because it is a string you can read directly instead of a statistic
 you have to accumulate.
 
 Worse, the string and the pixels can disagree: a renderer that

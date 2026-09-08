@@ -10,7 +10,7 @@ nav_order: 133
 # How to scrape flight seat maps with Playwright
 
 To scrape flight seat maps with Playwright, capture the seat map response scoped to the
-exact flight number, date and cabin you selected rather than to the route you searched,
+exact flight number, date and cabin you selected, not to the route you searched,
 read each seat's row, column and id from its own data attribute instead of its position
 in the rendered grid, keep a blocked seat as a status distinct from an occupied one, and
 join seat fees onto the map afterward from a separate pricing response, matched by seat

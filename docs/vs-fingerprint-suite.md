@@ -9,7 +9,7 @@ nav_order: 12
 # invisible_playwright vs fingerprint-suite: injection vs engine
 
 **invisible_playwright and fingerprint-suite generate a browser fingerprint the
-same way - as one coherent statistical identity rather than a grab-bag of
+same way - as one coherent statistical identity instead of a grab-bag of
 independently randomized fields - but apply it at different layers.**
 fingerprint-suite injects the generated fingerprint into a running Playwright or
 Puppeteer page; invisible_playwright makes the patched Firefox engine report those
@@ -28,7 +28,7 @@ fingerprint-suite is Apify's open-source toolkit that generates a coherent brows
 fingerprint with a Bayesian network and injects it into a Playwright or Puppeteer
 page. The toolkit is modular: a header generator, a fingerprint generator, an injector,
 and underneath them a generative Bayesian network the project built specifically to
-produce realistic, internally consistent fingerprints rather than independently
+produce realistic, internally consistent fingerprints, not independently
 randomized field values. Point it at a Playwright or Puppeteer browser instance and
 it wraps context creation, generating a fingerprint constrained by whatever you ask
 for - device type, operating system - and injecting the result into the page before
@@ -36,7 +36,7 @@ your own code runs.
 
 That statistical-generation piece is a real, substantive design choice, and it's
 the same broad idea this project uses to turn one seed into one coherent identity
-rather than a set of independently randomized fields that could describe a machine
+instead of a set of independently randomized fields that could describe a machine
 that doesn't exist. Two different projects, in two different codebases, arriving at
 "generate the fingerprint as a coherent statistical unit" as the right approach to
 generation is worth taking as a signal about the problem, not a coincidence.

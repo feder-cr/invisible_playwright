@@ -63,8 +63,8 @@ with InvisiblePlaywright(seed=42) as browser:
     # `browser` is a real Playwright Browser; every documented method works.
 ```
 
-The `seed=42` fixes the identity so a run that fails on one tile can be replayed exactly
-rather than guessed at. See the [quickstart](quickstart.md) for what the seed pins.
+The `seed=42` fixes the identity so a run that fails on one tile can be replayed exactly,
+not guessed at. See the [quickstart](quickstart.md) for what the seed pins.
 
 ## Trigger the lazy-load by scrolling each tile into view
 
@@ -113,7 +113,7 @@ def promote_tile(page, handle):
 
 ## Resolve the highest-resolution srcset candidate
 
-Once a tile is real, you often have a choice rather than a URL. A
+Once a tile is real, you often have a choice, not a URL. A
 [`srcset`](https://html.spec.whatwg.org/multipage/images.html) is a list of `url
 widthDescriptor` pairs, and the browser picks one for its layout, which is not the one
 you want. You want the largest. Parse the attribute yourself and take the widest
@@ -159,7 +159,7 @@ the asset behind the lightbox. That larger asset is the next step.
 
 The grid rarely holds the full image. Clicking a tile opens a lightbox or detail view
 that loads a bigger asset, and that is the one worth keeping. Click, wait for the larger
-image to appear, and read its resolved URL from the live element rather than the markup:
+image to appear, and read its resolved URL from the live element instead of the markup:
 
 ```python
 def full_res_url(page, tile_selector):

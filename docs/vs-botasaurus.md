@@ -30,13 +30,13 @@ and hands it a ready driver.
 
 The selling point is that it is batteries-included. You write a function, annotate
 it, and the framework supplies the browser, the retries, the cache and the
-concurrency around it. If you want a setup handed to you rather than assembled,
+concurrency around it. If you want a setup handed to you, not assembled,
 that is the appeal, and it is a real one.
 
 The trade that comes with it is the one every framework makes: you adopt its driver,
 its decorators and its execution model. Your orchestration lives inside its shape.
 And the realness it offers is whatever its Chrome-based anti-detect driver achieves,
-patched at the JavaScript and driver layer rather than in the engine itself.
+patched at the JavaScript and driver layer, not in the engine itself.
 
 ## What invisible_playwright is
 

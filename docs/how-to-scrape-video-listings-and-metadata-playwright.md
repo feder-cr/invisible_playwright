@@ -12,7 +12,7 @@ nav_order: 48
 To scrape video listings and metadata with Playwright, read each card's structured
 data first: the `VideoObject` in the page's JSON-LD carries the exact upload date,
 duration and view count in machine form, so use the rendered DOM only for fields it
-omits, and page the grid by watching the card count stabilise rather than seeking an end
+omits, and page the grid by watching the card count stabilise instead of seeking an end
 that does not exist. Leave the player embed alone, because pulling the stream is a
 separate and much heavier problem than reading the card.
 
@@ -35,7 +35,7 @@ same logical record is spread across surfaces that update at different times:
 - **Duration** is a text overlay drawn on the thumbnail, usually the last DOM node to
   arrive because it waits on the image. It is formatted for humans (`12:04`), not for you.
 - **View count** is abbreviated in the visible text (`1.2M views`), so the DOM gives you a
-  rounded, locale-formatted string rather than an integer.
+  rounded, locale-formatted string, not an integer.
 - **Upload date, exact view count, title and uploader** are almost always present in a
   `application/ld+json` block as a `VideoObject`, in machine form, before any of the
   visible text has finished rendering.
@@ -89,7 +89,7 @@ with InvisiblePlaywright(seed=42) as browser:
 ```
 
 The `duration` field comes back as an ISO-8601 period (`PT12M4S`), which you can parse
-with `isodate` or a small regex, and `uploadDate` as a real date rather than "3 weeks
+with `isodate` or a small regex, and `uploadDate` as a real date, not "3 weeks
 ago". This is the same reason [capturing the page's own XHR responses](how-to-capture-xhr-api-responses-playwright.md)
 often beats scraping the DOM: the machine-readable copy is already on the wire. The
 general pattern for pulling these blocks, including the single-object, list and `@graph`
@@ -115,7 +115,7 @@ average the two or prefer the prettier one.
 
 The grid has no last page. New rows are appended as a sentinel near the bottom scrolls
 into view, so the job is to scroll, wait for the count to grow, and stop when it stops
-growing rather than when you reach an end that does not exist.
+growing, not when you reach an end that does not exist.
 
 ```python
 def load_all_cards(page, selector="[data-video-id]", quiet_rounds=3, pause_ms=1200):
@@ -148,7 +148,7 @@ when to prefer the network feed over scrolling, is covered in
 [scraping an infinite-scroll page](how-to-scrape-infinite-scroll-playwright.md).
 
 Because the identity here is seeded (`seed=42`), a run that loads 480 cards and then breaks
-on card 481 replays as the same 481 cards, so you are debugging the site rather than a new
+on card 481 replays as the same 481 cards, so you are debugging the site instead of a new
 random machine each time.
 
 ## Why the media stack has to match a real browser

@@ -10,7 +10,7 @@ nav_order: 107
 # How to scrape multi-select facet filters with Playwright
 
 To scrape multi-select facet filters with Playwright, expand every "show more" control
-before reading a group, wait for the facet response rather than for the URL to change,
+before reading a group, wait for the facet response, not for the URL to change,
 write the resulting URL into every row you store, and crawl one facet group at a time
 against the unfiltered base instead of enumerating combinations, then reconcile each group
 against the base total.
@@ -102,7 +102,7 @@ from "this site has no such value" from "it was behind a show-more you did not e
 Absence is not evidence, and a coverage report built on it will claim gaps that are
 artifacts of the read.
 
-Read the flag explicitly rather than asking whether the row is clickable. A `disabled`
+Read the flag explicitly instead of asking whether the row is clickable. A `disabled`
 attribute on a `<li>` or an `<a>` is ignored by the browser, since only native controls
 like `input` and `button` can be disabled that way, so such a row stays clickable. What
 means something is `aria-disabled` on the row and the `disabled` property on the input
@@ -117,7 +117,7 @@ with the new state's URL: every row looks plausible and the whole table is shift
 
 Wait on the response instead, and better still read it, since the payload usually carries
 the new counts and skipping the DOM removes the repaint race completely. Capturing the
-request rather than the repainted markup is a habit worth having generally, and
+request instead of the repainted markup is a habit worth having generally, and
 [capturing XHR and API responses](how-to-capture-xhr-api-responses-playwright.md) covers
 the hooks.
 
@@ -247,7 +247,7 @@ def reconcile(rows, base_total):
 Here is where the approach stops helping. One group at a time gives marginals, never the
 joint distribution, so "how many blue and large" needs that exact state visited. Pairs are
 quadratic and usually affordable, triples usually are not, so pick the pairs you need
-rather than generating them. A capped result set forces the same targeted split, and the
+instead of generating them. A capped result set forces the same targeted split, and the
 [paginated pages](how-to-scrape-paginated-pages-playwright.md) mechanics apply to each
 slice unchanged.
 

@@ -26,6 +26,8 @@ platform the browser claims to be, not just look plausible in isolation.
 - [WebGL shader precision as a fingerprint surface](webgl-shader-precision-fingerprint.md) - getShaderPrecisionFormat is a third WebGL fingerprint, hashed apart from parameters and extensions.
 - [Is WebGPU a browser fingerprint?](is-webgpu-a-browser-fingerprint.md) - navigator.gpu exposes a second GPU identity most guides ignore, and it must match WebGL.
 
+- [Why the same canvas draws differently on Windows and Linux](canvas-differs-across-operating-systems.md) - Why the same canvas call draws different pixels on Windows and on Linux, layer by layer.
+
 ## Fonts, emoji and text metrics
 
 - [How to make Linux and macOS report real Windows fonts](bundled-fonts-cross-platform.md) - Bundle the real font files and read only from them; filtering a list leaves the host underneath.

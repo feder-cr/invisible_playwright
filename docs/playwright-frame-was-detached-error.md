@@ -50,7 +50,7 @@ code was holding is gone underneath it.
 
 **A top-level navigation tearing down every child frame it owned.** Navigating the main
 page destroys not just its own execution context but every iframe nested inside it. Code
-still holding a reference to one of those child frames, rather than to the page itself,
+still holding a reference to one of those child frames, not to the page itself,
 sees that frame detach as a side effect of a navigation that, from the page's own
 perspective, looks unremarkable.
 
@@ -82,7 +82,7 @@ following release.
    element.
 3. **If the error is `net::ERR_ABORTED; maybe frame was detached?`, treat the question
    mark literally.** Confirm the frame actually detached, via `page.on("framedetached")`
-   or a post-hoc check of `page.frames`, rather than assuming the message's own guess is
+   or a post-hoc check of `page.frames`, not assuming the message's own guess is
    automatically correct.
 4. **Never hold a `Frame` reference across an action that might cause the surrounding
    widget to remount.** Re-acquire it, or better, avoid holding one at all.

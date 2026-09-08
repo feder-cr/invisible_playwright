@@ -29,7 +29,7 @@ mention it because their browser cannot fix it anyway.
 
 Rotate the proxy once per browser session, not once per request: give one browser
 launch one proxy and hold it for the whole visit, then close the session and start the
-next one on a different proxy. This is the [sticky-session pattern rather than a
+next one on a different proxy. This is the [sticky-session pattern instead of a
 per-request rotating pool](sticky-vs-rotating-proxy-sessions.md), and for a browser it
 is the correct default.
 
@@ -68,7 +68,7 @@ for i, proxy in enumerate(proxies):
 
 Each iteration is a separate process, a separate seed, and a separate proxy. Each one
 gets its own canvas hash, GPU string, font set and timezone, because those are derived
-from the seed and the exit rather than left over from the previous session. That is
+from the seed and the exit, not left over from the previous session. That is
 also the property a shared-browser, proxy-per-context setup does not have: every
 context in one browser reports the same hardware regardless of which proxy it is
 tunneled through, which is exactly what
@@ -114,7 +114,7 @@ with InvisiblePlaywright(proxy=proxy) as browser:
 ```
 
 A `socks5://` or `socks4://` server is written into the browser's own proxy
-preferences, credentials included, rather than handed to Playwright's proxy layer
+preferences, credentials included, not handed to Playwright's proxy layer
 where the credentials are silently dropped. `http://` and `https://` servers go to
 Playwright directly, because that is the path where its credential support is real.
 The endpoint needs an explicit port; a bare host with no port is refused rather than

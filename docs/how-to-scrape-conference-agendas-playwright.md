@@ -9,7 +9,7 @@ nav_order: 162
 
 # How to scrape conference agendas with Playwright
 
-To scrape an agenda, read the schedule as a **grid of tracks over time** rather than as a
+To scrape an agenda, read the schedule as a **grid of tracks over time**, not as a
 list of sessions, and resolve the timezone once for the whole event. A conference agenda
 is one of the few web tables where position carries meaning: the column a session sits in
 is its track, and the rows above and below it are what it clashes with.
@@ -63,7 +63,7 @@ both, because a redesign will switch between them.
 ## The timezone belongs to the event, not to you
 
 Agendas print local times without zones almost universally. Resolve the event's zone once
-and attach it, rather than letting each row inherit whatever your machine thinks:
+and attach it, not letting each row inherit whatever your machine thinks:
 
 ```python
     tz = page.eval_on_selector(
@@ -102,7 +102,7 @@ def session_detail(page, href):
     }
 ```
 
-Keep speakers as a list of objects rather than a joined string. A comma-separated field
+Keep speakers as a list of objects instead of a joined string. A comma-separated field
 looks fine until a name contains a comma, and academic affiliations contain commas
 constantly.
 
@@ -128,7 +128,7 @@ same rule applies: click the control, wait for the content, do not guess a URL.
 
 Schedules are edited constantly in the final weeks: rooms move, speakers cancel, sessions
 swap slots. If the change history matters to you, keep each capture whole with its
-timestamp rather than updating rows in place, and diff captures later. If it does not,
+timestamp instead of updating rows in place, and diff captures later. If it does not,
 a daily pass in the fortnight before the event, and one after it, is enough.
 
 Either way this is a small site with a spiky audience, so keep to the pacing in

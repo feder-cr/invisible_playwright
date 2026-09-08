@@ -63,7 +63,7 @@ There are three places a product number can live, and they are not equally trust
 ## Select the variant and wait for the price XHR
 
 Playwright gives you the request directly. Wrap the click or the select in
-`page.expect_response`, and you get the actual offers payload rather than whatever the
+`page.expect_response`, and you get the actual offers payload, not whatever the
 DOM happened to show a moment later. The wrapper is a drop-in for stock Playwright, so
 `browser` below is a real Playwright `Browser` and every method is the one you already
 know.
@@ -93,7 +93,7 @@ DOM node you have to trust. If you would rather subscribe to responses across a 
 session instead of one at a time, [capturing XHR and API responses in Playwright](how-to-capture-xhr-api-responses-playwright.md)
 covers the listener form.
 
-If the base price is what you are after and it is painted after load rather than behind
+If the base price is what you are after and it is painted after load, not behind
 a variant click, wait for the value to appear instead of guessing at a delay. Blind
 `sleep` calls are the classic flake here, and [waiting for the page to actually finish
 loading](how-to-wait-for-page-load-playwright.md) has the specific predicates.
@@ -112,7 +112,7 @@ Most storefronts also embed a `application/ld+json` block describing the product
 search engines. It is a structured, documented format, and it is the cheapest
 cross-check you have against the number you scraped from the offers XHR. When the two
 agree you are confident; when they disagree you have learned something real about the
-page rather than shipping a wrong number silently.
+page instead of shipping a wrong number silently.
 
 ```python
 import json

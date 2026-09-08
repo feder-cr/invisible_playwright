@@ -1,6 +1,6 @@
 ---
 title: "How to scrape EV charging availability with Playwright"
-description: "Scrape EV charger availability with Playwright: capture the live status feed the map is drawing from, record a timestamp with every reading, and treat availability as a measurement rather than a fact."
+description: "Scrape EV charger availability with Playwright: capture the live status feed the map is drawing from, record a timestamp with every reading, and treat availability as a measurement instead of a fact."
 parent: "Scraping with Playwright"
 grand_parent: "Guides"
 nav_order: 151
@@ -9,8 +9,8 @@ nav_order: 151
 
 # How to scrape EV charging availability with Playwright
 
-To scrape charger availability, capture the **status feed** the map is drawing from
-rather than the map, and stamp every reading with the time you took it. Availability is
+To scrape charger availability, capture the **status feed** the map is drawing from,
+not the map, and stamp every reading with the time you took it. Availability is
 not an attribute of a charging point. It is a measurement that was true for a few
 seconds, and a row without a timestamp is a claim you cannot check later.
 
@@ -97,7 +97,7 @@ row["reported_at"] = station.get("last_updated")     # when the network last kne
 Keep both. A connector reported as available with a `last_updated` from six hours ago is
 a different fact from one updated forty seconds ago, and collapsing them into a single
 "available" is how a dataset becomes confidently wrong. When the operator gives you no
-`last_updated` at all, record that absence rather than substituting your own time.
+`last_updated` at all, record that absence instead of substituting your own time.
 
 ## Poll on the data's clock, not on yours
 
@@ -117,7 +117,7 @@ def changed(row):
     return True
 ```
 
-Write the transitions rather than the polls. The result is a state history you can
+Write the transitions in place of the polls. The result is a state history you can
 replay, at a fraction of the rows, and it survives a gap in collection better than a
 dense series with holes in it.
 

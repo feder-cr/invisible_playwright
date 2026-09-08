@@ -13,7 +13,7 @@ To scrape nutrition labels with Playwright, attach a basis to every number befor
 store it: map each column header to per 100 g, per serving or per package, split the
 serving size into a household measure and a metric one, keep kilojoules and kilocalories
 in separate fields, preserve the less-than qualifier instead of parsing it to zero, and
-record an image-only panel as unextractable rather than writing empty rows.
+record an image-only panel as unextractable instead of writing empty rows.
 
 A nutrition panel is a small grid, and reading the grid is the easy part. The hard part is
 that almost every number on it means nothing on its own. `12` is not a fact. Twelve grams
@@ -36,7 +36,7 @@ serving size, which a scraper that dropped the basis has almost always dropped t
 On a product page the panel is usually collapsed behind a "Nutrition" accordion or a tab,
 so it sits in the DOM unrendered, or it does not exist until the header is clicked.
 [Scraping accordion and tab content](how-to-scrape-accordion-and-tab-content-playwright.md)
-covers opening it and waiting for the panel rather than for the click.
+covers opening it and waiting for the panel, not for the click.
 
 The basis lives in the header row and never in the cell. Read the header first, classify
 each column, and refuse the panel when nothing classifies. Refusing is the useful

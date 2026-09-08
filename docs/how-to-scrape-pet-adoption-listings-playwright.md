@@ -1,6 +1,6 @@
 ---
 title: "How to scrape pet adoption listings with Playwright"
-description: "Scrape shelter adoption listings with Playwright: reconcile disappearances instead of deleting rows, key animals on the shelter's own identifier, and keep photos as references rather than copies."
+description: "Scrape shelter adoption listings with Playwright: reconcile disappearances instead of deleting rows, key animals on the shelter's own identifier, and keep photos as references, not copies."
 parent: "Scraping with Playwright"
 grand_parent: "Guides"
 nav_order: 158
@@ -45,7 +45,7 @@ def listing_rows(page):
 ```
 
 When no identifier is available anywhere, fall back to a hash of the stable fields and say
-so in the row, rather than pretending the key is authoritative. A key you invented behaves
+so in the row, not pretending the key is authoritative. A key you invented behaves
 differently from one the site issued, and the difference shows up as churn that looks like
 animals arriving and leaving daily.
 
@@ -97,7 +97,7 @@ rows to reveal it.
 
 Facet controls that repopulate the list without a navigation behave like the ones in
 [multi-select facet filters](how-to-scrape-multi-select-facets-playwright.md): wait for
-the list to settle rather than for a load event.
+the list to settle, not for a load event.
 
 ## Photos: keep the URL, not the file
 

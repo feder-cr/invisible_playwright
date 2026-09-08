@@ -69,7 +69,7 @@ which is precisely why a page-level layer cannot fix this at all. The value has 
 correct at the source, in the browser's own media-feature evaluation, or it is wrong on
 the first paint.
 
-That is also why the values have to be baked into the engine rather than injected. By
+That is also why the values have to be baked into the engine, not injected. By
 the time any script you add could run, the stylesheet has already fired its request.
 
 ## What invisible_playwright reports here

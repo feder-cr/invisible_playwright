@@ -116,7 +116,7 @@ requires personal details and creates a real commercial transaction. That bounda
 stating plainly: reading a quote is scraping, and submitting a switch is entering a
 contract on behalf of a person.
 
-Stay on the public side, keep runs to a handful of profiles rather than a sweep of every
+Stay on the public side, keep runs to a handful of profiles instead of a sweep of every
 postcode, and follow the pacing in
 [rate limiting your own scraper](how-to-scrape-without-getting-blocked.md). A comparison
 engine runs a real pricing computation per query, so each request costs the operator

@@ -43,7 +43,7 @@ with InvisiblePlaywright(seed=42) as browser:
         ics_text = page.inner_text("pre") or page.content()
 ```
 
-Fetch the feed inside the same browser rather than with a separate client. It is usually
+Fetch the feed inside the same browser, not with a separate client. It is usually
 served from the same host with the same protection, and the reasoning is the one that
 applies to any secondary document: a side request is a fresh visitor with none of the
 context the page accumulated.
@@ -68,7 +68,7 @@ as "14 October to 18 October" is five days, and an exclusive loop returns four, 
 sending a child to school on the Friday.
 
 Weekends inside a term-time range are also not closures in the useful sense, so decide once
-whether your expansion emits them and record the choice, rather than leaving each consumer
+whether your expansion emits them and record the choice, not leaving each consumer
 to guess.
 
 ## Keep the category, because not all closures are the same

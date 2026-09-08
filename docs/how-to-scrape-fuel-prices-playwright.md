@@ -20,7 +20,7 @@ and nothing in the captured row records which location produced it. The data loo
 noisy. It is not noisy, it is unlabelled.
 
 This page covers pinning the location, reading a price table that mixes grades and
-units, and handling the fact that many of these prices are crowd-reported rather than
+units, and handling the fact that many of these prices are crowd-reported, not
 observed.
 
 ## Set the place before you read the price
@@ -41,7 +41,7 @@ with InvisiblePlaywright(seed=42) as browser:
     page.wait_for_selector(".station-list .station")
 ```
 
-Type into the field rather than setting its value. Location inputs are usually
+Type into the field instead of setting its value. Location inputs are usually
 autocomplete widgets that only commit on a real key sequence, and a value written
 directly leaves the widget's internal state empty, so the search runs against nothing.
 The same pattern applies to any
@@ -121,7 +121,7 @@ of source you are reading, per station, because a single site can carry both.
 
 ## Walking a region without hammering the search
 
-To cover an area, iterate over places rather than paginating a single huge result set:
+To cover an area, iterate over places instead of paginating a single huge result set:
 
 ```python
     for place in ["Bristol", "Bath", "Weston-super-Mare"]:
@@ -136,7 +136,7 @@ indication that anything was dropped, so a national sweep with three requests re
 confident subset. If you do use radius, look for a total count in the response and check
 it against the number of rows you received.
 
-Keep the pace conservative and the run scheduled rather than continuous. Prices move a
+Keep the pace conservative and the run scheduled, not continuous. Prices move a
 few times a day at most, so a poll loop buys nothing and costs the goodwill described in
 [scraping without getting blocked](how-to-scrape-without-getting-blocked.md).
 

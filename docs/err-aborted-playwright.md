@@ -20,7 +20,7 @@ already worked.
 ## The causes that are usually fine
 
 **A download started instead of a page load.** When a navigation resolves to a file
-download rather than an HTML response, the browser aborts the page-level navigation
+download instead of an HTML response, the browser aborts the page-level navigation
 in favor of handing the response to the download machinery, and Playwright surfaces
 that abort as `net::ERR_ABORTED` even though the file saves correctly.
 [microsoft/playwright-java#541](https://github.com/microsoft/playwright-java/issues/541)

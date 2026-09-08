@@ -71,7 +71,7 @@ _pxde    a data-enrichment cookie for extra collected fields
 
 Alongside them, the SDK defines header names for a mobile-app variant of the same
 check: `x-px-authorization`, `x-px-original-token`, and `x-px-first-party` for
-telling the collector a request came from the site's own JavaScript rather than
+telling the collector a request came from the site's own JavaScript instead of
 a third party. None of these strings are guessed; they are read directly out of
 `px_constants.py` in the linked repository.
 

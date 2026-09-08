@@ -13,7 +13,7 @@ To scrape business directory listings with Playwright, drive the search form for
 location-and-category pair, wait for the results to render, un-obfuscate the contact fields,
 and follow the site's own next control to walk the filtered pagination to its end. Run the
 whole city-by-category matrix under one pinned identity so it reads as a single visitor
-rather than a fleet of one-page strangers.
+instead of a fleet of one-page strangers.
 
 A business directory looks like a flat list and behaves like a nested loop. There is no
 page you can request that returns every listing. There is a search form that wants a
@@ -41,7 +41,7 @@ for city in cities:
             extract the listings on this page
 ```
 
-That structure is why a directory is throttled by identity rather than by request rate
+That structure is why a directory is throttled by identity, not by request rate
 alone. A human browsing the plumbers in one city visits a handful of pages. A full sweep
 visits every city crossed with every category, and every one of those is the same visitor
 asking a slightly different question. If that visitor's fingerprint changes between the
@@ -50,7 +50,7 @@ watching a fleet of one-page strangers, which is a far cheaper thing to detect.
 
 So the first design decision is to pin the identity for the whole sweep with a seed, and
 only vary the exit address deliberately. A fixed seed also makes the crawl replayable: if
-the extractor breaks on one category, you re-run the exact same browser rather than a new
+the extractor breaks on one category, you re-run the exact same browser instead of a new
 random one and get the same page back. That reproducibility is the whole reason
 [this project derives every surface from one seed](quickstart.md).
 

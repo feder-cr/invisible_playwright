@@ -10,7 +10,7 @@ nav_order: 142
 # How to scrape patent listings with Playwright
 
 To scrape patent listings with Playwright, read every date, status, code, and
-name from its explicit field label rather than its position on the row, keep
+name from its explicit field label instead of its position on the row, keep
 each family member and each claim's dependency structure intact instead of
 collapsing them into one value, and attach the scrape's own timestamp to legal
 status because the page itself rarely prints when "today" was.

@@ -151,7 +151,7 @@ The `complete && naturalWidth > 0` check is the important part. `scroll_into_vie
 returns as soon as the element is positioned, which is before the observer has swapped the
 URL and long before the image has decoded. Reading `src` on the line after the scroll gets
 you the placeholder again. Waiting on `naturalWidth` asserts a positive fact, that a real
-image with real dimensions is present, rather than the absence of an error.
+image with real dimensions is present, not the absence of an error.
 
 If the gallery itself grows as you scroll, this is really two problems stacked, and the
 lazy-image read has to run inside the

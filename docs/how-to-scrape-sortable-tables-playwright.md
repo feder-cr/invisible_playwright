@@ -100,7 +100,7 @@ A page sorts a table one of two ways, and the difference matters for exactly the
 above. Client-side sorting reruns a JavaScript comparator against rows already sitting in
 the browser, which is where the string-versus-number problem lives. Server-side sorting
 sends a request with a sort parameter and gets back rows the backend already ordered,
-typically on the real, typed column rather than its formatted display text.
+typically on the real, typed column instead of its formatted display text.
 
 You can tell which one you are looking at by watching the network, not by reading the
 markup: a client-side sort produces no request at all, only a repaint, while a
@@ -120,7 +120,7 @@ with page.expect_response(lambda r: r.request.method == "GET", timeout=2000) as 
 
 A client-side table gives you a clean signal for free: no network request follows the
 click, only a repaint. A server-side table fires a request carrying a sort parameter,
-and that request is worth capturing directly rather than reading the table it produces,
+and that request is worth capturing directly instead of reading the table it produces,
 the same way [capturing XHR and API responses](how-to-capture-xhr-api-responses-playwright.md)
 recommends for any repainted list.
 

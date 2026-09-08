@@ -72,7 +72,7 @@ see is a header an injection cannot fix.
 
 ## How this project keeps header and property in agreement
 
-Because the fingerprint is applied at the browser level rather than in the page, the
+Because the fingerprint is applied at the browser level, not in the page, the
 language is set through the same native preference a real profile uses, so both surfaces
 read from it. There is nothing to inject into the page and nothing to keep in sync: the
 header and the array are the same value formatted twice, by the browser, the way they
@@ -98,7 +98,7 @@ failure be replayed instead of guessed at.
 
 ## Prove they match, do not assume it
 
-The point of this page is a check you can run rather than a claim to trust. Capture the
+The point of this page is a check you can run, not a claim to trust. Capture the
 `Accept-Language` header the browser actually sent, read `navigator.languages` from the
 loaded page, and compare the two directly. Use any endpoint that echoes request headers
 back; the snippet below reads the header off the outgoing request instead, so it needs no
@@ -132,7 +132,7 @@ with InvisiblePlaywright(seed=42) as browser:
 
 Follow the method from
 [how to test whether your browser is detected](how-to-test-bot-detection.md): assert the
-values are present and agree, rather than asserting nothing looks wrong. A property that
+values are present and agree, not asserting nothing looks wrong. A property that
 comes back empty, or a header your capture never saw, is a failure and not a pass. Run it
 against a stock browser on the same machine too, and the header and array should match
 there in exactly the same way.

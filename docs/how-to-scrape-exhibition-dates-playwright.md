@@ -10,7 +10,7 @@ nav_order: 135
 # How to scrape museum and gallery exhibition dates with Playwright
 
 To scrape museum and gallery exhibition dates with Playwright, read the run as a range
-rather than a point: pull `startDate` and `endDate` from the page's own Event node instead
+instead of a point: pull `startDate` and `endDate` from the page's own Event node instead
 of a single displayed date, key each run by the pair of exhibition and venue so a touring
 show does not collapse into one row, store a last-checked timestamp so a moved close date
 reads as an extension instead of an error, and keep a timed-entry booking widget's slot

@@ -92,6 +92,8 @@ need rendering. Each page below states where the other tool covers more.
 - [invisible_playwright vs hrequests](vs-hrequests.md) - A hybrid TLS-impersonating HTTP client plus a browser mode with injected fingerprints.
 - [tls-client vs a real browser: when TLS is enough](vs-tls-client.md) - When JA3/HTTP2 socket spoofing suffices on JSON and HTML, and where JS forces a full browser.
 
+- [invisible_playwright vs browser-use: different jobs](vs-browser-use.md) - An LLM-driven agent framework against an engine you drive yourself, and where each one fits.
+
 ## Unmaintained tools
 
 - [puppeteer-extra-plugin-stealth: unmaintained since 2024](puppeteer-extra-stealth-unmaintained.md) - No real update since mid-2024; old patches still work but the checklist froze.

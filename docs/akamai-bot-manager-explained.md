@@ -15,7 +15,7 @@ payload, and a server-side model combines that payload with the request's networ
 fingerprint into a Bot Score from 0 (human) to 100 (bot). Passing one layer of that
 pipeline, even the hardest layer, does not mean you pass the rest.
 
-A real, documented case makes that concrete rather than theoretical. In April 2026 a
+A real, documented case makes that concrete, not theoretical. In April 2026 a
 user of [Camoufox](https://github.com/daijro/camoufox), a separate open-source project
 that also patches Firefox at the C++ level for automation, filed
 [an issue](https://github.com/daijro/camoufox/issues/555) reporting that an
@@ -112,7 +112,7 @@ It does not remove the other six.
 
 ## The case that shows "matching fingerprint" is not "passing"
 
-Here is what the GitHub issue actually contains, read directly rather than summarized
+Here is what the GitHub issue actually contains, read directly, not summarized
 from memory.
 
 The reporter, running Camoufox v135.0.1-beta.24 through Playwright 1.58.0 on Linux, was

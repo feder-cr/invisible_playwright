@@ -11,7 +11,7 @@ nav_order: 159
 
 To scrape a permit portal, drive its **search form** and stay in the session it gives you.
 These systems are almost always server-rendered enterprise software, where the results
-page is a postback rather than a URL, page two is a form submission, and a link copied out
+page is a postback instead of a URL, page two is a form submission, and a link copied out
 of the browser returns a session-expired notice ten minutes later.
 
 That single property decides the whole design. You cannot build a list of URLs and fetch
@@ -19,7 +19,7 @@ them in parallel. You drive one session in order, and you make it resumable, bec
 run over a year of permits takes long enough that something will interrupt it.
 
 This page covers filling the search the way the form expects, walking result pages that
-only exist inside a session, and capturing a permit's status history rather than its
+only exist inside a session, and capturing a permit's status history, not its
 current state.
 
 ## Fill the search in the order the form expects
@@ -71,7 +71,7 @@ seconds or reads the previous page. The general shape is the one in
 [scraping paginated pages](how-to-scrape-paginated-pages-playwright.md), with the extra
 constraint that here you genuinely cannot skip ahead.
 
-Narrow the query rather than paging deeply. Most portals cap results, often silently, at a
+Narrow the query instead of paging deeply. Most portals cap results, often silently, at a
 few hundred rows. A month at a time with an explicit row count check is more work and
 returns the whole set:
 

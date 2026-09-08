@@ -12,7 +12,7 @@ nav_order: 52
 To scrape deals and coupon codes with Playwright, drive a real browser that fires a trusted
 click on each card's reveal button, then capture the code from wherever the click sends it
 (a new tab, the clipboard, or an XHR response) and read expiry from the card's data
-attribute rather than the ticking countdown text. A scripted `dispatchEvent` click is
+attribute instead of the ticking countdown text. A scripted `dispatchEvent` click is
 untrusted and a reveal guarded by a bot check returns nothing.
 
 Deal and coupon pages look like the easiest scrape on the web: a grid of cards, each with
@@ -69,7 +69,7 @@ with InvisiblePlaywright(seed=42) as browser:
 
 `page.click()` here drives Firefox through its native input path, so the reveal receives
 an event with `isTrusted` set to true and the correct pointer sequence in front of it. The
-mouse also arcs to the button on a curve rather than teleporting, which is the difference
+mouse also arcs to the button on a curve instead of teleporting, which is the difference
 between a reveal that fires and one that silently no-ops. Nothing about the code below is
 wrapper-specific API: it is ordinary Playwright, which is the point.
 
@@ -173,13 +173,13 @@ def read_expiry(card):
     return None  # only fall back to parsing text if no attribute exists
 ```
 
-Reading the attribute rather than the rendered text gives you the same value on every run
+Reading the attribute instead of the rendered text gives you the same value on every run
 of the same seed, which is what makes a scrape you can diff against yesterday's.
 
 ## Page the grid without a mechanical scroll
 
 Deal grids scroll infinitely: more cards load as you reach the bottom, and there is no page
-2 to request. Scroll, wait for the card count to actually grow rather than sleeping a fixed
+2 to request. Scroll, wait for the card count to actually grow instead of sleeping a fixed
 interval, and stop when it stops growing.
 
 ```python
