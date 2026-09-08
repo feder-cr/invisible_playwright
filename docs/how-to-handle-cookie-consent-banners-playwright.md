@@ -79,6 +79,41 @@ consent iframe loads into the same process as the page and the driver's frame tr
 reaches it. That is a deliberate trade for a single-purpose automation session, and it
 is what makes the `frame_locator` pattern below resolve instead of time out.
 
+## The two workarounds you will find first, and what each one actually does
+
+Search this problem and the top answers offer two shortcuts before anyone mentions
+frames. Both are worth understanding, because the reason they fail is the same reason
+the frame approach works, and one of them fails silently.
+
+**"Click it with JavaScript."** The suggestion is
+`page.evaluate("document.querySelector('#accept').click()")`. On a banner that lives in
+the main document this reaches the button. On a consent banner it usually does not, and
+for a reason that has nothing to do with Playwright: `evaluate` runs inside the main
+frame, and the same-origin policy stops any script in that frame from reading into a
+cross-origin iframe's DOM. `document.querySelector` cannot see the button, so there is
+nothing to call `.click()` on. This is a browser security rule, not a process-model
+detail, so it holds whatever isolation strategy the browser runs.
+
+There is a second cost even where it does reach. A click synthesised from page script
+carries `isTrusted: false`, which is the one field a handler can check and cannot be
+assigned from script;
+[why a JS-dispatched click can never be trusted](playwright-clicks-istrusted.md) is the
+whole story. A driver-level click does not have that problem, which is what
+`frame_locator(...).click()` below produces.
+
+**"Just remove the banner from the DOM."** Deleting the overlay, or hiding it with CSS,
+removes the thing in front of the content. It does not record a consent decision, and
+those are different events. Content that the page renders only after consent is stored
+stays unrendered, so a scrape that looked unblocked returns an empty list; and because
+nothing was written down, the banner is back on the next run. When the banner is inside
+an iframe, removing the iframe removes the widget, not the decision.
+
+The honest exception to both: plenty of sites ship a first-party banner in the main
+document, no iframe involved. There the JavaScript route does reach the button, and the
+only remaining question is whether the site's handler cares that the event was not
+trusted. The iframe case is the one that generates the timeouts people arrive here
+with.
+
 ## Target the frame, do not force the click
 
 The correct tool is `frame_locator`. It addresses the iframe first, then finds the
@@ -214,6 +249,16 @@ long as it needs to be and no longer.
 **Will the banner come back on the next run?** With a `storage_state` file or a fresh
 context, yes, so guard the accept with a presence check. With a persistent profile it
 stays accepted, along with any device permission the flow also stored.
+
+**Can I just click the accept button with JavaScript?** Usually not on a consent
+banner. `page.evaluate` runs in the main frame, and the same-origin policy stops any
+script there from reading into a cross-origin iframe, so `document.querySelector` never
+finds the button. Where the banner is first-party and in the main document it does
+reach it, at the cost of an untrusted event.
+
+**Can I remove the cookie banner instead of accepting it?** You can remove the overlay,
+but removing it is not consenting. Content the page renders only after a stored consent
+stays unrendered, and the banner returns next run because nothing was written down.
 
 ## Sources
 
