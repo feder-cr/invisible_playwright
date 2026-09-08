@@ -262,6 +262,12 @@ after launch and log it. Passing that number back reproduces the same device.
 same cookies but a different fingerprint is a contradiction. Keep one stable seed per
 durable identity.
 
+**Should I hash `toDataURL()` or `getImageData()`?** `getImageData`, if you want to know
+whether the drawing changed. Three launches of the bundled Firefox drawing the same
+canvas returned three different `toDataURL` hashes and the same pixel bytes every time:
+the encoded string moves on its own, so a data URL hash reports changes the canvas never
+made.
+
 ## Sources
 
 - The project's fingerprint generator, in which the canvas, WebGL and audio readbacks

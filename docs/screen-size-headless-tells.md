@@ -188,6 +188,11 @@ platform, held stable for the identity. Rarity is the problem, not the specific 
 platform. It is also the value people most often set to 1 for convenience, on a
 resolution where 1 is implausible.
 
+**What screen size does Playwright's Firefox report in headless mode?** `1366x768`, with
+`availHeight` at `720`. Measured at two different viewports on the same machine and it
+did not move either time, so it is a constant rather than something derived from your
+session, and it is the same laptop resolution in every stock headless run.
+
 ## Sources
 
 - [MDN: `Screen.availHeight`](https://developer.mozilla.org/en-US/docs/Web/API/Screen/availHeight),

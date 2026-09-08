@@ -271,6 +271,12 @@ font set is built from one manifest on every OS, and the width for a run carries
 single bounded, seed-derived offset instead of the host rasterizer's metrics, so
 the numbers track the seed rather than the operating system.
 
+**Why does the probe say a font is missing when I know it is installed?** Because the
+candidate is the fallback. Measured on Windows: `Consolas` reads absent against a
+`monospace` fallback and present against a `serif` one, in the same session, since
+`monospace` resolves to Consolas there and the two widths match. Probe against a second
+generic before believing an absent.
+
 ## Sources
 
 - This project's font architecture notes: a bundled Windows font set built from a
