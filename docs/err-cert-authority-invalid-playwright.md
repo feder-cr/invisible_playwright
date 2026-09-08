@@ -36,7 +36,10 @@ installed in the browser's trust store, that certificate is signed by an authori
 nothing trusts. This is functionally identical, from the browser's point of view, to
 a hostile machine-in-the-middle attack, because it is the same mechanism: someone
 between you and the destination is terminating TLS you did not expect them to
-terminate.
+terminate. Note where in the sequence this leaves you: the tunnel was established
+and the certificate on the far side of it is what failed. A proxy that refuses the
+tunnel outright never gets this far and reports
+[ERR_TUNNEL_CONNECTION_FAILED](err-tunnel-connection-failed-playwright.md) instead.
 
 **An expired or misconfigured intermediate certificate.** A chain that used to
 validate can stop validating the moment an intermediate CA cert expires or gets
@@ -66,6 +69,14 @@ to be adversarial. A context configured this way cannot tell the difference betw
 your trusted proxy's re-signed certificate and a hostile one sitting on public
 Wi-Fi, because the check that would have told them apart is the check you disabled.
 
+Turning the check off also changes nothing about what the destination sees. A proxy
+that terminates your TLS and re-establishes its own connection onward presents its
+own handshake to the server, so the
+[JA3 and JA4 fingerprint](ja3-ja4-tls-fingerprint.md) arriving at the destination is
+the proxy's and not your browser's. Whether your browser accepted the proxy's
+certificate and what the proxy's handshake looks like from the far end are two
+separate questions, and only the first one is what this error is about.
+
 The narrower, safer alternative when the actual goal is trusting one specific proxy
 is installing that proxy's own root CA certificate into the browser's trust store,
 so only that one issuer becomes trusted, not every issuer becoming
@@ -88,7 +99,11 @@ unexpected interception point produces.
    interception.
 3. **Test the same target with the proxy removed.** Validates cleanly without the
    proxy: the proxy is the one re-signing TLS, confirmed. Still fails: the
-   destination's own certificate is broken, unrelated to the proxy at all.
+   destination's own certificate is broken, unrelated to the proxy at all. A proxy
+   that intercepts TLS is usually also deciding
+   [where your DNS queries go](does-a-proxy-leak-dns-doh-explained.md), which is a
+   separate setting with a separate way of going wrong, and worth reading once while
+   you have the proxy's configuration open.
 4. **Check with `openssl s_client -connect host:443 -showcerts`** for the full chain
    and its dates, to rule out an expired intermediate specifically rather than an
    untrusted one.

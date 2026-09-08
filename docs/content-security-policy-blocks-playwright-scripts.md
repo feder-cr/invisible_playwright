@@ -20,6 +20,12 @@ widget. The failure is silent in the way CSP failures usually are: no exception 
 Python code, a console warning in the browser you likely never read, and code that
 simply never ran.
 
+That is worth reading as a property of the layer, not an accident. An init script is
+page JavaScript, and page JavaScript is the outermost of
+[the three levels anything can be changed at](playwright-stealth-levels.md): it is the
+level the page itself is allowed to have an opinion about, and CSP is the page
+exercising that opinion.
+
 ## What CSP actually restricts
 
 By default, a policy that sets `default-src` or `script-src` blocks inline `<script>`
@@ -74,7 +80,10 @@ that is a difference from a genuine session, not a neutral convenience. Whether 
 specific target's own logic could ever observe that difference from inside the page is a
 separate question this page cannot answer for you, but the premise underneath
 "bypassing CSP is invisible" does not hold: it is a real change to how the page executes,
-not a transparent workaround.
+not a transparent workaround. It belongs on the same list as every other setting that
+makes a session behave unlike a visitor's, which is the list
+[the checklist for a session being detected](playwright-detected-as-bot.md) works
+through in order.
 
 The practical rule: use `bypassCSP` when you are testing your own integration against
 your own header and you know exactly why it is there. Treat it as a real behavioral

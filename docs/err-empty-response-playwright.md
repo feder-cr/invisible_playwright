@@ -39,7 +39,10 @@ words, applies to "connections closed with the non-standard code 444," releasing
 socket with a TCP reset, not a normal close. A server operator who wants to deny
 a request with zero information leakage, whether the requester is a scanner, a bot, or
 simply unwanted traffic, has this as a first-class, standard option: return nothing
-rather than a status code that says "blocked."
+rather than a status code that says "blocked." That is the one cause on this list
+where the error is not a fault to repair but a decision made about your session, and
+the question then moves off this page and onto
+[why the script is being refused in the first place](why-does-my-playwright-script-get-blocked.md).
 
 **A proxy-side rewrite or bypass rule interacting badly with routing.** [A real Playwright
 report](https://github.com/microsoft/playwright/issues/20703) traces `ERR_EMPTY_RESPONSE`
@@ -81,7 +84,12 @@ resemblance to the Chromium string you searched for.
    that closes with zero bytes, and removes the browser as a variable.
 2. **Remove the proxy and retry direct.** Gone without it, the proxy or the path to it is
    implicated, matching the shape in the routing-bypass report above. Persists, the origin
-   server or something between you and it is next.
+   server or something between you and it is next. If the proxy never opened the tunnel
+   at all you would be reading
+   [ERR_TUNNEL_CONNECTION_FAILED](err-tunnel-connection-failed-playwright.md), and if the
+   socket was torn down after some bytes had moved,
+   [ERR_CONNECTION_RESET](err-connection-reset-playwright.md): the three differ only in
+   how far the exchange got.
 3. **Check whether it is one target or many.** Consistent on one specific site with
    everything else loading normally is the shape of a deliberate drop; intermittent across
    unrelated targets points at your own proxy or network path.
