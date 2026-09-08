@@ -148,7 +148,7 @@ with InvisiblePlaywright(seed=42) as browser:
     page.mouse.click(220, 140)
 ```
 
-The `browser` is a real Playwright `Browser`, so `accessibility.snapshot()`,
+The `browser` is a real Playwright `Browser`, so `aria_snapshot()`,
 `inner_text()`, [`screenshot()`](https://playwright.dev/python/docs/api/class-page#page-screenshot)
 and [`mouse.click()`](https://playwright.dev/python/docs/api/class-mouse#mouse-click) are
 all the standard upstream methods.
