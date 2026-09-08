@@ -76,6 +76,7 @@ class Screencast:
         path: Union[str, Path] = None,
         quality: int = None,
         size: ScreencastSize = None,
+        fps: int = None,
     ) -> DisposableStub:
         if self._started:
             raise Error("Screencast is already started")
@@ -87,6 +88,7 @@ class Screencast:
             {
                 "size": size,
                 "quality": quality,
+                "fps": fps,
                 "sendFrames": bool(onFrame),
                 "record": bool(path),
             },

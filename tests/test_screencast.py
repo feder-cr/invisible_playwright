@@ -214,3 +214,129 @@ def test_a_screencast_frame_is_a_jpeg_of_the_whole_window(firefox_binary):
         "the frame is %dx%d, no taller than the 800x600 viewport: the chrome "
         "is not in it, so this is the page and not the window"
         % (first["viewportWidth"], first["viewportHeight"]))
+
+
+def test_the_caller_chooses_the_frame_rate():
+    """⛔ IT IGNORED THE CALLER, and that was the second half of a slow live
+    view. The client's own pause was fixed first and the pane still could not
+    go past ten frames a second, because this passed the wrapper's constant to
+    the engine whatever was asked for. The engine has taken an `fps` all along.
+
+    Measured 2026-09-08 on the same page, interleaved arms: asking for 10
+    delivers 9.6-9.8 fps at 257 KB/s, asking for 25 delivers 23.8-24.0 at
+    629 KB/s. That is why the DEFAULT does not move - raising it would put two
+    and a half times the bandwidth on every consumer, including a batch job
+    that never looks at a frame - and why the caller can ask.
+
+    Known-bad: pass `self.SCREENCAST_FPS` unconditionally again. The second
+    assertion still holds, because the default is what it always was.
+    """
+    conn = RecordingConnection()
+    page, _ = _bare_page(conn)
+
+    page.op_screencast_start({"sendFrames": True, "record": False, "fps": 25})
+    assert conn.sent[-1][1]["fps"] == 25, conn.sent[-1][1]
+
+    # A second start on the same page is refused, correctly: the default is
+    # asked of a page of its own rather than by stopping and restarting this
+    # one, which would be testing the stop as much as the rate.
+    page, _ = _bare_page(conn)
+    page.op_screencast_start({"sendFrames": True, "record": False})
+    from invisible_playwright._juggler.server import PageDispatcher
+
+    assert conn.sent[-1][1]["fps"] == PageDispatcher.SCREENCAST_FPS
+    assert PageDispatcher.SCREENCAST_FPS == 10, (
+        "the default rate moved; raising it imposes the bandwidth of a live "
+        "view on every consumer, which is what the parameter exists to avoid")
+
+
+def test_the_rate_reaches_the_engine_from_the_public_api():
+    """A parameter the wrapper honours and the public signature does not offer
+    is a parameter nobody outside can use.
+
+    Known-bad: drop `fps` from either generated API. The impl accepts it and no
+    caller can pass it.
+    """
+    import inspect
+
+    from invisible_playwright._pw.async_api._generated import Screencast as A
+    from invisible_playwright._pw.sync_api._generated import Screencast as S
+    from invisible_playwright._pw._impl._screencast import Screencast as Impl
+
+    for cls, what in ((A, "async"), (S, "sync"), (Impl, "impl")):
+        assert "fps" in inspect.signature(cls.start).parameters, (
+            "%s screencast.start() cannot be asked for a frame rate" % what)
+
+    # ⛔ AND THAT IT IS FORWARDED, not only declared. The first version of this
+    # asserted the signature alone and the mutation that deletes `fps=fps` from
+    # the generated wrapper SURVIVED it: a parameter a caller can pass and that
+    # goes nowhere is the inert-lever defect this project has met before, and
+    # it is worse than a missing one because it looks like it works.
+    #
+    # Every parameter, not just this one: the property is that a public
+    # signature forwards what it declares.
+    for cls, what in ((A, "async"), (S, "sync")):
+        body = inspect.getsource(cls.start)
+        head, _, tail = body.partition("return")
+        dropped = [name for name in inspect.signature(cls.start).parameters
+                   if name not in ("self",)
+                   and ("%s=%s" % (name, name)) not in tail
+                   and ("onFrame=self._wrap_handler(%s)" % name) not in tail]
+        assert not dropped, (
+            "%s screencast.start() declares parameters it never passes on, so "
+            "a caller setting them changes nothing: %s" % (what, dropped))
+
+
+@pytest.mark.e2e
+def test_asking_for_a_higher_rate_actually_delivers_more_frames(firefox_binary):
+    """⛔ THE PARAMETER REACHES THE ENGINE, which the unit test cannot say. That
+    one proves the wrapper puts a number on the wire; only a real engine can say
+    the number does anything, and a lever nobody verified from inside the system
+    it moves is a lever this project has been fooled by before.
+
+    Interleaved is not possible here - a screencast is per page and the rate is
+    fixed at start - so the arms are two pages of the same browser, same page
+    served, same duration, and the assertion is on the RATIO rather than on
+    either count: the absolute rate depends on the machine, and the claim is
+    that asking for more gets more.
+
+    Measured 2026-09-08 on this machine: 10 asked delivered 9.6-9.8 fps, 25
+    asked delivered 23.8-24.0. The floor below is deliberately far from that -
+    it is testing that the lever is connected, not re-measuring it.
+    """
+    srv = socketserver.TCPServer(("127.0.0.1", 0), _serve(PAGE))
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    url = "http://127.0.0.1:%d/" % srv.server_address[1]
+    from invisible_playwright import InvisiblePlaywright
+
+    def count(page, fps, seconds=3.0):
+        got = []
+
+        def on_frame(frame):
+            got.append(frame)
+
+        page.goto(url)
+        try:
+            page.screencast.start(on_frame=on_frame, fps=fps)
+        except Exception as refused:
+            if "Page.startScreencast" in str(refused) and "not supported" in str(refused):
+                pytest.skip("this engine has no screencast (it needs "
+                            "firefox-28 or later): %s" % refused)
+            raise
+        time.sleep(seconds)
+        page.screencast.stop()
+        return len(got)
+
+    try:
+        with InvisiblePlaywright(seed=42, binary_path=firefox_binary,
+                                 headless=True) as browser:
+            slow = count(browser.new_page(), 5)
+            fast = count(browser.new_page(), 25)
+    finally:
+        srv.shutdown()
+
+    assert slow and fast, "no frames at all: %d and %d" % (slow, fast)
+    assert fast > slow * 1.5, (
+        "asking for 25 frames a second delivered %d in three seconds and "
+        "asking for 5 delivered %d: the rate the caller asks for is not "
+        "reaching the engine" % (fast, slow))
