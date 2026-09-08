@@ -39,6 +39,11 @@ binary, and it is not there because that command never ran on this machine.
 **How to confirm it:** check whether `playwright install` appears anywhere in your setup
 script, Dockerfile, or CI workflow. If it does not, that is the fix, full stop.
 
+This project splits the same way and for the same reason, with its own command for the
+step: [the engine is fetched separately from the package](installation.md), so a fresh
+environment that installed one and not the other lands on this error from the other
+direction.
+
 ## Cause 2: a Docker or cross-platform build produced binaries for the wrong OS
 
 A subtler variant: the install step did run, but it ran on a different operating system
@@ -53,6 +58,10 @@ the expected path is simply not there in a runnable form for this OS.
 Dockerfile or CI job that later launches the browser, not assuming a cache
 copied in from elsewhere is compatible. Playwright's official images run this step
 during the image build specifically so the browsers match the container's own platform.
+Once it launches, a container introduces a second and unrelated set of problems that
+have nothing to do with paths:
+[what an image is missing that a desktop has](how-to-use-invisible-playwright-in-docker.md)
+is the next thing to read, not this page.
 
 ## Cause 3: missing system dependencies, which is a different error wearing the same clothes
 

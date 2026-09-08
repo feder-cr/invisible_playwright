@@ -52,7 +52,11 @@ hit-testing still applies, and whatever sits on top at that point is what
 receives it. You have not reached your element; you have clicked the overlay
 blind. Whatever handler fires belongs to the obstruction - or to nothing -
 while your script carries on believing the button was pressed, which is how a
-forced click turns one visible failure into a silent wrong path.
+forced click turns one visible failure into a silent wrong path. The hit test is
+the same one that
+[consumed most of the humanised pointer path on the calls real scripts make](hover-mouse-movement-bug.md),
+which is worth knowing because it means the check is doing real work and not
+merely being cautious.
 
 Second, and this is the part worth internalizing instead of skipping past:
 clicking blind into an overlay is itself a tell, on any
@@ -78,7 +82,10 @@ except Exception:
 ```
 
 **2. Check if it is timing rather than layout.** If the obstruction is a transition or an
-animation, waiting for it to finish is the actual fix, not forcing through it:
+animation, waiting for it to finish is the actual fix, not forcing through it. A
+transition that removes and rebuilds the element instead of moving it produces
+[the not-attached error rather than this one](playwright-element-not-attached-to-dom.md),
+so which of the two you get already narrows what the page is doing:
 
 ```python
 locator = page.get_by_role("button", name="Submit")

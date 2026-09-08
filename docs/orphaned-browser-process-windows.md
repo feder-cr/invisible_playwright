@@ -16,6 +16,11 @@ cleanup code ever runs. A clean exit never leaks a process, and an exception out
 killed parent leaks, and the fix cannot live in a `finally` block: it has to be an
 operating-system job object that Windows tears down when the parent dies.
 
+Note which direction this is. A leaked process is one the script no longer holds; the
+opposite case, a script still holding a browser that has gone away, surfaces as
+[TargetClosedError](playwright-targetclosederror-causes.md), and the two get confused
+because both start with something dying unexpectedly.
+
 A bug report said orphaned Firefox processes were piling up on a Windows CI box, and
 pointed at "any path where teardown doesn't run cleanly - a timeout, an exception out
 of the `with` block, a killed test runner." That description covers several genuinely
@@ -79,7 +84,9 @@ The tempting shortcut - "anything named firefox.exe that showed up after we
 started" - eventually kills a browser that belongs to a different, healthy,
 concurrent session, which is a worse failure than leaving one of your own leaked
 processes running: a leaked process is recoverable, a wrongly-killed one belonging
-to someone else usually isn't.
+to someone else usually isn't. That case is not hypothetical the moment you
+[drive several browsers from one process](run-invisible-playwright-concurrently-asyncio.md),
+where every one of them answers to the same binary name.
 
 The actual identification is exact rather than heuristic. Each session generates a
 random token and stamps it into its own browser's environment at launch; child

@@ -81,10 +81,15 @@ recommended" for exactly this case, because a positional pick is fragile: it is 
 only as long as the page's element order does not change, and nothing announces when it
 does. Reordering a list, adding a new row above the one you meant, or a responsive layout
 that renders elements in a different sequence on a smaller viewport all silently break a
-`.first()` that happened to work.
+`.first()` that happened to work. A list that rebuilds itself between the pick and the
+click produces
+[the not-attached error instead](playwright-element-not-attached-to-dom.md), which is
+the same fragility arriving as a different message.
 
 **`{force: true}` or `strict_selectors=False`.** Neither narrows the match; both just
-suppress the check. `strict_selectors=False` in particular reproduces the exact failure
+suppress the check, and `force` has
+[its own way of going wrong on a click that is merely covered](playwright-element-click-intercepted.md):
+it delivers the click at the coordinates regardless of what is on top of them. `strict_selectors=False` in particular reproduces the exact failure
 mode strict mode was built to prevent: Playwright picks one of the matches for you, and
 which one it picks is not something the error message ever told you to verify. If the
 count is ever wrong again after the page changes, nothing will tell you.
