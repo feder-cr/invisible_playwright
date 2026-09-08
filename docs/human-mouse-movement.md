@@ -90,12 +90,11 @@ part of this subject.
 
 ## The same three layers, measured on one page
 
-![Three panels of the same target page served from localhost, each recording the
-pointer events it received and drawing a dot per event. One driver move() call leaves
-two events and no path. A driver move with forty steps leaves an evenly spaced straight
-line with only three distinct movementX values. The patched engine's input path leaves
-unevenly spaced dots with twenty-six distinct movementX values. All three report
-isTrusted true.](https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/img/mouse-path-driver-vs-engine.png)
+![Three panels of one target page, each drawing a dot per pointer event received. A
+single driver move leaves two events and no path; a driver move with forty steps leaves
+an evenly spaced line with three distinct movementX values; the patched engine's path is
+unevenly spaced with twenty-six. All three report isTrusted
+true.](https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/img/mouse-path-driver-vs-engine.png)
 
 One page served from `127.0.0.1`, one target, three ways of reaching it. The page draws
 a dot per `pointermove` and prints the fields it actually received, so the picture and
