@@ -179,8 +179,40 @@ jobs:
   # turn that choice into a red and push toward dropping the protection on
   # release day of all days. So it refuses on `failure` and `cancelled`,
   # never on `skipped`.
+  # The guides are the surface a stranger copies first, and until 2026-09-08
+  # nothing read them: one page published `page.accessibility.snapshot()`, which
+  # this fork does not have, so anybody who ran that block got an AttributeError.
+  # A broken test is seen by whoever runs the suite; a broken guide is seen once,
+  # by a reader who then leaves.
+  #
+  # It needs the package importable, because it asks the REAL classes what they
+  # have rather than carrying a list that would drift from them - so it takes
+  # core-on-index's answer exactly as `unit` does, and is SKIPPED during the
+  # window rather than faked green.
+  docs-api:
+    name: the guides name an API that exists
+    needs: core-on-index
+    if: needs.core-on-index.outputs.available == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+      - name: check the guides against the API
+        # --selftest first, for the same reason the English gate does it: this
+        # one goes blind from a single edit to the list of names it inspects.
+        run: |
+          python scripts/check_docs_api_surface.py --selftest
+          python scripts/check_docs_api_surface.py
+
   gate:
-    needs: [core-on-index, unit]
+    needs: [core-on-index, unit, docs-api]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -188,11 +220,15 @@ jobs:
         run: |
           echo "core-on-index: ${{ needs.core-on-index.result }}"
           echo "unit:          ${{ needs.unit.result }}"
+          echo "docs-api:      ${{ needs.docs-api.result }}"
           case "${{ needs.unit.result }}" in
             failure|cancelled) echo "the suite did not pass"; exit 1 ;;
           esac
           case "${{ needs.core-on-index.result }}" in
             failure|cancelled) echo "the index check did not run"; exit 1 ;;
+          esac
+          case "${{ needs.docs-api.result }}" in
+            failure|cancelled) echo "the guides name something that does not exist"; exit 1 ;;
           esac
           echo "ok"
 

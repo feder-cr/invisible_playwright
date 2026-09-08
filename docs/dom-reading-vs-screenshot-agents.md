@@ -125,7 +125,7 @@ with InvisiblePlaywright(seed=42) as browser:
     page.goto("https://example.com")
 
     # what a text / accessibility-tree agent would hand to the model
-    tree = page.accessibility.snapshot()
+    tree = page.aria_snapshot()
     text = page.inner_text("body")
 
     # the model returns an action against a selector
