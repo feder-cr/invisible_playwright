@@ -211,8 +211,25 @@ jobs:
           python scripts/check_docs_api_surface.py --selftest
           python scripts/check_docs_api_surface.py
 
+  # `gate` is the ONLY context main requires, so a check this job does not wait
+  # for is a check the branch protection cannot see. It waited for three of the
+  # five, and the two it left out are not minor ones: `english` is the gate
+  # written FOR this repository after 549 lines of Italian shipped here in one
+  # subsystem, and `version` is what stands between a forgotten bump and a
+  # release that publishes nothing and reports success. Either could go red
+  # while this job went green and the push landed on main regardless - which is
+  # the decorative protection this project has already met once, on the branch
+  # rules that required job names no job produced any more.
+  #
+  # `skipped` is not a failure and must not be treated as one: `version` runs on
+  # pull requests only and is skipped on every push to main, and `unit` and
+  # `docs-api` are skipped during the window when the pinned core is not on the
+  # index yet. The case arms name failure and cancelled, so a skip passes on
+  # purpose. That is also why each arm carries its own sentence: a gate that
+  # exits 1 without saying which of five inputs went red is a gate somebody has
+  # to open five tabs to read.
   gate:
-    needs: [core-on-index, unit, docs-api]
+    needs: [core-on-index, unit, docs-api, english, version]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -221,6 +238,8 @@ jobs:
           echo "core-on-index: ${{ needs.core-on-index.result }}"
           echo "unit:          ${{ needs.unit.result }}"
           echo "docs-api:      ${{ needs.docs-api.result }}"
+          echo "english:       ${{ needs.english.result }}"
+          echo "version:       ${{ needs.version.result }}"
           case "${{ needs.unit.result }}" in
             failure|cancelled) echo "the suite did not pass"; exit 1 ;;
           esac
@@ -229,6 +248,12 @@ jobs:
           esac
           case "${{ needs.docs-api.result }}" in
             failure|cancelled) echo "the guides name something that does not exist"; exit 1 ;;
+          esac
+          case "${{ needs.english.result }}" in
+            failure|cancelled) echo "the repository is not English"; exit 1 ;;
+          esac
+          case "${{ needs.version.result }}" in
+            failure|cancelled) echo "the version this change proposes is already taken"; exit 1 ;;
           esac
           echo "ok"
 
