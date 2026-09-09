@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-09-08
+
+### Added
+- **`page.screencast.start(fps=...)` sets the frame rate, and the default
+  stays at ten.** The engine has taken a frame rate all along, and the wrapper
+  passed its own constant to it whatever the caller asked, so a live view could
+  not go past ten frames a second no matter what it did. Measured on the same
+  page, interleaved arms: asking for 10 delivers 9.6-9.8 fps at 257 KB/s,
+  asking for 25 delivers 23.8-24.0 at 629 KB/s. The default does not move,
+  which is the whole shape of the change: raising it would put two and a half
+  times the bandwidth on every consumer to serve the one that is watching a
+  window, so the caller decides and the constant is what happens when nobody
+  does. That is how `quality` and `size` on the same call already work.
+
 ## [0.13.2] - 2026-09-07
 
 ### Fixed
