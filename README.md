@@ -31,13 +31,6 @@ the page still reads `null` from `element.shadowRoot`, so nothing observable to 
 changes. The three-arm table and the page that reproduces it:
 [closed shadow roots](https://github.com/feder-cr/invisible_playwright/wiki/closed-shadow-root-playwright).
 
-Driven by the standard Playwright API. Full breakdown: [feder-cr/firefox_antidetect_patch](https://github.com/feder-cr/firefox_antidetect_patch).
-
----
-
-## Still seeing captchas or anti-bot? It's the proxy.
-Once the browser is handled it stops being the variable. If you are still getting challenged, the tell is no longer the browser, it is the IP you come from. Around 90% of proxies are public: anyone can rent the same address, so it is already known and sits on the blocked-IP lists sites check. A perfect browser on a known IP still loses.
-
 ---
 
 ## Install
@@ -49,7 +42,7 @@ python -m invisible_playwright fetch      # one-time download, sha256-verified: 
 
 Requires **Python 3.11 or newer**.
 
-Supported platforms: **Windows x86_64**, **Linux x86_64 / arm64**. macOS is no longer supported (releases stopped at firefox-20); on a Mac the package refuses at launch with a clear message rather than downloading a binary that no longer exists.
+Supported platforms: **Windows x86_64**, **Linux x86_64 / arm64**.
 
 ### If you would rather prompt than script
 
