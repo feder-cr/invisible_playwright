@@ -39,6 +39,9 @@ telling the difference before you ship a fix, not after.
 
 ## When you get blocked or detected
 
+- [Selenium detected by Cloudflare](selenium-detected-by-cloudflare.md) - The specific default properties a managed challenge reads, and why patching one from JavaScript does not survive a descriptor check.
+- [Playwright blocked by CORS policy](playwright-blocked-by-cors-policy.md) - Almost never detection - the browser correctly enforcing a policy the server set. How to tell the two apart.
+
 - [Playwright detected as a bot on one site: a checklist](playwright-detected-as-bot.md) - a checklist that checks the free fixes first, before buying a better proxy on day one.
 - [Why Does My Playwright Script Get Blocked?](why-does-my-playwright-script-get-blocked.md) - a four-layer diagnostic across fingerprint, IP reputation, rate and quota, and behaviour.
 - [Why am I blocked with a clean fingerprint?](why-blocked-with-a-clean-fingerprint.md) - you pass CreepJS, BotD and sannysoft and still get blocked; how to isolate which of four layers is failing.

@@ -28,6 +28,8 @@ which is exactly why it is worth understanding on its own.
 
 ## Proxy protocols, DNS and IP leaks
 
+- [How to check a proxy's status before you rely on it](check-proxy-status.md) - Liveness, exit location, latency and browser-level behaviour are four different checks; confusing them misattributes both proxy failures and site blocks.
+
 - [SOCKS5 vs HTTP proxy: what each does in the browser](socks5-vs-http-proxy-browser.md) - Who authenticates and where: SOCKS auth and DNS in the engine, HTTP auth in the driver.
 - [Playwright SOCKS5 proxy with authentication](playwright-socks5-proxy-authentication.md) - Why credentials on a socks5:// server fail silently, and the routes that work.
 - [Does a proxy leak DNS? DoH and DNS leaks explained](does-a-proxy-leak-dns-doh-explained.md) - How a SOCKS5 proxy leaks DNS when the host resolves names locally, and how to verify.
