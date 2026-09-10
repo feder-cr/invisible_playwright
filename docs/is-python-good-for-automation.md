@@ -1,6 +1,6 @@
 ---
-title: "Is Python good for automation?"
-description: "Yes, and the reason is not the language - it is the library ecosystem. What Python is actually strong at across scripting, browser automation and data pipelines, where it is a weaker choice, and how to get from here to a browser."
+title: "Is Python good for automation? Yes, and here is why"
+description: "The reason is the library ecosystem, not the language itself. Where Python is genuinely strong, where it is weaker, and when you actually need a browser."
 parent: "The Automation Layer"
 grand_parent: "Guides"
 nav_order: 49

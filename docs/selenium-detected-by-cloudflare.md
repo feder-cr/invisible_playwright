@@ -1,6 +1,6 @@
 ---
-title: "Selenium detected by Cloudflare"
-description: "The specific properties a Cloudflare challenge reads that Selenium leaves in their default, unmodified state - and why patching them one at a time from JavaScript is a losing game against a managed challenge."
+title: "Selenium detected by Cloudflare: the defaults that fail"
+description: "The specific properties a managed challenge reads that Selenium leaves at their defaults, and why a JavaScript override of one of them stays checkable."
 parent: "Testing and Troubleshooting"
 grand_parent: "Guides"
 nav_order: 30
@@ -45,6 +45,17 @@ preferences the same way.
 **No history, no cookies, a fresh profile every run.** Separate from the
 protocol-level tells: a session with zero browsing history behind it is itself
 a signal a scoring system can weigh, independent of anything WebDriver-specific.
+
+**And one host-derived value can flip a verdict on its own.** Measured in this
+project with A/B/A on a single build: the CSS system-font keywords a page can
+read came from the host's UI settings rather than from the browser's declared
+identity, so a browser announcing Windows reported `Segoe UI` at 12px on
+Windows and `Sans` at 13.3333px on Linux. Setting it to `Segoe UI` gave
+`tampering=False, suspect=4, anomaly=0`; putting it back to `Sans` gave
+`True/12/1`; setting it again gave `False/4/0`. One value, both directions,
+same build. It is worth knowing before you attribute a challenge to Selenium
+specifically: a scoring system reads whatever disagrees with itself, and the
+disagreement is often the machine rather than the driver.
 
 ## Why patching one property at a time does not work
 

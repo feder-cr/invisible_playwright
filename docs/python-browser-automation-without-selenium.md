@@ -1,6 +1,6 @@
 ---
-title: "Python browser automation without Selenium"
-description: "Playwright and Pyppeteer are the two real alternatives, plus curl_cffi and httpx when you do not need a browser at all. What each one buys you over Selenium, and how to tell in five minutes whether you need a browser in the first place."
+title: "Python browser automation without Selenium: the options"
+description: "Playwright and Pyppeteer, or no browser at all when the data is in the HTML. What leaving Selenium buys you, and what it does not change all by itself."
 parent: "The Automation Layer"
 grand_parent: "Guides"
 nav_order: 48

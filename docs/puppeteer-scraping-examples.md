@@ -1,6 +1,6 @@
 ---
-title: "Puppeteer scraping examples, and what happens when you run them against a real defense"
-description: "Six standard Puppeteer patterns - basic extraction, waiting for content, pagination, screenshots, form submission, intercepting requests - shown as code, then run against an actual detector to show what changes and what does not."
+title: "Puppeteer scraping examples, and what a real defense does"
+description: "Six standard patterns as code, then what happens against a real detector: the patterns are fine, the browser underneath them is what actually gets read."
 parent: "Scraping with Playwright"
 grand_parent: "Guides"
 nav_order: 170

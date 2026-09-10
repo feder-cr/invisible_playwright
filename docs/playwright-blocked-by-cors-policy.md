@@ -1,6 +1,6 @@
 ---
-title: "Playwright blocked by CORS policy"
-description: "CORS errors in a Playwright script are almost never a detection problem - they are the browser correctly enforcing a policy the server set. How to tell the two apart, and the three legitimate ways past a real CORS restriction."
+title: "Playwright blocked by CORS policy: not bot detection"
+description: "The browser enforcing a policy the server set, identically for a human tab. How to tell it apart from a real block, and three legitimate ways past it."
 parent: "Testing and Troubleshooting"
 grand_parent: "Guides"
 nav_order: 31

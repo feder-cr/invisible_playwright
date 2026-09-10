@@ -1,6 +1,6 @@
 ---
 title: "How to check a proxy's status before you rely on it"
-description: "Liveness, latency, exit location and protocol behaviour are four different checks, and confusing them is how a working proxy gets blamed for what is actually a browser or site problem. The order to check them in."
+description: "Liveness, exit location, latency and browser behaviour are four checks, not one. The order to run them, and what none of them can tell you about a site."
 parent: "Network, Proxy and WebRTC"
 grand_parent: "Guides"
 nav_order: 40

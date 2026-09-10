@@ -1,6 +1,6 @@
 ---
-title: "Browser automation testing tools, and where each one actually fits"
-description: "Playwright, Selenium, Cypress and Puppeteer solve overlapping but different problems. A field guide by what you are actually testing - cross-browser regression, a single-browser app, API-adjacent flows, or real-world scraping - rather than a feature checklist."
+title: "Browser automation testing tools: where each one fits"
+description: "Playwright, Selenium, Cypress and Puppeteer by what each one was built to test, not by feature count, plus the axis none of the four was designed around."
 parent: "Comparisons"
 nav_order: 41
 ---

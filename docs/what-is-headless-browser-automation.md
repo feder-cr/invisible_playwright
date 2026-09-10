@@ -1,6 +1,6 @@
 ---
-title: "What is headless browser automation?"
-description: "A headless browser is a real browser with no window, not a lighter fake one. What it is actually for, the three properties that differ from headed by default, and why headless-specific detection is a solved problem for detectors."
+title: "What is headless browser automation, and what differs"
+description: "A real browser with no window, not a lighter fake one. The three properties that differ by default, and why headless-specific detection mostly closed."
 parent: "The Automation Layer"
 grand_parent: "Guides"
 nav_order: 47
@@ -58,6 +58,15 @@ GPU behind it, so [WebGL and canvas output](canvas-fingerprint-changes-every-run
 can differ from what a desktop with a graphics card produces - not because it
 is headless, but because the machine underneath has no GPU. This is a machine
 fact that headless mode exposes rather than causes.
+
+How large that machine effect is, measured in this project rather than
+estimated: rendering the same text across **48 family/size/weight
+combinations**, the same build produced **9 to 19 distinct alpha levels per
+render on Windows and 193 to 256 on Linux**, with 16 of the 48 cases using all
+256. Same browser, same code, same display mode. The variable was the host's
+rasterizer, and no headless flag touches it. That is the shape of the problem
+people are usually looking at when they blame headless: a machine difference
+wearing the display mode's name.
 
 ## Why headless-specific detection is mostly a solved category
 

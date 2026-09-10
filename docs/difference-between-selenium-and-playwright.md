@@ -1,6 +1,6 @@
 ---
-title: "Selenium vs Playwright: the actual differences"
-description: "Protocol, driver architecture, auto-waiting and browser support, compared from each project's own documentation - and the one difference neither project's docs will tell you: what each one looks like to a defended site."
+title: "Selenium vs Playwright: the differences that matter"
+description: "Protocol, driver architecture, auto-waiting and browser support from each project's own docs, plus the one difference neither project's docs foregrounds."
 parent: "Comparisons"
 nav_order: 39
 ---
@@ -85,7 +85,16 @@ release pipeline.
 
 Neither framework is "worse" here; both are automation tooling used the way
 automation tooling looks, which is a separate question from which one has the
-nicer API. This project exists because of that gap:
+nicer API.
+
+**And the layer below both of them is bigger than the gap between them.**
+Measured in this project on one build, the same seed, changing only the host:
+font ascent and descent diverged on **58 of 72 families** (up to 27px at 72pt)
+and line-box height on 61, while **every advance width already matched**,
+because shaping is the same in-tree library on both. None of that is Selenium
+or Playwright; it is what the engine and the machine underneath either of them
+report. Choosing between the two frameworks does not move any of those 58
+families. This project exists because of that gap:
 [invisible_playwright](https://github.com/feder-cr/invisible_playwright) is
 Playwright's own API, unchanged, driving a Firefox patched at the C++ source
 rather than the stock build - same protocol and auto-waiting Playwright always

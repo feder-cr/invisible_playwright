@@ -1,6 +1,6 @@
 ---
-title: "Alternative Chromium browsers for automation, and the one question that matters"
-description: "Brave, Edge, Opera, Vivaldi, Ungoogled Chromium - all Chromium underneath. What actually changes between them for automation purposes, and why the fork you pick barely moves the number that matters."
+title: "Alternative Chromium browsers for automation: what differs"
+description: "Brave, Edge, Opera, Vivaldi, Ungoogled: what actually changes between the forks, and why none of it touches the CDP tells that really decide detection."
 parent: "Comparisons"
 nav_order: 40
 ---
