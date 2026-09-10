@@ -17,6 +17,10 @@ override from the page, because the page is not where the tell originates.
 
 ## What the driver reveals about itself
 
+- [What is headless browser automation?](what-is-headless-browser-automation.md) - A real engine with no window, not a lighter fake one. The three properties that differ by default, and why headless-specific detection is mostly a solved category.
+- [Python browser automation without Selenium](python-browser-automation-without-selenium.md) - Playwright and Pyppeteer, curl_cffi and httpx when you don't need a browser, and how to tell in five minutes whether you need one at all.
+- [Is Python good for automation?](is-python-good-for-automation.md) - Yes, and the reason is the library ecosystem, not the language. Where it's genuinely strong, where it's a weaker choice.
+
 - [Can Websites Detect Playwright?](can-websites-detect-playwright.md) - Which webdriver, protocol and fingerprint signals catch a run, and what a patched Firefox fixes.
 - [Does Playwright Change My Browser Fingerprint?](does-playwright-change-my-fingerprint.md) - Stock Playwright inherits the host's real values instead of randomizing, leaking past a spoofed user agent.
 - [Does Playwright Get Detected on the First Request?](does-playwright-get-detected-first-request.md) - The TLS handshake and HTTP/2 settings form a network fingerprint detectable before any JavaScript runs.

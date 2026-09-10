@@ -59,6 +59,9 @@ need rendering. Each page below states where the other tool covers more.
 - [Why Playwright Locators Never Throw StaleElementReferenceException](playwright-vs-selenium-stale-element-reference.md) - Selenium's WebElement holds a live reference that goes stale; Playwright's Locator re-resolves on every action.
 - [How to Read a Stealth-Browser Benchmark Without Being Misled](how-to-read-a-stealth-browser-benchmark.md) - What to check before trusting a comparison, including this project's own, since almost every published one ranks itself first.
 - [Web Scraping Proxy Costs: Build vs. Buy Your Stealth Stack](web-scraping-proxy-costs-build-vs-buy.md) - Proxy spend, engineering maintenance time and vendor lock-in, without the invented totals most build-vs-buy pages lead with.
+- [Selenium vs Playwright: the actual differences](difference-between-selenium-and-playwright.md) - Protocol, driver architecture and auto-waiting compared from each project's own docs, plus the one difference neither's docs foreground.
+- [Alternative Chromium browsers for automation](alternative-chromium-browsers-for-automation.md) - Brave, Edge, Opera, Vivaldi: what actually differs between the forks, and why none of it touches the CDP-level tells that matter.
+- [Browser automation testing tools, and where each one actually fits](browser-automation-testing-tools.md) - Playwright, Selenium, Cypress, Puppeteer by what they were each built to test, not by feature-list length.
 
 ## Patched-engine, driver-patch and stealth-plugin tools
 
