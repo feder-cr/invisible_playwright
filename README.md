@@ -198,17 +198,6 @@ read from its own documentation or from confirmed reverse engineering:
 [PerimeterX](docs/perimeterx-explained.md), [hCaptcha](docs/hcaptcha-explained.md),
 [Imperva](docs/imperva-incapsula-explained.md), and
 [the rest of the set](docs/guides-detectors-explained.md).
-- [crawl4ai stealth and custom browser engines](docs/crawl4ai-stealth-custom-browser.md) - browser_type accepts firefox but there is no executable_path; where the adapter seam is
-- [Why headless browsers render different fonts](docs/headless-fonts-differ.md) - the three causes, the per-platform font sets, and why the fix is not installing more fonts
-- [How to make Linux and macOS report real Windows fonts](docs/bundled-fonts-cross-platform.md) - one manifest, three font backends convinced not to ask the host, and the four seams still open
-- [measureText and TextMetrics as a fingerprinting surface](docs/measuretext-textmetrics-fingerprinting.md) - ten-plus numbers from one call needing no permission prompt, and the two mistakes we made fixing it
-- [What privacy.resistFingerprinting really does](docs/resist-fingerprinting.md) - and why this project sets it to false on purpose
-- [The ChromeDriver cdc_ variable](docs/cdc-variable-explained.md) - why renaming it is not removing it, and what that generalises to
-- [What bot.sannysoft.com actually checks](docs/sannysoft-explained.md) - row by row, and the canvas-in-iframe test nobody reads
-- [How CreepJS decides you are lying](docs/creepjs-explained.md) - four detection techniques, and why blocking the probe is itself recorded
-- [Firefox preferences that silently do nothing](docs/firefox-prefs-not-applying.md) - five reasons, starting with the one that cost us a real bug
-- [What BotD actually detects](docs/botd-explained.md) - twenty detectors, and why most are not about bots at all
-- [Why a FingerprintJS visitor ID changes](docs/fingerprintjs-visitor-id.md) - it is a hash of 41 components, so one moving moves all of it
 
 ## Related projects
 
@@ -223,29 +212,29 @@ two around it are how most people reach it:
   one command. The interface is a client of the server, with no private path
   to the browser.
 
-**The open-source neighbours**, and what each one is for.
+**The open-source neighbours.** Which one fits depends on the layer your problem is
+at, and on whether you need Firefox or Chromium:
+[three ways to make Playwright undetected](docs/playwright-stealth-levels.md) works
+through what each layer can reach, and [AI browser agents and stealth](docs/ai-browser-agents-stealth.md)
+covers the frameworks that pick Chromium over CDP for you.
 
 **On the Firefox side**
 
-- **[Camoufox](https://github.com/daijro/camoufox)** - an anti-detect Firefox that also patches at the C++ level. It covers a wider surface and ships its own fingerprint database; this project derives a fingerprint from a seed with a Bayesian sampler, so one number reproduces one machine. [Full comparison](docs/vs-camoufox.md).
-- **[LibreWolf](https://librewolf.net)** - a Firefox fork with privacy defaults. It ships a configured binary for people to browse with; this ships source patches plus an automation wrapper.
-- **[arkenfox/user.js](https://github.com/arkenfox/user.js)** - Firefox hardening through preferences. Where a preference is enough, use it; this project patches C++ where one is not.
+- **[Camoufox](https://github.com/daijro/camoufox)** - patches C++ too, wider surface, ships a fingerprint database instead of deriving one from a seed. [Comparison](docs/vs-camoufox.md).
+- **[LibreWolf](https://librewolf.net)** - a privacy-defaults Firefox to browse with, not to automate.
+- **[arkenfox/user.js](https://github.com/arkenfox/user.js)** - hardening through preferences. Where a preference is enough, use it.
 
 **On the Chromium side**
 
-- **[Patchright](https://github.com/Kaliiiiiiiiii-Vinyzu/patchright)** - a patched Playwright fork, so the stealth work lands in the driver rather than in the browser binary. [Full comparison](docs/vs-patchright.md).
-- **[nodriver](https://github.com/ultrafunkamsterdam/nodriver)** - the successor to `undetected-chromedriver`, driving Chrome over CDP directly and removing the WebDriver-flavoured tells. [Full comparison](docs/vs-nodriver.md).
-- **[playwright-stealth](https://github.com/Mattwmaster58/playwright_stealth)** - an init-script patch applied before the page loads. Its own maintainer calls it a proof-of-concept; [full comparison](docs/vs-playwright-stealth.md).
-- **[puppeteer-extra-plugin-stealth](https://github.com/berstend/puppeteer-extra)** - the original of this init-script lineage, still widely recommended. Its repository's last substantive commit is from mid-2024; [what that means in practice](docs/puppeteer-extra-stealth-unmaintained.md).
-- **[selenium-stealth](https://github.com/diprajpatra/selenium-stealth)** - the same approach on Selenium/CDP. Its repository's last commit is from December 2021; [what that means in practice](docs/selenium-stealth-unmaintained.md).
-- **[pyppeteer](https://github.com/pyppeteer/pyppeteer)** - the unofficial Python port of Puppeteer. Its own README says it's unmaintained and points to `playwright-python` instead; [what that recommendation is actually about](docs/pyppeteer-unmaintained-playwright.md).
-- **[rebrowser-patches](https://github.com/rebrowser/rebrowser-patches)** - fixes the `Runtime.enable` CDP leak on Chromium, independently converging on close to the same fix Patchright uses. [Full comparison](docs/vs-rebrowser-patches.md).
-- **[fingerprint-suite](https://github.com/apify/fingerprint-suite)** - generates a coherent fingerprint with a Bayesian network, close to this project's own generation approach, then injects it into a Playwright or Puppeteer page on either Chromium or Firefox. [Full comparison](docs/vs-fingerprint-suite.md).
-- **[playwright-with-fingerprints](https://github.com/bablosoft/playwright-with-fingerprints)** - injects fingerprint values sourced from a remote paid service, Windows-only, pinned to a specific Chromium build. [Full comparison](docs/vs-playwright-with-fingerprints.md).
-
-Which of these fits depends on the layer your problem is at, and on whether you need Firefox or Chromium. [Three ways to make Playwright undetected](docs/playwright-stealth-levels.md) works through what each layer can and cannot reach, including what this one costs.
-
-If you are picking between engines rather than tools, note that a large share of AI agent frameworks drive Chromium over CDP, which decides the question for you: [AI browser agents and stealth](docs/ai-browser-agents-stealth.md).
+- **[Patchright](https://github.com/Kaliiiiiiiiii-Vinyzu/patchright)** - a patched Playwright fork: the work lands in the driver, not the binary. [Comparison](docs/vs-patchright.md).
+- **[nodriver](https://github.com/ultrafunkamsterdam/nodriver)** - successor to `undetected-chromedriver`, driving Chrome over CDP. [Comparison](docs/vs-nodriver.md).
+- **[rebrowser-patches](https://github.com/rebrowser/rebrowser-patches)** - fixes the `Runtime.enable` CDP leak. [Comparison](docs/vs-rebrowser-patches.md).
+- **[fingerprint-suite](https://github.com/apify/fingerprint-suite)** - a Bayesian fingerprint generator, then injected into the page. [Comparison](docs/vs-fingerprint-suite.md).
+- **[playwright-with-fingerprints](https://github.com/bablosoft/playwright-with-fingerprints)** - values from a paid remote service, Windows-only. [Comparison](docs/vs-playwright-with-fingerprints.md).
+- **[playwright-stealth](https://github.com/Mattwmaster58/playwright_stealth)** - an init-script patch; its maintainer calls it a proof-of-concept. [Comparison](docs/vs-playwright-stealth.md).
+- **[puppeteer-extra-plugin-stealth](https://github.com/berstend/puppeteer-extra)** - the original of that lineage, last substantive commit mid-2024. [What that means](docs/puppeteer-extra-stealth-unmaintained.md).
+- **[selenium-stealth](https://github.com/diprajpatra/selenium-stealth)** - the same approach on Selenium, last commit December 2021. [What that means](docs/selenium-stealth-unmaintained.md).
+- **[pyppeteer](https://github.com/pyppeteer/pyppeteer)** - unmaintained by its own README, which points to `playwright-python`. [What that recommendation is about](docs/pyppeteer-unmaintained-playwright.md).
 
 ---
 
