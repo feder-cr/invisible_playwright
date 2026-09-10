@@ -240,25 +240,22 @@ covers the frameworks that pick Chromium over CDP for you.
 
 ## What is patched in the engine
 
-The list below is what the patched Firefox does differently, surface by surface. Two
-rules hold across all of it. Every value is decided **before a page can ask**, inside
-the browser, and arrives through a preference the launcher writes, so there is no
-JavaScript shim and no property override for a page to find. And every value comes
-from **one profile**, so no two surfaces can contradict each other, which is the way
-a spoofed browser is usually caught. The source is
-[feder-cr/firefox_antidetect_patch](https://github.com/feder-cr/firefox_antidetect_patch);
-each line links the article that explains the surface and how it is measured.
+Two rules hold across everything below. Every value is decided **before a page can
+ask**, inside the browser, so there is no JavaScript shim to find. And every value
+comes from **one profile**, so no two surfaces contradict each other, which is how a
+spoofed browser is usually caught. Source:
+[feder-cr/firefox_antidetect_patch](https://github.com/feder-cr/firefox_antidetect_patch).
 
 **Identity**
-- `navigator`, the user agent and the client hints are derived together, so platform, `oscpu`, vendor and the UA string cannot disagree: [does Playwright set navigator.webdriver](docs/does-playwright-set-navigator-webdriver.md), [client hints and Sec-Fetch](docs/client-hints-sec-fetch.md).
+- `navigator`, the user agent and the client hints are derived together, so they cannot disagree: [does Playwright set navigator.webdriver](docs/does-playwright-set-navigator-webdriver.md), [client hints and Sec-Fetch](docs/client-hints-sec-fetch.md).
 - `navigator.languages` and the `Accept-Language` header are the same declaration, sent and read: [Accept-Language and navigator.languages](docs/accept-language-navigator-languages.md).
-- Screen geometry, `devicePixelRatio` and the CSS media queries that expose it are declared rather than read from the host: [devicePixelRatio and the Firefox pref](docs/devicepixelratio-firefox-pref.md), [CSS media query fingerprinting](docs/css-media-query-fingerprinting.md).
+- Screen geometry, `devicePixelRatio` and the media queries exposing it are declared, not read from the host: [devicePixelRatio and the Firefox pref](docs/devicepixelratio-firefox-pref.md), [CSS media query fingerprinting](docs/css-media-query-fingerprinting.md).
 
 **Rendering**
-- Canvas readback is deterministic per seed and keeps the real shape, instead of being blocked or filled with noise that stands out: [canvas fingerprint noise](docs/canvas-fingerprint-noise.md), [why a canvas fingerprint changes every run](docs/canvas-fingerprint-changes-every-run.md).
-- WebGL reports a coherent GPU persona: vendor, renderer and the parameter limits are cross-checked against each other rather than set one at a time: [WebGL renderer strings](docs/webgl-renderer-strings.md), [WebGL parameters are identical](docs/webgl-parameters-are-identical.md).
+- Canvas readback is deterministic per seed and keeps the real shape, rather than blocked or noised: [canvas fingerprint noise](docs/canvas-fingerprint-noise.md), [why a canvas fingerprint changes every run](docs/canvas-fingerprint-changes-every-run.md).
+- WebGL reports a coherent GPU persona: vendor, renderer and the parameter limits are cross-checked, not set one at a time: [WebGL renderer strings](docs/webgl-renderer-strings.md), [WebGL parameters are identical](docs/webgl-parameters-are-identical.md).
 - Fonts ship with the browser, so the same faces exist on every host and the platform font engine no longer chooses: [bundled fonts across platforms](docs/bundled-fonts-cross-platform.md), [why headless browsers render different fonts](docs/headless-fonts-differ.md), [detecting installed fonts from JavaScript](docs/detect-installed-fonts-javascript.md).
-- Text metrics follow the declared fonts, because `measureText` returns ten-plus numbers from one call and needs no permission: [measureText and TextMetrics](docs/measuretext-textmetrics-fingerprinting.md).
+- Text metrics follow those fonts: `measureText` returns ten-plus numbers from one call, with no permission prompt: [measureText and TextMetrics](docs/measuretext-textmetrics-fingerprinting.md).
 - Canvas and WebGL agree across operating systems for the same seed: [cross-platform consistency](docs/canvas-webgl-cross-platform-consistency.md), [canvas differs across operating systems](docs/canvas-differs-across-operating-systems.md).
 
 **Audio and media**
@@ -266,15 +263,15 @@ each line links the article that explains the surface and how it is measured.
 - The codec table is declared, so a Linux host does not answer a Windows question with Linux support: [codec fingerprinting](docs/codec-fingerprinting.md).
 
 **Network**
-- WebRTC offers one synthetic server-reflexive candidate carrying the proxy exit, instead of leaking the real address or offering none, which is itself a tell: [WebRTC ICE candidate spoofing](docs/webrtc-ice-candidate-spoofing.md), [does the WebRTC IP match the proxy exit](docs/webrtc-ip-match-proxy-exit.md).
-- DNS resolves through the proxy, including the case where the proxy is not in the preferences: [does a proxy leak DNS](docs/does-a-proxy-leak-dns-doh-explained.md), [how to check for a proxy IP leak](docs/how-to-check-proxy-ip-leak.md).
-- The timezone is derived from the egress IP offline, so it matches the exit without asking anybody: [timezone and proxy mismatch](docs/timezone-proxy-mismatch.md), [offline GeoIP timezone](docs/offline-geoip-timezone-proxy.md).
+- WebRTC offers one synthetic candidate carrying the proxy exit, instead of leaking the real address or offering none, which is itself a tell: [WebRTC ICE candidate spoofing](docs/webrtc-ice-candidate-spoofing.md), [does the WebRTC IP match the proxy exit](docs/webrtc-ip-match-proxy-exit.md).
+- DNS resolves through the proxy, including when the proxy is not in the preferences: [does a proxy leak DNS](docs/does-a-proxy-leak-dns-doh-explained.md), [how to check for a proxy IP leak](docs/how-to-check-proxy-ip-leak.md).
+- The timezone comes from the egress IP, resolved offline, so it matches the exit: [timezone and proxy mismatch](docs/timezone-proxy-mismatch.md), [offline GeoIP timezone](docs/offline-geoip-timezone-proxy.md).
 
 **The automation layer**
-- Input events come from the real input path, so `isTrusted` is true because it is true, not because it was set: [Playwright clicks and isTrusted](docs/playwright-clicks-istrusted.md).
-- The pointer follows a human path with human timing, and its cadence is one a real device could produce: [human mouse movement](docs/human-mouse-movement.md), [mouse dynamics as behavioural biometrics](docs/mouse-dynamics-behavioural-biometrics.md).
+- Input events come from the real input path, so `isTrusted` is true because it is true: [Playwright clicks and isTrusted](docs/playwright-clicks-istrusted.md).
+- The pointer follows a human path and timing, at a cadence a real device could produce: [human mouse movement](docs/human-mouse-movement.md), [mouse dynamics as behavioural biometrics](docs/mouse-dynamics-behavioural-biometrics.md).
 - The debugger surface does not answer the timing questions that give a driven browser away: [debugger timing detection](docs/debugger-timing-detection.md).
-- Closed-mode shadow roots are reachable, which stock Playwright cannot do in either engine, while the page still reads `null` from `element.shadowRoot`: [closed shadow roots](docs/closed-shadow-root-playwright.md).
+- Closed-mode shadow roots are reachable, which stock Playwright cannot do in either engine, while the page still reads `null`: [closed shadow roots](docs/closed-shadow-root-playwright.md).
 
 ---
 
