@@ -348,12 +348,16 @@ def test_linux_xvfb_workarounds_with_socks_proxy(monkeypatch):
     # Windows-only sandbox key absent on Linux even with virtual_display=True.
     assert "security.sandbox.gpu.level" not in prefs
     # GPU renderer is spoofed from the validated WebGL persona (a coherent Windows
-    # ANGLE GPU whose renderer + params cross-check), applied on every host - NOT the
-    # raw profile.gpu.renderer, which has no coherent param set and is never exposed.
+    # ANGLE GPU whose renderer + params cross-check), applied on every host. The
+    # profile carries that same persona, so `profile.gpu.renderer` is the label of
+    # what the page reads rather than a second value - the comment here used to say
+    # it "has no coherent param set and is never exposed", which stopped being true
+    # when the persona became the profile's own GPU.
     from invisible_core._webgl_personas import select_persona
     _persona = select_persona(profile.seed)
     assert _persona, "expected a validated persona for this seed"
     assert prefs["zoom.stealth.webgl.renderer"] == _persona["prefs"]["zoom.stealth.webgl.renderer"]
+    assert prefs["zoom.stealth.webgl.renderer"] == profile.gpu.renderer
     assert prefs["zoom.stealth.webgl.renderer"]  # non-empty
     assert "ANGLE" in prefs["zoom.stealth.webgl.renderer"]  # Windows ANGLE form
     # The proxy layer no longer writes any endpoint, and what it does write - the

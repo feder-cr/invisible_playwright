@@ -51,16 +51,34 @@ Keys are dotted paths. All values are optional - omitted keys fall back to the s
 
 | Key | Type | Example | Notes |
 |-----|------|---------|-------|
-| `gpu.class_tier` | str | `"high_end"` | The **root** of the Bayesian network. One of `"low_end"`, `"mid_range"`, `"high_end"`, `"integrated_old"`, `"integrated_modern"`. Pin this alone to steer the whole profile (screen, concurrency, MSAA, ...) toward a coherent tier without having to name each sub-field. |
-| `gpu.vendor` | str | `"Google Inc. (NVIDIA)"` | Must exactly match the renderer vendor prefix, otherwise detectors catch the mismatch. |
-| `gpu.renderer` | str | `"ANGLE (NVIDIA, NVIDIA GeForce RTX 4090 Direct3D11)"` | Windows ANGLE string. Used by WebGL's [`UNMASKED_RENDERER_WEBGL`](https://developer.mozilla.org/en-US/docs/Web/API/WEBGL_debug_renderer_info). |
+| `gpu.class_tier` | str | `"mid_range"` | Selects a persona of that class. Only classes the validated pool actually contains can be pinned; anything else raises. |
+| `gpu.vendor` | str | `"Google Inc. (NVIDIA)"` | Selects a persona by vendor. Combined with `gpu.renderer` both must match the same persona. |
+| `gpu.renderer` | str | see below | Selects a persona by its Windows ANGLE string, the one WebGL reports as [`UNMASKED_RENDERER_WEBGL`](https://developer.mozilla.org/en-US/docs/Web/API/WEBGL_debug_renderer_info). |
 
-**Why `class_tier` is pinnable separately from `renderer`.** They live at different levels of abstraction:
+**A GPU pin SELECTS a persona, it does not set a string.** This is the one place
+in this table where you are not free to invent a value, and the reason is that
+the renderer string does not travel alone. Around 81 `getParameter` values, the
+shader-precision formats and the whole extension list belong to the same GPU, and
+a detector cross-checks the name against them - a name over another card's
+parameters is the mismatch that scores ~0.70 on a commercial checker. So the
+engine ships a pool of validated personas, each one a complete and coherent set,
+and a pin picks one of them.
 
-- `class_tier` is a **coarse handle** over the whole Bayesian graph. It gates the distribution of `screen`, `webgl.msaa_samples`, and [storage quota](hardware-concurrency-device-memory.md). Pin `{"gpu.class_tier": "low_end"}` and the sampler returns a *coherent* low-end machine - small screen, 4x MSAA - without you having to specify each field.
-- `renderer` is an **exact string** that lands verbatim in WebGL's `UNMASKED_RENDERER_WEBGL`. Useful when you want to imitate a specific GPU the target site has seen before. Does **not** condition other fields - if you pin `renderer` to an RTX 4090 but leave `class_tier` unpinned, `class_tier` is re-sampled from scratch and might disagree with the renderer string (see [How sampling + pinning interact](#how-sampling--pinning-interact)).
+Two consequences:
 
-In practice most users should pin `class_tier` alone, or pin `renderer`+`vendor`+`class_tier` together if they want full control.
+- **A renderer, vendor or class the pool cannot present is REFUSED**, with a
+  `ValueError` that names the values that are available. It is not silently
+  ignored. Up to 2026-09-15 it was: a pin for an RTX 4090 set the label on the
+  profile object and left the browser reporting the seed's own GPU, so
+  `InvisiblePlaywright(pin={"gpu.renderer": ...})` returned a profile that
+  disagreed with the page. Do not hard-code the valid strings from this page -
+  read them off the exception, which is generated from the pool itself.
+- **A GPU pin conditions the rest of the profile.** Screen, concurrency, MSAA and
+  [storage quota](hardware-concurrency-device-memory.md) are re-sampled around
+  the pinned persona's class, so you cannot end up with a low-end GPU behind
+  high-end storage. You do not need to pin `class_tier` alongside `renderer`;
+  pinning `class_tier` alone is still the coarse handle, it just picks the
+  persona too.
 
 ### `screen.*`
 

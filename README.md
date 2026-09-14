@@ -127,8 +127,8 @@ By default everything comes from `seed`. To force specific values while the rest
 with InvisiblePlaywright(
     seed=42,
     pin={
-        "gpu.renderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 4090 Direct3D11)",
-        "gpu.vendor":   "Google Inc. (NVIDIA)",
+        "gpu.renderer": "ANGLE (AMD, Radeon R9 200 Series Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "gpu.vendor":   "Google Inc. (AMD)",
         "screen.width":  2560,
         "screen.height": 1440,
         "hardware.concurrency": 16,
@@ -136,6 +136,11 @@ with InvisiblePlaywright(
 ) as browser:
     ...
 ```
+
+A GPU pin picks one of the validated personas rather than setting a free string,
+because the ~81 `getParameter` values and the extension list travel with the
+renderer name and a detector cross-checks them against it. A name the pool does
+not carry raises, and the error lists the ones it does.
 
 Full list of pinnable keys, how pinning interacts with the Bayesian sampler, and common patterns are in **[docs/pinning.md](docs/pinning.md)**.
 

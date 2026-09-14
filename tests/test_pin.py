@@ -12,12 +12,32 @@ def test_pin_screen_width_propagates_to_prefs():
     assert prefs["zoom.stealth.screen.height"] == 1440
 
 
-def test_pin_gpu_renderer_propagates():
-    target = "ANGLE (NVIDIA, NVIDIA GeForce RTX 4090 Direct3D11)"
-    p = generate_profile(seed=42, pin={"gpu.renderer": target})
-    # The Profile carries the pinned value regardless of platform; the prefs
-    # translation may suppress it on Windows for hash-coherence reasons.
-    assert p.gpu.renderer == target
+def test_pin_gpu_renderer_reaches_the_browser():
+    """A pinned GPU has to reach the prefs, not just the profile object.
+
+    The comment that used to sit here said "the prefs translation may suppress it
+    on Windows for hash-coherence reasons", and that sentence is how a defect
+    survived as a documented feature: the pin was suppressed on EVERY platform,
+    because the prefs re-derived the persona from the seed and never looked at the
+    profile. So this asserts the emitted pref, which is the only answer a page can
+    read, and it pins a persona the pool can actually present - a free string is
+    refused now, since the getParameter values travel with the name."""
+    from invisible_core._webgl_personas import _gpu_pool
+    from invisible_core import translate_profile_to_prefs
+    target = _gpu_pool()[-1]
+    p = generate_profile(seed=42, pin={"gpu.renderer": target["renderer"]})
+    assert p.gpu.renderer == target["renderer"]
+    prefs = translate_profile_to_prefs(p)
+    assert prefs["zoom.stealth.webgl.renderer"] == target["renderer"]
+    assert prefs["zoom.stealth.webgl.vendor"] == target["vendor"]
+
+
+def test_pin_gpu_renderer_outside_the_pool_is_refused():
+    """The other half: a name with no validated parameter set cannot be worn."""
+    import pytest
+    with pytest.raises(ValueError, match="no validated GPU persona"):
+        generate_profile(seed=42,
+                         pin={"gpu.renderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 4090 Direct3D11)"})
 
 
 def test_pin_hardware_concurrency_propagates():

@@ -12,7 +12,6 @@ from invisible_playwright._pw.async_api import Browser, BrowserContext, Playwrig
 from . import _session
 from ._cursor import resolve_cursor_engine
 from invisible_core._fpforge import Profile, generate_profile
-from invisible_core import forced_gpu_class
 from invisible_core import prepare_session_geo
 from ._engine import assert_wire_version, resolve_executable
 from invisible_core import configure_proxy as _configure_proxy_shared
@@ -65,9 +64,9 @@ class InvisiblePlaywright(_session.CommonLaunch):
         self._profile_dir: Optional[Path] = Path(profile_dir) if profile_dir else None
         # reCAPTCHA pre-seed gated server-side; respect persistent profile.
         self._prep_recaptcha = bool(prep_recaptcha) and self._profile_dir is None
-        self._profile: Profile = generate_profile(
-            self.seed, pin=self._pin, fixed_gpu_class=forced_gpu_class(self.seed)
-        )
+        # No `fixed_gpu_class=` - see the note on the same call in `launcher.py`.
+        # The GPU class is derived from the persona `invisible_core` chooses.
+        self._profile: Profile = generate_profile(self.seed, pin=self._pin)
         self._pw: Optional[Playwright] = None
         self._browser: Optional[Browser] = None
         self._persistent_context: Optional[BrowserContext] = None
