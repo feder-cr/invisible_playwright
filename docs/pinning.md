@@ -32,7 +32,7 @@ with InvisiblePlaywright(
 
 Pinning a field skips the sampler only for that field - every other field still draws from its own conditional distribution, using the parent's original posterior rather than the value you just pinned. A pinned value does not pull correlated fields along with it.
 
-The generator is a Bayesian network: every field has a probability distribution **conditioned on its parents**. For example `gpu_class_tier` conditions `screen.tier` and `webgl.msaa_samples`. It does NOT condition `hardware.concurrency`: that one is a root, sampled from the real Windows marginal (`Node("hw_concurrency", parents=[])`), because core count is an OS-level fact rather than a GPU-conditioned one. A high-end GPU will tend to pair with a 2560x1440+ screen; the core count is drawn independently.
+The generator is a Bayesian network: every field has a probability distribution **conditioned on its parents**. For example `gpu_class_tier` conditions `screen.tier` and the MSAA sample count (drawn, though no longer pinnable or emitted - see below). It does NOT condition `hardware.concurrency`: that one is a root, sampled from the real Windows marginal (`Node("hw_concurrency", parents=[])`), because core count is an OS-level fact rather than a GPU-conditioned one. A high-end GPU will tend to pair with a 2560x1440+ screen; the core count is drawn independently.
 
 When you pin a field:
 
@@ -128,11 +128,15 @@ Two consequences:
 | `codec.mediasource_mp4` | `MediaSource.isTypeSupported('video/mp4')`. |
 | `codec.webspeech_synth` | `speechSynthesis.getVoices()` returns a fabricated voice list. |
 
-### `webgl.*`
+### `webgl.*` - retired
 
-| Key | Type | Example | Notes |
-|-----|------|---------|-------|
-| `webgl.msaa_samples` | int | `4`, `8`, `16` | `MAX_SAMPLES` WebGL parameter. Conditioned on `gpu.class_tier` when sampled. |
+There is no pinnable `webgl.*` key. `webgl.msaa_samples` was one until 2026-09-15,
+and pinning it did nothing on Windows: the emitted sample count is held at 4 so
+`gl.SAMPLES` is constant across sessions, because a varying count changes the
+WebGL parameters hash even when the renderer does not. Honouring the pin on Linux
+alone is what made the two builds emit different counts for the same seed - seven
+of eight measured seeds. Both emit 4 now, so a pin has nothing left to move, and
+the key refuses rather than looking like it worked.
 
 ### `font.*`
 

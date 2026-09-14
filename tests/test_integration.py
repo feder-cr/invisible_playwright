@@ -374,15 +374,19 @@ def test_linux_xvfb_workarounds_with_socks_proxy(monkeypatch):
 
 
 @pytest.mark.integration
-def test_linux_msaa_pin_propagates_through_pipeline(monkeypatch):
-    """IT12 - pinning MSAA on Linux survives the prefs translation; on
-    Windows the same pin is overwritten to 4 (covered by the unit tests)."""
-    monkeypatch.setattr(sys, "platform", "linux")
-    profile = generate_profile(seed=42, pin={"webgl.msaa_samples": 8})
-    prefs = translate_profile_to_prefs(profile)
+def test_msaa_reaches_the_pipeline_identically_on_both_platforms(monkeypatch):
+    """IT12, inverted 2026-09-15 because it asserted a divergence.
 
-    assert prefs["webgl.msaa-samples"] == 8
-    assert prefs["webgl.msaa-samples"] == 8
-    assert prefs["webgl.msaa-force"] is True
+    It read "pinning MSAA on Linux survives the prefs translation; on Windows the
+    same pin is overwritten to 4", and that difference was the tell: the same seed
+    emitted a different gl.SAMPLES on our two builds, on a value whose own comment
+    in the core calls variation detectable. Both emit 4 now and the key is no
+    longer pinnable, so what this checks through the pipeline is the parity."""
+    seen = {}
+    for platform in ("linux", "win32"):
+        monkeypatch.setattr(sys, "platform", platform)
+        prefs = translate_profile_to_prefs(generate_profile(seed=42))
+        seen[platform] = (prefs["webgl.msaa-samples"], prefs["webgl.msaa-force"])
+    assert seen["linux"] == seen["win32"] == (4, True), seen
 
 

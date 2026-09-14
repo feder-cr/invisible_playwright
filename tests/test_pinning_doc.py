@@ -40,6 +40,17 @@ _NOT_PINNABLE = {
     "_raw": "the pre-profile sample dict, not an axis",
 }
 
+#: Profile GROUPS that exist but are deliberately not pinnable, with the reason.
+#: Same idea as _NOT_PINNABLE one level up: a group with no pin table is either a
+#: decision or an omission, and only one of those should pass.
+_NOT_PINNABLE_GROUPS = {
+    "webgl": ("msaa_samples is the group's only field and the emitted sample count "
+              "is now the same constant on both builds, so a pin has nothing to "
+              "move. It was pinnable until 2026-09-15, honoured on Linux and "
+              "overridden on Windows, which is what made the two builds emit a "
+              "different gl.SAMPLES for the same seed."),
+}
+
 
 def _doc() -> str:
     return _DOC.read_text(encoding="utf-8")
@@ -141,11 +152,18 @@ def test_the_validators_key_table_matches_the_profile_it_pins():
         for field in dataclasses.fields(profile)
         if dataclasses.is_dataclass(getattr(profile, field.name))
     }
-    assert set(_PIN_GROUPS) == set(model), (
+    unexplained = sorted(set(model) - set(_PIN_GROUPS) - set(_NOT_PINNABLE_GROUPS))
+    assert not unexplained and not (set(_PIN_GROUPS) - set(model)), (
         f"pin groups and profile groups disagree: only in the validator "
-        f"{sorted(set(_PIN_GROUPS) - set(model))}, only on the profile "
-        f"{sorted(set(model) - set(_PIN_GROUPS))}")
+        f"{sorted(set(_PIN_GROUPS) - set(model))}, only on the profile and not "
+        f"declared in _NOT_PINNABLE_GROUPS {unexplained}")
+    stale = sorted(set(_NOT_PINNABLE_GROUPS) & set(_PIN_GROUPS))
+    assert not stale, (
+        f"_NOT_PINNABLE_GROUPS still excuses {stale}, which is pinnable again. "
+        f"A stale excuse reads as a decision that still holds.")
     for group, fields in sorted(model.items()):
+        if group in _NOT_PINNABLE_GROUPS:
+            continue
         assert _PIN_GROUPS[group] == fields, (
             f"group {group!r}: the validator accepts {sorted(_PIN_GROUPS[group])}, "
             f"the profile has {sorted(fields)}")
