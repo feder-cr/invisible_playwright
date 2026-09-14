@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-09-14
+
+### Changed
+- **A closed pipe is a closed target.** A call made after the browser's pipe
+  closed, or one that was waiting when it closed, now raises
+  `TargetClosedError` - the same class a call on a disposed page, context or
+  browser raises - instead of a plain `Error` carrying `the pipe closed`. The
+  browser being gone is one fact and reaches a caller as one type.
+- `invisible_playwright.async_api` and `invisible_playwright.sync_api` export
+  `Error`, `TimeoutError` and `TargetClosedError`, so a caller can catch the
+  type without importing a private path.
+
 ## [0.14.0] - 2026-09-08
 
 ### Added

@@ -36,26 +36,11 @@ import threading
 from typing import Any, Callable, Dict, Optional
 
 from . import perimeter
+# One class for a target that is gone, raised here for a disposed object and
+# by the connection for a closed pipe. Defined there, the lower layer.
+from .connection import TargetClosedError  # noqa: F401 - re-exported on purpose
 
 
-class TargetClosedError(Exception):
-    """A call that arrived after its object was disposed.
-
-    ⛔ THE CLASS NAME IS THE CONTRACT, not decoration. `reply_error` puts
-    `type(failure).__name__` in the error payload, and `_helper.parse_error`
-    turns that exact string into `TargetClosedError` on the client - which is
-    the ONLY thing `_page.py`'s `close()` swallows:
-
-        except Exception as e:
-            if is_target_closed_error(e): return
-
-    Anything else propagates. So closing a page whose context was closed first
-    - `context.close()` cascades, then a fixture teardown calls `page.close()`,
-    which is an ordinary shape and not a misuse - raised a hard error here on
-    2026-08-28, the day closed pages started being disposed at all. Two of
-    Playwright's own tests caught it; nothing of ours did, because nothing of
-    ours closes a page twice.
-    """
 
 
 class ProtocolException(Exception):

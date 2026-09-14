@@ -52,6 +52,36 @@ class ProtocolError(RuntimeError):
     """
 
 
+class TargetClosedError(Exception):
+    """The thing a call was aimed at is gone: a disposed object, or the
+    browser itself, whose pipe has closed.
+
+    ⛔ THE CLASS NAME IS THE CONTRACT, not decoration. `reply_error` puts
+    `type(failure).__name__` in the error payload, and `_helper.parse_error`
+    turns that exact string into the fork's `TargetClosedError` on the client
+    - which is the ONLY thing `_page.py`'s `close()` swallows:
+
+        except Exception as e:
+            if is_target_closed_error(e): return
+
+    Anything else propagates. So closing a page whose context was closed first
+    - `context.close()` cascades, then a fixture teardown calls `page.close()`,
+    which is an ordinary shape and not a misuse - raised a hard error here on
+    2026-08-28, the day closed pages started being disposed at all.
+
+    ⛔ AND IT LIVES HERE, ONE LAYER DOWN FROM WHERE IT WAS BORN, BECAUSE A
+    CLOSED PIPE IS A CLOSED TARGET TOO. Until 0.15.0 the dispatcher raised
+    this for a disposed guid, while the connection answered a pipe that had
+    closed with a nameless error - `the pipe closed`, `the pipe is closed` -
+    which `parse_error` turned into the fork's plain `Error`. The same fact,
+    the browser is gone, reached a caller as two different classes, and the
+    caller that had to tell "the page refused" from "the browser died" (the
+    AIHawk server's retry) was reduced to matching the sentences. Measured
+    2026-09-14. One class, raised by both layers, and exported from the
+    public API so a caller can catch the TYPE.
+    """
+
+
 class EventListeners:
     """Who is subscribed to a connection's events, and how one is delivered.
 
@@ -177,7 +207,10 @@ class Connection(EventListeners):
                 pending = list(self._pending.values())
                 self._pending.clear()
             for ready, box in pending:
-                box.append({"error": {"message": "the pipe closed"}})
+                # Named, so `send` raises the closed-target class and the
+                # client sees the browser is GONE rather than a refusal.
+                box.append({"error": {"name": "TargetClosedError",
+                                      "message": "the pipe closed"}})
                 ready.set()
 
     def _deliver(self, raw: bytes) -> None:
@@ -221,7 +254,7 @@ class Connection(EventListeners):
     def send(self, method: str, params: Optional[dict] = None,
              session: Optional[str] = None, timeout: float = 30.0) -> Any:
         if self._closed:
-            raise ProtocolError("the pipe is closed: %s" % (self._error or ""))
+            raise TargetClosedError("the pipe is closed: %s" % (self._error or ""))
         with self._lock:
             self._next_id += 1
             msg_id = self._next_id
@@ -258,6 +291,8 @@ class Connection(EventListeners):
         response = box[0]
         if "error" in response:
             e = response["error"]
+            if e.get("name") == "TargetClosedError":
+                raise TargetClosedError("%s: %s" % (method, e.get("message", e)))
             raise ProtocolError("%s: %s" % (method, e.get("message", e)))
         return response.get("result")
 

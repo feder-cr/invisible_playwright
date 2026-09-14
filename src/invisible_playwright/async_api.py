@@ -361,4 +361,13 @@ class InvisiblePlaywright(_session.CommonLaunch):
 
 
 
-__all__ = ["InvisiblePlaywright"]
+# The three classes a caller can catch, exported the way Playwright's own
+# `async_api` exports its errors. `TargetClosedError` is the one that matters
+# here: it is what every call on a page, context or browser that is GONE
+# raises - a disposed object or a closed pipe alike, since 0.15.0 - so a
+# caller that has to tell "the page refused" from "the browser died" catches
+# the type instead of matching sentences.
+from invisible_playwright._pw._impl._errors import (  # noqa: E402
+    Error, TargetClosedError, TimeoutError)
+
+__all__ = ["InvisiblePlaywright", "Error", "TargetClosedError", "TimeoutError"]
