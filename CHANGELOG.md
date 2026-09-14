@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.15.1] - 2026-09-14
+
+### Changed
+- **The engine is `firefox-30`, through `invisible-core 30.19.0`.** The
+  screencast capture no longer ends for good when a headed window is
+  minimised for a moment: the engine listens for its capture module ending,
+  starts another one a second later for as long as the window cannot be
+  captured, and repeats the last frame every 250 ms while the module is
+  quiet, so the age of a frame means one thing to a client that watches it.
+  Nothing else moves: the pin follows the seal.
+
 ## [0.15.0] - 2026-09-14
 
 ### Changed
