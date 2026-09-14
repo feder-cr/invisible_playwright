@@ -950,8 +950,7 @@ class FrameDispatcher(Dispatcher):
         interval stays coarse.
         """
         deadline = time.monotonic() + self._timeout(params)
-        expression = _as_callable(params["expression"]).replace(
-            "ARG", json.dumps(_deserialize(params.get("arg")), default=str))
+        expression = _with_argument(params)
         while True:
             value = self.injected.evaluate_in_main(self.frame_id,
                                                         expression)

@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.15.2] - 2026-09-14
+
+### Fixed
+- **`evaluate` no longer rewrites the JavaScript you passed it.** The argument
+  was placed by searching the built script for the placeholder `ARG` and
+  replacing it - over a string that already held your expression - so those
+  three uppercase letters were rewritten to the argument's JSON anywhere they
+  appeared in your own code. `'CARGO'.length` answered 6 instead of 5, a
+  selector `[data-role='TARGET']` matched nothing, `/ARGH/` became `/nullH/`,
+  and `const ARG = 5` was a syntax error. The three letters only had to appear
+  inside a longer word, and three of those four failures were silent. The
+  argument is now placed in the same formatting pass that inserts the
+  expression, so your code is never scanned. `page.evaluate`,
+  `page.evaluate_handle` and `page.wait_for_function` were affected;
+  `element_handle.evaluate` and `eval_on_selector` already built their wrapper
+  this way and were not.
+- The script the page actually runs is unchanged, character for character, for
+  every expression that did not spell the placeholder, and a test pins it:
+  `evaluate` is the one call that deliberately runs in the main world, so the
+  shape of that wrapper is something a site can look at.
+
 ## [0.15.1] - 2026-09-14
 
 ### Changed

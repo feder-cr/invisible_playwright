@@ -18,7 +18,7 @@ import json
 from typing import Any, Dict, List, Optional
 
 
-def _as_callable(expression: str) -> str:
+def _as_callable(expression: str, argument: Any) -> str:
     """Wrap an expression so it can always be CALLED with the argument.
 
     <M> PLAYWRIGHT SENDS BOTH FORMS DOWN THE SAME FIELD. `page.evaluate("1+1")`
@@ -35,9 +35,27 @@ def _as_callable(expression: str) -> str:
     function. Deciding by shape - does it start with `(` or `function` or
     `async` - is the version that gets it wrong: `(1+2)` starts with a
     parenthesis and is not a function.
+
+    <M> THE ARGUMENT GOES IN HERE, IN THE SAME PASS, AND THAT IS THE WHOLE
+    POINT. It used to be spelled `r(ARG)` and the caller substituted it
+    afterwards with `.replace("ARG", ...)` - over a string that already held
+    the caller's expression. So every uppercase `ARG` a caller wrote was
+    rewritten to the argument's JSON, inside their own code, silently.
+
+    Measured on 2026-09-14 by driving it: `'CARGO'.length` answered 6 instead
+    of 5, because the source that ran was `'CnullO'.length`; a selector
+    `[data-role='TARGET']` became `[data-role='TnullET']` and matched nothing;
+    `/ARGH/` became `/nullH/`; and `const ARG = 5` was a SyntaxError. The three
+    letters need only appear inside a longer word - MARGIN, LARGE, CHARGE - and
+    three of those four failures are silent, which is the bad kind.
+
+    A format string is only scanned where the format string itself is, so the
+    expression is an ARGUMENT to `%` and never a place `%` looks. The sibling
+    wrapper in `op_eval_on_selector` was already written this way.
     """
     return ("(() => { const r = (%s);"
-            "  return typeof r === 'function' ? r(ARG) : r; })()" % expression)
+            "  return typeof r === 'function' ? r(%s) : r; })()"
+            % (expression, json.dumps(argument, default=str)))
 
 
 def _deserialize(value: Any) -> Any:
@@ -62,10 +80,13 @@ def _deserialize(value: Any) -> Any:
 
 
 def _with_argument(params: Dict) -> str:
-    """The expression, callable, with the caller's argument substituted in."""
-    argument = _deserialize(params.get("arg"))
-    return _as_callable(params["expression"]).replace(
-        "ARG", json.dumps(argument, default=str))
+    """The expression, callable, with the caller's argument placed in it.
+
+    <M> THE ONLY PLACE THAT BUILDS THIS. `wait_for_function` used to repeat the
+    two lines inline, which is how one of the two could have been fixed and the
+    other left alone.
+    """
+    return _as_callable(params["expression"], _deserialize(params.get("arg")))
 
 
 def _js_string(value: str) -> str:
