@@ -6,6 +6,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-09-15
+
+### Changed
+- **A GPU pin now selects a validated persona instead of setting a label, and an
+  impossible value is refused rather than ignored.** `pin={"gpu.renderer": ...}`
+  used to change the `Profile` object and leave the browser reporting the seed's
+  own GPU: measured on seed 1561645783, the profile said AMD RX 7900 XTX while
+  `zoom.stealth.webgl.renderer` stayed the seed's NVIDIA GTX 980. The same held
+  for `gpu.vendor` and `gpu.class_tier`, so all three keys were decorative with
+  respect to the page. A renderer string cannot travel alone - around 81
+  `getParameter` values, the shader precisions and the extension list belong to
+  the same GPU - so a pin picks one of the validated personas, and a renderer,
+  vendor or class the pool cannot present raises with the available values named.
+  Sessions that pin nothing are unaffected: 404 seeds emit byte-identical
+  preferences before and after.
+- **`webgl.msaa_samples` is no longer a pin key.** The engine now emits the same
+  MSAA sample count on Windows and Linux, so a pin has nothing left to move.
+  Before this, the value was honoured on Linux and held at 4 on Windows, and the
+  two builds emitted a different `gl.SAMPLES` for the same seed on seven of eight
+  measured seeds.
+
+### Fixed
+- **`docs/pinning.md` described behaviour the code did not have.** It said
+  `gpu.renderer` "lands verbatim in `UNMASKED_RENDERER_WEBGL`" and "does not
+  condition other fields"; both were the opposite of true. The README example
+  pinned a card no validated persona carries, so the snippet a reader copied did
+  nothing.
+
+### Internal
+- Requires `invisible-core==30.20.0`.
+
 ## [0.15.2] - 2026-09-14
 
 ### Fixed
