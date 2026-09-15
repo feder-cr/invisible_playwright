@@ -327,19 +327,6 @@ def max_seconds_for(humanize: Any) -> float:
     return value if value > 0 else _DEFAULT_MAX_SECONDS
 
 
-def humanize_prefs(engine: str, humanize: Any) -> dict:
-    """The browser prefs implied by the chosen engine.
-
-    One definition for both the sync and the async launcher, because getting
-    this wrong in one of them is a silent double expansion: the wrapper draws a
-    path, and the browser then draws a path between each pair of our waypoints.
-    """
-    prefs: dict = {"stealthfox.humanize": engine == ENGINE_BINARY}
-    if engine == ENGINE_BINARY:
-        prefs["stealthfox.humanize.maxTime"] = str(max_seconds_for(humanize))
-    return prefs
-
-
 def landing_enabled() -> bool:
     """Whether an action may be told to click somewhere other than the centre."""
     return (os.environ.get(LANDING_ENV) or "").strip().lower() not in (
@@ -1607,7 +1594,6 @@ __all__ = [
     "LANDING_ENV",
     "MIN_EVENT_INTERVAL_MS",
     "enable_for",
-    "humanize_prefs",
     "landing_enabled",
     "max_seconds_for",
     "motion_available",
