@@ -34,8 +34,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   pinned a card no validated persona carries, so the snippet a reader copied did
   nothing.
 
+- **The pinning surface loses three keys that could not work.** `screen.tier`
+  could not condition the screen it named, because pins are applied after the
+  sampler has drawn. `screen.avail_width` and `screen.avail_height` were
+  page-contradicting: the engine derives the available rect from `width`,
+  `height` and `taskbar_px`, so pinning either moved a label on the profile and
+  nothing a page reads. Pin `screen.width`, `screen.height` and
+  `screen.taskbar_px`; the available rect follows from them.
+- **`codec.webspeech_synth` is gone from the profile.**
+  `media.webspeech.synth.enabled` is emitted as a constant `true`, which is what
+  retail Firefox does on desktop, so the sampled field only ever made the profile
+  disagree with the browser - on about 12% of seeds.
+
 ### Internal
-- Requires `invisible-core==30.20.0`.
+- Requires `invisible-core==30.21.0`.
+- `_cursor.humanize_prefs` is deleted. It was a second implementation of the
+  `stealthfox.humanize*` contract with no caller in `src/`, and it disagreed with
+  the live one: it never emitted `stealthfox.humanize.stepMs`. The two properties
+  its tests asserted now run through `_session.build_prefs`, which is the
+  function both front doors actually call.
 
 ## [0.15.2] - 2026-09-14
 
