@@ -101,18 +101,6 @@ def test_expect_file_chooser_receives_the_event(firefox_binary, local_page):
         assert chooser.element is not None
 
 
-@pytest.mark.xfail(
-    reason="[B178]: the PARENT process refuses to build a File for a content "
-           "process whose remote type is not `file`, answering "
-           "NS_ERROR_DOM_INVALID_STATE_ERR - which reaches the caller as 'an "
-           "object that is not, or is no longer, usable' and names nothing. "
-           "The remedy is the preference dom.file.createInChild, which the "
-           "engine's own gate calls the 'or for testing' escape. It is in "
-           "invisible_core and reaches this suite only once a core carrying "
-           "it is published and the pin here moves, so this stays expected-red "
-           "until then. strict: the day the pin moves this must turn RED so "
-           "somebody deletes the marker.",
-    strict=True)
 @pytest.mark.e2e
 def test_the_chosen_files_arrive_at_the_page(firefox_binary, local_page,
                                               sample_file):
@@ -120,6 +108,16 @@ def test_the_chosen_files_arrive_at_the_page(firefox_binary, local_page,
 
     A `change` that does not fire would be a suppressed signal, which per rule
     12 is a FAILURE, not a success.
+
+    ⛔ THIS WAS EXPECTED-RED FOR THREE WEEKS, AND THE REASON GIVEN WAS WRONG.
+    [B178] was recorded as a suspicion about the Windows content sandbox that
+    nobody had checked. The refusal is in the PARENT process and it is
+    explicit: it declines to build a `File` for any content process whose
+    remote type is not `file`, answering NS_ERROR_DOM_INVALID_STATE_ERR, which
+    reaches the caller as "an object that is not, or is no longer, usable" and
+    names nothing at all. The remedy is the preference the engine's own gate
+    calls the "or for testing" escape, `dom.file.createInChild`, and it ships
+    from the core this package now pins.
     """
     with InvisiblePlaywright(seed=42, binary_path=firefox_binary) as browser:
         page = browser.new_page()
@@ -131,14 +129,6 @@ def test_the_chosen_files_arrive_at_the_page(firefox_binary, local_page,
         assert "sample.txt" in page.inner_text("#out")
 
 
-@pytest.mark.xfail(
-    reason="the same [B178] preference as the test above, reached through the "
-           "other door. Stays here because it IS THE CONTROL - the day the "
-           "pin moves it goes back to proving that the dialog is suppressed "
-           "ONLY on request - and it cannot be a hard assertion while the "
-           "capability it needs is not in the pinned core. strict: it must "
-           "turn RED when it starts passing.",
-    strict=True)
 @pytest.mark.e2e
 def test_without_interception_the_file_inputs_remain_normal(firefox_binary,
                                                               local_page,
@@ -148,6 +138,9 @@ def test_without_interception_the_file_inputs_remain_normal(firefox_binary,
     Here nobody asks to intercept: `set_input_files` must keep working and
     the page must see its `change`. If this turns red, the fix broke file
     inputs for everyone instead of intercepting them just for us.
+
+    It is a hard assertion again for the first time since [B178] was opened:
+    the same preference as the test above, reached through the other door.
     """
     with InvisiblePlaywright(seed=42, binary_path=firefox_binary) as browser:
         page = browser.new_page()

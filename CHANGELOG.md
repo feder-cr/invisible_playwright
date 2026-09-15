@@ -9,6 +9,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [0.16.1] - 2026-09-15
 
 ### Fixed
+- **Setting real files on a file input works.** Both doors ended in
+  `InvalidStateError: An attempt was made to use an object that is not, or is
+  no longer, usable`, a sentence naming no file, no API and no preference. The
+  refusal is in the parent process: it declines to build a `File` for any
+  content process whose remote type is not `file`. The preference the engine's
+  own gate calls the "or for testing" escape ships from `invisible-core`
+  30.22.0, which this release pins, and the two tests that covered the defect
+  are hard assertions again for the first time since it was opened.
 - **`FileChooser.set_files()` could not upload anything, and said so.** A
   chooser already holds the input element, so the client asks the
   `ElementHandle` for `setInputFiles` rather than going through a selector, and
