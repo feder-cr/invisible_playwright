@@ -82,6 +82,18 @@ Two consequences:
 
 ### `screen.*`
 
+`screen.tier` was in this table until 2026-09-15 and is not a knob: pins are
+applied after the sampler has drawn, so pinning the tier could not condition the
+screen it names, and it emitted no preference. It is the sampler's own label for
+the screen it chose, and it is still on the profile as one. Pin `screen.width`
+and `screen.height` to choose a screen.
+
+`codec.webspeech_synth` left the table the same day, and left the profile with
+it. `media.webspeech.synth.enabled` is emitted as a constant `true`, which is
+what retail Firefox does on desktop; the sampled field only ever made the
+profile disagree with the browser, on about 12% of seeds.
+
+
 | Key | Type | Example |
 |-----|------|---------|
 | `screen.width` | int | `2560` |
@@ -89,7 +101,6 @@ Two consequences:
 | `screen.avail_width` | int | `2560` |
 | `screen.avail_height` | int | `1400` |
 | `screen.dpr` | float | `1.0`, `1.25`, `1.5`, `2.0` |
-| `screen.tier` | str | `"1080p"`, `"1440p"`, `"4k"`, ... |
 | `screen.color_depth` | int | `24` | `screen.colorDepth` and `screen.pixelDepth`. Declared rather than read off the panel: the engine only returned a fixed 24 when resistFingerprinting was on, which we do not turn on because it is itself a tell, so before this it reported the real display - 30 on a wide-gamut monitor, and a persona claiming an office laptop with a 30-bit panel is a contradiction a page can read. |
 
 ### `hardware.*`
@@ -126,7 +137,6 @@ Two consequences:
 | `codec.webm_encoder_enabled` | `MediaRecorder` advertises WebM support. |
 | `codec.mediasource_webm` | `MediaSource.isTypeSupported('video/webm')`. |
 | `codec.mediasource_mp4` | `MediaSource.isTypeSupported('video/mp4')`. |
-| `codec.webspeech_synth` | `speechSynthesis.getVoices()` returns a fabricated voice list. |
 
 ### `webgl.*` - retired
 
