@@ -7,6 +7,23 @@
 # links to the wiki's extensionless form, names each page by its slug (index.md
 # becomes Home.md), and regenerates _Sidebar.md from the parent/nav_order tree.
 #
+# ⛔ THE RELEASE TRIGGER DOES NOT FIRE FOR THE RELEASES THIS REPOSITORY MAKES.
+# GitHub does not start a workflow from an event created with the built-in
+# GITHUB_TOKEN, and publish.yml creates the release - which is why every recent
+# release here is authored by github-actions[bot]. Measured 2026-09-15 across
+# 43 runs: all but a couple were manual dispatches, and the two `release` events
+# are old enough to predate the automation. The sibling package AIHawk had the
+# identical defect and the identical false sentence in this comment.
+#
+# The cost is the same too: since the last dispatch on 2026-09-14 the docs have
+# moved by 37 insertions and 15 deletions with a release in between, and the
+# published wiki was showing neither.
+#
+# So it also runs on a PUSH to main that touches what the wiki is made of - the
+# pages, the converter, and this file - which is an event that actually happens
+# here. The release trigger stays: it costs nothing and works for a release a
+# person publishes. It is simply no longer what this depends on.
+#
 # It runs on a published release (the docs the release ships are what the wiki
 # should show) and on manual dispatch. The wiki checkout is wiped and rebuilt
 # each run so a page deleted from docs/ also disappears from the wiki; nothing
@@ -20,6 +37,13 @@
 name: publish-wiki
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "scripts/build_wiki.py"
+      - "scripts/sync_article_pixels.py"
+      - ".github/workflows/publish-wiki.yml"
   release:
     types: [published]
   workflow_dispatch: {}
