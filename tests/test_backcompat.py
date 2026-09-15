@@ -67,8 +67,15 @@ def test_shim_output_matches_core_output():
     from invisible_playwright.prefs import translate_profile_to_prefs as tp_pw
     import invisible_core as ic
 
-    a = tp_pw(gp_pw(42, fixed_gpu_class=fgc_pw(42)))
-    b = ic.translate_profile_to_prefs(ic.generate_profile(42, fixed_gpu_class=ic.forced_gpu_class(42)))
+    # No `fixed_gpu_class=`: `generate_profile` lost that argument in core
+    # 30.21.0, where it was a second spelling of `pin["gpu.class_tier"]`. It was
+    # incidental here anyway - what this asserts is that the shim path and the
+    # core path produce the same prefs, and both still reach the same function.
+    # `forced_gpu_class` is still imported above, because the import SHAPE is
+    # what this file exists to protect; it is a query now rather than a knob.
+    assert fgc_pw(42) == ic.forced_gpu_class(42)
+    a = tp_pw(gp_pw(42))
+    b = ic.translate_profile_to_prefs(ic.generate_profile(42))
     assert a == b
 
 
