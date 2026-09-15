@@ -7,6 +7,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [Unreleased]
 
 ### Fixed
+- **`FileChooser.set_files()` could not upload anything, and said so.** A
+  chooser already holds the input element, so the client asks the
+  `ElementHandle` for `setInputFiles` rather than going through a selector, and
+  this package had no such method: the whole listening half of the file-chooser
+  feature led to a dispatcher that correctly reported a gap rather than a
+  decision. The element handle now performs the same upload the frame does,
+  through the same action and the same reader of the request, so there is one
+  upload path and not two. The engine-side half of file uploads is a preference
+  that belongs to `invisible-core` and arrives when the pin moves: the two
+  tests covering it stay expected-red until then, and are now strict so they
+  turn red the day they start passing.
 - **`locator.scroll_into_view_if_needed()` works. It never had.** It sent the
   engine command `Page.scrollIntoViewIfNeeded`, whose handler calls
   `scrollRectIntoViewIfNeeded` - a method declared in no binding of `Element`

@@ -162,6 +162,25 @@ class APIRequestContextDispatcher(RefusingDispatcher):
 _HANDLE = "<element handle>"
 
 
+def _upload_paths(params: Dict) -> list:
+    """The local paths out of a `setInputFiles` request.
+
+    ⛔ ONE READER, because there are two senders. The same request arrives at
+    the Frame (a selector) and at the ElementHandle (a chooser already holding
+    the input), and the wire shape is the same for both: `localPaths` today,
+    `files` on older clients, and each entry is either a string or a `{name}`
+    object. Two dispatchers each unpacking that by hand is two places that know
+    one fact, and the second one is always the one that falls behind.
+
+    What it deliberately does NOT read is `payloads` and `streams`: those are
+    the upload path where the CLIENT carries the bytes, which is
+    `createTempFiles` and is outside this package's perimeter by decision.
+    """
+    raw = params.get("localPaths") or params.get("files") or []
+    return [entry.get("name") if isinstance(entry, dict) else entry
+            for entry in raw]
+
+
 class ElementHandleDispatcher(Dispatcher):
     TYPE = "ElementHandle"
     METHODS = {
@@ -191,6 +210,7 @@ class ElementHandleDispatcher(Dispatcher):
         "check": "op_check",
         "uncheck": "op_uncheck",
         "selectOption": "op_select_option",
+        "setInputFiles": "op_set_input_files",
     }
 
     def __init__(self, server, frame: "FrameDispatcher", object_id: str,
@@ -477,6 +497,23 @@ class ElementHandleDispatcher(Dispatcher):
         chosen = self.frame.actions.select_option(
             None, params.get("options") or [], **self._act_args(params))
         return {"values": chosen or []}
+
+    def op_set_input_files(self, params: Dict) -> Any:
+        """⛔ THE DOOR `FileChooser.set_files()` COMES THROUGH, and it was shut.
+
+        A chooser already holds the input element, so the client never sends a
+        selector: it asks this dispatcher for `setInputFiles`, and until now
+        there was no such method here. The refusal was honest - the dispatcher
+        said the operation is inside the perimeter and therefore a gap - but a
+        gap it was, and the whole listening half of the file-chooser feature
+        led to it.
+
+        Same action as the Frame's, same helper reading the request: one
+        upload, not two.
+        """
+        self.frame.actions.set_input_files(_HANDLE, _upload_paths(params),
+                                           **self._act_args(params))
+        return None
 
 class FrameDispatcher(Dispatcher):
     TYPE = "Frame"
@@ -860,10 +897,9 @@ class FrameDispatcher(Dispatcher):
 
     def op_set_input_files(self, params: Dict) -> Any:
         frame_id, selector = self.enter_frames(params["selector"])
-        paths = [f.get("name") if isinstance(f, dict) else f
-                 for f in (params.get("localPaths") or params.get("files") or [])]
-        self.actions.set_input_files(selector, paths,
-                                          timeout=self._timeout(params), frame_id=frame_id)
+        self.actions.set_input_files(selector, _upload_paths(params),
+                                     timeout=self._timeout(params),
+                                     frame_id=frame_id)
         return None
 
     def op_tap(self, params: Dict) -> Any:

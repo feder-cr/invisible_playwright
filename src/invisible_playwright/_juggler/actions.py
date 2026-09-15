@@ -562,13 +562,22 @@ class Actions:
                            timeout=timeout, frame_id=frame_id,
                            element_id=element_id)
 
-    def set_input_files(self, selector: str, files, *, timeout: float = 30.0, frame_id: Optional[str] = None):
+    def set_input_files(self, selector: str, files, *, timeout: float = 30.0,
+                        frame_id: Optional[str] = None,
+                        element_id: Optional[str] = None):
         """`set_input_files`. The paths are ABSOLUTE and the browser
         resolves them.
 
         ⛔ Goes through `Page.setFileInputFiles` and not the injected
         script: a page can't construct a `FileList`, and trying would
         leave the input empty with no error.
+
+        ⛔ `element_id` WAS MISSING, AND THAT IS WHY A FILE CHOOSER COULD NOT
+        UPLOAD ANYTHING. `FileChooser.set_files()` does not go through a
+        selector - it holds the input element already - so it asks the
+        ElementHandle for `setInputFiles`, and without this parameter there was
+        nothing for that dispatcher to call. Every other action here takes the
+        handle; this one was the exception nobody had needed yet.
         """
         def run(f, element, point):
             self.c.send("Page.setFileInputFiles",
@@ -576,8 +585,8 @@ class Actions:
                          "files": [str(p) for p in files]},
                         session=self.session, timeout=30)
             return list(files)
-        return self._retry(selector, run, states=[], timeout=timeout, frame_id=frame_id,
-)
+        return self._retry(selector, run, states=[], timeout=timeout,
+                           frame_id=frame_id, element_id=element_id)
 
     def tap(self, selector: str, *, timeout: float = 30.0, frame_id: Optional[str] = None,
             position=None):
