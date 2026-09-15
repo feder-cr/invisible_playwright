@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.16.2] - 2026-09-16
+
+### Changed
+- **The language gate comes from the core.** The check that this repository
+  is English used to be a script here and a copy in AIHawk, and the copies
+  drifted: this one never gained the `.js`, `.css` and `.html` coverage the
+  other did, so the front end was outside its sight. It now runs as
+  `invisible_core.english` from the pinned core, `invisible-core` 30.23.0,
+  and what this repository exempts is declared once in
+  `[tool.invisible.english]` in `pyproject.toml`. An exclusion that names
+  nothing is refused, which is the check the copies did not have.
+- **Three names cross into English with the core.** `srflx_to_declare()`,
+  the `srflx_declared` keyword of `build_launch_env` and the attribute that
+  carries the decision follow the core's rename in the same release, because
+  either half alone breaks the launch. Nothing the browser receives changes:
+  the emitted prefs and the launch environment are byte-identical to 0.16.1.
+
 ## [0.16.1] - 2026-09-15
 
 ### Fixed
