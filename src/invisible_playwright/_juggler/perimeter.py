@@ -135,6 +135,57 @@ COURTESY = {
 }
 
 
+#: ⛔ TEN OPERATIONS REFUSE WITHOUT BEING IN `OUTSIDE`, AND UNTIL NOW NO
+#: INVENTORY KNEW THEM. They raise `ProtocolException` inline in their
+#: dispatcher, with a good sentence beside the code and nothing anywhere that
+#: says they exist. That is the same defect this module was written to remove:
+#: the docstring above says a refusal must name the feature "so that the refusal
+#: is a decision rather than a gap", and for these nine there was no way to tell
+#: which of the two it was without reading `server.py` end to end.
+#:
+#: ⛔ AND THEY ARE NOT ALL THE SAME THING, which is why this is three sets and
+#: not one. Folding them into `OUTSIDE` would have said "outside by decision"
+#: about four operations that are simply not written yet, and about three that
+#: the engine gives us no way to honour. The distinction is the information.
+#:
+#: What is NOT repeated here is the explanation: each of these raises with a
+#: sentence that says exactly why, next to the code that knows. These sets carry
+#: the NAME and the CATEGORY only, so there is no second copy of a fact.
+
+#: The engine offers no command at all. Not our debt, and not a decision we can
+#: revisit on our own: honouring them would mean inventing an answer.
+NO_ENGINE_COMMAND = {
+    "drop",
+    "setOffline",
+    "setWebSocketInterceptionPatterns",
+}
+
+#: Decided when the injected script is BUILT, so a later call cannot change it.
+#: These are honourable at construction time, and the refusal says so.
+FIXED_AT_BUILD = {
+    "registerSelectorEngine",
+    "setTestIdAttributeName",
+}
+
+#: Our debt, plainly. Nothing external blocks these: they are not written yet.
+#: This set is the honest list of what "100% compatible" does not cover today.
+NOT_WIRED_YET = {
+    "exposeBinding",
+    "frameElement",
+    # ⛔ `reject` shares its handler with `resolve`, and that is how it stayed
+    # invisible: the first scan keyed the method table by python name, so the
+    # second operation routed to `op_binding_reply` overwrote the first. Two
+    # operations, one handler, one of them unaccounted for.
+    "reject",
+    "resolve",
+    "setExtraHTTPHeaders",
+}
+
+#: Everything that answers with a refusal, whatever the reason. `OUTSIDE` is
+#: kept separate because it carries a feature name and drives `refusal()`.
+REFUSED = set(OUTSIDE) | NO_ENGINE_COMMAND | FIXED_AT_BUILD | NOT_WIRED_YET
+
+
 def refusal(operation):
     """The sentence a caller gets, or an empty string if it is in perimeter."""
     feature = OUTSIDE.get(operation)

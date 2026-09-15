@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+- **`locator.scroll_into_view_if_needed()` works. It never had.** It sent the
+  engine command `Page.scrollIntoViewIfNeeded`, whose handler calls
+  `scrollRectIntoViewIfNeeded` - a method declared in no binding of `Element`
+  anywhere in the engine, so it was `undefined` for every caller and the call
+  threw every time. Measured at four positions, including an element already in
+  view: a timeout on all four, while `bounding_box()` on the same element
+  answered correctly. The package already knew how to scroll, in the one place
+  that mattered: every click has scrolled through the injected script since a
+  click below the fold was found to miss. The public method now calls that same
+  helper, so there is one scroll and not two. It centres the element rather than
+  scrolling the minimum, and a `rect` argument is not honoured.
+
+### Added
+- **Every operation that refuses now says so in `_juggler/perimeter.py`, and a
+  test keeps it that way.** Ten operations raised `ProtocolException` inline
+  with a good reason beside the code and nothing anywhere that recorded they
+  existed, so there was no way to tell a deliberate refusal from a gap without
+  reading the dispatcher end to end. They are declared in three sets that keep
+  the distinction: the engine offers no command (`drop`, `setOffline`,
+  `setWebSocketInterceptionPatterns`), the answer is fixed when the injected
+  script is built (`registerSelectorEngine`, `setTestIdAttributeName`), or it is
+  simply not written yet (`exposeBinding`, `frameElement`, `resolve`, `reject`,
+  `setExtraHTTPHeaders`). The test fails both ways: a new inline refusal nobody
+  declares, and a declared name that has since started working.
+
 ## [0.16.0] - 2026-09-15
 
 ### Changed
