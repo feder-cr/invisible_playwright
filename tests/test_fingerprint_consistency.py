@@ -33,8 +33,12 @@ from invisible_playwright import InvisiblePlaywright
 PIN = {
     "screen.width": 1920,
     "screen.height": 1080,
-    "screen.avail_width": 1920,
-    "screen.avail_height": 1040,
+    # `screen.avail_width` / `screen.avail_height` were pinned here until
+    # 2026-09-15 and are no longer pin keys: the engine derives the available
+    # rect from width, height and taskbar_px, so pinning them moved a label on
+    # the profile and nothing a page reads. The assertions below get stronger
+    # for it - they now check a value the engine computed rather than one the
+    # caller thought it had set.
     "screen.dpr": 1.0,
     "hardware.concurrency": 8,
     "audio.sample_rate": 48000,
