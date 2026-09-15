@@ -82,7 +82,15 @@ Two consequences:
 
 ### `screen.*`
 
-`screen.tier` was in this table until 2026-09-15 and is not a knob: pins are
+`screen.avail_width` and `screen.avail_height` left this table on 2026-09-15
+for the same reason as the tier: the engine derives the available rect from
+`width`, `height` and `taskbar_px`, and none of the three avail values is
+emitted, so pinning one moved a label on the profile and nothing a page can
+read. Pin `screen.width`, `screen.height` and `screen.taskbar_px`; availWidth
+and availHeight follow from them, which is what keeps two properties of one
+window from disagreeing.
+
+`screen.tier` was in this table until the same day and is not a knob: pins are
 applied after the sampler has drawn, so pinning the tier could not condition the
 screen it names, and it emitted no preference. It is the sampler's own label for
 the screen it chose, and it is still on the profile as one. Pin `screen.width`
@@ -98,8 +106,6 @@ profile disagree with the browser, on about 12% of seeds.
 |-----|------|---------|
 | `screen.width` | int | `2560` |
 | `screen.height` | int | `1440` |
-| `screen.avail_width` | int | `2560` |
-| `screen.avail_height` | int | `1400` |
 | `screen.dpr` | float | `1.0`, `1.25`, `1.5`, `2.0` |
 | `screen.color_depth` | int | `24` | `screen.colorDepth` and `screen.pixelDepth`. Declared rather than read off the panel: the engine only returned a fixed 24 when resistFingerprinting was on, which we do not turn on because it is itself a tell, so before this it reported the real display - 30 on a wide-gamut monitor, and a persona claiming an office laptop with a 30-bit panel is a contradiction a page can read. |
 

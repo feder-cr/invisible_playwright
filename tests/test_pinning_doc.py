@@ -50,6 +50,13 @@ _NOT_PINNABLE_FIELDS = {
                     "not condition the screen it names, and it emitted no "
                     "preference either. Removed from the pin table 2026-09-15; "
                     "the field stays because the label is honest."),
+    "screen.avail_width": ("Derived, not chosen. The engine computes the "
+                           "available rect from width, height and taskbar_px, "
+                           "and no avail value is emitted, so a pin moved the "
+                           "label and nothing a page reads. Removed 2026-09-15."),
+    "screen.avail_height": ("Same as avail_width, and removing it also removed "
+                            "the special case that let a pin beat the taskbar "
+                            "re-derivation: there is no pin left to lose to."),
 }
 
 #: Profile GROUPS that exist but are deliberately not pinnable, with the reason.
