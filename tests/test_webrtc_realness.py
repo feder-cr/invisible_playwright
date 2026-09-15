@@ -255,10 +255,10 @@ def test_shipped_webrtc_baseline_is_the_validated_config():
     from invisible_core.launch import build_launch_env
     from invisible_playwright._session import build_env
     for build_fn in (lambda **k: build_launch_env({}, **k), build_env):
-        env_with = build_fn(timezone=None, srflx_dichiarato="203.0.113.77", base_env={})
+        env_with = build_fn(timezone=None, srflx_declared="203.0.113.77", base_env={})
         assert env_with["STEALTHFOX_WEBRTC_DISABLE_IPV6"] == "1"
         assert env_with["STEALTHFOX_WEBRTC_PUBLIC_IP"] == "203.0.113.77"
-        env_without = build_fn(timezone=None, srflx_dichiarato=None, base_env={})
+        env_without = build_fn(timezone=None, srflx_declared=None, base_env={})
         assert "STEALTHFOX_WEBRTC_DISABLE_IPV6" not in env_without
         assert "STEALTHFOX_WEBRTC_PUBLIC_IP" not in env_without
     # peerconnection stays ON (a disabled WebRTC is itself a tell).

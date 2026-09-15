@@ -245,11 +245,11 @@ def test_build_env_injects_webrtc_egress_when_discovered():
     ip = InvisiblePlaywright(seed=42)
     # ⛔ TWO FIELDS, and this test only exercised one. `_webrtc_egress_ip`
     # is the FACT (where we exit from, read by the guard against drift);
-    # `_srflx_dichiarato` is the DECISION that ends up in the env. Since
+    # `_srflx_declared` is the DECISION that ends up in the env. Since
     # 2026-08-25 they do not coincide: when the exit has proven, consistent
     # UDP the decision is None and nothing gets declared.
     ip._webrtc_egress_ip = "203.0.113.9"  # what __enter__ resolves behind a proxy
-    ip._srflx_dichiarato = "203.0.113.9"  # and here the decision coincides with the fact
+    ip._srflx_declared = "203.0.113.9"  # and here the decision coincides with the fact
     env = ip._build_env({})
     assert env["STEALTHFOX_WEBRTC_PUBLIC_IP"] == "203.0.113.9"
     assert env["STEALTHFOX_WEBRTC_DISABLE_IPV6"] == "1"

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "invisible_playwright"
-version = "0.16.1"
+version = "0.16.2"
 description = "Playwright wrapper for a patched Firefox with deterministic stealth profile."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -69,7 +69,7 @@ dependencies = [
     # metadata; nothing in src/ hardcodes a second copy (tests/test_core_pin.py
     # fails if one appears). What stays invisible to install-time machinery is the
     # --no-deps / lockfile residue, and _pin.py is the only layer that sees it.
-    "invisible_core==30.22.0",
+    "invisible_core==30.23.0",
     # ⛔ playwright is NO LONGER a dependency: since the full fork, the Python
     # client lives in src/invisible_playwright/_pw/ and the Node driver in
     # src/invisible_playwright/_driver/. Reintroducing it would not visibly
@@ -223,3 +223,25 @@ exclude = ["tests/playwright-upstream"]
 pytest = true
 pin = true
 release_tags = ["v"]
+
+# What this repository declares about ITSELF to the shared language gate
+# (`python -m invisible_core.english`, since invisible-core 30.23.0). The logic
+# lives in the core, once; only the per-repository half is here. It used to be
+# a script copied into this repo and into AIHawk, and the copies drifted:
+# AIHawk's carried these very paths, which exist only here, and this one never
+# gained the `.js/.css/.html` coverage AIHawk's did.
+#
+# Vendored upstream Playwright is excluded as a FOLDER, but our own patches
+# inside it are still read: they are found by the marker. `injected.js` is
+# extracted from the upstream bundle. `test_fork.py` carries Italian ON
+# PURPOSE - its known-bad fixture reproduces a JavaScript comment whose defect
+# IS the trailing apostrophe of an Italian word; translate it and the mutation
+# stops reproducing the bug. Named file by file, never by folder: an
+# exclusion that names nothing is refused by the gate.
+[tool.invisible.english]
+excluded = [
+    "src/invisible_playwright/_pw/",
+    "src/invisible_playwright/_juggler/injected.js",
+    "tests/test_fork.py",
+]
+marker = "MODIFIED by invisible_playwright"

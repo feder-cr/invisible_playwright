@@ -35,19 +35,30 @@ jobs:
   # being made.
   english:
     name: the repository is English
+    # ⛔ The gate is `invisible_core.english` since core 30.23.0, not a script of
+    # this repository: the script was a COPY, one here and one in AIHawk, and the
+    # copies drifted - this one never gained the `.js/.css/.html` coverage the
+    # other did. So this job needs the pinned core on the index, like `unit`.
+    needs: core-on-index
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: install the pinned core, which carries the gate
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
       - name: check the prose
         # --selftest first: a language gate that has only ever printed "clean" is
         # the same non-gate as any other, and this one can go blind from a single
-        # edit to its word list.
+        # edit to its word list. What this repository exempts is declared in
+        # `[tool.invisible.english]` in pyproject.toml, and an exclusion that
+        # names nothing is refused.
         run: |
-          python scripts/check_english_only.py --selftest
-          python scripts/check_english_only.py
+          python -m invisible_core.english --selftest
+          python -m invisible_core.english
 
   # `pip install -e ".[dev]"` below resolves `invisible-core==N.M.0` from the
   # package index. The core is published BEFORE this package, so between the

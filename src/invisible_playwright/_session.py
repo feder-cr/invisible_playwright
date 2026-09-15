@@ -121,10 +121,10 @@ def build_env(
     #: The address to DECLARE as srflx, or None to declare nothing and let the
     #: real one through. ⛔ This is NOT the egress IP: it is a DECISION the
     #: core makes in a single place, looking at the capabilities of the egress
-    #: (`SessionGeo.srflx_da_dichiarare`). The old name, `egress_ip`, said
+    #: (`SessionGeo.srflx_to_declare`). The old name, `egress_ip`, said
     #: something else and made the rule look like "there's a proxy -> declare
     #: it", which is the wrong question.
-    srflx_dichiarato: Optional[str],
+    srflx_declared: Optional[str],
     profile: Any = None,
     executable: Optional[str] = None,
     base_env: Optional[Dict[str, str]] = None,
@@ -175,7 +175,7 @@ def build_env(
             # setdefault: an already-set value wins, same rule as the WebRTC IP.
             env.setdefault(FONT_MANIFEST_ENV, str(path))
     # WebRTC srflx override, plus dropping IPv6 from gathering.
-    webrtc_ip = env.get(WEBRTC_IP_ENV) or srflx_dichiarato
+    webrtc_ip = env.get(WEBRTC_IP_ENV) or srflx_declared
     if webrtc_ip:
         env[WEBRTC_IP_ENV] = webrtc_ip
         # ONLY behind a proxy, and the reason is a measurement.
@@ -377,7 +377,7 @@ class CommonLaunch:
     otherwise invisible: both subclasses set `seed`, `_binary_path`,
     `_cursor_engine`, `_extra_prefs`, `_headless`, `_humanize`,
     `_lifetime_guard`, `_locale`, `_profile`, `_session_token`, `_show_cursor`,
-    `_srflx_dichiarato`, `_timezone` and `_virtual_display` in their own
+    `_srflx_declared`, `_timezone` and `_virtual_display` in their own
     `__init__`. They already did, identically, which is why this works at all.
     """
 
@@ -443,7 +443,7 @@ class CommonLaunch:
         """
         return self._session_token.stamp(
             build_env(timezone=self._timezone,
-                               srflx_dichiarato=self._srflx_dichiarato,
+                               srflx_declared=self._srflx_declared,
                                profile=self._profile,
                                executable=resolve_executable(self._binary_path)))
 

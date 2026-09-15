@@ -240,7 +240,7 @@ class InvisiblePlaywright(_session.CommonLaunch):
         #: The DECISION about the srflx, distinct from the fact above.
         #: Starts at None like it: `_build_env` can be called before the
         #: geo path has resolved, and in that case nothing is declared.
-        self._srflx_dichiarato: Optional[str] = None
+        self._srflx_declared: Optional[str] = None
         #: When the egress was last rechecked. Starts at 0 rather than at
         #: `time.monotonic()`: the first context must be able to check
         #: right away, because time may already have passed between launch
@@ -262,13 +262,13 @@ class InvisiblePlaywright(_session.CommonLaunch):
         # `_webrtc_egress_ip` is the FACT: where we exit from. It serves the
         # guard against drift, which compares now's egress against the one
         # at launch.
-        # `_srflx_dichiarato` is the DECISION: what the engine must
+        # `_srflx_declared` is the DECISION: what the engine must
         # announce. It is None when the egress has proven, consistent UDP,
         # because there the real srflx is already born correct and
         # declaring one would add a candidate with no matching
         # allocation - the signal a detector running its own TURN reads.
         # The core reads it in one place only.
-        self._srflx_dichiarato = _geo.srflx_da_dichiarare()
+        self._srflx_declared = _geo.srflx_to_declare()
         # Geo-aware locale: "auto" derives the language from the egress country (reusing
         # the egress IP already discovered above), like timezone="auto". Keeps the browser
         # language consistent with the proxy's country instead of a fixed en-US.

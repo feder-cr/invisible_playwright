@@ -235,9 +235,10 @@ def test_the_quote_check_sees_a_real_apostrophe():
     reproducing the bug, so this test would go green on an input that can no
     longer fail - a gate that checks nothing while still printing PASS.
 
-    This is why `scripts/check_english_only.py` names this one file in its
-    exclusion list. The exemption is one path, never a folder: a sibling test
-    written in Italian by accident is still caught.
+    This is why `[tool.invisible.english]` in `pyproject.toml` names this one
+    file in its exclusion list, for the shared gate `invisible_core.english`.
+    The exemption is one path, never a folder: a sibling test written in
+    Italian by accident is still caught.
     """
     good = "    source4 = '\nmarkTargetElements() {\n  // non dispatcha niente\n}';"
     assert _unprotected_quote(good) is None
