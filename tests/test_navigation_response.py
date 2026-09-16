@@ -235,43 +235,20 @@ def test_reload_and_goBack_answer_with_the_channel_of_the_new_navigation():
     expected = {"response": page._navigation_requests["NAV-NEW"]
                 .response.channel}
     assert page.op_reload({}) == expected
-    # No `op_go_back` arm here since 2026-09-16: that operation no longer
-    # navigates, it refuses. The case proving it is below, and leaving an
-    # assertion here that treats it as a navigation would say `_history` has
-    # two callers when it has one.
+    assert page.op_go_back({}) == expected
 
 
-def test_goBack_and_goForward_REFUSE_and_name_what_would_have_broken():
-    """They used to navigate and now they refuse, and the case that stood here
-    proved the right thing about a world that is gone.
-
-    It proved that a goBack at the start of history answers None rather than
-    failing, which is Playwright's behaviour. The engine is never asked now: it
-    does go back and report it, but a document restored from the back forward
-    cache leaves this client holding a stale handle for that page's world, so
-    locators raise while evaluate keeps answering. A method that is right once
-    and wrong immediately afterwards is worse than one that says no.
-
-    The refusal is checked on two things, and the second is the one that
-    matters: that it NAMES what would have happened. A bare "not supported"
-    sends the reader looking for a defect in their own selectors.
-    """
+def test_goBack_at_the_start_of_history_is_still_None():
+    """A refused goBack is an ordinary answer in Playwright, not a failure,
+    and it must not start waiting for a navigation that will never happen."""
     page = _bare_page()
     page.lifecycle = SimpleNamespace(
-        frame=lambda fid: pytest.fail("it read the lifecycle instead of refusing"),
+        frame=lambda fid: SimpleNamespace(navigation="NAV-OLD"),
         wait_for_new_navigation=lambda *a, **kw: pytest.fail(
-            "it waited for a navigation it never even asked for"))
-    page.send = lambda method, params=None: pytest.fail(
-        "it sent %s to the engine instead of refusing" % method)
+            "it waited for a navigation the browser refused to start"))
+    page.send = lambda method, params=None: {"success": False}
 
-    for name, op in (("go_back", page.op_go_back), ("go_forward", page.op_go_forward)):
-        with pytest.raises(Exception) as fallen:
-            op({})
-        said = str(fallen.value)
-        assert "not supported" in said, (name, said)
-        assert name + "()" in said, (name, said)
-        assert "stale handle" in said, (name, said)
-        assert "reload()" in said, (name, said)
+    assert page.op_go_back({}) == {"response": None}
 
 
 def test_wait_for_new_navigation_HANDS_BACK_the_id_it_waited_for():

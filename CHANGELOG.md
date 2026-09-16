@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-09-16
+
+### Added
+- **`go_back()` and `go_forward()` are back**, and the cause 0.18.0 withdrew
+  them for turned out to be here rather than in the engine. A restored
+  document left this client holding the injected script it had cached PER
+  FRAME, while that script is an object inside one execution CONTEXT, and a
+  frame outlives its contexts: every navigation replaces them and so does a
+  restore. The handle and the context it was minted in are stored together
+  now, so "is this still mine" is decided from state rather than inferred
+  from destruction events arriving complete and in order. They do not: on a
+  restore the engine destroys worlds this client was never told existed.
+- The end to end test walks back, forward and back again and READS THROUGH A
+  LOCATOR each time. One movement was green against the defect, and so is
+  asserting on the URL: both of the earlier tests did one of those.
+
+### Changed
+- The perimeter's `WITHDRAWN` set is empty again and stays declared, for the
+  next operation that is written and cannot be trusted yet.
 ## [0.18.0] - 2026-09-16
 
 ### Removed

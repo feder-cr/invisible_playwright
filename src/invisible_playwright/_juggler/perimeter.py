@@ -193,25 +193,24 @@ NOT_WIRED_YET = {
 #: and an inventory that lies is worse than one with a gap, because nobody goes
 #: looking behind it.
 #:
-#: `goBack` and `goForward`, since 2026-09-16. The engine restores the document
-#: and reports the navigation - that was [B185], fixed in firefox-31 - but a
-#: restored document leaves the client holding a stale handle for that page's
-#: world: locators raise `Cannot find object with id`, while `evaluate()` and
-#: `content()` keep answering from the right document, and a `reload()` clears
-#: it. Measured one step at a time: back once and a locator reads fine; forward,
-#: or back a second time, and every locator on that page is broken. A method
-#: that is right once and wrong afterwards puts the failure somewhere else,
-#: where it looks like a bad selector on a healthy page.
+#: ⛔ EMPTY TODAY, AND IT EMPTIED ITSELF, WHICH IS THE POINT OF HAVING IT.
 #:
-#: The remedy is the engine's bookkeeping for a restored world, and it is not
-#: understood: announcing the world as cleared is what makes the first restore
-#: work AND what leaves the stale handle, while not announcing it loses the
-#: execution context instead. Two complementary failures are a wrong model, not
-#: a missing line, and this set is where that stays visible until it is right.
-WITHDRAWN = {
-    "goBack",
-    "goForward",
-}
+#: `goBack` and `goForward` lived here for one day, 2026-09-16. They were
+#: withdrawn because a document restored from the back forward cache left the
+#: client holding a stale handle for that page's world: locators raised
+#: `Cannot find object with id` while `evaluate()` kept answering, so the method
+#: was right once and wrong immediately afterwards. The cause was read as the
+#: engine's, and it was not: the client cached the injected script per FRAME
+#: while the script is an object inside one CONTEXT, and a frame outlives its
+#: contexts. Handle and context are stored together now, so the question "is
+#: this still mine" is decidable instead of inferred, and the two came back.
+#:
+#: The set stays, and stays declared, for the next operation that is written and
+#: cannot be trusted yet. The four categories beside it would each have said
+#: something untrue about that day - no engine command, decided at build time,
+#: simply not written, left out by decision - and an inventory that lies is
+#: worse than one with a gap, because nobody looks behind it.
+WITHDRAWN: set = set()
 
 #: Everything that answers with a refusal, whatever the reason. `OUTSIDE` is
 #: kept separate because it carries a feature name and drives `refusal()`.
