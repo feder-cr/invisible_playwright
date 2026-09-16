@@ -234,3 +234,58 @@ def test_the_page_goes_out_through_an_authenticated_http_proxy(
     assert (_USER, _PASS) in authenticating_proxy.credentials, (
         "the browser never offered the configured proxy credentials; the proxy "
         "saw: %r" % (authenticating_proxy.credentials[:5],))
+
+
+@pytest.mark.e2e
+def test_a_context_proxy_with_credentials_is_the_road_that_context_goes_out_on(
+        authenticating_proxy, firefox_binary):
+    """The same question one level down, because the report measured both.
+
+    Issue #206 listed the launch proxy and the context proxy as two separate
+    arms and both leaked, which is what you would expect from a cause that
+    lives under both: the channel filter is one, and neither road writes any
+    network.proxy preference.
+
+    The fix is one function too, so this arm cannot fail while the one above
+    passes for a reason inside the engine. It can fail for a reason inside the
+    WIRING: `Browser.setBrowserProxy` and `Browser.setContextProxy` are two
+    commands, two handlers and two stores, and the eager refusal that stops an
+    inexpressible proxy from becoming a silent direct connection is installed
+    at two call sites. One of them could be removed on its own, and then a
+    context would go out in the clear while every launch stayed proxied - the
+    exact shape of the original bug, on the road nothing was watching.
+
+    Same assertions as above and for the same reason: what the PAGE read, not
+    what the proxy logged. A browser that ignores the proxy leaves no trace on
+    it, so a count of zero reads as "not yet" rather than as a leak.
+    """
+    from invisible_playwright import InvisiblePlaywright
+
+    navigation_error = None
+    shown = ""
+    with InvisiblePlaywright(seed=42, binary_path=firefox_binary,
+                             humanize=False, timezone="UTC") as browser:
+        context = browser.new_context(proxy={"server": authenticating_proxy.url,
+                                             "username": _USER,
+                                             "password": _PASS})
+        page = context.new_page()
+        try:
+            page.goto("http://%s/" % _ONLY_VIA_PROXY,
+                      wait_until="domcontentloaded", timeout=30_000)
+            shown = page.locator("body").inner_text()
+        except Exception as exc:                # noqa: BLE001 - re-raised below
+            navigation_error = exc
+
+    assert navigation_error is None, (
+        "the context never navigated through its own authenticated proxy: %s. "
+        "The browser was launched with NO proxy, so going out in the clear here "
+        "is the context proxy being dropped rather than a launch-level "
+        "problem. Routed: %r, refused with 407: %r"
+        % (navigation_error, authenticating_proxy.routed[:5],
+           authenticating_proxy.refused[:5]))
+    assert authenticating_proxy.body in shown, (
+        "the page did not receive the proxy's own body, so the context did not "
+        "go out through it. It read %r" % (shown[:200],))
+    assert (_USER, _PASS) in authenticating_proxy.credentials, (
+        "the context never offered its proxy credentials; the proxy saw: %r"
+        % (authenticating_proxy.credentials[:5],))
