@@ -213,6 +213,18 @@ jobs:
           git config user.name "feder-cr"
           git config user.email "85809106+feder-cr@users.noreply.github.com"
           git add PUBLISHED.json
+          # `record` also realigns this version's CHANGELOG heading to the upload
+          # date the index reports, and this is the repository that keeps a
+          # changelog, so this is where it matters. A file rewritten on the
+          # runner's disk that nobody stages is a change that never happened, and
+          # the whole point is that the date stops being written by hand: 0.16.2
+          # shipped dated a day ahead because the heading is typed at bump time,
+          # hours before the upload it claims to describe, in whatever timezone
+          # the author is in. Conditional to match the release notes step below,
+          # and because `git add` on a missing path fails under `bash -e`.
+          if [ -f CHANGELOG.md ]; then
+            git add CHANGELOG.md
+          fi
           git commit -m "record $VERSION as published"
           BRANCH="${{ github.event.repository.default_branch }}"
           if git push origin "HEAD:refs/heads/$BRANCH"; then
