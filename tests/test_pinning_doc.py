@@ -216,27 +216,106 @@ def test_top_level_fields_are_either_pinnable_or_listed_as_deliberately_not():
 
 # ── the page's own examples have to run ────────────────────────────────────
 
-def test_the_pin_dicts_in_the_pages_examples_would_be_accepted():
-    """The key tables and the worked examples drift apart independently: the
-    examples are what people copy."""
-    blocks = re.findall(r"```python\n(.*?)```", _doc(), re.S)
-    checked = 0
-    bad = {}
-    for block in blocks:
+#: How many worked examples the page carried when the executing test below was
+#: written. A FLOOR, not an equality: the page is meant to grow.
+#:
+#: It is a floor rather than `assert checked`, and that distinction is the whole
+#: reason it exists. Until 2026-09-16 the extraction saw only `pin = {...}` and
+#: was blind to the opening example, which passes `pin={...}` as a keyword
+#: argument - and `assert checked` stayed green throughout, because the two
+#: other examples kept the count off zero. A count that only has to be non-zero
+#: cannot notice that it stopped seeing a third of the page.
+_EXAMPLES_FLOOR = 3
+
+
+def _example_pins() -> list[dict]:
+    """Every `pin` dict on the page, in BOTH of the shapes the page writes.
+
+    `pin = {...}` is an `ast.Assign`. The page's opening example hands
+    `pin={...}` straight to the constructor, which is an `ast.keyword` and was
+    invisible to the first version of this extraction - so the block a reader
+    meets first was the one block nothing checked, and it was one of the two
+    that raised.
+
+    `literal_eval` rather than a walk over the key nodes, because the executing
+    test needs the VALUES. A pin assembled out of names or calls raises here
+    rather than being skipped, which is right: it is not something a reader can
+    copy either.
+    """
+    pins: list[dict] = []
+    for block in re.findall(r"```python\n(.*?)```", _doc(), re.S):
         try:
             tree = ast.parse(block)
         except SyntaxError:                     # fragments with `...` in them
             continue
         for node in ast.walk(tree):
-            if not (isinstance(node, ast.Assign) and isinstance(node.value, ast.Dict)):
+            if isinstance(node, ast.Assign) and isinstance(node.value, ast.Dict) \
+                    and any(getattr(t, "id", "") == "pin" for t in node.targets):
+                value = node.value
+            elif isinstance(node, ast.keyword) and node.arg == "pin" \
+                    and isinstance(node.value, ast.Dict):
+                value = node.value
+            else:
                 continue
-            if not any(getattr(t, "id", "") == "pin" for t in node.targets):
-                continue
-            for key_node in node.value.keys:
-                if not isinstance(key_node, ast.Constant) or not isinstance(key_node.value, str):
-                    continue
-                checked += 1
-                if key_node.value not in _valid_keys():
-                    bad[key_node.value] = "rejected by the validator"
-    assert checked, "no `pin = {...}` example left on the page to check"
+            pins.append(ast.literal_eval(value))
+    return pins
+
+
+def _examples() -> list[dict]:
+    """The page's examples, with the count asserted in ONE place.
+
+    Both tests below need the same floor, and a number written twice is a
+    number that drifts.
+    """
+    pins = _example_pins()
+    assert len(pins) >= _EXAMPLES_FLOOR, (
+        f"found {len(pins)} `pin` example(s) on the page, expected at least "
+        f"{_EXAMPLES_FLOOR}. Either the page lost an example, or the extraction "
+        f"stopped matching the way they are written - and an extraction that "
+        f"finds nothing reads exactly like a page with nothing wrong on it")
+    return pins
+
+
+def _label(pin: dict) -> str:
+    """Enough of an example to find it on the page."""
+    return ", ".join(sorted(pin))[:120]
+
+
+def test_the_pin_dicts_in_the_pages_examples_would_be_accepted():
+    """The key tables and the worked examples drift apart independently: the
+    examples are what people copy.
+
+    KEYS only. Kept beside the executing test below rather than replaced by it:
+    it is the cheaper half, it names the offending key directly instead of
+    reporting whatever the validator happened to raise first, and it keeps
+    saying something about a key whose value is awkward to produce.
+    """
+    bad = {}
+    for pin in _examples():
+        for key in pin:
+            if key not in _valid_keys():
+                bad[key] = "rejected by the validator"
     assert not bad, f"the page's worked examples use keys the API refuses: {bad}"
+
+
+def test_the_pages_examples_run_exactly_as_written():
+    """The VALUES too, through the real validator. A key table cannot see one.
+
+    Measured 2026-09-16: two of the page's three examples named GPU renderer
+    strings that no persona in the pool presents - an RTX 4090 in the opening
+    block, an Iris Xe in "mimic a specific real device" - and both raised
+    `ValueError: pin gpu.renderer/gpu.vendor (...) names no validated GPU
+    persona` on the first lines a reader would copy. Every key in them was
+    valid, so the test above was green the whole time: the GPU refusal is on
+    the VALUE, which is the half nothing here was reading.
+    """
+    raised = {}
+    for pin in _examples():
+        try:
+            generate_profile(seed=42, pin=pin)
+        except Exception as exc:
+            raised[_label(pin)] = f"{type(exc).__name__}: {exc}"
+    assert not raised, (
+        f"these worked examples raise when run exactly as the page writes "
+        f"them: {raised}. A reader copies the block, gets a traceback, and has "
+        f"no way to know that it is the page that is wrong")

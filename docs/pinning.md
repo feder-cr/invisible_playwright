@@ -18,7 +18,7 @@ from invisible_playwright import InvisiblePlaywright
 with InvisiblePlaywright(
     seed=42,
     pin={
-        "gpu.renderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 4090 Direct3D11)",
+        "gpu.renderer": "ANGLE (NVIDIA, NVIDIA GeForce GTX 980 Direct3D11 vs_5_0 ps_5_0, D3D11)",
         "gpu.vendor":   "Google Inc. (NVIDIA)",
         "screen.width":  2560,
         "screen.height": 1440,
@@ -39,7 +39,7 @@ When you pin a field:
 1. The pinned value is written directly, bypassing the sampler.
 2. **Unpinned children are still sampled from their conditionals** - using the parent's original posterior, not the pinned value.
 
-That last point is the subtle one: pinning breaks the conditional chain. If you pin `gpu.renderer` to an RTX 4090 string but leave `screen` unpinned, the sampler will pick `screen` from the seed-derived tier (which might be `low_end`), producing a physically implausible "RTX 4090 + 1366x768" pairing.
+That last point is the subtle one, and `gpu.*` is the exception to it: a GPU pin selects a whole persona, so the class of the persona you picked conditions the screen, concurrency and storage still being drawn (see the `gpu.*` section below). Where an implausible pairing can still be built is by pinning both halves, because a value you write explicitly is never re-drawn: put a `low_end` persona next to `screen.width: 3840, screen.height: 2160` and you get exactly that, on a tier that draws a 4K screen zero times in 200 seeds.
 
 **Rule of thumb:** pin correlated fields together, or just trust the sampler.
 
@@ -226,7 +226,7 @@ Pin the whole visible tuple - GPU, screen, concurrency, audio:
 ```python
 pin = {
     "gpu.vendor":   "Google Inc. (Intel)",
-    "gpu.renderer": "ANGLE (Intel, Intel(R) Iris(R) Xe Graphics Direct3D11)",
+    "gpu.renderer": "ANGLE (Intel, Intel(R) HD Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)",
     "gpu.class_tier": "mid_range",
     "screen.width":  1920,
     "screen.height": 1080,
