@@ -103,21 +103,40 @@ def test_the_hit_target_check_still_answers(shipped):
 
 # ── the known-bad inputs ────────────────────────────────────────────────────
 #
-# ⛔ Each mutation is SPLICED OUT OF THE FILE'S OWN BYTES, never retyped. The
-# bundle is entirely CRLF in the working tree, and a hand-written multi-line
-# target silently fails to match: the mutation is then never applied, the gate
-# passes, and the report says "this gate does not see this defect" - the worst
-# thing a gate can say about itself, for a reason that lives in the bench.
+# ⛔ Each mutation is SPLICED OUT OF THE FILE'S OWN BYTES, never retyped. A
+# hand-written multi-line target silently fails to match: the mutation is then
+# never applied, the gate passes, and the report says "this gate does not see
+# this defect" - the worst thing a gate can say about itself, for a reason that
+# lives in the bench rather than in the code it judges.
 
-EOL = b"\r\n"
+
+def bundle_eol(data: bytes) -> bytes:
+    """The bundle's own line ending, because it is not the same everywhere.
+
+    ⛔ THIS WAS HARDCODED TO CRLF AND THE LINUX RUNNERS CAUGHT IT on the first
+    push. Windows checks the bundle out with CRLF under core.autocrlf and Linux
+    with LF, so splitting on the wrong one yields a single giant line and every
+    anchor matches nothing. The comment above was right about the class and
+    wrong about the constant: a line ending belongs to the CHECKOUT, not to the
+    file, so it gets read rather than assumed.
+
+    It failed loudly only because `at()` asserts its anchor is unique. A plain
+    replace would have applied nothing and left four mutation tests reporting
+    that the gate is blind.
+    """
+    return b"\r\n" if data.count(b"\r\n") else b"\n"
 
 
 def mutate(tmp_path: pathlib.Path, edit) -> pathlib.Path:
-    lines = BUNDLE.read_bytes().split(EOL)
+    data = BUNDLE.read_bytes()
+    eol = bundle_eol(data)
+    lines = data.split(eol)
+    assert len(lines) > 100, (
+        "the bundle split into %d line(s): the line ending is wrong" % len(lines))
     edit(lines)
     out = tmp_path / "injected.js"
-    out.write_bytes(EOL.join(lines))
-    assert out.read_bytes() != BUNDLE.read_bytes(), "the mutation changed nothing"
+    out.write_bytes(eol.join(lines))
+    assert out.read_bytes() != data, "the mutation changed nothing"
     return out
 
 
@@ -129,6 +148,30 @@ def at(lines: list, needle: bytes) -> int:
 
 CONSTRUCTOR_ANCHOR = b"    this._isUtilityWorld = !!options.isUtilityWorld;"
 CHECK_ANCHOR = b"  checkHitTarget(node, hitPoint) {"
+
+
+def test_a_mutation_lands_whatever_the_checkout_did_to_the_line_endings():
+    """⛔ THE KNOWN-BAD INPUT OF THE BENCH ITSELF, and it comes from a real red.
+
+    The mutations were split on a hardcoded CRLF, which is what Windows checks
+    out and not what Linux does. Every anchor then matched nothing, and four
+    mutation tests failed on the Linux runners only while Windows stayed green -
+    a bench that accuses a healthy gate on half the machines.
+
+    Both spellings are exercised here rather than whichever one this machine
+    happens to produce, because a bench that only ever sees its own platform is
+    how this got shipped in the first place.
+    """
+    flat = BUNDLE.read_bytes().replace(b"\r\n", b"\n")
+    for eol in (b"\r\n", b"\n"):
+        body = eol.join(flat.split(b"\n"))
+        assert bundle_eol(body) == eol, (
+            "the line ending of a %r checkout was read as %r"
+            % (eol, bundle_eol(body)))
+        lines = body.split(bundle_eol(body))
+        assert len(lines) > 100
+        at(lines, CONSTRUCTOR_ANCHOR)
+        at(lines, CHECK_ANCHOR)
 
 
 def test_the_gate_catches_a_listener_planted_in_the_constructor(tmp_path):
