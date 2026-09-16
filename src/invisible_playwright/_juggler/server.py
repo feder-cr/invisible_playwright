@@ -161,42 +161,42 @@ class APIRequestContextDispatcher(RefusingDispatcher):
 #: what the alternative reads like.
 _HANDLE = "<element handle>"
 
-#: How the session's typing seed reaches this server, which otherwise knows no
-#: seed at all. The launcher composes the pref dict in full and `op_launch`
-#: already receives it, so this adds no plumbing; `op_launch` takes the key
-#: back out before writing `user.js`, so it never reaches a profile.
+#: How the session's SEED reaches this server, which otherwise knows no seed at
+#: all. The launcher composes the pref dict in full and `op_launch` already
+#: receives it, so this adds no plumbing; `op_launch` takes the key back out
+#: before writing `user.js`, so it never reaches a profile.
+#:
+#: ⛔ THE SEED CROSSES, NOT A PERSONA, and the second consumer is what settled
+#: it. This carried a ready-made `TypingPersona` while the keyboard was the
+#: only thing that wanted a rhythm. Then the click wanted one too, from a
+#: DIFFERENT persona drawn from the same seed, and a transport carrying one
+#: built object would have had to grow a second field - then a third. What is
+#: actually session-scoped is the seed; a persona is something you build where
+#: you use it.
 #:
 #: ⛔ NOT under `stealthfox.*`. That prefix means "the patched binary reads
-#: this", and a reader who found a typing key there would go looking in C++ for
+#: this", and a reader who found this key there would go looking in C++ for
 #: something answered in Python.
-TYPING_SEED_PREF = "invisible.server.typing_seed"
+SESSION_SEED_PREF = "invisible.server.session_seed"
 
 
-def _typing_persona(seed: Any):
-    """The session's typing hand, or `None` when nobody asked for one.
+def take_session_seed(prefs: Dict) -> tuple:
+    """Split the launch prefs into what the BROWSER gets and the session seed.
 
-    ⛔ A MALFORMED SEED RAISES rather than falling back to no rhythm. Silently
-    typing at pipe speed is precisely the failure this persona exists to
+    ⛔ A FUNCTION RATHER THAN THREE LINES INSIDE `op_launch`, because the thing
+    worth testing is that the key comes OUT: a version that read the seed and
+    forgot to remove it would behave identically in every observable way except
+    for writing a session identifier into the profile, which no test that
+    drives a browser would notice.
+
+    ⛔ A MALFORMED SEED RAISES rather than falling back to no rhythm. Emitting
+    input at pipe speed is precisely the failure these personae exist to
     remove, and a fallback would make it the quiet default whenever the
     launcher sent something unexpected.
     """
-    if seed is None:
-        return None
-    from .._behaviour import TypingPersona
-    return TypingPersona.from_seed(int(seed))
-
-
-def take_typing_persona(prefs: Dict) -> tuple:
-    """Split the launch prefs into what the BROWSER gets and the typing hand.
-
-    ⛔ A FUNCTION RATHER THAN THREE LINES INSIDE `op_launch`, because the thing
-    worth testing is that the key comes OUT: a version that built the persona
-    and forgot to remove the key would behave identically in every way except
-    for writing a session identifier into the profile, which no test that
-    drives a browser would notice.
-    """
     rest = dict(prefs)
-    return rest, _typing_persona(rest.pop(TYPING_SEED_PREF, None))
+    seed = rest.pop(SESSION_SEED_PREF, None)
+    return rest, (None if seed is None else int(seed))
 
 
 def _upload_paths(params: Dict) -> list:
@@ -836,6 +836,12 @@ class FrameDispatcher(Dispatcher):
             # `modifiers=["Shift"]` must reach the page identically.
             "modifiers": mask,
             "clicks": int(params.get("clickCount") or 1),
+            # ⛔ The wait between `mousedown` and `mouseup`, in milliseconds,
+            # which is what Playwright documents `delay` to be for a click. It
+            # was dropped here with the other three, so a press had no duration
+            # at all and the caller had no way to give it one. It reads as an
+            # override of the session's hand, not as the only rhythm available.
+            "delay_ms": params.get("delay"),
         }
 
     def _trial(self, params: Dict) -> bool:
@@ -1582,7 +1588,7 @@ class PageDispatcher(Dispatcher):
         self.injected = InjectedScript(conn, session)
         self.injected.install()
         self.actions = Actions(conn, session, self.lifecycle, self.injected,
-                               typing_persona=context.browser.typing_persona)
+                               session_seed=context.browser.session_seed)
         # ⛔ THE EVENTS THIS PAGE ALREADY MISSED, handed over now that the two
         # things that need them exist. `Page.frameAttached` and the
         # `Runtime.executionContextCreated` pair are sent by the browser BEFORE
@@ -2961,16 +2967,18 @@ class BrowserDispatcher(Dispatcher):
                "newPage": "op_new_page"}
 
     def __init__(self, server, browser_type: "BrowserTypeDispatcher",
-                 conn: Any, version: str, typing_persona: Any = None) -> None:
+                 conn: Any, version: str, session_seed: Any = None) -> None:
         self.conn = conn
         self.browser_type = browser_type
-        #: ⛔ THE SESSION'S TYPING HAND, and the reason it lives on the BROWSER
-        #: rather than on this module: a process can hold two sessions with two
-        #: seeds, and a module-level value would give the second one the
-        #: first's rhythm. That is the shape of defect this whole persona
-        #: exists to remove, so it must not be reintroduced by where it is
-        #: stored. `None` means the caller turned humanising off.
-        self.typing_persona = typing_persona
+        #: ⛔ THE SESSION'S SEED, and the reason it lives on the BROWSER rather
+        #: than on this module: a process can hold two sessions with two seeds,
+        #: and a module-level value would give the second one the first's hand.
+        #: That is the shape of defect the personae exist to remove, so it must
+        #: not be reintroduced by where it is stored.
+        #:
+        #: `None` means the caller turned humanising off, and every rhythm
+        #: downstream reads that as "no rhythm" rather than as a default one.
+        self.session_seed = session_seed
         self._sessions: Dict[str, str] = {}
         self._sessions_ready = threading.Condition()
         # ⛔ THE EVENTS OF A SESSION START BEFORE ANYBODY IS LISTENING, and
@@ -3385,7 +3393,7 @@ class BrowserTypeDispatcher(Dispatcher):
         # means "the patched binary reads this", and a reader who found a
         # typing key under it would go looking in C++ for something that is
         # answered in Python.
-        prefs, typing_persona = take_typing_persona(
+        prefs, session_seed = take_session_seed(
             params.get("firefoxUserPrefs") or {})
         _write_user_js(profile, prefs)
         # ⛔ THE CALLER'S TIMEOUT, not ours. `launch(timeout=)` is a
@@ -3437,7 +3445,7 @@ class BrowserTypeDispatcher(Dispatcher):
             self.server.on_shutdown(lambda: _remove_profile(profile))
         version = _read_version(executable)
         browser = BrowserDispatcher(self.server, self, conn, version,
-                                    typing_persona=typing_persona)
+                                    session_seed=session_seed)
         return {"browser": browser.channel}
 
 

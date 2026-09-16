@@ -91,6 +91,7 @@ __all__ = [
     "PointerPersona",
     "TypingPersona",
     "plan_typing",
+    "plan_click",
     "PlanStats",
     "initial_pointer",
     "landing_point",
@@ -290,6 +291,25 @@ class PointerPersona:
     # negative (100% of movements ending on a control is not a hand), not a
     # measured human rate.
     aimless_rate: float
+    # ⛔ THE THREE BELOW ARE DRAWN LAST, AND THAT IS LOAD BEARING. `from_seed`
+    # draws in order from one stream, so a field inserted ABOVE any existing
+    # one would shift every draw after it and change what every existing seed
+    # produces - silently, for a property this package documents and users rely
+    # on. New fields go at the end. Verified by comparing the other fields
+    # against the previous release for three seeds.
+    #
+    # How long a mouse button stays down for one click.
+    # [judg] informed by the same body of work as the key dwell: a deliberate
+    # click sits around 60-120 ms, and what came out before was the cost of one
+    # protocol round trip.
+    click_dwell_median_ms: float
+    click_dwell_sigma: float
+    # Between the two presses of a double click. [lit] operating systems accept
+    # a double click up to about 500 ms apart and people land well inside that,
+    # around 100-250 ms. Below a few tens of ms is a number no hand produces,
+    # and the pair is still delivered as a `dblclick` because the event is born
+    # from `clickCount`, not from the interval.
+    dblclick_gap_median_ms: float
 
     @classmethod
     def from_seed(cls, seed: int) -> "PointerPersona":
@@ -310,6 +330,10 @@ class PointerPersona:
             pause_sigma=r.uniform(0.75, 1.25),
             overshoot_bias=r.uniform(0.55, 1.45),
             aimless_rate=r.uniform(0.22, 0.48),
+            # ⛔ APPENDED, never inserted: see the note on the fields.
+            click_dwell_median_ms=r.uniform(58.0, 124.0),
+            click_dwell_sigma=r.uniform(0.20, 0.40),
+            dblclick_gap_median_ms=r.uniform(95.0, 215.0),
         )
 
 
@@ -400,6 +424,34 @@ class TypingPersona:
             hesitation_rate=r.uniform(0.02, 0.07),
             hesitation_median_ms=r.uniform(420.0, 1250.0),
         )
+
+
+def plan_click(persona: PointerPersona, clicks: int = 1,
+               nonce: int = 0) -> List[Tuple[float, float]]:
+    """One `(dwell_ms, gap_ms)` per press of a click or a double click.
+
+    `dwell_ms` is how long the button stays down; `gap_ms` is the wait before
+    the NEXT press, and is zero for the last one because the pause after a
+    click belongs to whatever happens next.
+
+    ⛔ SAME SHAPE AS `plan_typing`, AND FOR THE SAME REASON. A press with no
+    duration is a press no hand made, whether it is a finger on a key or a
+    finger on a button: `mouseup.timeStamp - mousedown.timeStamp` came back as
+    the cost of one protocol round trip. The double click had the matching
+    defect one level up - two presses with nothing between them, delivered as a
+    `dblclick` anyway because the event is born from `clickCount` rather than
+    from the interval, so the page saw a double click no operating system would
+    have accepted as one.
+    """
+    r = _rng(persona.seed, "click", nonce)
+    out: List[Tuple[float, float]] = []
+    for i in range(max(1, clicks)):
+        dwell = _log_normal(r, persona.click_dwell_median_ms,
+                            persona.click_dwell_sigma)
+        gap = (0.0 if i == clicks - 1
+               else _log_normal(r, persona.dblclick_gap_median_ms, 0.30))
+        out.append((dwell, gap))
+    return out
 
 
 def plan_typing(text: str, persona: TypingPersona,

@@ -22,7 +22,7 @@ from invisible_core._fpforge import generate_profile
 from invisible_playwright._behaviour import TypingPersona
 from invisible_playwright._cursor import ENGINE_PYTHON
 from invisible_playwright._juggler.server import (
-    TYPING_SEED_PREF, take_typing_persona,
+    SESSION_SEED_PREF, take_session_seed,
 )
 from invisible_playwright._session import build_prefs
 
@@ -31,27 +31,27 @@ def _prefs(**kw):
     base = dict(profile=generate_profile(42, None), locale="en-US",
                 timezone="", extra_prefs=None, headless=False,
                 virtual_display=False, cursor_engine=ENGINE_PYTHON,
-                humanize=True, typing_seed=42)
+                humanize=True, session_seed=42)
     base.update(kw)
     return build_prefs(**base)
 
 
 def test_the_seed_rides_in_the_launch_prefs():
-    assert _prefs()[TYPING_SEED_PREF] == 42
+    assert _prefs()[SESSION_SEED_PREF] == 42
 
 
 def test_turning_humanising_off_sends_no_hand():
     """A caller who asked for a machine gets one. Giving them a hand on the
     keyboard anyway would be a second answer to a question they answered."""
-    assert TYPING_SEED_PREF not in _prefs(humanize=False)
+    assert SESSION_SEED_PREF not in _prefs(humanize=False)
 
 
 def test_the_pref_namespace_is_not_the_binarys():
     """⛔ `stealthfox.*` means "the patched binary reads this". A typing key
     under that prefix would send the next reader into C++ looking for something
     answered in Python."""
-    assert not TYPING_SEED_PREF.startswith("stealthfox.")
-    assert not TYPING_SEED_PREF.startswith("zoom.stealth.")
+    assert not SESSION_SEED_PREF.startswith("stealthfox.")
+    assert not SESSION_SEED_PREF.startswith("zoom.stealth.")
 
 
 def test_the_key_comes_back_out_before_the_profile_is_written():
@@ -60,26 +60,27 @@ def test_the_key_comes_back_out_before_the_profile_is_written():
     except for writing a session identifier into the profile - which no test
     that drives a browser would ever notice.
 
-    To watch it fail, change `rest.pop` to `rest.get` in `take_typing_persona`.
+    To watch it fail, change `rest.pop` to `rest.get` in `take_session_seed`.
     """
-    rest, persona = take_typing_persona({TYPING_SEED_PREF: 42,
-                                         "network.cookie.cookieBehavior": 0})
-    assert TYPING_SEED_PREF not in rest
+    rest, seed = take_session_seed({SESSION_SEED_PREF: 42,
+                                    "network.cookie.cookieBehavior": 0})
+    assert SESSION_SEED_PREF not in rest
     assert rest == {"network.cookie.cookieBehavior": 0}
-    assert isinstance(persona, TypingPersona)
+    assert seed == 42
 
 
 def test_without_the_key_there_is_no_hand_and_nothing_is_lost():
-    rest, persona = take_typing_persona({"network.cookie.cookieBehavior": 0})
-    assert persona is None
+    rest, seed = take_session_seed({"network.cookie.cookieBehavior": 0})
+    assert seed is None
     assert rest == {"network.cookie.cookieBehavior": 0}
 
 
 def test_the_persona_that_arrives_is_the_one_the_seed_names():
     """The two ends have to agree, or the session would type with a hand
     nobody drew."""
-    _, persona = take_typing_persona({TYPING_SEED_PREF: 4242})
-    assert persona == TypingPersona.from_seed(4242)
+    _, seed = take_session_seed({SESSION_SEED_PREF: 4242})
+    assert seed == 4242
+    assert TypingPersona.from_seed(seed) == TypingPersona.from_seed(4242)
 
 
 def test_a_malformed_seed_raises_instead_of_typing_at_pipe_speed():
@@ -88,4 +89,4 @@ def test_a_malformed_seed_raises_instead_of_typing_at_pipe_speed():
     """
     import pytest
     with pytest.raises((ValueError, TypeError)):
-        take_typing_persona({TYPING_SEED_PREF: "not a number"})
+        take_session_seed({SESSION_SEED_PREF: "not a number"})

@@ -27,7 +27,7 @@ from ._cursor import (ENGINE_BINARY,
                       enable_for as _enable_cursor_engine,
                       max_seconds_for as _cursor_max_seconds)
 from ._engine import resolve_executable
-from ._juggler.server import TYPING_SEED_PREF
+from ._juggler.server import SESSION_SEED_PREF
 from typing import Any, Dict, Optional
 
 from invisible_core import compose_session_prefs, make_virtual_display
@@ -212,7 +212,7 @@ def build_prefs(
     cursor_engine: str,
     humanize: Any,
     show_cursor: Optional[bool] = None,
-    typing_seed: Optional[int] = None,
+    session_seed: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Fingerprint prefs plus the humanize toggle, which is always set explicitly.
 
@@ -280,8 +280,8 @@ def build_prefs(
     # It follows `humanize`, like the cursor: a caller who turned human motion
     # off asked for a machine, and giving them a hand on the keyboard anyway
     # would be a second answer to a question they already answered.
-    if typing_seed is not None and humanize:
-        prefs[TYPING_SEED_PREF] = int(typing_seed)
+    if session_seed is not None and humanize:
+        prefs[SESSION_SEED_PREF] = int(session_seed)
     return prefs
 
 
@@ -483,7 +483,7 @@ class CommonLaunch:
             cursor_engine=self._cursor_engine,
             humanize=self._humanize,
             show_cursor=self._show_cursor,
-            typing_seed=self.seed,
+            session_seed=self.seed,
         )
 
     def _arm_cursor_engine(self, owner: Any) -> None:

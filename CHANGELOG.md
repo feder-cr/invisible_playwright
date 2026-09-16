@@ -9,6 +9,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [0.19.0] - 2026-09-16
 
 ### Changed
+- **A click has a duration now, and a double click has an interval.**
+  `mousedown` and `mouseup` used to leave together, so what a page measured as
+  the hold was **8.0 ms** against the 60-120 ms a finger takes; and the two
+  presses of a double click had nothing between them, yet were still delivered
+  as a `dblclick`, because that event is born from `clickCount` rather than from
+  the interval - so a page received a double click no operating system would
+  have accepted as one. Both now come from the session's `PointerPersona`, and
+  `delay=`, which was dropped here along with `button` and `modifiers` before
+  it, works again as the override Playwright documents it to be.
+  `humanize=False` keeps the old behaviour.
+
 - **Typing now takes the time a hand takes, and that is a real slowdown you
   should know about before upgrading.** `page.type`, `locator.press_sequentially`,
   `keyboard.type` and the typing half of `fill` used to emit keys as fast as the
@@ -40,7 +51,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   the only thing that knows what actionable means: the checks run, the hit target
   is verified, and nothing is dispatched. A drag checks both ends.
 
-### Changed
 - **A mis-aimed click is retried instead of blocked, and the injected script
   no longer touches the page's window at all.** The hit-target interceptor
   installed capture listeners there for the duration of every action and

@@ -80,11 +80,29 @@ def _normalize_options(options) -> list:
 
 class Actions:
     def __init__(self, connection, session: str, lifecycle, injected,
-                 typing_persona=None):
+                 session_seed=None):
         self.c = connection
         self.session = session
         self.lifecycle = lifecycle
         self.inj = injected
+        #: ⛔ THE SEED ARRIVES AND THE PERSONAE ARE BUILT HERE, rather than one
+        #: ready-made object arriving per rhythm. Two of them already want the
+        #: same seed - the keyboard and the pointer - and a transport carrying
+        #: built objects would grow a field per rhythm while the thing that is
+        #: actually session-scoped stayed the same one number.
+        #:
+        #: `None` throughout means humanising is off, which has to keep meaning
+        #: what it meant: no rhythm, not a default one.
+        self.session_seed = session_seed
+        self.pointer_persona = None
+        typing_persona = None
+        if session_seed is not None:
+            from .._behaviour import PointerPersona, TypingPersona
+            self.pointer_persona = PointerPersona.from_seed(session_seed)
+            typing_persona = TypingPersona.from_seed(session_seed)
+        #: One stream per Actions, so two clicks in a session do not repeat the
+        #: same durations - the same reason the keyboard keeps one.
+        self._click_nonce = 0
         #: ⛔ A SINGLE keyboard per page, and that's the point: it holds
         #: the state of the modifiers. Building one per action would lose
         #: "Shift is down" between a `down` and the next key, and
@@ -401,7 +419,7 @@ class Actions:
                            frame_id=frame_id, position=position, trial=trial)
 
     def click(self, selector: str, *, timeout: float = 30.0, frame_id: Optional[str] = None, button: int = 0,
-              trial: bool = False,
+              trial: bool = False, delay_ms: Optional[float] = None,
               clicks: int = 1, position=None, modifiers: int = 0, element_id: Optional[str] = None):
         def run(f, element, point):
             def act():
@@ -415,14 +433,14 @@ class Actions:
                 # which no real input device produces.
                 self._mouse_event("mousemove", point, modifiers=modifiers)
                 self._click_at_point(point, button=button, clicks=clicks,
-                                     modifiers=modifiers)
+                                     modifiers=modifiers, delay_ms=delay_ms)
                 return point
             return self._with_hit_target(f, element, point, act)
         return self._retry(selector, run, timeout=timeout, frame_id=frame_id,
                            position=position, element_id=element_id, trial=trial)
 
     def dblclick(self, selector: str, *, timeout: float = 30.0, frame_id: Optional[str] = None,
-                 trial: bool = False,
+                 trial: bool = False, delay_ms: Optional[float] = None,
                  button: int = 0, position=None, modifiers: int = 0):
         """⛔ These are NOT two `click`s in a row: the second one must carry
         `clickCount: 2`, and it's that field - not the interval between the
@@ -438,7 +456,7 @@ class Actions:
         argument was honoured; nothing else did."""
         return self.click(selector, timeout=timeout, button=button,
                           clicks=2, frame_id=frame_id, position=position,
-                          modifiers=modifiers, trial=trial)
+                          modifiers=modifiers, trial=trial, delay_ms=delay_ms)
 
     def check(self, selector: str, *, timeout: float = 30.0, frame_id: Optional[str] = None,
               position=None, element_id: Optional[str] = None,
@@ -698,9 +716,10 @@ class Actions:
                           buttons=0, click_count=clicks)
 
     def click_at(self, x: float, y: float, *, button: int = 0,
-                clicks: int = 1):
+                clicks: int = 1, delay_ms: Optional[float] = None):
         self.move(x, y)
-        self._click_at_point((x, y), button=button, clicks=clicks)
+        self._click_at_point((x, y), button=button, clicks=clicks,
+                             delay_ms=delay_ms)
 
     def wheel(self, dx: float, dy: float) -> None:
         """`mouse.wheel`, from where the pointer IS - not from 0,0."""
@@ -711,7 +730,8 @@ class Actions:
                     session=self.session, timeout=10)
 
     def _click_at_point(self, point, *, button: int = 0,
-                        clicks: int = 1, modifiers: int = 0) -> None:
+                        clicks: int = 1, modifiers: int = 0,
+                        delay_ms: Optional[float] = None) -> None:
         """⛔ `clickCount` GROWS between hits: 1, then 2. It's that field
         that gives birth to `dblclick`, not the interval. And the
         release's `buttons` is zero, because it describes what stays
@@ -723,12 +743,40 @@ class Actions:
         `modifiers=["Shift"]` have to reach the page identically. It used to be
         dropped entirely: `event.shiftKey` came back false on a click the
         caller had explicitly modified, with no error anywhere."""
+        plan = self._click_plan(clicks, delay_ms)
         for n in range(1, clicks + 1):
+            dwell_ms, gap_ms = plan[n - 1]
             self._mouse_event("mousedown", point, button=button,
                               buttons=BUTTON_MASK[button], click_count=n,
                               modifiers=modifiers)
+            if dwell_ms > 0.0:
+                time.sleep(dwell_ms / 1000.0)
             self._mouse_event("mouseup", point, button=button, buttons=0,
                               click_count=n, modifiers=modifiers)
+            if gap_ms > 0.0:
+                time.sleep(gap_ms / 1000.0)
+
+    def _click_plan(self, clicks: int, delay_ms: Optional[float] = None):
+        """How long each press lasts and how long until the next one.
+
+        ⛔ A PRESS WITH NO DURATION IS A PRESS NO HAND MADE. `mousedown` and
+        `mouseup` used to leave together, so what a page measured as the hold
+        was one protocol round trip, and the two presses of a double click had
+        nothing between them either - delivered as a `dblclick` regardless,
+        because that event is born from `clickCount` and not from the interval,
+        so a page saw a double click no operating system would have accepted.
+
+        ⛔ `delay_ms` IS THE CALLER'S OVERRIDE and Playwright documents it in
+        milliseconds - the wait between `mousedown` and `mouseup`. It used to
+        be dropped here, so the only rhythm available was none.
+        """
+        if delay_ms:
+            return [(float(delay_ms), 0.0)] * clicks
+        if self.pointer_persona is None:
+            return [(0.0, 0.0)] * clicks
+        from .._behaviour import plan_click
+        self._click_nonce += 1
+        return plan_click(self.pointer_persona, clicks, nonce=self._click_nonce)
 
     def fill(self, selector: str, text: str, *, timeout: float = 30.0, frame_id: Optional[str] = None, element_id: Optional[str] = None):
         """Writes into a field.
