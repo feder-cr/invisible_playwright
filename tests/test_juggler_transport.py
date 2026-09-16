@@ -280,29 +280,32 @@ def test_the_public_API_WAITS_for_an_element_that_arrives_late(firefox_binary):
 
 
 @pytest.mark.e2e
-def test_the_public_API_navigates_BACK_and_FORWARD_without_node(firefox_binary):
-    """⛔ EXPECTED-RED FOR THREE WEEKS, AND THE REASON GIVEN WAS WRONG.
+def test_history_navigation_REFUSES_and_says_what_it_would_have_broken(
+        firefox_binary):
+    """go_back() and go_forward() are refused, and the half that WORKED is why.
 
-    The marker here said `Page.goBack` answers `{success: true}` and then
-    nothing happens. The engine was never standing still: it goes back in 28
-    milliseconds. What was missing was a road for it to say so.
+    The engine goes back and reports it: that was the whole of [B185] and it
+    shipped in firefox-31. What it does not do is leave this client holding a
+    usable handle for the restored page. Measured on the shipped engine, one
+    step at a time: back once and a locator reads fine; go forward, or go back
+    a second time, and every locator on that page raises "Cannot find object
+    with id" while evaluate() and content() keep answering from the right
+    document. A reload() clears it.
 
-    A `PageTarget`'s channel binds to a content actor only when that actor is
-    CREATED, and binding works by REPLACING that actor's `receiveMessage`. A
-    document restored from the back-forward cache makes an ALREADY created
-    actor current again, so the channel kept pointing at the newer one and
-    every word from the restored document was dropped - including a commit for
-    the very frame the client was tracking. The Node driver failed identically
-    because it is a client too, waiting for events that never arrived, and that
-    control was read as "the engine is broken" when it only said "not the
-    client".
+    That is worse than not having the method. The call succeeds, the URL is
+    right, and the failure arrives later and somewhere else, looking like a
+    broken selector on a page that is fine. So both are refused with a sentence
+    naming what would have happened, and reload(), an ordinary navigation that
+    never restores, is left alone.
 
-    ⛔ AND KEEPING THE CACHE ON IS WHY THIS EXISTED AT ALL. Upstream disables
-    the back-forward cache, so it never needs the bookkeeping; this fork keeps
-    it so that `pageshow`'s `persisted` behaves the way it does for a person,
-    and the other half of that decision was never written. It is now. The
-    `strict=True` marker that used to sit here did its job: the day the engine
-    was fixed it turned red and asked to be deleted.
+    This is not the engine fix being reverted. The bookkeeping stays: a page
+    that navigates its own history with history.back() takes the same road, and
+    without it the client is never told the navigation committed at all. What is
+    withdrawn is the public method, until the restored world is understood, and
+    it is not: announcing it as cleared is what makes the first restore work and
+    what leaves the stale handle, while not announcing it loses the execution
+    context instead. Two complementary failures are a wrong model, not a missing
+    line.
     """
     os.environ[factory.CHOICE_ENV] = factory.JUGGLER
     srv = socketserver.TCPServer(("127.0.0.1", 0), _serve(PAGE))
@@ -316,58 +319,28 @@ def test_the_public_API_navigates_BACK_and_FORWARD_without_node(firefox_binary):
             page.goto(url)
             page.goto(url + "second")
             assert page.title() == "second"
-            # A short timeout on purpose, for the opposite reason it had while
-            # this was expected-red: the defect made the call wait out its
-            # whole deadline, so a generous one would let a regression come
-            # back as a slow pass on a loaded machine instead of a red test.
-            page.go_back(timeout=5000)
-            assert page.title() == "seam"
-            page.go_forward()
+
+            for name, call in (("go_back", page.go_back),
+                               ("go_forward", page.go_forward)):
+                with pytest.raises(Exception) as fallen:
+                    call()
+                said = str(fallen.value)
+                assert "not supported" in said, (name, said)
+                # The refusal has to NAME what would have happened, not just say
+                # no: whoever reads it has to be able to decide what to do
+                # instead.
+                assert "stale handle" in said, (name, said)
+                assert "reload()" in said, (name, said)
+
+            # And the page is still usable. A refusal that left the browser half
+            # way would be the same defect with a politer message: no navigation
+            # started, so the page still reads where it was.
             assert page.title() == "second"
+
+            # reload stays an ordinary navigation, and it is also the remedy the
+            # message points at.
             page.reload()
             assert page.title() == "second"
-    finally:
-        os.environ.pop(factory.CHOICE_ENV, None)
-        srv.shutdown()
-
-
-@pytest.mark.e2e
-def test_going_back_RESTORES_the_document_instead_of_fetching_it_again(
-        firefox_binary):
-    """⛔ THE TEST ABOVE PASSES BOTH WAYS, AND ONLY ONE OF THEM IS RIGHT.
-
-    `go_back()` landing on the right title proves the client learned where the
-    page went. It does NOT prove the page came out of the back-forward cache:
-    turn the cache off and the same assertion passes on a freshly fetched
-    document, with the stealth property this fork exists to keep - `pageshow`
-    reporting `persisted` the way it does for a person - quietly gone.
-
-    So this counts what the SERVER was asked for. A restore makes no request;
-    a reload makes a second one. The two ways of being green stop looking
-    alike.
-    """
-    os.environ[factory.CHOICE_ENV] = factory.JUGGLER
-    asked: list = []
-    srv = socketserver.TCPServer(("127.0.0.1", 0), _serve(PAGE, asked))
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
-    url = "http://127.0.0.1:%d/" % srv.server_address[1]
-    from invisible_playwright import InvisiblePlaywright
-    try:
-        with InvisiblePlaywright(seed=42, binary_path=firefox_binary,
-                                 headless=True) as browser:
-            page = browser.new_page()
-            page.goto(url)
-            page.goto(url + "second")
-            before = [p for p in asked if not p.startswith("/second")
-                      and "favicon" not in p]
-            page.go_back(timeout=5000)
-            assert page.title() == "seam"
-            after = [p for p in asked if not p.startswith("/second")
-                     and "favicon" not in p]
-            assert after == before, (
-                "going back fetched the document again (%r -> %r): it was not "
-                "restored from the back-forward cache, so pageshow.persisted "
-                "is false where a real browser reports true" % (before, after))
     finally:
         os.environ.pop(factory.CHOICE_ENV, None)
         srv.shutdown()

@@ -114,6 +114,9 @@ def test_every_inline_refusal_is_declared_in_the_perimeter():
           "  FIXED_AT_BUILD     decided when the injected script is built\n"
           "  NOT_WIRED_YET      our debt, simply not written\n"
           "  OUTSIDE            a whole feature left out by decision\n"
+          "  WITHDRAWN          written, and taken back: the engine answers,\n"
+          "                     and what it leaves behind is worse than not\n"
+          "                     having the method at all\n"
           "A refusal nobody wrote down is the gap between the README's "
           "'100% compatible' and the code.")
 
@@ -121,8 +124,13 @@ def test_every_inline_refusal_is_declared_in_the_perimeter():
 def test_every_declared_refusal_is_still_refused():
     """The other direction: a name that now works must leave the inventory."""
     _, refusing = _read()
+    # ⛔ `WITHDRAWN` belongs in this direction more than any of the others. The
+    # three above describe things nobody has written; a withdrawn operation IS
+    # written and is being held back by a defect, so the day that defect is
+    # fixed the natural move is to stop refusing and forget the inventory. This
+    # is what asks.
     declared_inline = (perimeter.NO_ENGINE_COMMAND | perimeter.FIXED_AT_BUILD
-                       | perimeter.NOT_WIRED_YET)
+                       | perimeter.NOT_WIRED_YET | perimeter.WITHDRAWN)
     stale = sorted(declared_inline - refusing)
     assert not stale, (
         "these are declared as refusing and no longer do:\n  "

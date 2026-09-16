@@ -2019,11 +2019,49 @@ class PageDispatcher(Dispatcher):
             timeout=(params.get("timeout") or 30000) / 1000.0)
         return {"response": self.navigation_response(navigation)}
 
+    #: What `go_back()` and `go_forward()` say instead of navigating.
+    #:
+    #: ⛔ REFUSED RATHER THAN HALF-WORKING, and the half that worked is why.
+    #: The engine goes back correctly and reports it: that was fixed in
+    #: firefox-31. What is NOT right is the state the client is left holding.
+    #: After a document comes back from the back forward cache, `evaluate()`
+    #: and `content()` answer from the restored document, and LOCATORS fail
+    #: with "Cannot find object with id = ...", because the handle the client
+    #: caches for that world no longer matches what the engine has. A
+    #: `reload()` clears it.
+    #:
+    #: So the method would work for one step and then quietly poison the most
+    #: common thing anyone does next. Measured on the shipped firefox-31: back
+    #: once and a locator reads fine; forward, or back a second time, and every
+    #: locator on that page raises while `evaluate` keeps working. A method
+    #: that is right the first time and wrong afterwards is worse than one that
+    #: says no, because the failure lands somewhere else and looks like a
+    #: broken selector.
+    #:
+    #: The remedy is not here. It is the engine's bookkeeping for a restored
+    #: world, and it is not understood yet: announcing the world as cleared is
+    #: what makes the first restore work and what leaves the stale handle,
+    #: while not announcing it loses the execution context instead. The two
+    #: failures are complementary, which is the shape of a model that is wrong
+    #: rather than a line that is missing.
+    #:
+    #: `reload()` is unaffected and stays: it is an ordinary navigation, it
+    #: never restores, and it is what puts a poisoned page right.
+    _HISTORY_REFUSED = (
+        "%s() is not supported by invisible_playwright. The engine performs "
+        "the navigation, but a document restored from the back forward cache "
+        "leaves this client holding a stale handle for that page's world: "
+        "evaluate() keeps answering while every locator raises \"Cannot find "
+        "object with id\". Refusing is deliberate - a method that works once "
+        "and then breaks the next selector is worse than one that says no. "
+        "To revisit a page, navigate to its URL again; reload() works "
+        "normally and also clears a page already in that state.")
+
     def op_go_back(self, params: Dict) -> Any:
-        return self._history("Page.goBack", params)
+        raise ProtocolException(self._HISTORY_REFUSED % "go_back")
 
     def op_go_forward(self, params: Dict) -> Any:
-        return self._history("Page.goForward", params)
+        raise ProtocolException(self._HISTORY_REFUSED % "go_forward")
 
     def op_reload(self, params: Dict) -> Any:
         return self._history("Page.reload", params)

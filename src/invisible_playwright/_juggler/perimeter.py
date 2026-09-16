@@ -181,9 +181,42 @@ NOT_WIRED_YET = {
     "setExtraHTTPHeaders",
 }
 
+#: Written, wired, and WITHDRAWN: the engine answers, and what it leaves behind
+#: makes the method worse than its absence.
+#:
+#: ⛔ A FIFTH CATEGORY RATHER THAN A WRONG LABEL, and the four that existed are
+#: why. `NO_ENGINE_COMMAND` is false here, the engine has `Page.goBack` and
+#: performs it. `NOT_WIRED_YET` calls itself "our debt, simply not written",
+#: and this is written. `OUTSIDE` says "left out by decision, not by omission"
+#: and drives a sentence claiming the feature was never in scope. Filing these
+#: under any of the three would have made the inventory say something untrue,
+#: and an inventory that lies is worse than one with a gap, because nobody goes
+#: looking behind it.
+#:
+#: `goBack` and `goForward`, since 2026-09-16. The engine restores the document
+#: and reports the navigation - that was [B185], fixed in firefox-31 - but a
+#: restored document leaves the client holding a stale handle for that page's
+#: world: locators raise `Cannot find object with id`, while `evaluate()` and
+#: `content()` keep answering from the right document, and a `reload()` clears
+#: it. Measured one step at a time: back once and a locator reads fine; forward,
+#: or back a second time, and every locator on that page is broken. A method
+#: that is right once and wrong afterwards puts the failure somewhere else,
+#: where it looks like a bad selector on a healthy page.
+#:
+#: The remedy is the engine's bookkeeping for a restored world, and it is not
+#: understood: announcing the world as cleared is what makes the first restore
+#: work AND what leaves the stale handle, while not announcing it loses the
+#: execution context instead. Two complementary failures are a wrong model, not
+#: a missing line, and this set is where that stays visible until it is right.
+WITHDRAWN = {
+    "goBack",
+    "goForward",
+}
+
 #: Everything that answers with a refusal, whatever the reason. `OUTSIDE` is
 #: kept separate because it carries a feature name and drives `refusal()`.
-REFUSED = set(OUTSIDE) | NO_ENGINE_COMMAND | FIXED_AT_BUILD | NOT_WIRED_YET
+REFUSED = (set(OUTSIDE) | NO_ENGINE_COMMAND | FIXED_AT_BUILD | NOT_WIRED_YET
+           | WITHDRAWN)
 
 
 def refusal(operation):

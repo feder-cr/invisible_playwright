@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-09-16
+
+### Removed
+- **`go_back()` and `go_forward()` now refuse.** 0.17.0 made them work for one
+  step, and one step is the problem. The engine restores the document and
+  reports the navigation, but a restored page leaves the driver holding a stale
+  handle for that page's world: go forward, or go back a second time, and every
+  locator raises `Cannot find object with id` while `evaluate()` and
+  `content()` keep answering from the right document. `reload()` clears it.
+  A method that is right once and wrong afterwards puts the failure somewhere
+  else, where it reads as a broken selector on a healthy page, so both refuse
+  with a sentence naming what would have happened. Navigate to the URL instead;
+  `reload()` is unaffected, and a page moving its own history with
+  `history.back()` still restores from the cache.
+
+### Changed
+- The perimeter gained a fifth category, `WITHDRAWN`, for an operation that is
+  written and held back by a defect rather than missing. The four that existed
+  would each have said something untrue about these two, and an inventory that
+  lies is worse than one with a gap.
+- The README stops claiming all methods. It never covered tracing, HAR, CDP or
+  the API request context, and every refusal has said so for a while; the
+  headline had not caught up.
 ## [0.17.0] - 2026-09-16
 
 ### Fixed
