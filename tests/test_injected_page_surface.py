@@ -144,7 +144,7 @@ def mutate(tmp_path: pathlib.Path, edit) -> pathlib.Path:
 
 
 def at(lines: list, needle: bytes) -> int:
-    hits = [i for i, l in enumerate(lines) if l == needle]
+    hits = [i for i, line in enumerate(lines) if line == needle]
     assert len(hits) == 1, "anchor %r matched %d lines" % (needle, len(hits))
     return hits[0]
 

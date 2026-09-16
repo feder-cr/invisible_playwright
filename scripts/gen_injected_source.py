@@ -97,6 +97,16 @@ def main() -> int:
     # MUST contain costs nothing and stops us from shipping the wrong blob.
     EXPECTED = ("InjectedScript", "internal:role", "internal:testid",
                 "_setupHitTargetInterceptors", "createRoleEngine")
+    #
+    # ⛔ `_setupHitTargetInterceptors` IS STILL THE RIGHT FINGERPRINT even
+    # though the shipped `injected.js` no longer has it. This tuple describes the
+    # bundle we EXTRACT FROM, which is upstream's and still carries it; our
+    # removal happens after. Do not delete the name because a grep for removed
+    # symbols lands here.
+    #
+    # What catches a regeneration that quietly brings the mechanism back is
+    # `tests/test_injected_page_surface.py`: constructing the InjectedScript
+    # would touch the page's window again, and the gate goes red.
     missing = [x for x in EXPECTED if x not in source]
     if missing:
         raise SystemExit("the extract does not look like the injected script: "
