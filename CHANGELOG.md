@@ -6,6 +6,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-09-16
+
+### Fixed
+- **An authenticated HTTP or HTTPS proxy routes the page again.** It was
+  accepted and then bypassed, silently, on every engine from firefox-24 to
+  firefox-30: the credentials went to the proxy endpoint, where Gecko
+  implements them for SOCKS only, so the call failed inside the channel filter
+  and the connection went out directly over the host's own address with
+  nothing raised anywhere. SOCKS was unaffected, which is why it lived through
+  seven releases. HTTP proxy auth answers the 407 challenge instead, and that
+  path was already wired. Reported from the outside, not caught here. There is
+  now an end to end test that drives a browser through an authenticated HTTP
+  proxy, on both the launch road and the context road, which is the case
+  nothing covered.
+- **`go_back()` and `go_forward()` report the navigation they performed.** The
+  engine went back all along; Juggler had no bookkeeping for a document
+  restored from the back forward cache, so the client was never told the
+  navigation had committed. The test asserts that going back RESTORES the
+  document rather than fetching it again, because asserting on the URL alone
+  passes against a browser that silently refetches.
+
+### Changed
+- Pinned engine moves to **firefox-31**, via `invisible-core` 31.23.0.
+- The pinning page's worked examples now run as written. Two of them named a
+  GPU the validated pool cannot present and raised when copied.
+- The ledger step realigns this file's heading date to the date the index
+  reports, so a heading typed hours before the upload it describes cannot
+  disagree with the gate that checks it.
 ## [0.16.2] - 2026-09-15
 
 ### Changed
