@@ -6632,9 +6632,6 @@ var InjectedScript = class {
       ["deviceorientationabsolute", "deviceorientation"],
       ["devicemotion", "devicemotion"]
     ]);
-    this._hoverHitTargetInterceptorEvents = /* @__PURE__ */ new Set(["mousemove"]);
-    this._tapHitTargetInterceptorEvents = /* @__PURE__ */ new Set(["pointerdown", "pointerup", "touchstart", "touchend", "touchcancel"]);
-    this._mouseHitTargetInterceptorEvents = /* @__PURE__ */ new Set(["mousedown", "mouseup", "pointerdown", "pointerup", "click", "auxclick", "dblclick", "contextmenu"]);
     this._engines = /* @__PURE__ */ new Map();
     this._engines.set("xpath", XPathEngine);
     this._engines.set("xpath:light", XPathEngine);
@@ -6674,24 +6671,25 @@ var InjectedScript = class {
     this._shouldPrependErrorPrefix = !!options.shouldPrependErrorPrefix;
     this._isUtilityWorld = !!options.isUtilityWorld;
     setGlobalOptions({ browserNameForWorkarounds: options.browserName });
-    // MODIFIED by invisible_playwright: the constructor installs NOTHING on
-    // the page's window any more.
+    // MODIFIED by invisible_playwright: this bundle NEVER touches the page's
+    // window. Not here, and not later.
     //
-    // It used to install two things here, and the earlier fix only moved them
-    // into the utility world. That was not enough, and the measurement is in
-    // tests/gates/injected_page_surface.js: `this.window` in the utility world
-    // IS the page's window, reached through the Xray, so a CALL on it lands on
-    // the page either way. Constructing the script registered THIRTEEN capture
-    // listeners there - twelve hit-target ones plus a `__ctx_ping__` - for the
-    // whole life of the document, and replacing documentElement dispatched a
-    // CustomEvent of that name on the page's window, which a site could listen
-    // for in three lines.
+    // Two installations used to live on this line, and an earlier fix only
+    // moved them into the utility world - which was not enough, because
+    // `this.window` there IS the page's window seen through an Xray, so a CALL
+    // on it lands on the page either way. Constructing the script registered
+    // THIRTEEN capture listeners for the life of the document, and replacing
+    // documentElement dispatched a CustomEvent on the page's window that a
+    // site could listen for in three lines.
     //
-    // The listeners now live exactly as long as the action that needs them:
-    // `setupHitTargetInterceptor` adds them when it arms and removes them when
-    // it stops. That leaves nothing to survive a documentElement replacement,
-    // so the detection that dispatched the ping has no reason to exist and is
-    // gone rather than renamed.
+    // They are gone, not renamed and not narrowed: the hit-target check is a
+    // pure DOM read now (`checkHitTarget`), which the caller runs before the
+    // action and again after. Nothing listens, so nothing has to survive a
+    // documentElement replacement, so the detector that announced itself has
+    // no reason to exist.
+    //
+    // `tests/gates/injected_page_surface.js` measures this: zero touches, in
+    // every phase.
     if (this.isUnderTest)
       this.window.__injectedScript = this;
   }
@@ -7416,54 +7414,25 @@ var InjectedScript = class {
   //     2k. (injected) Event interceptor is removed.
   //     2l. All navigations triggered between 2g-2k are awaited to be either committed or canceled.
   //     2m. If failed, wait for increasing amount of time before the next retry.
-  setupHitTargetInterceptor(node, action, hitPoint, blockAllEvents) {
+  // MODIFIED by invisible_playwright: a pure read. It used to install capture
+  // listeners on the page's window and validate each event AS IT ARRIVED,
+  // blocking the ones that landed elsewhere. Both halves are gone.
+  //
+  // The listeners were the last thing this bundle put on the page, and the
+  // blocking was itself the tell: a REAL mousedown that vanishes under
+  // preventDefault is something no input stack produces, so the defence
+  // announced us exactly when it worked.
+  //
+  // What survives is the hit test, which was never the problem: it only READS
+  // the DOM, and it reads it through the Xray like everything else here. The
+  // caller runs it before the action and again after, so a target that moved
+  // becomes a retry instead of a blocked event.
+  checkHitTarget(node, hitPoint) {
     const element = this.retarget(node, "button-link");
     if (!element || !element.isConnected)
       return "error:notconnected";
-    if (hitPoint) {
-      const preliminaryResult = this.expectHitTarget(hitPoint, element);
-      if (preliminaryResult !== "done")
-        return preliminaryResult.hitTargetDescription;
-    }
-    if (action === "drag")
-      return { stop: () => "done" };
-    const events = {
-      "hover": this._hoverHitTargetInterceptorEvents,
-      "tap": this._tapHitTargetInterceptorEvents,
-      "mouse": this._mouseHitTargetInterceptorEvents
-    }[action];
-    let result;
-    const listener = (event) => {
-      if (!events.has(event.type))
-        return;
-      if (!event.isTrusted && !event.__pwTrustedSynthetic)
-        return;
-      const point = !!this.window.TouchEvent && event instanceof this.window.TouchEvent ? event.touches[0] : event;
-      if (result === void 0 && point)
-        result = this.expectHitTarget({ x: point.clientX, y: point.clientY }, element);
-      if (blockAllEvents || result !== "done" && result !== void 0) {
-        event.preventDefault();
-        event.stopPropagation();
-        event.stopImmediatePropagation();
-      }
-    };
-    // MODIFIED by invisible_playwright: the listeners are added HERE, not in
-    // the constructor, and removed when the action stops. Registering only
-    // `events` rather than every interceptor event changes no behaviour: the
-    // listener above returns immediately for any type outside that set, so the
-    // other registrations were never able to do anything.
-    for (const event of events)
-      this.window.addEventListener(event, listener, { capture: true, passive: false });
-    let stopped = false;
-    const stop = () => {
-      if (!stopped) {
-        stopped = true;
-        for (const event of events)
-          this.window.removeEventListener(event, listener, { capture: true });
-      }
-      return result || "done";
-    };
-    return { stop };
+    const result = this.expectHitTarget(hitPoint, element);
+    return result === "done" ? "done" : result.hitTargetDescription;
   }
   dispatchEvent(node, type, eventInitObj) {
     var _a, _b, _c, _d, _e;

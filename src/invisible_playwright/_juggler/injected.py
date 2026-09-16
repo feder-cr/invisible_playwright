@@ -329,6 +329,40 @@ class InjectedScript:
             " return el.getBoundingClientRect().top !== before; }",
             {"objectId": element}))
 
+    def content_origin(self, frame_id: str) -> dict:
+        """Where this frame's content area starts, in SCREEN css pixels.
+
+        ⛔ IT COMES FROM THE ENGINE, and that is the whole point. The hit
+        point a caller has is in the MAIN frame's space, because that is what
+        `Page.getContentQuads` answers and what `dispatchMouseEvent` wants. To
+        check it inside a nested frame it has to be expressed in THAT frame's
+        space, and the difference between the two origins is exactly the shift.
+        Reading it from `mozInnerScreen*` keeps one source: this project already
+        owns that value in C++ (`StealthDeclaredContentOrigin`), so a second
+        arithmetic here would be the duplicate that rule 16 is about.
+        """
+        return self.evaluate(
+            frame_id,
+            "({x: window.mozInnerScreenX, y: window.mozInnerScreenY})")
+
+    def check_hit_target(self, frame_id: str, element: str, point) -> str:
+        """Does `point` still belong to `element`? `"done"`, or what is there.
+
+        ⛔ A PURE READ, and it replaced an interceptor. The bundle used to
+        install capture listeners on the page's window and validate each event
+        as it ARRIVED, blocking the ones that landed elsewhere. That was the
+        last thing this package put on the page, and the blocking was itself a
+        tell: a real `mousedown` that disappears under `preventDefault` is not
+        something an input stack produces.
+
+        The caller runs this BEFORE the action and again AFTER, which turns a
+        target that moved into a retry instead of into a blocked event.
+        """
+        return self.call(
+            frame_id,
+            "(injected, el, x, y) => injected.checkHitTarget(el, {x, y})",
+            {"objectId": element}, float(point[0]), float(point[1]))
+
     def element_states(self, frame_id: str, element: str,
                        states: list) -> dict:
         """Asks the injected script whether the element is actionable.

@@ -258,106 +258,60 @@ class Actions:
             time.sleep(0.05)
 
     # ── the hit target ──────────────────────────────────────────────────────
-    def _with_hit_target(self, f, element, point, kind, act):
-        """Acts ONLY if the event truly lands on the intended element.
+    def _hit_point(self, f, point):
+        """The caller's point, expressed in `f`'s own coordinate space.
 
-        ⛔ This is NOT one more check before acting: it's an interceptor
-        installed FOR THE WHOLE DURATION of the action. The difference
-        matters, because a check beforehand leaves open exactly the window
-        this closes - the page can move between the check and the event.
-        Here the listener watches the event WHILE it arrives, and if the
-        point doesn't belong to the intended element it BLOCKS it and says
-        so.
+        ⛔ A POINT IS ALWAYS IN THE MAIN FRAME'S SPACE when it gets here:
+        `Page.getContentQuads` answers there and `dispatchMouseEvent` wants it
+        there. Handing that number to a hit test running INSIDE a nested frame
+        asks the child about a coordinate that means something else, and it
+        answers `<html>` - which is how a covered element used to be reported
+        for something sitting right under the pointer.
 
-        It's the driver's own mechanism (`setupHitTargetInterceptor`), and
-        the listeners that serve it are added when it ARMS and removed when
-        it STOPS, so the page's window carries them only while an action is
-        in flight.
-
-        They used to be installed once at construction and kept for the life
-        of the document. That permanence is what forced the bundle to watch
-        for a documentElement replacement and to announce itself with a
-        CustomEvent on the page's window to learn whether they had survived:
-        a probe a site could listen for. `tests/gates/injected_page_surface.js`
-        measures that constructing the script now touches the page's window
-        zero times.
+        The shift is the difference between the two content origins, read from
+        the engine rather than recomputed here.
         """
-        # ⛔ THE PRELIMINARY POINT ONLY IN THE MAIN FRAME, and the reason is a
-        # coordinate space, not a preference. `Page.getContentQuads` answers in
-        # the MAIN frame's space - `getBoxQuads({relativeTo: mainFrame})`, read
-        # in `PageAgent.js` - which is exactly what `dispatchMouseEvent` wants.
-        # But the interceptor runs inside the TARGET frame's document, and its
-        # preliminary `expectHitTarget(hitPoint, el)` calls `elementFromPoint`
-        # THERE. Handing it a main-frame point inside a nested iframe asks the
-        # child about a coordinate that means something else, and it answers
-        # `<html>` - measured as `the event would have landed elsewhere` on an
-        # element that was sitting right under the pointer.
-        #
-        # Passing null skips only the check BEFORE the event. The listener
-        # still validates each event as it arrives, using the event's OWN
-        # clientX/clientY, which are already in the right document. The
-        # guarantee is unchanged; a covered element in a child frame is caught
-        # at dispatch time instead of a moment earlier.
-        in_main = f == self.lifecycle.main_frame
-        h = self.inj.call(
-            f,
-            "(injected, el, a, p) => {"
-            "  const r = injected.setupHitTargetInterceptor(el, a, p, false);"
-            "  return typeof r === 'string' ? {error: r} : {stop: r.stop}; }",
-            {"objectId": element}, kind,
-            {"x": point[0], "y": point[1]} if in_main else None,
-            by_value=False)
-        # ⛔ THE DISARM IS IN THE `finally`, AND THAT IS THE POINT OF IT.
-        # `stop()` does two things at once: it reads the verdict AND removes
-        # the listeners the interceptor put on the page's window. Leaving it
-        # on the success path only, which is where it used to be, meant that
-        # an action that RAISED left the interceptor armed - and an armed
-        # interceptor whose `result` is not "done" calls preventDefault and
-        # stopImmediatePropagation on the real events that follow it. A click
-        # that timed out could go on eating a person's next one.
-        #
-        # The verdict still has to be read on the success path, because
-        # `done != "done"` is itself a failure. Hence the flag, rather than a
-        # second round trip on the path that already worked.
-        stopped = False
-        try:
-            failure = self.inj.call(f, "(injected, h) => h.error || ''",
-                                    {"objectId": h})
-            if failure:
-                raise WrongHitTarget(failure)
-            result = act()
-            done = self._stop_hit_target(f, h)
-            stopped = True
-            if done != "done":
-                raise WrongHitTarget(done)
-            return result
-        finally:
-            if not stopped:
-                # ⛔ Best effort, and ONLY here: an exception is already on
-                # its way up, and the ordinary reason this call fails is that
-                # the document that held the listeners is gone, in which case
-                # they went with it. Letting it raise would replace the error
-                # the caller actually needs to read.
-                try:
-                    self._stop_hit_target(f, h)
-                except Exception:
-                    pass
-            self.inj.dispose(f, h)
+        if f == self.lifecycle.main_frame:
+            return point
+        main = self.inj.content_origin(self.lifecycle.main_frame)
+        here = self.inj.content_origin(f)
+        return (point[0] + main["x"] - here["x"],
+                point[1] + main["y"] - here["y"])
 
-    def _stop_hit_target(self, f, h) -> str:
-        """Disarm the interceptor and report what it saw.
+    def _with_hit_target(self, f, element, point, act):
+        """Acts only if the point belongs to the intended element, and says so
+        again afterwards.
 
-        ⛔ `stop()` returns `"done"` OR an object describing what was
-        actually hit. Reading it as a boolean would always say yes, which is
-        the same defect as `elementState`.
+        ⛔ IT USED TO BE AN INTERCEPTOR, and the difference is the point of
+        this function. An interceptor watched the event WHILE it arrived and
+        BLOCKED it when the point had stopped belonging to the element. That
+        closed the race between the check and the event - and it cost two things
+        that were worse than the race.
 
-        It is idempotent on the JavaScript side, so calling it twice removes
-        the listeners once and answers the same thing again.
+        It needed capture listeners on the PAGE's window for the duration of
+        every action, the last thing this package left there. And the block
+        itself was the tell: a real `mousedown` that vanishes under
+        `preventDefault` is not something any input stack produces, so the
+        defence announced us exactly when it worked.
+
+        Two pure reads instead. The one BEFORE refuses to act on a point that
+        has already stopped belonging to the element; the one AFTER catches the
+        target that moved in between and turns it into a retry. What a page sees
+        in that case is a click that landed where the thing it was aimed at used
+        to be, which is what a hand produces when a layout shifts under it.
+
+        Measured by `tests/gates/injected_page_surface.js`: the bundle now
+        touches the page's window zero times, in every phase.
         """
-        return self.inj.call(
-            f, "(injected, h) => { const r = h.stop ? h.stop() : 'done';"
-               " return typeof r === 'string' ? r : JSON.stringify(r); }",
-            {"objectId": h})
+        here = self._hit_point(f, point)
+        before = self.inj.check_hit_target(f, element, here)
+        if before != "done":
+            raise WrongHitTarget(before)
+        result = act()
+        after = self.inj.check_hit_target(f, element, here)
+        if after != "done":
+            raise WrongHitTarget(after)
+        return result
 
     # ── waiting ─────────────────────────────────────────────────────────────
     def wait_for_selector(self, selector: str, *, state: str = "visible",
@@ -411,7 +365,7 @@ class Actions:
               position=None, element_id: Optional[str] = None):
         def run(f, element, point):
             return self._with_hit_target(
-                f, element, point, "hover",
+                f, element, point,
                 lambda: self._mouse_event("mousemove", point) or point)
         return self._retry(selector, run, timeout=timeout, element_id=element_id,
                            frame_id=frame_id, position=position)
@@ -432,7 +386,7 @@ class Actions:
                 self._click_at_point(point, button=button, clicks=clicks,
                                      modifiers=modifiers)
                 return point
-            return self._with_hit_target(f, element, point, "mouse", act)
+            return self._with_hit_target(f, element, point, act)
         return self._retry(selector, run, timeout=timeout, frame_id=frame_id,
                            position=position, element_id=element_id)
 
@@ -488,7 +442,7 @@ class Actions:
             # directly and failed on the very page that shifts its layout
             # at 1200 ms. One single place knows how to click; two know it
             # only until one of them learns something the other doesn't.
-            self._with_hit_target(f, element, point, "mouse", act)
+            self._with_hit_target(f, element, point, act)
             if not self.inj.element_state(f, element, state):
                 raise EvaluationError(
                     "clicked but the box stayed %s: someone intercepted "

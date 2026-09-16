@@ -57,6 +57,12 @@ function makeNode(name) {
     querySelectorAll() { return []; },
     attachShadow() { return makeNode('shadow-root'); },
     get shadowRoot() { return null; },
+    // The hit test walks up to the enclosing root and asks it what is at the
+    // point. Without these the phase raises, which the gate reports rather than
+    // reading as a clean run.
+    getRootNode() { return rawDoc; },
+    assignedSlot: null,
+    attributes: [],
   };
   return node;
 }
@@ -74,6 +80,8 @@ const rawDoc = {
   querySelector: () => null,
   querySelectorAll: () => [],
   elementFromPoint: () => null,
+  elementsFromPoint: () => [],
+  getRootNode() { return rawDoc; },
   addEventListener: (type) => record('document.addEventListener', { type }),
   removeEventListener: (type) => record('document.removeEventListener', { type }),
   dispatchEvent: (e) => { record('document.dispatchEvent', { type: e && e.type }); return true; },
@@ -246,20 +254,15 @@ phase('construction', () => {
   injected = new (exported.InjectedScript())(win, OPTIONS);
 });
 
-// One arm per action kind: the point is not only that the listeners come and
-// go, but that an action registers ONLY the types it can be interrupted by.
-for (const kind of ['hover', 'tap', 'mouse']) {
-  let handle = null;
-  phase('arm:' + kind, () => {
-    if (!injected) throw new Error('no injected script to arm');
-    const r = injected.setupHitTargetInterceptor(makeNode('button'), kind, null, false);
-    if (typeof r === 'string') throw new Error('interceptor refused: ' + r);
-    handle = r;
-  });
-  phase('stop:' + kind, () => {
-    if (handle) handle.stop();
-  });
-}
+// The hit-target check is the operation that used to install the listeners.
+// It is a pure read now, so it must touch the page exactly as much as the
+// constructor does: not at all.
+phase('check_hit_target', () => {
+  if (!injected) throw new Error('no injected script to check with');
+  const verdict = injected.checkHitTarget(makeNode('button'), { x: 10, y: 10 });
+  if (typeof verdict !== 'string')
+    throw new Error('the check did not answer with a verdict: ' + verdict);
+});
 
 phase('page_replaces_documentElement', () => {
   replaceDocumentElement();
