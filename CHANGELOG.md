@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-09-16
+
+### Added
+- **A gate on what the injected script leaves on the page's NODES.** The half of
+  this class that concerned the page's `window` was closed in 0.19.0; this is
+  the other verb. `computeAriaRef` writes `element._ariaRef` while building the
+  accessibility tree, reachable only through `mode="ai"`, and the question
+  underneath had never been answered: does an assignment made through an Xray
+  stay in the sandbox, or reach the page's node?
+
+  Measured against a page served from `127.0.0.1` that watches its own elements:
+  it stays. With `mode="ai"` the snapshot comes back carrying refs and the
+  sandbox sees the expando, while the page sees nothing at all. Nothing was
+  broken and nothing needed fixing - but the day that confinement stops holding,
+  every interactable element would carry a property any page can enumerate, and
+  nothing would have said so. The test drives the writing branch deliberately
+  and fails if it ever stops being reached, so it cannot go quietly green.
+
 ## [0.19.0] - 2026-09-16
 
 ### Changed
