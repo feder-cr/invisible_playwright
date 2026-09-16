@@ -450,22 +450,26 @@ class ElementHandleDispatcher(Dispatcher):
 
     def op_click(self, params: Dict) -> Any:
         self.frame.actions.click(_HANDLE, position=self.frame._position(params),
+                                 trial=self.frame._trial(params),
                                  **self.frame._pointer(params),
                                  **self._act_args(params))
         return None
 
     def op_hover(self, params: Dict) -> Any:
         self.frame.actions.hover(_HANDLE, position=self.frame._position(params),
+                                 trial=self.frame._trial(params),
                                  **self._act_args(params))
         return None
 
     def op_check(self, params: Dict) -> Any:
         self.frame.actions.check(_HANDLE, position=self.frame._position(params),
+                                 trial=self.frame._trial(params),
                                  **self._act_args(params))
         return None
 
     def op_uncheck(self, params: Dict) -> Any:
         self.frame.actions.uncheck(_HANDLE, position=self.frame._position(params),
+                                   trial=self.frame._trial(params),
                                    **self._act_args(params))
         return None
 
@@ -797,6 +801,18 @@ class FrameDispatcher(Dispatcher):
             "clicks": int(params.get("clickCount") or 1),
         }
 
+    def _trial(self, params: Dict) -> bool:
+        """⛔ ONE PLACE KNOWS THE NAME OF THIS PARAMETER, and that is the point
+        of a helper this small. `trial` reaches seven operations, and seven
+        copies of `params.get("trial")` is how the eighth gets written without
+        one - which is exactly how it came to be accepted on 31 public
+        signatures and read by nobody, so `click(trial=True)` clicked.
+
+        What it MEANS lives in `Actions._retry`, the only thing that knows what
+        actionable is. This just carries it across the wire.
+        """
+        return bool(params.get("trial"))
+
     def _position(self, params: Dict):
         """The caller's offset inside the element, or None.
 
@@ -813,7 +829,7 @@ class FrameDispatcher(Dispatcher):
     def op_click(self, params: Dict) -> Any:
         frame_id, selector = self.enter_frames(params["selector"])
         self.actions.click(selector, timeout=self._timeout(params),
-                                frame_id=frame_id,
+                                frame_id=frame_id, trial=self._trial(params),
                                 position=self._position(params),
                                 **self._pointer(params))
         return None
@@ -824,14 +840,14 @@ class FrameDispatcher(Dispatcher):
         # dblclick sets its own clickCount; the caller's is not a second one.
         pointer.pop("clicks", None)
         self.actions.dblclick(selector, timeout=self._timeout(params),
-                                   frame_id=frame_id,
+                                   frame_id=frame_id, trial=self._trial(params),
                                    position=self._position(params), **pointer)
         return None
 
     def op_hover(self, params: Dict) -> Any:
         frame_id, selector = self.enter_frames(params["selector"])
         self.actions.hover(selector, timeout=self._timeout(params),
-                                frame_id=frame_id,
+                                frame_id=frame_id, trial=self._trial(params),
                                 position=self._position(params))
         return None
 
@@ -844,14 +860,14 @@ class FrameDispatcher(Dispatcher):
     def op_check(self, params: Dict) -> Any:
         frame_id, selector = self.enter_frames(params["selector"])
         self.actions.check(selector, timeout=self._timeout(params),
-                                frame_id=frame_id,
+                                frame_id=frame_id, trial=self._trial(params),
                                 position=self._position(params))
         return None
 
     def op_uncheck(self, params: Dict) -> Any:
         frame_id, selector = self.enter_frames(params["selector"])
         self.actions.uncheck(selector, timeout=self._timeout(params),
-                                  frame_id=frame_id,
+                                  frame_id=frame_id, trial=self._trial(params),
                                   position=self._position(params))
         return None
 
@@ -905,7 +921,7 @@ class FrameDispatcher(Dispatcher):
     def op_tap(self, params: Dict) -> Any:
         frame_id, selector = self.enter_frames(params["selector"])
         self.actions.tap(selector, timeout=self._timeout(params),
-                              frame_id=frame_id,
+                              frame_id=frame_id, trial=self._trial(params),
                               position=self._position(params))
         return None
 
@@ -926,7 +942,8 @@ class FrameDispatcher(Dispatcher):
 
     def op_drag_and_drop(self, params: Dict) -> Any:
         self.actions.drag_and_drop(params["source"], params["target"],
-                                        timeout=self._timeout(params))
+                                        timeout=self._timeout(params),
+                                        trial=self._trial(params))
         return None
 
     def op_set_content(self, params: Dict) -> Any:

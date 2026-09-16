@@ -156,7 +156,8 @@ class Actions:
     # ── the loop ────────────────────────────────────────────────────────────
     def _retry(self, selector: str, run, *, states=None,
                timeout: float = 30.0, frame_id: Optional[str] = None,
-               position=None, element_id: Optional[str] = None):
+               position=None, element_id: Optional[str] = None,
+               trial: bool = False):
         """Resolve, check, act, and if something doesn't match, START OVER.
 
         ⛔ `position` travels HERE and not through each action, because the
@@ -228,6 +229,33 @@ class Actions:
                         point = self._center_point(f, element, position)
                     if point is None:
                         reason = "the element has no quad (it isn't visible)"
+                    elif trial:
+                        # ⛔ TRIAL STOPS HERE, AND HERE IS THE ONLY PLACE IT CAN.
+                        #
+                        # It used to stop nowhere. The public API accepts it on
+                        # 31 signatures and `_juggler/` never mentioned it, so
+                        # `click(trial=True)` performed a real click. The only
+                        # reader was the cursor wrapper, which took it as a
+                        # reason to skip the approach and then ran the action
+                        # anyway: the worst of the three possible behaviours,
+                        # because the click went out in the most recognisable
+                        # form there is, with no pointer movement before it.
+                        #
+                        # This loop is where it belongs. `trial` is a statement
+                        # ABOUT ACTIONABILITY - run the checks, skip the act -
+                        # and this loop is the only thing that knows what
+                        # actionable means. Honouring it inside each action
+                        # would be the same sentence written six times, and the
+                        # seventh action would be written without it.
+                        #
+                        # The hit target is checked too: a trial that answers
+                        # yes, followed by a click that lands elsewhere, has
+                        # told the caller nothing. It costs one pure read.
+                        verdict = self.inj.check_hit_target(
+                            f, element, self._hit_point(f, point))
+                        if verdict != "done":
+                            raise WrongHitTarget(verdict)
+                        return None
                     else:
                         return run(f, element, point)
             except EvaluationError as e:
@@ -362,15 +390,17 @@ class Actions:
 
     # ── the actions ─────────────────────────────────────────────────────────
     def hover(self, selector: str, *, timeout: float = 30.0, frame_id: Optional[str] = None,
-              position=None, element_id: Optional[str] = None):
+              position=None, element_id: Optional[str] = None,
+              trial: bool = False):
         def run(f, element, point):
             return self._with_hit_target(
                 f, element, point,
                 lambda: self._mouse_event("mousemove", point) or point)
         return self._retry(selector, run, timeout=timeout, element_id=element_id,
-                           frame_id=frame_id, position=position)
+                           frame_id=frame_id, position=position, trial=trial)
 
     def click(self, selector: str, *, timeout: float = 30.0, frame_id: Optional[str] = None, button: int = 0,
+              trial: bool = False,
               clicks: int = 1, position=None, modifiers: int = 0, element_id: Optional[str] = None):
         def run(f, element, point):
             def act():
@@ -388,9 +418,10 @@ class Actions:
                 return point
             return self._with_hit_target(f, element, point, act)
         return self._retry(selector, run, timeout=timeout, frame_id=frame_id,
-                           position=position, element_id=element_id)
+                           position=position, element_id=element_id, trial=trial)
 
     def dblclick(self, selector: str, *, timeout: float = 30.0, frame_id: Optional[str] = None,
+                 trial: bool = False,
                  button: int = 0, position=None, modifiers: int = 0):
         """⛔ These are NOT two `click`s in a row: the second one must carry
         `clickCount: 2`, and it's that field - not the interval between the
@@ -406,19 +437,22 @@ class Actions:
         argument was honoured; nothing else did."""
         return self.click(selector, timeout=timeout, button=button,
                           clicks=2, frame_id=frame_id, position=position,
-                          modifiers=modifiers)
+                          modifiers=modifiers, trial=trial)
 
     def check(self, selector: str, *, timeout: float = 30.0, frame_id: Optional[str] = None,
-              position=None, element_id: Optional[str] = None):
+              position=None, element_id: Optional[str] = None,
+              trial: bool = False):
         return self._set_checked(selector, True, timeout=timeout, element_id=element_id,
-                                 frame_id=frame_id, position=position)
+                                 frame_id=frame_id, position=position, trial=trial)
 
     def uncheck(self, selector: str, *, timeout: float = 30.0, frame_id: Optional[str] = None,
-                position=None, element_id: Optional[str] = None):
+                position=None, element_id: Optional[str] = None,
+                trial: bool = False):
         return self._set_checked(selector, False, timeout=timeout, element_id=element_id,
-                                 frame_id=frame_id, position=position)
+                                 frame_id=frame_id, position=position, trial=trial)
 
     def _set_checked(self, selector: str, wanted: bool, *, timeout: float,
+                     trial: bool = False,
                      frame_id: Optional[str] = None, position=None, element_id: Optional[str] = None):
         """`check` / `uncheck`.
 
@@ -450,7 +484,7 @@ class Actions:
                     % ("unchecked" if wanted else "checked"))
             return state
         return self._retry(selector, run, timeout=timeout, element_id=element_id,
-                           frame_id=frame_id, position=position)
+                           frame_id=frame_id, position=position, trial=trial)
 
     def focus(self, selector: str, *, timeout: float = 30.0, frame_id: Optional[str] = None, element_id: Optional[str] = None):
         """⛔ Does NOT require `visible`: `focus()` works on an off-screen
@@ -583,7 +617,7 @@ class Actions:
                            frame_id=frame_id, element_id=element_id)
 
     def tap(self, selector: str, *, timeout: float = 30.0, frame_id: Optional[str] = None,
-            position=None):
+            position=None, trial: bool = False):
         """`tap`. ⛔ Requires the context to have touch TURNED ON: without
         it, the event fires and the page has no `ontouchstart`, so it
         doesn't listen for it - it succeeds and does nothing. Touch is
@@ -596,11 +630,12 @@ class Actions:
                         session=self.session, timeout=10)
             return point
         return self._retry(selector, run, timeout=timeout,
-                           frame_id=frame_id, position=position)
+                           frame_id=frame_id, position=position, trial=trial)
 
     def drag_and_drop(self, source: str, target: str, *,
                       timeout: float = 30.0,
-                      frame_id: Optional[str] = None):
+                      frame_id: Optional[str] = None,
+                      trial: bool = False):
         """`drag_and_drop`, in four beats.
 
         ⛔ THE FIRST `mousemove` AFTER THE `mousedown` IS NOT SKIPPED.
@@ -610,6 +645,18 @@ class Actions:
         own retry loop, because taking the second point before pressing
         the first would measure it on a page that is about to change.
         """
+        if trial:
+            # ⛔ BOTH ENDS, AND NOT ONE EVENT. A drag that only checked the
+            # source would answer half the question, and the half it skipped is
+            # the one that fails: a target covered by an overlay is the ordinary
+            # reason a drag does not land. Resolved in order, because resolving
+            # the target first would measure it on a page the press is about to
+            # change - the same reason the real path resolves them separately.
+            self._retry(source, lambda f, el, p: p, timeout=timeout,
+                        frame_id=frame_id, trial=True)
+            self._retry(target, lambda f, el, p: p, timeout=timeout,
+                        frame_id=frame_id, trial=True)
+            return None
         start = self._retry(source, lambda f, el, p: p, timeout=timeout, frame_id=frame_id)
         self._mouse_event("mousemove", start)
         self._mouse_event("mousedown", start, buttons=BUTTON_MASK[0],

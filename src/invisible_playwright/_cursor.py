@@ -1239,6 +1239,13 @@ async def _approach(frame: Any, args: Sequence[Any], kwargs: dict,
     """
     # A trial run performs the actionability checks without touching anything,
     # so it must not move a real cursor either.
+    #
+    # ⛔ AND THIS IS NOT WHERE `trial` IS HONOURED, which matters because for a
+    # long time it was the only place that read the word at all. The action
+    # itself ran regardless, so skipping the approach here made the outcome
+    # WORSE: the click still went out, now with no pointer movement in front of
+    # it. It is honoured in `Actions._retry`, where actionability lives; this
+    # line only keeps the cursor still while that happens.
     if kwargs.get("trial"):
         return None
     page = _page_of_frame(frame)

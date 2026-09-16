@@ -8,6 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [0.19.0] - 2026-09-16
 
+### Fixed
+- **`trial=True` no longer performs the action.** It is accepted on 31 public
+  signatures - click, dblclick, hover, tap, check, uncheck, set_checked and drag
+  across `Page`, `Frame`, `Locator` and `ElementHandle` - and the word appeared
+  nowhere in the engine client, so it reached the wire and fell off it: a call
+  whose whole purpose was not to click clicked. The single place that did read it
+  made the outcome worse rather than better, skipping the humanised pointer
+  approach and then running the action anyway, so the click went out in the most
+  recognisable shape a click has. It is honoured now in the retry loop, which is
+  the only thing that knows what actionable means: the checks run, the hit target
+  is verified, and nothing is dispatched. A drag checks both ends.
+
 ### Changed
 - **A mis-aimed click is retried instead of blocked, and the injected script
   no longer touches the page's window at all.** The hit-target interceptor
