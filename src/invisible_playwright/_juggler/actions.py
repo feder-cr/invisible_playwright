@@ -269,11 +269,18 @@ class Actions:
         point doesn't belong to the intended element it BLOCKS it and says
         so.
 
-        It's the driver's own mechanism (`setupHitTargetInterceptor`), so
-        it adds no new surface: the listeners that serve it are already
-        installed, **in the utility world** after the fix in
-        `31-client-fork.md` §3.9. In the page world they would be
-        countable.
+        It's the driver's own mechanism (`setupHitTargetInterceptor`), and
+        the listeners that serve it are added when it ARMS and removed when
+        it STOPS, so the page's window carries them only while an action is
+        in flight.
+
+        They used to be installed once at construction and kept for the life
+        of the document. That permanence is what forced the bundle to watch
+        for a documentElement replacement and to announce itself with a
+        CustomEvent on the page's window to learn whether they had survived:
+        a probe a site could listen for. `tests/gates/injected_page_surface.js`
+        measures that constructing the script now touches the page's window
+        zero times.
         """
         # ⛔ THE PRELIMINARY POINT ONLY IN THE MAIN FRAME, and the reason is a
         # coordinate space, not a preference. `Page.getContentQuads` answers in
@@ -300,24 +307,57 @@ class Actions:
             {"objectId": element}, kind,
             {"x": point[0], "y": point[1]} if in_main else None,
             by_value=False)
+        # ⛔ THE DISARM IS IN THE `finally`, AND THAT IS THE POINT OF IT.
+        # `stop()` does two things at once: it reads the verdict AND removes
+        # the listeners the interceptor put on the page's window. Leaving it
+        # on the success path only, which is where it used to be, meant that
+        # an action that RAISED left the interceptor armed - and an armed
+        # interceptor whose `result` is not "done" calls preventDefault and
+        # stopImmediatePropagation on the real events that follow it. A click
+        # that timed out could go on eating a person's next one.
+        #
+        # The verdict still has to be read on the success path, because
+        # `done != "done"` is itself a failure. Hence the flag, rather than a
+        # second round trip on the path that already worked.
+        stopped = False
         try:
             failure = self.inj.call(f, "(injected, h) => h.error || ''",
                                     {"objectId": h})
             if failure:
                 raise WrongHitTarget(failure)
             result = act()
-            # ⛔ `stop()` returns `"done"` OR an object describing what was
-            # actually hit. Reading it as a boolean would always say yes,
-            # which is the same defect as `elementState`.
-            done = self.inj.call(
-                f, "(injected, h) => { const r = h.stop ? h.stop() : 'done';"
-                   " return typeof r === 'string' ? r : JSON.stringify(r); }",
-                {"objectId": h})
+            done = self._stop_hit_target(f, h)
+            stopped = True
             if done != "done":
                 raise WrongHitTarget(done)
             return result
         finally:
+            if not stopped:
+                # ⛔ Best effort, and ONLY here: an exception is already on
+                # its way up, and the ordinary reason this call fails is that
+                # the document that held the listeners is gone, in which case
+                # they went with it. Letting it raise would replace the error
+                # the caller actually needs to read.
+                try:
+                    self._stop_hit_target(f, h)
+                except Exception:
+                    pass
             self.inj.dispose(f, h)
+
+    def _stop_hit_target(self, f, h) -> str:
+        """Disarm the interceptor and report what it saw.
+
+        ⛔ `stop()` returns `"done"` OR an object describing what was
+        actually hit. Reading it as a boolean would always say yes, which is
+        the same defect as `elementState`.
+
+        It is idempotent on the JavaScript side, so calling it twice removes
+        the listeners once and answers the same thing again.
+        """
+        return self.inj.call(
+            f, "(injected, h) => { const r = h.stop ? h.stop() : 'done';"
+               " return typeof r === 'string' ? r : JSON.stringify(r); }",
+            {"objectId": h})
 
     # ── waiting ─────────────────────────────────────────────────────────────
     def wait_for_selector(self, selector: str, *, state: str = "visible",

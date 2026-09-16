@@ -103,10 +103,23 @@ def test_the_injected_script_is_OURS_not_upstreams():
 
 
 def test_the_options_declare_the_utility_world_and_NOT_underTest():
-    """The two lines that keep the tells out: `isUtilityWorld` true (or
-    the constructor installs 13 listeners on the page's
-    addEventListener) and `isUnderTest` false (or it plants an
-    ENUMERABLE window.builtins)."""
+    """Both options are still required, but for the reasons that survived
+    measurement.
+
+    ⛔ THIS DOCSTRING USED TO CLAIM THAT `isUtilityWorld` TRUE KEPT 13
+    LISTENERS OFF THE PAGE. It did not. `this.window` in the utility world is
+    the page's window seen through an Xray, so the constructor's calls landed
+    on the page in either world; the flag only decided whether they happened
+    once or once per InjectedScript. The listeners are gone now, installed by
+    the action that needs them and removed when it stops, and
+    `tests/test_injected_page_surface.py` measures that rather than asserting
+    it here.
+
+    What each option is still worth: `isUnderTest` false, or the constructor
+    plants an ENUMERABLE `window.__injectedScript` on the page; and
+    `isUtilityWorld` true, which is simply the truth about where this runs
+    and which the bundle reads for its own behaviour.
+    """
     source = pathlib.Path(ini.__file__).read_text(encoding="utf-8")
     assert '"isUtilityWorld": True' in source
     assert '"isUnderTest": False' in source
