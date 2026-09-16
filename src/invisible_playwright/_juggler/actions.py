@@ -29,6 +29,7 @@ from __future__ import annotations
 import time
 from typing import Optional
 
+from .. import _pacing
 from .injected import EvaluationError
 from .keyboard import BUTTON_MASK, Keyboard, UnknownKey
 
@@ -80,7 +81,7 @@ def _normalize_options(options) -> list:
 
 class Actions:
     def __init__(self, connection, session: str, lifecycle, injected,
-                 session_seed=None):
+                 session_seed=None, motion_budget_s=None):
         self.c = connection
         self.session = session
         self.lifecycle = lifecycle
@@ -96,10 +97,25 @@ class Actions:
         self.session_seed = session_seed
         self.pointer_persona = None
         typing_persona = None
+        #: ⛔ THE ONE POINTER PATH THE CLIENT CANNOT DRAW. The client's cursor
+        #: wrapper does "approach THEN act", which is every action except the
+        #: drag: there the movement IS the action, it happens with the button
+        #: already down, and the far end is only resolved after the press. So
+        #: this side needs a generator of its own - the same generator, on its
+        #: own stream, because two streams that produced the same path would be
+        #: a repetition a page can read.
+        self.motion = None
+        self.motion_budget_s = motion_budget_s
         if session_seed is not None:
-            from .._behaviour import PointerPersona, TypingPersona
+            from .._behaviour import PointerPersona, TypingPersona, _sub_seed
             self.pointer_persona = PointerPersona.from_seed(session_seed)
             typing_persona = TypingPersona.from_seed(session_seed)
+            try:
+                from .._motion import CursorMotion
+            except Exception:  # noqa: BLE001 - see `_cursor`: motion is optional
+                CursorMotion = None  # type: ignore[assignment]
+            if CursorMotion is not None:
+                self.motion = CursorMotion(_sub_seed(session_seed, "server:drag"))
         #: One stream per Actions, so two clicks in a session do not repeat the
         #: same durations - the same reason the keyboard keeps one.
         self._click_nonce = 0
@@ -113,25 +129,36 @@ class Actions:
         self.position = (0.0, 0.0)
 
     # ── geometry ────────────────────────────────────────────────────────────
-    def _in_viewport(self, point) -> bool:
-        """Is this main-frame point somewhere an event can actually land?
+    def _viewport(self):
+        """The main frame's viewport, or ``(None, None)`` when it cannot be read.
 
         ⛔ Asked of the PAGE, not of a stored viewport size. The window can be
         resized, and a value cached at launch is a second source for a fact the
         page already knows.
+
+        ⛔ And ONE reader for two callers, since 2026-09-16. `_in_viewport`
+        asked this question already; the drag's path needs the same answer to
+        keep its waypoints somewhere an event can land. Asking twice in two
+        shapes is how the two would come to disagree.
         """
         try:
             size = self.inj.evaluate(
                 self.lifecycle.main_frame,
                 "({w: window.innerWidth, h: window.innerHeight})")
         except Exception:
-            # ⛔ Unknown is not "outside": answering False here would scroll
-            # on every action the moment this probe broke.
-            return True
+            return None, None
         if not isinstance(size, dict):
+            return None, None
+        return size.get("w"), size.get("h")
+
+    def _in_viewport(self, point) -> bool:
+        """Is this main-frame point somewhere an event can actually land?"""
+        w, h = self._viewport()
+        # ⛔ Unknown is not "outside": answering False here would scroll on
+        # every action the moment this probe broke.
+        if w is None or h is None:
             return True
-        return (0 <= point[0] <= size.get("w", 0)
-                and 0 <= point[1] <= size.get("h", 0))
+        return 0 <= point[0] <= w and 0 <= point[1] <= h
 
     def _center_point(self, frame_id: str, element: str, position=None):
         """Where the event lands: the quad's centre, or the caller's offset.
@@ -651,6 +678,50 @@ class Actions:
         return self._retry(selector, run, timeout=timeout,
                            frame_id=frame_id, position=position, trial=trial)
 
+    def _glide(self, to_point, *, buttons: int = 0) -> int:
+        """Move the pointer to *to_point* along a path a hand could have drawn.
+
+        ⛔ WHY THIS EXISTS ON THIS SIDE AT ALL. Every other pointer action is
+        approached by the client's cursor wrapper, which walks the cursor onto
+        the element BEFORE calling the action. A drag cannot be served that way:
+        the travel happens with the button already down, and its far end is only
+        known after the press. So the movement is generated here - from the same
+        generator (`_motion.CursorMotion`) and delivered under the same
+        discipline (`_pacing`) as every movement the client makes. Neither is
+        reimplemented here; a second copy of either is the defect this replaced.
+
+        Returns the number of events actually delivered. Falls back to a single
+        event when there is no generator (`humanize=False`, or a broken
+        install), which is what "no humanising" has always meant here.
+        """
+        if self.motion is None:
+            self._mouse_event("mousemove", to_point, buttons=buttons)
+            return 1
+        x0, y0 = self.position
+        # ⛔ `path[1:]`: a path INCLUDES where it starts, and the pointer is
+        # already there. Sending it would report a move to the point the last
+        # event already reported - two identical events in a row, which is the
+        # very pair this replaced. The client's walk drops it for the same
+        # reason; found here by the browser arm, because in isolation there is
+        # no preceding event for it to duplicate.
+        path = self.motion.path(x0, y0, to_point[0], to_point[1])[1:]
+        # ⛔ A curved path near an edge leaves the viewport on its own, and a
+        # pointer event outside it is not ignored - the browser parks the cursor
+        # at the origin, mid-movement. The destination is emitted unclamped: it
+        # is where the movement has to end.
+        w, h = self._viewport()
+        evs = [_pacing.Ev(wp.t_ms, *_pacing.clamp_to_viewport(wp.x, wp.y, w, h))
+               for wp in path[:-1]]
+        evs.append(_pacing.Ev(path[-1].t_ms, to_point[0], to_point[1]))
+        if self.motion_budget_s:
+            evs = _pacing.fit_timeline(evs, self.motion_budget_s)
+        if not evs:  # a generator that produced nothing must still arrive
+            self._mouse_event("mousemove", to_point, buttons=buttons)
+            return 1
+        return _pacing.drive(
+            evs, lambda x, y: self._mouse_event("mousemove", (x, y),
+                                                buttons=buttons))
+
     def drag_and_drop(self, source: str, target: str, *,
                       timeout: float = 30.0,
                       frame_id: Optional[str] = None,
@@ -663,6 +734,15 @@ class Actions:
         clicks. And the two ends are resolved SEPARATELY, each with its
         own retry loop, because taking the second point before pressing
         the first would measure it on a page that is about to change.
+
+        ⛔ AND THE TRAVEL IS A PATH, NOT A JUMP - which is a correctness fix as
+        well as a stealth one. Measured 2026-09-16 on a page whose source was
+        `draggable`: this used to emit five events in all, of which the two
+        carrying the whole 480-pixel journey were IDENTICAL and 7 ms apart - a
+        pair no device can produce, since a move event is born from moving. The
+        second was there because one jump alone did not reliably start the drag.
+        With a real path it is not needed: the drag is born at the first point
+        that clears Gecko's threshold, the way it is for a hand.
         """
         if trial:
             # ⛔ BOTH ENDS, AND NOT ONE EVENT. A drag that only checked the
@@ -677,16 +757,15 @@ class Actions:
                         frame_id=frame_id, trial=True)
             return None
         start = self._retry(source, lambda f, el, p: p, timeout=timeout, frame_id=frame_id)
-        self._mouse_event("mousemove", start)
+        # The approach is a path too: the cursor was somewhere before this call,
+        # and arriving at the source in one event is the same tell as crossing
+        # the page in one.
+        self._glide(start)
         self._mouse_event("mousedown", start, buttons=BUTTON_MASK[0],
                           click_count=1)
 
         def run(f, element, point):
-            # Two movements: one gives birth to the drag, the second one
-            # carries it onto the target. With only one, Gecko sometimes
-            # doesn't start it.
-            self._mouse_event("mousemove", point, buttons=BUTTON_MASK[0])
-            self._mouse_event("mousemove", point, buttons=BUTTON_MASK[0])
+            self._glide(point, buttons=BUTTON_MASK[0])
             self._mouse_event("mouseup", point, buttons=0, click_count=1)
             return point
         try:

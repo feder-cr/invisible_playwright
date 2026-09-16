@@ -117,14 +117,18 @@ import asyncio
 import inspect
 import os
 import random
-import sys
 import time
 import warnings
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 from weakref import WeakKeyDictionary
 
-from . import _behaviour
+from . import _behaviour, _pacing
+from ._pacing import (
+    DONE, SLEEP, Ev as _Ev, clamp_to_viewport as _clamp,
+    fine_timer as _fine_timer,
+    fit_timeline as _fit_timeline,
+)
 
 # The escape hatch. ``INVPW_CURSOR_ENGINE`` picks who generates the motion:
 #   "python"  (default) - this module, seeded from the session seed
@@ -241,11 +245,10 @@ else:
 #: physical fact is the shape this project keeps finding, and the looser one
 #: silently won wherever it happened to be applied last.
 #:
-#: The fallback is only reached when _motion failed to import, in which case
-#: the session is already falling back to the browser's own expansion; keeping
-#: a floor here rather than None means _fit_timeline still refuses to emit a
-#: rate no device produces.
-MIN_EVENT_INTERVAL_MS = float(getattr(_motion_mod, "SAMPLE_FLOOR_MS", 8.0))     if _motion_mod is not None else 8.0
+#: It moved into _pacing on 2026-09-16, with the discipline that reads it, so
+#: the server's drag obeys the same floor as the client's cursor. Re-exported
+#: here because it is part of this module's published surface.
+MIN_EVENT_INTERVAL_MS = _pacing.MIN_EVENT_INTERVAL_MS
 
 
 _MOTION_FACTORY_NAMES = ("CursorMotion", "MotionProfile", "new_motion")
@@ -355,66 +358,6 @@ class _RealTimer:
 
 
 _TIMER: Any = _RealTimer()
-
-# Windows quantises a waited-on timer to the system tick, which is 15.6 ms by
-# default: a 12 ms sleep comes back at 16.7 ms (measured, p50), and there is no
-# scheduling policy that can recover a resolution the platform will not give.
-# Asking for a 1 ms period brings the same sleep back at 12.5 ms. It is
-# reference-counted by the OS and released as soon as the movement is over, and
-# it is the difference between dispatching the plan and dispatching a rounded
-# copy of it - which matters here because per-seed differentiation is carried
-# largely by timing.
-TIMER_ENV = "INVPW_CURSOR_TIMER"
-
-_timer_period_depth = 0
-_winmm: Any = None
-_winmm_tried = False
-
-
-def _timer_resolution_available() -> Any:
-    global _winmm, _winmm_tried
-    if _winmm_tried:
-        return _winmm
-    _winmm_tried = True
-    if (os.environ.get(TIMER_ENV) or "").strip().lower() in ("off", "0", "false"):
-        return None
-    if not sys.platform.startswith("win"):
-        return None
-    try:
-        import ctypes
-
-        _winmm = ctypes.WinDLL("winmm")  # type: ignore[attr-defined]
-    except (OSError, ImportError):  # no winmm is simply a coarser clock
-        _winmm = None
-    return _winmm
-
-
-class _fine_timer:
-    """Raise the system timer resolution for the length of one burst."""
-
-    def __enter__(self) -> "_fine_timer":
-        global _timer_period_depth
-        dll = _timer_resolution_available()
-        if dll is not None:
-            if _timer_period_depth == 0:
-                try:
-                    dll.timeBeginPeriod(1)
-                except (OSError, AttributeError):
-                    return self
-            _timer_period_depth += 1
-        return self
-
-    def __exit__(self, *exc: Any) -> None:
-        global _timer_period_depth
-        if _timer_period_depth <= 0:
-            return
-        _timer_period_depth -= 1
-        if _timer_period_depth == 0 and _winmm is not None:
-            try:
-                _winmm.timeEndPeriod(1)
-            except (OSError, AttributeError):
-                pass
-
 
 # ── per-page seeding ────────────────────────────────────────────────────────
 
@@ -574,28 +517,6 @@ class _PageCursor:
 # stretch. Per-seed differentiation is carried largely by timing, so that
 # stretch was quietly deleting the thing the seeding is for.
 
-class _Ev:
-    """One dispatchable instant."""
-
-    __slots__ = ("t_ms", "x", "y", "kind", "dx", "dy")
-
-    def __init__(self, t_ms: float, x: float, y: float, kind: str = "move",
-                 dx: float = 0.0, dy: float = 0.0) -> None:
-        self.t_ms = float(t_ms)
-        self.x = float(x)
-        self.y = float(y)
-        self.kind = kind
-        self.dx = float(dx)
-        self.dy = float(dy)
-
-    @property
-    def is_wheel(self) -> bool:
-        return self.kind == "wheel"
-
-    def __repr__(self) -> str:  # pragma: no cover - debugging aid
-        return "_Ev(%.1f, %.1f, %.1f, %s)" % (self.t_ms, self.x, self.y, self.kind)
-
-
 def _timeline(steps: Iterable[Any]) -> List[_Ev]:
     """Turn a ``_behaviour`` Step list (relative delays) into absolute times."""
     out: List[_Ev] = []
@@ -606,57 +527,6 @@ def _timeline(steps: Iterable[Any]) -> List[_Ev]:
             continue
         out.append(_Ev(t, s.x, s.y, "wheel" if s.kind == "wheel" else "move",
                        getattr(s, "dx", 0.0), getattr(s, "dy", 0.0)))
-    return out
-
-
-def _fit_timeline(evs: List[_Ev], budget_s: float) -> List[_Ev]:
-    """Fit a timeline inside ``budget_s`` and inside what hardware can report.
-
-    Two rules, in this order:
-
-    * if the plan is longer than the budget, every timestamp is scaled - the
-      same movement performed faster, not a movement that stops half way;
-    * events closer together than :data:`MIN_EVENT_INTERVAL_MS` are then
-      DROPPED, not squeezed. Scaling alone is what produced impossible event
-      rates: the waypoint count never changed, so a tighter cap simply meant
-      more events per second, without limit. The last event of the timeline
-      and every wheel notch survive regardless - the first is where the
-      movement has to end, the second carries a delta that would be lost.
-    """
-    if not evs:
-        return []
-    total = evs[-1].t_ms
-    if budget_s > 0 and total > budget_s * 1000.0:
-        scale = (budget_s * 1000.0) / total
-        for ev in evs:
-            ev.t_ms *= scale
-    out: List[_Ev] = []
-    last_t = -MIN_EVENT_INTERVAL_MS
-    for i, ev in enumerate(evs):
-        if out and not ev.is_wheel and not out[-1].is_wheel \
-                and ev.t_ms == out[-1].t_ms:
-            # Two positions at one instant are one sample, and the sample a
-            # device reports is the newest one it has.
-            out[-1] = ev
-            continue
-        is_last = i == len(evs) - 1
-        keep = (
-            ev.is_wheel
-            or is_last
-            or ev.t_ms - last_t >= MIN_EVENT_INTERVAL_MS
-        )
-        if not keep:
-            continue
-        if is_last and out and not ev.is_wheel and not out[-1].is_wheel                 and ev.t_ms - last_t < MIN_EVENT_INTERVAL_MS:
-            # The destination must be dispatched, so its PREDECESSOR goes
-            # instead. Keeping both unconditionally is what let this function
-            # emit a gap under its own floor - measured at 1.83 ms, 547 Hz,
-            # with a tight time cap. A movement that stops one sample short of
-            # where it was asked to go is a worse defect than one sample fewer.
-            out.pop()
-            last_t = out[-1].t_ms if out else -MIN_EVENT_INTERVAL_MS
-        out.append(ev)
-        last_t = ev.t_ms
     return out
 
 
@@ -718,63 +588,35 @@ async def _dispatch(
     timer: Any = None,
     emit_last: bool = True,
 ) -> int:
-    """Walk a timeline against ABSOLUTE deadlines. Returns events delivered.
+    """The ASYNCHRONOUS driver of :class:`._pacing.Pacer`. Returns events sent.
 
-    Every deadline is measured from one ``t0``, so oversleeping on one event
-    does not push the next one out: lateness cannot accumulate.
-
-    When the platform cannot deliver an event on time - Windows quantises a
-    short sleep to the system timer, so a 12 ms request routinely returns after
-    16 - the event is DROPPED rather than sent late. The rule is
-    parameter-free: an event is skipped when the NEXT event is already due,
-    because sending it then would be sending two events at one instant and
-    would push the whole rest of the movement backwards. What survives is a
-    stream whose timestamps still land where the plan put them, at whatever
-    density the machine can actually produce.
-
-    The last event is never dropped (it is where the movement ends) and neither
-    is a wheel notch (it carries a delta nobody else will send).
+    The rules it obeys - absolute deadlines from one ``t0``, drop rather than
+    send late, never two events in one instant - are not written here: they are
+    in :mod:`._pacing`, because the server's drag is synchronous and has to obey
+    the same ones. This function supplies a clock and a way of waiting; it makes
+    no decision the pacer has not already made.
     """
     tm = timer if timer is not None else _TIMER
     if not evs:
         return 0
-    min_gap = MIN_EVENT_INTERVAL_MS / 1000.0
-    delivered = 0
-    n = len(evs)
+    pacer = _pacing.Pacer(evs, emit_last=emit_last)
     with _fine_timer():
-        t0 = tm.now()
-        last_emit: Optional[float] = None
-        for i, ev in enumerate(evs):
-            last = i == n - 1
-            droppable = not last and not ev.is_wheel
-            deadline = t0 + ev.t_ms / 1000.0
-            wait = deadline - tm.now()
-            if wait > 0:
-                await tm.sleep(wait)
-            elif droppable and i + 1 < n:
-                if tm.now() >= t0 + evs[i + 1].t_ms / 1000.0:
-                    continue  # superseded: the next point is already due
-            # Catching up after an overslept deadline must not produce two
-            # events in the same instant: that is an event rate no device
-            # reports, and it is as visible as being late was.
-            if last_emit is not None:
-                behind = min_gap - (tm.now() - last_emit)
-                if behind > 0:
-                    if droppable:
-                        continue
-                    await tm.sleep(behind)
-            if last and not emit_last:
+        while True:
+            what, arg = pacer.step(tm.now())
+            if what == DONE:
                 break
-            if ev.is_wheel:
-                if emit_wheel is not None:
-                    await emit_wheel(ev.dx, ev.dy)
-                    delivered += 1
-                    last_emit = tm.now()
+            if what == SLEEP:
+                await tm.sleep(arg)
                 continue
-            await emit_move(ev.x, ev.y)
-            delivered += 1
-            last_emit = tm.now()
-    return delivered
+            if arg.is_wheel:
+                if emit_wheel is None:
+                    pacer.dropped()  # nothing here can carry a notch
+                    continue
+                await emit_wheel(arg.dx, arg.dy)
+            else:
+                await emit_move(arg.x, arg.y)
+            pacer.emitted(tm.now())
+    return pacer.delivered
 
 
 # ── registry ────────────────────────────────────────────────────────────────
@@ -888,13 +730,6 @@ def _inside(x: float, y: float, w: Optional[float], h: Optional[float]) -> bool:
     return 0.0 <= x < float(w) and 0.0 <= y < float(h)
 
 
-def _clamp(x: float, y: float, w: Optional[float], h: Optional[float]) -> Tuple[float, float]:
-    if not w or not h:
-        return x, y
-    return (
-        min(max(x, 0.0), float(w) - 1.0),
-        min(max(y, 0.0), float(h) - 1.0),
-    )
 
 
 # The errors a page can legitimately produce while we are only *aiming*: the

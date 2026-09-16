@@ -179,24 +179,38 @@ _HANDLE = "<element handle>"
 #: something answered in Python.
 SESSION_SEED_PREF = "invisible.server.session_seed"
 
+#: The motion-duration cap `humanize=<seconds>` implies, in MILLISECONDS.
+#:
+#: ⛔ IT TRAVELS RATHER THAN BEING RE-DERIVED HERE, and in milliseconds because
+#: Gecko has no float pref type - `1.0` written as a number arrives with the
+#: right value and the wrong type. The cap is decided once, by
+#: `_cursor.max_seconds_for`, from the caller's `humanize=`; the server applying
+#: a cap of its own would be a second answer to a question the caller answered,
+#: and would show up as a drag that ignores a budget every click obeys.
+MOTION_BUDGET_PREF = "invisible.server.motion_budget_ms"
 
-def take_session_seed(prefs: Dict) -> tuple:
-    """Split the launch prefs into what the BROWSER gets and the session seed.
+
+def take_session_motion(prefs: Dict) -> tuple:
+    """Split the launch prefs into what the BROWSER gets and what the SESSION
+    keeps: the seed of its rhythms, and the budget one movement may spend.
 
     ⛔ A FUNCTION RATHER THAN THREE LINES INSIDE `op_launch`, because the thing
-    worth testing is that the key comes OUT: a version that read the seed and
-    forgot to remove it would behave identically in every observable way except
-    for writing a session identifier into the profile, which no test that
-    drives a browser would notice.
+    worth testing is that the keys come OUT: a version that read them and forgot
+    to remove them would behave identically in every observable way except for
+    writing a session identifier into the profile, which no test that drives a
+    browser would notice.
 
-    ⛔ A MALFORMED SEED RAISES rather than falling back to no rhythm. Emitting
+    ⛔ A MALFORMED VALUE RAISES rather than falling back to no rhythm. Emitting
     input at pipe speed is precisely the failure these personae exist to
     remove, and a fallback would make it the quiet default whenever the
     launcher sent something unexpected.
     """
     rest = dict(prefs)
     seed = rest.pop(SESSION_SEED_PREF, None)
-    return rest, (None if seed is None else int(seed))
+    budget_ms = rest.pop(MOTION_BUDGET_PREF, None)
+    return (rest,
+            (None if seed is None else int(seed)),
+            (None if budget_ms is None else int(budget_ms) / 1000.0))
 
 
 def _upload_paths(params: Dict) -> list:
@@ -1140,11 +1154,18 @@ class FrameDispatcher(Dispatcher):
         from `Page.dispatchMouseEvent`, which synthesises the drag from real
         pointer movement and builds its own data.
 
-        So `drag_and_drop()` works, because that is a pointer gesture; `drop()`
-        with a payload cannot be expressed. Faking it by dispatching an
-        untrusted `drop` event from the injected script would produce
-        `isTrusted: false` on a form that saw trusted events for everything
-        else - which is the mixture [B175] exists about.
+        `drop()` with a payload therefore cannot be expressed. Faking it by
+        dispatching an untrusted `drop` event from the injected script would
+        produce `isTrusted: false` on a form that saw trusted events for
+        everything else - which is the mixture [B175] exists about.
+
+        ⛔ AND THIS USED TO SAY "so `drag_and_drop()` works, because that is a
+        pointer gesture". It does not, and nothing checked: measured 2026-09-16,
+        a drag onto a target that accepts the drop delivers no `dragenter`, no
+        `dragover` and no `drop`, so the payload never arrives. The gesture
+        moves the pointer correctly and transfers nothing. [B212] holds the
+        measurement and where the cause is; the sentence is gone because a
+        claim no gate can fail is how it survived.
         """
         raise ProtocolException(
             "drop() with an explicit data payload has no engine command: "
@@ -1588,7 +1609,8 @@ class PageDispatcher(Dispatcher):
         self.injected = InjectedScript(conn, session)
         self.injected.install()
         self.actions = Actions(conn, session, self.lifecycle, self.injected,
-                               session_seed=context.browser.session_seed)
+                               session_seed=context.browser.session_seed,
+                               motion_budget_s=context.browser.motion_budget_s)
         # ⛔ THE EVENTS THIS PAGE ALREADY MISSED, handed over now that the two
         # things that need them exist. `Page.frameAttached` and the
         # `Runtime.executionContextCreated` pair are sent by the browser BEFORE
@@ -2967,7 +2989,8 @@ class BrowserDispatcher(Dispatcher):
                "newPage": "op_new_page"}
 
     def __init__(self, server, browser_type: "BrowserTypeDispatcher",
-                 conn: Any, version: str, session_seed: Any = None) -> None:
+                 conn: Any, version: str, session_seed: Any = None,
+                 motion_budget_s: Any = None) -> None:
         self.conn = conn
         self.browser_type = browser_type
         #: ⛔ THE SESSION'S SEED, and the reason it lives on the BROWSER rather
@@ -2979,6 +3002,7 @@ class BrowserDispatcher(Dispatcher):
         #: `None` means the caller turned humanising off, and every rhythm
         #: downstream reads that as "no rhythm" rather than as a default one.
         self.session_seed = session_seed
+        self.motion_budget_s = motion_budget_s
         self._sessions: Dict[str, str] = {}
         self._sessions_ready = threading.Condition()
         # ⛔ THE EVENTS OF A SESSION START BEFORE ANYBODY IS LISTENING, and
@@ -3393,7 +3417,7 @@ class BrowserTypeDispatcher(Dispatcher):
         # means "the patched binary reads this", and a reader who found a
         # typing key under it would go looking in C++ for something that is
         # answered in Python.
-        prefs, session_seed = take_session_seed(
+        prefs, session_seed, motion_budget_s = take_session_motion(
             params.get("firefoxUserPrefs") or {})
         _write_user_js(profile, prefs)
         # ⛔ THE CALLER'S TIMEOUT, not ours. `launch(timeout=)` is a
@@ -3445,7 +3469,8 @@ class BrowserTypeDispatcher(Dispatcher):
             self.server.on_shutdown(lambda: _remove_profile(profile))
         version = _read_version(executable)
         browser = BrowserDispatcher(self.server, self, conn, version,
-                                    session_seed=session_seed)
+                                    session_seed=session_seed,
+                                    motion_budget_s=motion_budget_s)
         return {"browser": browser.channel}
 
 

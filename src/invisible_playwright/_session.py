@@ -27,7 +27,7 @@ from ._cursor import (ENGINE_BINARY,
                       enable_for as _enable_cursor_engine,
                       max_seconds_for as _cursor_max_seconds)
 from ._engine import resolve_executable
-from ._juggler.server import SESSION_SEED_PREF
+from ._juggler.server import MOTION_BUDGET_PREF, SESSION_SEED_PREF
 from typing import Any, Dict, Optional
 
 from invisible_core import compose_session_prefs, make_virtual_display
@@ -280,8 +280,24 @@ def build_prefs(
     # It follows `humanize`, like the cursor: a caller who turned human motion
     # off asked for a machine, and giving them a hand on the keyboard anyway
     # would be a second answer to a question they already answered.
+    # ⛔ AND THE MOTION BUDGET RIDES WITH IT, under exactly the same condition,
+    # for the one pointer movement the client cannot wrap: the travel of a drag,
+    # which happens with the button already down and whose far end is only
+    # resolved after the press. That movement is generated inside the server,
+    # so without this the caller's `humanize=<n>` would cap every click and be
+    # ignored by every drag.
+    #
+    # The condition is shared and not merely similar: the server draws a path
+    # only when it has the seed, so a budget without one would cap a movement
+    # nobody is making.
+    #
+    # Milliseconds, and an int: Gecko has no float pref type, and `1.0` written
+    # as a number arrives with the right value and the wrong type - the defect
+    # `ui.textScaleFactor` had.
     if session_seed is not None and humanize:
         prefs[SESSION_SEED_PREF] = int(session_seed)
+        prefs[MOTION_BUDGET_PREF] = int(round(
+            _cursor_max_seconds(humanize) * 1000.0))
     return prefs
 
 

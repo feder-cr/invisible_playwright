@@ -33,7 +33,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   Same seed still types the same way. `humanize=False` keeps the old speed, and
   the `delay=` you pass still wins over the persona for that call.
 
+- **A drag travels now, instead of arriving.** The whole of `drag_and_drop` was
+  five events, and the two carrying the journey were identical and 7 ms apart -
+  a pair no device can report, since a move event is born from moving. They were
+  deliberate: one jump alone did not reliably start the drag. Measured on a
+  480-pixel drag, that journey now takes 27 events over 26 distinct points, on a
+  path drawn by the same generator and delivered under the same pacing rules as
+  every other pointer movement this package makes. The approach to the source is
+  a path too. `humanize=False` keeps a single event, and `humanize=<seconds>`
+  now caps this movement as it already capped every other one.
+
 ### Fixed
+- **`drag_and_drop` raised on a `draggable` element, and left the mouse button
+  down.** Gecko started a native drag session off that single 480-pixel jump,
+  `dispatchDragEvent` then failed with `NS_ERROR_FAILURE`, and the `mouseup`
+  never went out - so the `buttons` field of every event after it said
+  "pressed", including the recovery `mouseup` in the error path, which failed
+  the same way. The whole of HTML5 drag and drop was therefore unusable and
+  nothing said so, because there was no end-to-end test of a drag at all. With a
+  real path the drag is born the way it is for a hand and the gesture completes.
+  It is the same change as the entry above: one absence, three symptoms.
 - **`delay=` on typing was measured in milliseconds and slept in seconds.** The
   public API documents it in milliseconds; the one server path that forwarded it
   handed the number straight to `time.sleep`, so
