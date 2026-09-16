@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-09-16
+
+### Changed
+- **A mis-aimed click is retried instead of blocked, and the injected script
+  no longer touches the page's window at all.** The hit-target interceptor
+  installed capture listeners there for the duration of every action and
+  called `preventDefault` on the events that landed on the wrong element.
+  Both halves are gone. The listeners were the last thing this package left
+  on the page, and the blocking was the worse half: a real `mousedown` that
+  disappears is not something an input stack produces, so the defence
+  announced itself exactly when it worked. The check is now a pure DOM read
+  run before the action and again after it, so a target that moves is caught
+  and the action retried. What a page sees is a click that landed where the
+  thing it was aimed at used to be, which is what a hand produces when a
+  layout shifts. The guarantee narrows in one case: an element that moves
+  between the check and the event now receives that one event before the
+  retry, where before it received none.
+
 ## [0.18.0] - 2026-09-16
 
 ### Removed
