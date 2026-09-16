@@ -89,6 +89,8 @@ from typing import Any, Callable, Iterable, List, Optional, Sequence, Tuple
 __all__ = [
     "Step",
     "PointerPersona",
+    "TypingPersona",
+    "plan_typing",
     "PlanStats",
     "initial_pointer",
     "landing_point",
@@ -145,6 +147,19 @@ def _rng(seed: int, tag: str, nonce: int = 0) -> random.Random:
 
 def _clamp(v: float, lo: float, hi: float) -> float:
     return lo if v < lo else (hi if v > hi else v)
+
+
+def _log_normal(rng: random.Random, median: float, sigma: float) -> float:
+    """A right-skewed draw whose MEDIAN is `median`.
+
+    ⛔ The median, not the mean, and the distinction is the reason this helper
+    exists rather than a `gauss` at each call site. Human timings - a keystroke
+    gap, a pause, a movement time - have a floor and a long tail, so their mean
+    sits above their typical value and a symmetric draw around the mean puts
+    too much mass below the floor. `exp(gauss(log(m), s))` has median `m` by
+    construction.
+    """
+    return median * math.exp(rng.gauss(0.0, sigma))
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -296,6 +311,130 @@ class PointerPersona:
             overshoot_bias=r.uniform(0.55, 1.45),
             aimless_rate=r.uniform(0.22, 0.48),
         )
+
+
+# ──────────────────────────────────────────────────────────────────────
+# The hand on the keyboard
+# ──────────────────────────────────────────────────────────────────────
+#
+# ⛔ WHY THIS EXISTS AT ALL. The pointer has had an owner of its rhythm since
+# 0.4.0 - this module - and the keyboard had none. A keypress went out as two
+# protocol messages back to back, so the page saw a `keydown` and a `keyup`
+# about 2.4 ms apart and two characters about 5 ms apart, against the 60-250 ms
+# a hand produces. It is the cheapest tell there is to collect: a site does not
+# need to probe for it, it only has to listen, and a password field is exactly
+# where that listening is already installed.
+#
+# The `delay=` parameter was not the fix. It was dropped by the server on six
+# of the seven paths that accept it, and even honoured it would be a constant
+# the caller chose: every install that passed `delay=100` would share one
+# rhythm, which is the linkage key this module exists to remove.
+
+#: Which hand types each key on a US layout, for the digram effects below.
+#: ⛔ A FINITE, KNOWN domain, which is the condition that makes a table the
+#: right shape here rather than something computed. Keys absent from it are
+#: treated as neither hand, which costs only the digram modulation.
+_LEFT_HAND = set("`12345qwertasdfgzxcvb~!@#$%QWERTASDFGZXCVB")
+_RIGHT_HAND = set("67890-=yuiop[]\\hjkl;'nm,./^&*()_+YUIOP{}|HJKL:\"NM<>?")
+
+
+def _hand(ch: str) -> str:
+    if ch in _LEFT_HAND:
+        return "L"
+    if ch in _RIGHT_HAND:
+        return "R"
+    return "?"
+
+
+@dataclass(frozen=True)
+class TypingPersona:
+    """The parameters of one session's typing hand. Drawn from the session seed.
+
+    Same shape as :class:`PointerPersona` and for the same reason: every field
+    is a range, because the centre is an estimate and the width is the
+    admission that people differ. A single hardcoded value would be a constant
+    shared by every install.
+
+    ⛔ It is drawn on its OWN tagged stream (`typing-persona`), so adding it
+    does not move a single number any existing seed produces for the pointer.
+    That property is why `_sub_seed` takes a tag at all.
+    """
+
+    seed: int
+    # How long a key stays down, median of a log-normal.
+    # [judg] informed by keystroke-dynamics work, where hold times for ordinary
+    # typists cluster in the 60-120 ms band. The spread matters more than the
+    # centre: a constant dwell is as recognisable as a zero one.
+    dwell_median_ms: float
+    dwell_sigma: float
+    # Gap between one key going up and the next going down, median of a
+    # log-normal. [judg] continuous prose for a non-expert typist sits around
+    # 120-280 ms per keystroke overall, of which the dwell is a part.
+    gap_median_ms: float
+    gap_sigma: float
+    # Digram modulation. [lit] Alternating hands is FASTER than staying on one
+    # hand, and repeating the same key is slowest of all, which is the most
+    # robust structure in typing timing and the reason a flat interval reads as
+    # machine-made even when its mean is right.
+    alternate_hand_factor: float
+    same_hand_factor: float
+    same_key_factor: float
+    # How often the typist stops to think, and for how long. [judg] the pauses
+    # are what make a real transcript spiky; a distribution with no tail is a
+    # distribution nobody produced.
+    hesitation_rate: float
+    hesitation_median_ms: float
+
+    @classmethod
+    def from_seed(cls, seed: int) -> "TypingPersona":
+        r = _rng(seed, "typing-persona")
+        return cls(
+            seed=seed,
+            dwell_median_ms=r.uniform(62.0, 118.0),
+            dwell_sigma=r.uniform(0.22, 0.42),
+            gap_median_ms=r.uniform(95.0, 235.0),
+            gap_sigma=r.uniform(0.34, 0.62),
+            alternate_hand_factor=r.uniform(0.74, 0.92),
+            same_hand_factor=r.uniform(1.04, 1.24),
+            same_key_factor=r.uniform(1.25, 1.75),
+            hesitation_rate=r.uniform(0.02, 0.07),
+            hesitation_median_ms=r.uniform(420.0, 1250.0),
+        )
+
+
+def plan_typing(text: str, persona: TypingPersona,
+                nonce: int = 0) -> List[Tuple[float, float]]:
+    """One `(dwell_ms, gap_ms)` per character of `text`.
+
+    `dwell_ms` is how long that key stays down; `gap_ms` is the wait before the
+    NEXT key goes down, and is zero for the last character because the pause
+    after the last keystroke belongs to whatever happens next, not to typing.
+
+    ⛔ THE PLAN IS COMPUTED WHERE THE SEED IS, which is here, and carried to the
+    engine with the text. The engine holds no seed and decides no timing: it
+    obeys. That is the same division the cursor already uses, and it is what
+    keeps one session's rhythm from being a property of the machine.
+    """
+    r = _rng(persona.seed, "typing", nonce)
+    out: List[Tuple[float, float]] = []
+    for i, ch in enumerate(text):
+        dwell = _log_normal(r, persona.dwell_median_ms, persona.dwell_sigma)
+        if i == len(text) - 1:
+            out.append((dwell, 0.0))
+            break
+        nxt = text[i + 1]
+        gap = _log_normal(r, persona.gap_median_ms, persona.gap_sigma)
+        if ch == nxt:
+            gap *= persona.same_key_factor
+        else:
+            a, b = _hand(ch), _hand(nxt)
+            if a != "?" and b != "?":
+                gap *= (persona.alternate_hand_factor if a != b
+                        else persona.same_hand_factor)
+        if r.random() < persona.hesitation_rate:
+            gap += _log_normal(r, persona.hesitation_median_ms, 0.55)
+        out.append((dwell, gap))
+    return out
 
 
 # ──────────────────────────────────────────────────────────────────────

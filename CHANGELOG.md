@@ -8,7 +8,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [0.19.0] - 2026-09-16
 
+### Changed
+- **Typing now takes the time a hand takes, and that is a real slowdown you
+  should know about before upgrading.** `page.type`, `locator.press_sequentially`,
+  `keyboard.type` and the typing half of `fill` used to emit keys as fast as the
+  protocol allows: a `keydown` and its `keyup` measured **4.0 ms** apart on a
+  real page, against the 60-120 ms a finger takes, and eleven characters went by
+  in about 50 ms. A site does not have to probe for that, it only has to listen,
+  and a password field is where that listening is already installed. The rhythm
+  now comes from a `TypingPersona` drawn from the session seed - dwell, gaps,
+  the digram structure that makes alternating hands faster than one hand, and
+  occasional hesitations - so `password123` takes about 1.8 s instead of 50 ms.
+  Same seed still types the same way. `humanize=False` keeps the old speed, and
+  the `delay=` you pass still wins over the persona for that call.
+
 ### Fixed
+- **`delay=` on typing was measured in milliseconds and slept in seconds.** The
+  public API documents it in milliseconds; the one server path that forwarded it
+  handed the number straight to `time.sleep`, so
+  `element_handle.type("abc", delay=100)` waited five minutes instead of 0.3
+  seconds. The six paths that dropped the value were accidentally protected from
+  the bug the seventh had. All seven honour it now, and the unit is in the name.
 - **`trial=True` no longer performs the action.** It is accepted on 31 public
   signatures - click, dblclick, hover, tap, check, uncheck, set_checked and drag
   across `Page`, `Frame`, `Locator` and `ElementHandle` - and the word appeared

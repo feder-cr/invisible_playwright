@@ -161,6 +161,43 @@ class APIRequestContextDispatcher(RefusingDispatcher):
 #: what the alternative reads like.
 _HANDLE = "<element handle>"
 
+#: How the session's typing seed reaches this server, which otherwise knows no
+#: seed at all. The launcher composes the pref dict in full and `op_launch`
+#: already receives it, so this adds no plumbing; `op_launch` takes the key
+#: back out before writing `user.js`, so it never reaches a profile.
+#:
+#: ⛔ NOT under `stealthfox.*`. That prefix means "the patched binary reads
+#: this", and a reader who found a typing key there would go looking in C++ for
+#: something answered in Python.
+TYPING_SEED_PREF = "invisible.server.typing_seed"
+
+
+def _typing_persona(seed: Any):
+    """The session's typing hand, or `None` when nobody asked for one.
+
+    ⛔ A MALFORMED SEED RAISES rather than falling back to no rhythm. Silently
+    typing at pipe speed is precisely the failure this persona exists to
+    remove, and a fallback would make it the quiet default whenever the
+    launcher sent something unexpected.
+    """
+    if seed is None:
+        return None
+    from .._behaviour import TypingPersona
+    return TypingPersona.from_seed(int(seed))
+
+
+def take_typing_persona(prefs: Dict) -> tuple:
+    """Split the launch prefs into what the BROWSER gets and the typing hand.
+
+    ⛔ A FUNCTION RATHER THAN THREE LINES INSIDE `op_launch`, because the thing
+    worth testing is that the key comes OUT: a version that built the persona
+    and forgot to remove the key would behave identically in every way except
+    for writing a session identifier into the profile, which no test that
+    drives a browser would notice.
+    """
+    rest = dict(prefs)
+    return rest, _typing_persona(rest.pop(TYPING_SEED_PREF, None))
+
 
 def _upload_paths(params: Dict) -> list:
     """The local paths out of a `setInputFiles` request.
@@ -1544,7 +1581,8 @@ class PageDispatcher(Dispatcher):
         self.lifecycle = Lifecycle(conn, session)
         self.injected = InjectedScript(conn, session)
         self.injected.install()
-        self.actions = Actions(conn, session, self.lifecycle, self.injected)
+        self.actions = Actions(conn, session, self.lifecycle, self.injected,
+                               typing_persona=context.browser.typing_persona)
         # ⛔ THE EVENTS THIS PAGE ALREADY MISSED, handed over now that the two
         # things that need them exist. `Page.frameAttached` and the
         # `Runtime.executionContextCreated` pair are sent by the browser BEFORE
@@ -2118,11 +2156,18 @@ class PageDispatcher(Dispatcher):
         return None
 
     def op_key_press(self, params: Dict) -> Any:
-        self.keyboard.press(params["key"])
+        # ⛔ `delay` IS the dwell here, not a gap: Playwright documents it as
+        # the wait between keydown and keyup. It used to be dropped, which is
+        # why a press had no duration at all.
+        self.keyboard.press(params["key"], dwell_ms=params.get("delay"))
         return None
 
     def op_key_type(self, params: Dict) -> Any:
-        self.keyboard.type(params["text"])
+        # ⛔ And here it IS a gap, and it was dropped too. Passing it now makes
+        # it an override of the session's rhythm rather than the only thing
+        # standing between the caller and pipe speed.
+        self.keyboard.type(params["text"],
+                           delay_ms=params.get("delay") or 0.0)
         return None
 
     def op_key_insert(self, params: Dict) -> Any:
@@ -2916,9 +2961,16 @@ class BrowserDispatcher(Dispatcher):
                "newPage": "op_new_page"}
 
     def __init__(self, server, browser_type: "BrowserTypeDispatcher",
-                 conn: Any, version: str) -> None:
+                 conn: Any, version: str, typing_persona: Any = None) -> None:
         self.conn = conn
         self.browser_type = browser_type
+        #: ⛔ THE SESSION'S TYPING HAND, and the reason it lives on the BROWSER
+        #: rather than on this module: a process can hold two sessions with two
+        #: seeds, and a module-level value would give the second one the
+        #: first's rhythm. That is the shape of defect this whole persona
+        #: exists to remove, so it must not be reintroduced by where it is
+        #: stored. `None` means the caller turned humanising off.
+        self.typing_persona = typing_persona
         self._sessions: Dict[str, str] = {}
         self._sessions_ready = threading.Condition()
         # ⛔ THE EVENTS OF A SESSION START BEFORE ANYBODY IS LISTENING, and
@@ -3320,7 +3372,22 @@ class BrowserTypeDispatcher(Dispatcher):
         ours = params.get("userDataDir") is None
         profile = params.get("userDataDir") or tempfile.mkdtemp(
             prefix="invisible_profile_")
-        _write_user_js(profile, params.get("firefoxUserPrefs") or {})
+        # ⛔ THE TYPING SEED TRAVELS IN THE PREFS AND IS TAKEN OUT AGAIN HERE,
+        # before a single byte reaches the profile.
+        #
+        # It rides here because the launcher already composes this dict in full
+        # and this method already receives it, so nothing new has to be
+        # plumbed. It comes back OUT because it is not a browser preference:
+        # the engine never reads it, and leaving it in `user.js` would write a
+        # session identifier onto disk for no reader at all.
+        #
+        # ⛔ And the namespace is deliberately NOT `stealthfox.*`. That prefix
+        # means "the patched binary reads this", and a reader who found a
+        # typing key under it would go looking in C++ for something that is
+        # answered in Python.
+        prefs, typing_persona = take_typing_persona(
+            params.get("firefoxUserPrefs") or {})
+        _write_user_js(profile, prefs)
         # ⛔ THE CALLER'S TIMEOUT, not ours. `launch(timeout=)` is a
         # documented option and this server ignored it, so a caller who
         # shortened it waited the full built-in 60 s anyway - and one who
@@ -3369,7 +3436,8 @@ class BrowserTypeDispatcher(Dispatcher):
             # swallows one hook's failure so it cannot stop the others.
             self.server.on_shutdown(lambda: _remove_profile(profile))
         version = _read_version(executable)
-        browser = BrowserDispatcher(self.server, self, conn, version)
+        browser = BrowserDispatcher(self.server, self, conn, version,
+                                    typing_persona=typing_persona)
         return {"browser": browser.channel}
 
 

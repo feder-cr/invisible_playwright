@@ -79,7 +79,8 @@ def _normalize_options(options) -> list:
 
 
 class Actions:
-    def __init__(self, connection, session: str, lifecycle, injected):
+    def __init__(self, connection, session: str, lifecycle, injected,
+                 typing_persona=None):
         self.c = connection
         self.session = session
         self.lifecycle = lifecycle
@@ -88,7 +89,7 @@ class Actions:
         #: the state of the modifiers. Building one per action would lose
         #: "Shift is down" between a `down` and the next key, and
         #: `Shift+a` would type `a`.
-        self.keyboard = Keyboard(connection, session)
+        self.keyboard = Keyboard(connection, session, typing_persona)
         #: The last pointer position. Used by the wheel and by drag and
         #: drop, which start from where the mouse IS - not from 0,0.
         self.position = (0.0, 0.0)
@@ -583,7 +584,7 @@ class Actions:
         def run(f, element, point):
             self.inj.call(f, "(injected, el) => injected.focusNode(el, true)",
                           {"objectId": element})
-            self.keyboard.type(text, delay=delay)
+            self.keyboard.type(text, delay_ms=delay)
             return text
         return self._retry(selector, run,
                            states=["visible", "stable", "enabled"],

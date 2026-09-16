@@ -30,6 +30,7 @@ and rewritten.
 """
 from __future__ import annotations
 
+import time
 from typing import Optional
 
 from .keylayout import LAYOUT
@@ -121,11 +122,28 @@ class Keyboard:
     remember that Shift is down between Shift's keydown and `a`'s.
     """
 
-    def __init__(self, connection, session: str):
+    def __init__(self, connection, session: str, persona=None):
         self.c = connection
         self.session = session
         self.modifiers: set = set()
         self.pressed: set = set()
+        #: ⛔ THE RHYTHM HAS AN OWNER NOW, and this is it.
+        #:
+        #: A keypress used to be two protocol messages back to back, so a page
+        #: saw `keydown` and `keyup` about 2.4 ms apart and two characters
+        #: about 5 ms apart, against the 60-250 ms a hand produces. No probe is
+        #: needed to collect that: a site only has to listen, and a password
+        #: field is where the listening is already installed.
+        #:
+        #: The persona is DRAWN FROM THE SESSION SEED and computed by the
+        #: wrapper, not here: this class obeys a plan, it does not invent one.
+        #: `None` means no rhythm, which is what a caller who turned humanising
+        #: off asked for.
+        self.persona = persona
+        #: One stream per keyboard, so two `type()` calls in a session do not
+        #: replay the same intervals. Without it a page could match the
+        #: sequence of gaps between two form fields.
+        self._nonce = 0
 
     # ── the resolution ──────────────────────────────────────────────────────
     def describe(self, key: str) -> dict:
@@ -187,11 +205,20 @@ class Keyboard:
                       "location": d["location"], "repeat": False},
                      session=self.session, timeout=10)
 
-    def press(self, key: str) -> None:
+    def press(self, key: str, *, dwell_ms: Optional[float] = None) -> None:
         """`press("a")`, `press("Enter")`, `press("Control+Shift+KeyA")`.
 
         The modifiers are held down for the whole final key and released
         in reverse order, the way a hand would.
+
+        ⛔ `dwell_ms` IS HOW LONG THE KEY STAYS DOWN, and the unit is in the
+        name on purpose: see the note on `type`. Zero was the only value this
+        could produce before, which put `keyup` one protocol round trip after
+        `keydown` - about 2.4 ms, where a finger takes 60-120.
+
+        It applies to the FINAL key only. A modifier is held across the whole
+        press by construction, so giving it a dwell of its own would be a
+        second statement about the same duration.
         """
         pieces = key.split("+")
         final, held = pieces[-1], pieces[:-1]
@@ -201,34 +228,85 @@ class Keyboard:
         # "unknown key: ''".
         if final == "" and held:
             final, held = "+", held[:-1]
+        # ⛔ `None` means "ask the hand", not "zero". Playwright's own
+        # `keyboard.press(key, delay=)` IS this number - it documents it as the
+        # wait between keydown and keyup - so a caller who passes it overrides
+        # the persona for that press, and a caller who passes nothing gets the
+        # session's hand rather than a pipe round trip.
+        if dwell_ms is None:
+            dwell_ms = self._dwell_ms()
         for m in held:
             self.down(m)
         try:
             self.down(final)
+            if dwell_ms > 0.0:
+                time.sleep(dwell_ms / 1000.0)
             self.up(final)
         finally:
             for m in reversed(held):
                 self.up(m)
 
-    def type(self, text: str, *, delay: float = 0.0) -> None:
-        """One key per character, the way a hand would.
+    def type(self, text: str, *, delay_ms: float = 0.0) -> None:
+        """One key per character, with the rhythm of a hand.
 
         ⛔ This is NOT `insert_text`: a character the layout does not know
         (an ideogram, an emoji) has no key, so here it is REJECTED and
         deferred to `insert_text`. Typing something with no key would mean
         sending `code: ""`, which is exactly the defect this file exists
         to not have.
+
+        ⛔ THE UNIT IS IN THE NAME, AND IT IS A FIX. The parameter used to be
+        called `delay` and was handed straight to `time.sleep`, which takes
+        SECONDS, while the public API documents it in MILLISECONDS. On the one
+        path that actually forwarded it - the ElementHandle one - `type("abc",
+        delay=100)` therefore slept for five minutes instead of 0.3 seconds.
+        The six paths that dropped the value were accidentally protected from
+        the bug the seventh had.
+
+        ⛔ AND THE CALLER'S VALUE IS AN OVERRIDE, NOT THE DEFENCE. Without a
+        persona this class used to emit keys as fast as the pipe allows, so the
+        only thing standing between a caller and an inhuman rhythm was a
+        parameter they had to know to pass - and every install that passed
+        `delay=100` would have shared one flat rhythm, which is a key that
+        links them. The persona is per-session and is what runs when nobody
+        asks for anything.
         """
-        import time as _t
         for ch in text:
             if ch not in LAYOUT_CLOSURE:
                 raise UnknownKey(
                     "%r has no key on the US layout: use `insert_text`, "
                     "which goes through `Page.insertText` and does not "
                     "fake a keypress." % ch)
-            self.press(ch)
-            if delay:
-                _t.sleep(delay)
+
+        plan = self._plan(text)
+        for i, ch in enumerate(text):
+            dwell_ms, gap_ms = plan[i]
+            self.press(ch, dwell_ms=dwell_ms)
+            wait_ms = delay_ms if delay_ms else gap_ms
+            if wait_ms > 0.0 and i < len(text) - 1:
+                time.sleep(wait_ms / 1000.0)
+
+    def _dwell_ms(self) -> float:
+        """How long ONE key stays down, for a press that is not part of typed
+        text. Zero without a persona, which is what turning humanising off
+        means."""
+        if self.persona is None:
+            return 0.0
+        return self._plan("x")[0][0]
+
+    def _plan(self, text: str):
+        """One `(dwell_ms, gap_ms)` per character, from the session's persona.
+
+        ⛔ Falls back to no rhythm rather than to a made-up one. A default
+        constant here would be the shared invariant the persona exists to
+        remove, and it would be invisible: every install would type alike and
+        nothing would report it.
+        """
+        if self.persona is None:
+            return [(0.0, 0.0)] * len(text)
+        from .._behaviour import plan_typing
+        self._nonce += 1
+        return plan_typing(text, self.persona, nonce=self._nonce)
 
     def insert_text(self, text: str) -> None:
         """The text goes in without key events. This is what is needed for

@@ -27,6 +27,7 @@ from ._cursor import (ENGINE_BINARY,
                       enable_for as _enable_cursor_engine,
                       max_seconds_for as _cursor_max_seconds)
 from ._engine import resolve_executable
+from ._juggler.server import TYPING_SEED_PREF
 from typing import Any, Dict, Optional
 
 from invisible_core import compose_session_prefs, make_virtual_display
@@ -211,6 +212,7 @@ def build_prefs(
     cursor_engine: str,
     humanize: Any,
     show_cursor: Optional[bool] = None,
+    typing_seed: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Fingerprint prefs plus the humanize toggle, which is always set explicitly.
 
@@ -249,7 +251,7 @@ def build_prefs(
     # The namespace MUST be stealthfox.* - that is what the binary's Juggler
     # reads. An earlier `invisible_playwright.*` spelling was a dead no-op, so
     # humanize never fired and every click teleported the cursor.
-    return compose_session_prefs(
+    prefs = compose_session_prefs(
         profile,
         locale=locale,
         timezone=timezone,
@@ -265,6 +267,22 @@ def build_prefs(
                   if cursor_engine == ENGINE_BINARY else False),
         show_cursor=show_cursor,
     ).prefs
+    # ⛔ THE TYPING SEED RIDES IN THE PREFS AND NEVER REACHES THE PROFILE.
+    #
+    # The engine client has no seed of its own - it is constructed by a
+    # transport that knows nothing about a session - and this dict is the one
+    # thing the launcher composes in full that already arrives there. The
+    # server pops the key in `op_launch` before writing `user.js`, so no
+    # session identifier is written to disk; the alternatives were a module
+    # global (wrong the moment a process holds two sessions) and a walk through
+    # four private attributes of the vendored client.
+    #
+    # It follows `humanize`, like the cursor: a caller who turned human motion
+    # off asked for a machine, and giving them a hand on the keyboard anyway
+    # would be a second answer to a question they already answered.
+    if typing_seed is not None and humanize:
+        prefs[TYPING_SEED_PREF] = int(typing_seed)
+    return prefs
 
 
 class ProxyEgressDrifted(RuntimeError):
@@ -465,6 +483,7 @@ class CommonLaunch:
             cursor_engine=self._cursor_engine,
             humanize=self._humanize,
             show_cursor=self._show_cursor,
+            typing_seed=self.seed,
         )
 
     def _arm_cursor_engine(self, owner: Any) -> None:
