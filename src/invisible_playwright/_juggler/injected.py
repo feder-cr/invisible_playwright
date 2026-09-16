@@ -52,7 +52,24 @@ class InjectedScript:
         self.session = session
         #: (frameId, worldName) -> executionContextId
         self.contexts: dict = {}
-        #: frameId -> objectId of the InjectedScript
+        #: frameId -> (executionContextId it was built in, objectId)
+        #:
+        #: ⛔ THE CONTEXT IS PART OF THE KEY, AND IT IS NOT BOOKKEEPING: it is
+        #: what makes a stale handle impossible to use instead of merely
+        #: unlikely. An objectId means nothing on its own - the engine looks it
+        #: up in the worlds the frame has NOW - so a handle is only the handle
+        #: for as long as the world it was minted in is still the frame's
+        #: utility world. Storing the pair lets `handle()` ask that question
+        #: directly; storing the objectId alone left it to be inferred from the
+        #: destruction events arriving complete and in order, and they do not.
+        #:
+        #: Measured 2026-09-16 on a back forward cache restore: the engine
+        #: destroyed contexts id-16 and id-17, which this client had never been
+        #: told about - it believed the frame's worlds were id-14 and id-15 -
+        #: so no entry matched, nothing was dropped, and the next locator sent
+        #: an objectId minted in id-15 to a frame whose worlds were now id-20
+        #: and id-21. `Cannot find object with id`, while `evaluate()` kept
+        #: working because it resolves the context afresh every time.
         self._handle: dict = {}
         #: The caller's own init scripts, in the order they were added. Kept
         #: here because this object is the one that owns the engine's init
@@ -80,13 +97,19 @@ class InjectedScript:
             dead = p["executionContextId"]
             for k in [k for k, v in self.contexts.items() if v == dead]:
                 self.contexts.pop(k, None)
-            # ⛔ And the handle is discarded: an objectId of a destroyed
-            # context does not fail right away, it gives WRONG results.
-            # The document changed underneath, so the injected script
-            # must be rebuilt.
-            for f in [f for f, _ in list(self._handle.items())
-                      if (f, UTILITY_WORLD) not in self.contexts]:
-                self._handle.pop(f, None)
+            # ⛔ NOTHING IS DISCARDED HERE ANY MORE, and that is the fix rather
+            # than an omission. This used to drop a frame's handle when the
+            # frame's utility world had just left `contexts`, which is right
+            # only while every destruction is announced with an id this client
+            # already knows. On a back forward cache restore it is not: the
+            # engine destroys the worlds of the document it is leaving, and
+            # those can be worlds this client was never told were created, so
+            # no entry matched and the handle survived its world.
+            #
+            # `handle()` now asks the question directly instead, which cannot
+            # be wrong: a handle is usable exactly while the context it was
+            # minted in is still the frame's utility context. Whether an event
+            # arrived stops mattering.
 
     # ── the world ───────────────────────────────────────────────────────────
     def install(self) -> None:
@@ -188,9 +211,24 @@ class InjectedScript:
         return r.get("value") if by_value else r.get("objectId")
 
     def handle(self, frame_id: str) -> str:
-        """The frame's InjectedScript, built only once."""
-        if frame_id in self._handle:
-            return self._handle[frame_id]
+        """The frame's InjectedScript, built once per world it lives in.
+
+        ⛔ "Built only once" was the old sentence and it was the bug. Once per
+        FRAME is wrong: the script is an object inside one execution context,
+        and the frame outlives its contexts - every navigation replaces them,
+        and so does a restore from the back forward cache. What this returns
+        has to be the script of the world the frame has NOW.
+
+        Asking `contexts` is the whole of the check, and it is decidable at any
+        moment from state this client already keeps. The alternative, which is
+        what stood here, was to keep the objectId and trust that some earlier
+        event had removed it when it went stale; a restore is exactly where
+        that trust is misplaced.
+        """
+        current = self.contexts.get((frame_id, UTILITY_WORLD))
+        cached = self._handle.get(frame_id)
+        if cached is not None and current is not None and cached[0] == current:
+            return cached[1]
         options = {
             # ⛔ `isUnderTest` FALSE, always. If true, the InjectedScript
             # plants `window.builtins` and `window.__injectedScript` on
@@ -214,12 +252,18 @@ class InjectedScript:
                       "return new (module.exports.InjectedScript())"
                       "(globalThis, %s); })();"
                       % (source, json.dumps(options)))
+        # ⛔ THE CONTEXT IS READ AGAIN HERE, NOT REUSED FROM ABOVE. `evaluate`
+        # waits for the utility world to exist, so between the check at the top
+        # and this line the frame may have gained one, or gained a different
+        # one. Pairing the objectId with the context it was actually minted in
+        # is the whole point; pairing it with the context we hoped for would
+        # recreate the same class one layer down.
         oid = self.evaluate(frame_id, expression, by_value=False)
         if not oid:
             raise EvaluationError(
                 "the InjectedScript did not return an object: "
                 "is the source the right one?")
-        self._handle[frame_id] = oid
+        self._handle[frame_id] = (self.context_id(frame_id), oid)
         return oid
 
     # ── the little needed on top ────────────────────────────────────────────

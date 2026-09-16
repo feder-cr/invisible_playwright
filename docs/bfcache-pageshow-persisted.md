@@ -92,30 +92,20 @@ anyone who needs it.
 
 The cost is real and you should know it before you enable this anywhere:
 
-**`go_back()` and `go_forward()` are refused, and this is why.** They used to time out,
-because a bfcache restore does not fire `load` and code waiting for that event sat there
-until the deadline. That part was fixed in firefox-31: the engine restores the document
-and reports the navigation. What was not fixed is the state you are left holding.
-
-Measured on the shipped engine, one step at a time: go back once and a locator reads
-fine; go forward, or go back a second time, and every locator on that page raises
-`Cannot find object with id`, while `evaluate()` and `content()` keep answering from the
-right document. A `reload()` clears it. So the call succeeds, the URL is right, and the
-failure turns up later and somewhere else, looking like a broken selector on a page that
-is fine. Both methods now raise instead, with a sentence naming what would have happened.
+**`go_back()` used to time out here, and does not any more.** A bfcache restore does not
+fire `load`, so code waiting for that event sat there until the deadline. The engine
+reports the navigation from firefox-31, and the driver stopped caching the injected
+script across a restore in 0.19.0, which was the second half of the same problem: the
+page came back and the driver was still holding a handle into the world it had left.
 
 ```python
-# raises, and says why
+# fine now
 page.go_back()
-
-# navigate to the URL instead, and wait for something you can see
-page.goto(previous_url)
 page.wait_for_selector("#something-on-the-previous-page")
 ```
 
-A page that moves its own history with `history.back()` is unaffected and still restores
-from the cache, which is the behaviour this page is about. What is withdrawn is the
-driver method, until the restored world is understood.
+Waiting for something you can see is still more robust than waiting for a lifecycle
+event on a restore, because the lifecycle events genuinely do not fire again.
 
 Waiting for something you can see is more robust than
 [waiting for a lifecycle event](how-to-wait-for-page-load-playwright.md) anyway, and it
@@ -162,10 +152,9 @@ in Firefox explicitly and in Chromium effectively.
 never restore, which is not how consumer browsers behave. It is a weak signal on its own
 and it belongs to a family of weak behavioural signals.
 
-**Why does `go_back()` raise?** Because it is refused. It no longer hangs - the engine
-restores and reports the navigation since firefox-31 - but a restored document leaves
-the driver holding a stale handle for that page, so locators break afterwards while
-`evaluate()` keeps working. Navigate to the URL instead; `reload()` is unaffected.
+**Does `go_back()` still hang?** No, since firefox-31 for the navigation and 0.19.0 for
+the driver side. Wait for an element rather than for `load`, which does not fire again
+on a restore.
 
 **Should I enable it?** For realistic sessions yes, for deterministic test suites
 probably not.
@@ -187,7 +176,7 @@ for where behavioural signals sit in the wider picture.
   and [MDN: the `pageshow` event](https://developer.mozilla.org/en-US/docs/Web/API/Window/pageshow_event),
   which documents `persisted`.
 - Playwright's documented [`go_back()`](https://playwright.dev/python/docs/api/class-page#page-go-back)
-  and its `wait_until` values, which this driver refuses rather than half-honours.
+  and its `wait_until` values.
 - The Playwright tracker's open items on bfcache behaviour and on enabling it under
   Chromium.
 - This project's driver, which reads a preference before disabling the cache and leaves

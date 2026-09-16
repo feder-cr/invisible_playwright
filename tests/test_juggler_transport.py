@@ -280,32 +280,23 @@ def test_the_public_API_WAITS_for_an_element_that_arrives_late(firefox_binary):
 
 
 @pytest.mark.e2e
-def test_history_navigation_REFUSES_and_says_what_it_would_have_broken(
-        firefox_binary):
-    """go_back() and go_forward() are refused, and the half that WORKED is why.
+def test_going_BACK_then_FORWARD_leaves_the_page_readable(firefox_binary):
+    """⛔ TWO MOVEMENTS, AND A READ FROM THE PAGE. One of each is what the two
+    earlier tests did, and between them they missed the defect entirely.
 
-    The engine goes back and reports it: that was the whole of [B185] and it
-    shipped in firefox-31. What it does not do is leave this client holding a
-    usable handle for the restored page. Measured on the shipped engine, one
-    step at a time: back once and a locator reads fine; go forward, or go back
-    a second time, and every locator on that page raises "Cannot find object
-    with id" while evaluate() and content() keep answering from the right
-    document. A reload() clears it.
+    Going back once worked from firefox-31 and a locator read fine, so a bench
+    that stops there is green. The second movement is where it broke: the client
+    cached the injected script per FRAME, and the script is an object inside one
+    CONTEXT, so after a restore it was asking the engine for an object in a world
+    that no longer existed. `Cannot find object with id`, while `evaluate()` and
+    `content()` kept answering from the right document, because those resolve the
+    context afresh every time.
 
-    That is worse than not having the method. The call succeeds, the URL is
-    right, and the failure arrives later and somewhere else, looking like a
-    broken selector on a page that is fine. So both are refused with a sentence
-    naming what would have happened, and reload(), an ordinary navigation that
-    never restores, is left alone.
-
-    This is not the engine fix being reverted. The bookkeeping stays: a page
-    that navigates its own history with history.back() takes the same road, and
-    without it the client is never told the navigation committed at all. What is
-    withdrawn is the public method, until the restored world is understood, and
-    it is not: announcing it as cleared is what makes the first restore work and
-    what leaves the stale handle, while not announcing it loses the execution
-    context instead. Two complementary failures are a wrong model, not a missing
-    line.
+    So this walks back, forward, and back again, and READS THROUGH A LOCATOR each
+    time. Asserting on `page.url` would pass against the defect; so would
+    counting requests, which is what the restore test next door does for a
+    different and still valid reason. The three ways of being green stop looking
+    alike.
     """
     os.environ[factory.CHOICE_ENV] = factory.JUGGLER
     srv = socketserver.TCPServer(("127.0.0.1", 0), _serve(PAGE))
@@ -318,29 +309,23 @@ def test_history_navigation_REFUSES_and_says_what_it_would_have_broken(
             page = browser.new_page()
             page.goto(url)
             page.goto(url + "second")
-            assert page.title() == "second"
+            # ⛔ A LOCATOR HERE, BEFORE MOVING. It is what mints the handle, and
+            # without it the first restore builds a fresh one and the defect
+            # hides one movement further along. The bench has to arrive at the
+            # restore already holding something.
+            assert page.locator("#t").inner_text() == "page two"
 
-            for name, call in (("go_back", page.go_back),
-                               ("go_forward", page.go_forward)):
-                with pytest.raises(Exception) as fallen:
-                    call()
-                said = str(fallen.value)
-                assert "not supported" in said, (name, said)
-                # The refusal has to NAME what would have happened, not just say
-                # no: whoever reads it has to be able to decide what to do
-                # instead.
-                assert "stale handle" in said, (name, said)
-                assert "reload()" in said, (name, said)
+            page.go_back(timeout=5000)
+            assert page.locator("#t").inner_text() == "hello"
 
-            # And the page is still usable. A refusal that left the browser half
-            # way would be the same defect with a politer message: no navigation
-            # started, so the page still reads where it was.
-            assert page.title() == "second"
+            page.go_forward(timeout=5000)
+            assert page.locator("#t").inner_text() == "page two"
 
-            # reload stays an ordinary navigation, and it is also the remedy the
-            # message points at.
+            page.go_back(timeout=5000)
+            assert page.locator("#t").inner_text() == "hello"
+
             page.reload()
-            assert page.title() == "second"
+            assert page.locator("#t").inner_text() == "hello"
     finally:
         os.environ.pop(factory.CHOICE_ENV, None)
         srv.shutdown()

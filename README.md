@@ -40,7 +40,7 @@ Supported platforms: **Windows x86_64**, **Linux x86_64 / arm64**.
 
 ## Usage
 ### Random fingerprint per session
-**Playwright's API, sync and async, with no code changes.** The same objects, the same calls, the same return values. A few surfaces are out of scope - tracing, HAR, CDP, the API request context - and `go_back()` and `go_forward()` are held back by a defect in restored pages; each one refuses with a sentence saying why rather than misbehaving quietly. If you already use Playwright, switching is two lines:
+**Playwright's API, sync and async, with no code changes.** The same objects, the same calls, the same return values. A few surfaces are out of scope - tracing, HAR, CDP, the API request context - and each one refuses with a sentence saying why rather than misbehaving quietly. If you already use Playwright, switching is two lines:
 
 ```diff
 - from playwright.sync_api import sync_playwright
