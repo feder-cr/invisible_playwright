@@ -70,8 +70,13 @@ class _Inj:
         self.queried = []
         self.disposed = []
 
-    def query_selector(self, f, selector):
+    def query_selector(self, f, selector, *, strict=False):
+        # ⛔ The double follows the REAL signature, `strict` included: when the
+        # signature moved, this test went red with a TypeError, which is the
+        # right way to find out. A double taking `**kwargs` would have
+        # swallowed the difference and reported green on an impossible call.
         self.queried.append(selector)
+        self.strict_asked_for = strict
         return "resolved-by-the-loop"
 
     def dispose(self, f, element):

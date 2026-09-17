@@ -203,7 +203,8 @@ class Actions:
     def _retry(self, selector: str, run, *, states=None,
                timeout: float = 30.0, frame_id: Optional[str] = None,
                position=None, element_id: Optional[str] = None,
-               trial: bool = False):
+               trial: bool = False, strict: bool = False,
+               force: bool = False):
         """Resolve, check, act, and if something doesn't match, START OVER.
 
         ⛔ `position` travels HERE and not through each action, because the
@@ -241,11 +242,18 @@ class Actions:
                 else:
                     # ⛔ FROM SCRATCH on every turn. A handle from the previous
                     # turn could point to a node the DOM has since replaced.
-                    element = self.inj.query_selector(f, selector)
+                    # ⛔ `strict` REACHES HERE OR IT MEANS NOTHING. The
+                    # injected script has always known how to raise on it and
+                    # the chain accepts it, but no caller ever passed it: the
+                    # default stayed false, so a selector matching MORE THAN
+                    # ONE element acted on the FIRST instead of refusing. That
+                    # is not only correctness - the automation was touching an
+                    # element nobody had chosen.
+                    element = self.inj.query_selector(f, selector, strict=strict)
                     ours = True
                 if not element:
                     reason = "the selector finds nothing"
-                elif states:
+                elif states and not force:
                     result = self.inj.element_states(f, element, states)
                     if not result.get("ok"):
                         reason = "missing %s" % result.get("missing",
@@ -297,10 +305,16 @@ class Actions:
                         # The hit target is checked too: a trial that answers
                         # yes, followed by a click that lands elsewhere, has
                         # told the caller nothing. It costs one pure read.
-                        verdict = self.inj.check_hit_target(
-                            f, element, self._hit_point(f, point))
-                        if verdict != "done":
-                            raise WrongHitTarget(verdict)
+                        #
+                        # ⛔ Unless `force`, which skips that check on the real
+                        # path: a trial has to answer the question the caller
+                        # would actually ask, and `trial=True, force=True` asks
+                        # whether a FORCED action would go through.
+                        if not force:
+                            verdict = self.inj.check_hit_target(
+                                f, element, self._hit_point(f, point))
+                            if verdict != "done":
+                                raise WrongHitTarget(verdict)
                         return None
                     else:
                         return run(f, element, point)
@@ -352,9 +366,17 @@ class Actions:
         return (point[0] + main["x"] - here["x"],
                 point[1] + main["y"] - here["y"])
 
-    def _with_hit_target(self, f, element, point, act):
+    def _with_hit_target(self, f, element, point, act, *, force: bool = False):
         """Acts only if the point belongs to the intended element, and says so
         again afterwards.
+
+        ⛔ `force` SKIPS IT, AND THAT IS NOT AN EXEMPTION - IT IS WHAT THE
+        OPTION MEANS. "Receives events" is one of the actionability checks
+        `force` is documented to bypass, and an overlay intercepting the
+        pointer is the ordinary reason somebody passes it. Honouring `force`
+        on the state checks alone would leave it half wired, which is the
+        defect this was: an option accepted on every public signature that
+        changed nothing a caller could observe.
 
         ⛔ IT USED TO BE AN INTERCEPTOR, and the difference is the point of
         this function. An interceptor watched the event WHILE it arrived and
@@ -377,6 +399,8 @@ class Actions:
         Measured by `tests/gates/injected_page_surface.js`: the bundle now
         touches the page's window zero times, in every phase.
         """
+        if force:
+            return act()
         here = self._hit_point(f, point)
         before = self.inj.check_hit_target(f, element, here)
         if before != "done":
@@ -436,18 +460,19 @@ class Actions:
 
     # ── the actions ─────────────────────────────────────────────────────────
     def hover(self, selector: str, *, timeout: float = 30.0, frame_id: Optional[str] = None,
-              position=None, element_id: Optional[str] = None,
-              trial: bool = False):
+              position=None, element_id: Optional[str] = None, **opts):
         def run(f, element, point):
             return self._with_hit_target(
                 f, element, point,
-                lambda: self._mouse_event("mousemove", point) or point)
+                lambda: self._mouse_event("mousemove", point) or point,
+                force=bool(opts.get("force")))
         return self._retry(selector, run, timeout=timeout, element_id=element_id,
-                           frame_id=frame_id, position=position, trial=trial)
+                           frame_id=frame_id, position=position, **opts)
 
     def click(self, selector: str, *, timeout: float = 30.0, frame_id: Optional[str] = None, button: int = 0,
-              trial: bool = False, delay_ms: Optional[float] = None,
-              clicks: int = 1, position=None, modifiers: int = 0, element_id: Optional[str] = None):
+              delay_ms: Optional[float] = None,
+              clicks: int = 1, position=None, modifiers: int = 0,
+              element_id: Optional[str] = None, **opts):
         def run(f, element, point):
             def act():
                 # The order is that of a user: approach, press, release.
@@ -462,13 +487,14 @@ class Actions:
                 self._click_at_point(point, button=button, clicks=clicks,
                                      modifiers=modifiers, delay_ms=delay_ms)
                 return point
-            return self._with_hit_target(f, element, point, act)
+            return self._with_hit_target(f, element, point, act,
+                                         force=bool(opts.get("force")))
         return self._retry(selector, run, timeout=timeout, frame_id=frame_id,
-                           position=position, element_id=element_id, trial=trial)
+                           position=position, element_id=element_id, **opts)
 
     def dblclick(self, selector: str, *, timeout: float = 30.0, frame_id: Optional[str] = None,
-                 trial: bool = False, delay_ms: Optional[float] = None,
-                 button: int = 0, position=None, modifiers: int = 0):
+                 delay_ms: Optional[float] = None,
+                 button: int = 0, position=None, modifiers: int = 0, **opts):
         """⛔ These are NOT two `click`s in a row: the second one must carry
         `clickCount: 2`, and it's that field - not the interval between the
         two - that gives birth to the `dblclick` event. Two clicks with
@@ -483,23 +509,21 @@ class Actions:
         argument was honoured; nothing else did."""
         return self.click(selector, timeout=timeout, button=button,
                           clicks=2, frame_id=frame_id, position=position,
-                          modifiers=modifiers, trial=trial, delay_ms=delay_ms)
+                          modifiers=modifiers, delay_ms=delay_ms, **opts)
 
     def check(self, selector: str, *, timeout: float = 30.0, frame_id: Optional[str] = None,
-              position=None, element_id: Optional[str] = None,
-              trial: bool = False):
+              position=None, element_id: Optional[str] = None, **opts):
         return self._set_checked(selector, True, timeout=timeout, element_id=element_id,
-                                 frame_id=frame_id, position=position, trial=trial)
+                                 frame_id=frame_id, position=position, **opts)
 
     def uncheck(self, selector: str, *, timeout: float = 30.0, frame_id: Optional[str] = None,
-                position=None, element_id: Optional[str] = None,
-                trial: bool = False):
+                position=None, element_id: Optional[str] = None, **opts):
         return self._set_checked(selector, False, timeout=timeout, element_id=element_id,
-                                 frame_id=frame_id, position=position, trial=trial)
+                                 frame_id=frame_id, position=position, **opts)
 
     def _set_checked(self, selector: str, wanted: bool, *, timeout: float,
-                     trial: bool = False,
-                     frame_id: Optional[str] = None, position=None, element_id: Optional[str] = None):
+                     frame_id: Optional[str] = None, position=None,
+                     element_id: Optional[str] = None, **opts):
         """`check` / `uncheck`.
 
         ⛔ It CHECKS FIRST, and rechecks after. Clicking without looking
@@ -522,7 +546,8 @@ class Actions:
             # directly and failed on the very page that shifts its layout
             # at 1200 ms. One single place knows how to click; two know it
             # only until one of them learns something the other doesn't.
-            self._with_hit_target(f, element, point, act)
+            self._with_hit_target(f, element, point, act,
+                                  force=bool(opts.get("force")))
             if not self.inj.element_state(f, element, state):
                 raise EvaluationError(
                     "clicked but the box stayed %s: someone intercepted "
@@ -530,9 +555,11 @@ class Actions:
                     % ("unchecked" if wanted else "checked"))
             return state
         return self._retry(selector, run, timeout=timeout, element_id=element_id,
-                           frame_id=frame_id, position=position, trial=trial)
+                           frame_id=frame_id, position=position, **opts)
 
-    def focus(self, selector: str, *, timeout: float = 30.0, frame_id: Optional[str] = None, element_id: Optional[str] = None):
+    def focus(self, selector: str, *, timeout: float = 30.0,
+              frame_id: Optional[str] = None,
+              element_id: Optional[str] = None, **opts):
         """⛔ Does NOT require `visible`: `focus()` works on an off-screen
         element, and imposing the pointer states would time out an action
         that would have succeeded. Playwright does the same."""
@@ -541,9 +568,10 @@ class Actions:
                 f, "(injected, el) => injected.focusNode(el, true)",
                 {"objectId": element})
         return self._retry(selector, run, states=[], timeout=timeout, frame_id=frame_id,
-                           element_id=element_id)
+                           element_id=element_id, **opts)
 
-    def blur(self, selector: str, *, timeout: float = 30.0, frame_id: Optional[str] = None):
+    def blur(self, selector: str, *, timeout: float = 30.0,
+             frame_id: Optional[str] = None, **opts):
         def run(f, element, point):
             return self.inj.call(
                 f,
@@ -551,9 +579,10 @@ class Actions:
                 "'error:notconnected'; el.blur(); return 'done'; }",
                 {"objectId": element})
         return self._retry(selector, run, states=[], timeout=timeout, frame_id=frame_id,
-)
+                           **opts)
 
-    def select_text(self, selector: str, *, timeout: float = 30.0, frame_id: Optional[str] = None):
+    def select_text(self, selector: str, *, timeout: float = 30.0,
+                    frame_id: Optional[str] = None, **opts):
         def run(f, element, point):
             r = self.inj.call(f, "(injected, el) => injected.selectText(el)",
                               {"objectId": element})
@@ -561,9 +590,11 @@ class Actions:
                 raise EvaluationError("selectText: %s" % r)
             return r
         return self._retry(selector, run, states=["visible"],
-                           timeout=timeout, frame_id=frame_id)
+                           timeout=timeout, frame_id=frame_id, **opts)
 
-    def select_option(self, selector: str, options, *, timeout: float = 30.0, frame_id: Optional[str] = None, element_id: Optional[str] = None):
+    def select_option(self, selector: str, options, *, timeout: float = 30.0,
+                      frame_id: Optional[str] = None,
+                      element_id: Optional[str] = None, **opts):
         """`select_option`. Options are given by value, label or index.
 
         ⛔ And the `input`/`change` events are requested from the TRUSTED
@@ -585,10 +616,11 @@ class Actions:
         return self._retry(selector, run,
                            states=["visible", "stable", "enabled"],
                            timeout=timeout, frame_id=frame_id,
-                           element_id=element_id)
+                           element_id=element_id, **opts)
 
     def dispatch_event(self, selector: str, event_type: str, detail=None, *,
-                       timeout: float = 30.0, frame_id: Optional[str] = None):
+                       timeout: float = 30.0, frame_id: Optional[str] = None,
+                       **opts):
         """`dispatch_event`.
 
         ⛔ This is the ONLY spot in the file where an event comes out NOT
@@ -604,9 +636,11 @@ class Actions:
                 f, "(injected, el, t, d) => injected.dispatchEvent(el, t, d)",
                 {"objectId": element}, event_type, detail or {})
         return self._retry(selector, run, states=[], timeout=timeout, frame_id=frame_id,
-)
+                           **opts)
 
-    def press(self, selector: str, key: str, *, timeout: float = 30.0, frame_id: Optional[str] = None, element_id: Optional[str] = None):
+    def press(self, selector: str, key: str, *, timeout: float = 30.0,
+              frame_id: Optional[str] = None,
+              element_id: Optional[str] = None, **opts):
         """`press`: focuses and presses, with the modifiers from the name."""
         def run(f, element, point):
             self.inj.call(f, "(injected, el) => injected.focusNode(el, true)",
@@ -616,10 +650,11 @@ class Actions:
         return self._retry(selector, run,
                            states=["visible", "stable", "enabled"],
                            timeout=timeout, frame_id=frame_id,
-                           element_id=element_id)
+                           element_id=element_id, **opts)
 
     def type_text(self, selector: str, text: str, *, timeout: float = 30.0, frame_id: Optional[str] = None,
-                  delay: float = 0.0, element_id: Optional[str] = None):
+                  delay: float = 0.0, element_id: Optional[str] = None,
+                  **opts):
         """`type`: one key per character, WITHOUT clearing first.
 
         ⛔ It isn't `fill`: that one replaces the content, this one
@@ -634,11 +669,11 @@ class Actions:
         return self._retry(selector, run,
                            states=["visible", "stable", "enabled"],
                            timeout=timeout, frame_id=frame_id,
-                           element_id=element_id)
+                           element_id=element_id, **opts)
 
     def set_input_files(self, selector: str, files, *, timeout: float = 30.0,
                         frame_id: Optional[str] = None,
-                        element_id: Optional[str] = None):
+                        element_id: Optional[str] = None, **opts):
         """`set_input_files`. The paths are ABSOLUTE and the browser
         resolves them.
 
@@ -660,10 +695,10 @@ class Actions:
                         session=self.session, timeout=30)
             return list(files)
         return self._retry(selector, run, states=[], timeout=timeout,
-                           frame_id=frame_id, element_id=element_id)
+                           frame_id=frame_id, element_id=element_id, **opts)
 
     def tap(self, selector: str, *, timeout: float = 30.0, frame_id: Optional[str] = None,
-            position=None, trial: bool = False):
+            position=None, **opts):
         """`tap`. ⛔ Requires the context to have touch TURNED ON: without
         it, the event fires and the page has no `ontouchstart`, so it
         doesn't listen for it - it succeeds and does nothing. Touch is
@@ -676,7 +711,7 @@ class Actions:
                         session=self.session, timeout=10)
             return point
         return self._retry(selector, run, timeout=timeout,
-                           frame_id=frame_id, position=position, trial=trial)
+                           frame_id=frame_id, position=position, **opts)
 
     def _glide(self, to_point, *, buttons: int = 0) -> int:
         """Move the pointer to *to_point* along a path a hand could have drawn.
@@ -725,7 +760,7 @@ class Actions:
     def drag_and_drop(self, source: str, target: str, *,
                       timeout: float = 30.0,
                       frame_id: Optional[str] = None,
-                      trial: bool = False):
+                      **opts):
         """`drag_and_drop`, in four beats.
 
         ⛔ THE FIRST `mousemove` AFTER THE `mousedown` IS NOT SKIPPED.
@@ -744,7 +779,7 @@ class Actions:
         With a real path it is not needed: the drag is born at the first point
         that clears Gecko's threshold, the way it is for a hand.
         """
-        if trial:
+        if opts.get("trial"):
             # ⛔ BOTH ENDS, AND NOT ONE EVENT. A drag that only checked the
             # source would answer half the question, and the half it skipped is
             # the one that fails: a target covered by an overlay is the ordinary
@@ -752,11 +787,12 @@ class Actions:
             # the target first would measure it on a page the press is about to
             # change - the same reason the real path resolves them separately.
             self._retry(source, lambda f, el, p: p, timeout=timeout,
-                        frame_id=frame_id, trial=True)
+                        frame_id=frame_id, **opts)
             self._retry(target, lambda f, el, p: p, timeout=timeout,
-                        frame_id=frame_id, trial=True)
+                        frame_id=frame_id, **opts)
             return None
-        start = self._retry(source, lambda f, el, p: p, timeout=timeout, frame_id=frame_id)
+        start = self._retry(source, lambda f, el, p: p, timeout=timeout,
+                            frame_id=frame_id, **opts)
         # The approach is a path too: the cursor was somewhere before this call,
         # and arriving at the source in one event is the same tell as crossing
         # the page in one.
@@ -769,7 +805,8 @@ class Actions:
             self._mouse_event("mouseup", point, buttons=0, click_count=1)
             return point
         try:
-            return self._retry(target, run, timeout=timeout, frame_id=frame_id)
+            return self._retry(target, run, timeout=timeout, frame_id=frame_id,
+                               **opts)
         except BaseException:
             # ⛔ A button left down poisons EVERY subsequent action: the
             # `buttons` field of every event after would say "pressed".
@@ -857,7 +894,9 @@ class Actions:
         self._click_nonce += 1
         return plan_click(self.pointer_persona, clicks, nonce=self._click_nonce)
 
-    def fill(self, selector: str, text: str, *, timeout: float = 30.0, frame_id: Optional[str] = None, element_id: Optional[str] = None):
+    def fill(self, selector: str, text: str, *, timeout: float = 30.0,
+             frame_id: Optional[str] = None,
+             element_id: Optional[str] = None, **opts):
         """Writes into a field.
 
         ⛔ It doesn't just write `element.value = ...`: a site listening
@@ -890,7 +929,7 @@ class Actions:
         return self._retry(selector, run, element_id=element_id,
                            states=["visible", "stable", "enabled",
                                    "editable"],
-                           timeout=timeout, frame_id=frame_id)
+                           timeout=timeout, frame_id=frame_id, **opts)
 
     # ── the tools ───────────────────────────────────────────────────────────
     def _mouse_event(self, event_type: str, point, *, button: int = 0,

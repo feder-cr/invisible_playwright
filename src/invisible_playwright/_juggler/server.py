@@ -495,32 +495,35 @@ class ElementHandleDispatcher(Dispatcher):
     # of a request are one thing, and two readers of one wire format drift.
 
     def _act_args(self, params: Dict) -> Dict:
+        """⛔ THE PER-ACTION OPTIONS COME THROUGH HERE TOO, and that is why
+        every operation on this class uses this helper rather than spelling the
+        three arguments out. `strict` is inert on a handle - the node is given,
+        not looked up - but `trial` and `force` are not, and an operation that
+        built its own argument set would be the one written without them.
+        """
         return {"timeout": self.frame._timeout(params),
                 "frame_id": self.frame.frame_id,
-                "element_id": self.object_id}
+                "element_id": self.object_id,
+                **self.frame._act_opts(params)}
 
     def op_click(self, params: Dict) -> Any:
         self.frame.actions.click(_HANDLE, position=self.frame._position(params),
-                                 trial=self.frame._trial(params),
                                  **self.frame._pointer(params),
                                  **self._act_args(params))
         return None
 
     def op_hover(self, params: Dict) -> Any:
         self.frame.actions.hover(_HANDLE, position=self.frame._position(params),
-                                 trial=self.frame._trial(params),
                                  **self._act_args(params))
         return None
 
     def op_check(self, params: Dict) -> Any:
         self.frame.actions.check(_HANDLE, position=self.frame._position(params),
-                                 trial=self.frame._trial(params),
                                  **self._act_args(params))
         return None
 
     def op_uncheck(self, params: Dict) -> Any:
         self.frame.actions.uncheck(_HANDLE, position=self.frame._position(params),
-                                   trial=self.frame._trial(params),
                                    **self._act_args(params))
         return None
 
@@ -858,17 +861,32 @@ class FrameDispatcher(Dispatcher):
             "delay_ms": params.get("delay"),
         }
 
-    def _trial(self, params: Dict) -> bool:
-        """⛔ ONE PLACE KNOWS THE NAME OF THIS PARAMETER, and that is the point
+    def _act_opts(self, params: Dict) -> Dict:
+        """Every per-action option the wire carries, read in ONE place.
+
+        ⛔ ONE PLACE KNOWS THE NAMES OF THESE PARAMETERS, and that is the point
         of a helper this small. `trial` reaches seven operations, and seven
         copies of `params.get("trial")` is how the eighth gets written without
         one - which is exactly how it came to be accepted on 31 public
         signatures and read by nobody, so `click(trial=True)` clicked.
 
-        What it MEANS lives in `Actions._retry`, the only thing that knows what
-        actionable is. This just carries it across the wire.
+        ⛔ AND THAT SHAPE IS WHY THIS READS THREE OPTIONS RATHER THAN ONE.
+        The helper used to answer only `trial`, so `strict` and `force` had to
+        be wired option by option, action by action - and they never were: both
+        were accepted by the public API and read by nobody. `strict` is the
+        expensive one. Every Locator method sends `strict=True` (28 call sites
+        in `_locator.py`), so `page.locator("button").click()` on a page with
+        two buttons clicked the FIRST one instead of refusing - the automation
+        acting on an element nobody chose, with nothing said. Reading them
+        together means the ninth action cannot be written with one and without
+        the others.
+
+        What they MEAN lives in `Actions._retry`, the only thing that knows
+        what actionable is. This just carries them across the wire.
         """
-        return bool(params.get("trial"))
+        return {"trial": bool(params.get("trial")),
+                "strict": bool(params.get("strict")),
+                "force": bool(params.get("force"))}
 
     def _position(self, params: Dict):
         """The caller's offset inside the element, or None.
@@ -886,7 +904,7 @@ class FrameDispatcher(Dispatcher):
     def op_click(self, params: Dict) -> Any:
         frame_id, selector = self.enter_frames(params["selector"])
         self.actions.click(selector, timeout=self._timeout(params),
-                                frame_id=frame_id, trial=self._trial(params),
+                                frame_id=frame_id, **self._act_opts(params),
                                 position=self._position(params),
                                 **self._pointer(params))
         return None
@@ -897,65 +915,71 @@ class FrameDispatcher(Dispatcher):
         # dblclick sets its own clickCount; the caller's is not a second one.
         pointer.pop("clicks", None)
         self.actions.dblclick(selector, timeout=self._timeout(params),
-                                   frame_id=frame_id, trial=self._trial(params),
+                                   frame_id=frame_id, **self._act_opts(params),
                                    position=self._position(params), **pointer)
         return None
 
     def op_hover(self, params: Dict) -> Any:
         frame_id, selector = self.enter_frames(params["selector"])
         self.actions.hover(selector, timeout=self._timeout(params),
-                                frame_id=frame_id, trial=self._trial(params),
+                                frame_id=frame_id, **self._act_opts(params),
                                 position=self._position(params))
         return None
 
     def op_fill(self, params: Dict) -> Any:
         frame_id, selector = self.enter_frames(params["selector"])
         self.actions.fill(selector, params["value"],
-                               timeout=self._timeout(params), frame_id=frame_id)
+                               timeout=self._timeout(params), frame_id=frame_id,
+                               **self._act_opts(params))
         return None
 
     def op_check(self, params: Dict) -> Any:
         frame_id, selector = self.enter_frames(params["selector"])
         self.actions.check(selector, timeout=self._timeout(params),
-                                frame_id=frame_id, trial=self._trial(params),
+                                frame_id=frame_id, **self._act_opts(params),
                                 position=self._position(params))
         return None
 
     def op_uncheck(self, params: Dict) -> Any:
         frame_id, selector = self.enter_frames(params["selector"])
         self.actions.uncheck(selector, timeout=self._timeout(params),
-                                  frame_id=frame_id, trial=self._trial(params),
+                                  frame_id=frame_id, **self._act_opts(params),
                                   position=self._position(params))
         return None
 
     def op_focus(self, params: Dict) -> Any:
         frame_id, selector = self.enter_frames(params["selector"])
         self.actions.focus(selector,
-                                timeout=self._timeout(params), frame_id=frame_id)
+                                timeout=self._timeout(params), frame_id=frame_id,
+                                **self._act_opts(params))
         return None
 
     def op_blur(self, params: Dict) -> Any:
         frame_id, selector = self.enter_frames(params["selector"])
         self.actions.blur(selector,
-                               timeout=self._timeout(params), frame_id=frame_id)
+                               timeout=self._timeout(params), frame_id=frame_id,
+                               **self._act_opts(params))
         return None
 
     def op_select_text(self, params: Dict) -> Any:
         frame_id, selector = self.enter_frames(params["selector"])
         self.actions.select_text(selector,
-                                      timeout=self._timeout(params), frame_id=frame_id)
+                                      timeout=self._timeout(params), frame_id=frame_id,
+                                      **self._act_opts(params))
         return None
 
     def op_press(self, params: Dict) -> Any:
         frame_id, selector = self.enter_frames(params["selector"])
         self.actions.press(selector, params["key"],
-                                timeout=self._timeout(params), frame_id=frame_id)
+                                timeout=self._timeout(params), frame_id=frame_id,
+                                **self._act_opts(params))
         return None
 
     def op_type(self, params: Dict) -> Any:
         frame_id, selector = self.enter_frames(params["selector"])
         self.actions.type_text(selector, params["text"],
-                                    timeout=self._timeout(params), frame_id=frame_id)
+                                    timeout=self._timeout(params), frame_id=frame_id,
+                                    **self._act_opts(params))
         return None
 
     def op_select_option(self, params: Dict) -> Any:
@@ -965,20 +989,21 @@ class FrameDispatcher(Dispatcher):
         # option. Measured: ["b"] answered ['a'].
         chosen = self.actions.select_option(
             params["selector"], params.get("options") or [],
-            timeout=self._timeout(params))
+            timeout=self._timeout(params), **self._act_opts(params))
         return {"values": chosen or []}
 
     def op_set_input_files(self, params: Dict) -> Any:
         frame_id, selector = self.enter_frames(params["selector"])
         self.actions.set_input_files(selector, _upload_paths(params),
                                      timeout=self._timeout(params),
-                                     frame_id=frame_id)
+                                     frame_id=frame_id,
+                                     **self._act_opts(params))
         return None
 
     def op_tap(self, params: Dict) -> Any:
         frame_id, selector = self.enter_frames(params["selector"])
         self.actions.tap(selector, timeout=self._timeout(params),
-                              frame_id=frame_id, trial=self._trial(params),
+                              frame_id=frame_id, **self._act_opts(params),
                               position=self._position(params))
         return None
 
@@ -994,13 +1019,14 @@ class FrameDispatcher(Dispatcher):
         self.actions.dispatch_event(
             selector, params["type"],
             _deserialize(params.get("eventInit")) or {},
-            timeout=self._timeout(params), frame_id=frame_id)
+            timeout=self._timeout(params), frame_id=frame_id,
+            **self._act_opts(params))
         return None
 
     def op_drag_and_drop(self, params: Dict) -> Any:
         self.actions.drag_and_drop(params["source"], params["target"],
                                         timeout=self._timeout(params),
-                                        trial=self._trial(params))
+                                        **self._act_opts(params))
         return None
 
     def op_set_content(self, params: Dict) -> Any:

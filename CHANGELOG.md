@@ -6,6 +6,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-09-17
+
+### Fixed
+- **`strict` now refuses an ambiguous selector instead of picking one.** The
+  option was accepted across the public API, the injected script has always
+  known how to raise on it, and nothing in between passed it on: the default
+  stayed false all the way down. Every Locator method sends `strict=True`, so
+  `page.locator("button").click()` on a page with two buttons clicked the
+  FIRST one and reported success. That is not a missing error message. The
+  automation acted on an element nobody had chosen, and said nothing about it.
+- **`force` now bypasses the actionability checks it promises to bypass**, and
+  both of them: the state checks and the hit-target check. "Receives events"
+  is one of the checks the option names, and an overlay intercepting the
+  pointer is the ordinary reason to pass it, so honouring only the first half
+  would leave the option indistinguishable from doing nothing.
+
+### Changed
+- The server reads the per-action options in ONE place rather than one reader
+  per option. A reader per option is the shape that lost these two: seven
+  copies of `params.get("trial")` is how the eighth action gets written
+  without one. A test derives the list of actions that can carry the options
+  from the code and requires every operation reaching one of them to hand
+  them over, so an action added without the wiring is red on the day it is
+  written.
+- `no_wait_after` is NOT in this list, and the note that grouped it with the
+  other two was wrong. Upstream declares it deprecated and without effect, so
+  a client that ignores it matches upstream rather than departing from it.
+
 ## [0.21.0] - 2026-09-17
 
 ### Added
