@@ -303,6 +303,27 @@ def test_asking_for_a_higher_rate_actually_delivers_more_frames(firefox_binary):
     Measured 2026-09-08 on this machine: 10 asked delivered 9.6-9.8 fps, 25
     asked delivered 23.8-24.0. The floor below is deliberately far from that -
     it is testing that the lever is connected, not re-measuring it.
+
+    ⛔ THE SLOW ARM IS 2 AND NOT 5, AND THE REASON IS A RED THAT WAS ABOUT THE
+    RUNNER. On 2026-09-17 this failed on CI with 25 asked delivering 22 frames
+    in three seconds and 5 asked delivering 15. Read as a ratio that is a
+    failure; read as rates it is the opposite. The slow arm hit its cap
+    EXACTLY, 5.0 fps, which is the lever working; the fast arm got 7.3 fps,
+    which is the loaded runner's ceiling and not an answer about the lever at
+    all. The identical commit had been green seven minutes earlier, and a
+    re-run on the same SHA was green again.
+
+    The shape is what was wrong, not the threshold. Only ONE of the two arms is
+    rate-limited; the other measures the MACHINE, so `fast > slow * 1.5` was an
+    undeclared requirement that the machine deliver 7.5 fps. Asking for 2 moves
+    that requirement to 3 fps, which no machine that can run a browser at all
+    will miss.
+
+    ⛔ AND THE ARM THAT DOES NOT DEPEND ON THE MACHINE WAS THE ONE NOBODY
+    CHECKED. A cap only ever pushes the rate DOWN, so "asking for 2 delivers
+    about 2 per second" is answerable on any machine, however slow - and it is
+    the assertion that a lever quietly disconnected would fail first, because
+    then the slow arm runs at the machine's maximum too. It is asserted now.
     """
     srv = socketserver.TCPServer(("127.0.0.1", 0), _serve(PAGE))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -327,16 +348,36 @@ def test_asking_for_a_higher_rate_actually_delivers_more_frames(firefox_binary):
         page.screencast.stop()
         return len(got)
 
+    seconds = 3.0
+    slow_fps, fast_fps = 2, 25
     try:
         with InvisiblePlaywright(seed=42, binary_path=firefox_binary,
                                  headless=True) as browser:
-            slow = count(browser.new_page(), 5)
-            fast = count(browser.new_page(), 25)
+            slow = count(browser.new_page(), slow_fps, seconds)
+            fast = count(browser.new_page(), fast_fps, seconds)
     finally:
         srv.shutdown()
 
     assert slow and fast, "no frames at all: %d and %d" % (slow, fast)
+
+    # The half that does not depend on the machine: a cap only pushes the rate
+    # down, so this one is answerable however slow the runner is.
+    ceiling = slow_fps * seconds * 2
+    assert slow <= ceiling, (
+        "asking for %d frames a second delivered %d in %.0f seconds (%.1f "
+        "fps), which is not a cap being honoured - it is what this machine "
+        "produces when nothing limits it, so the rate the caller asks for is "
+        "not reaching the engine"
+        % (slow_fps, slow, seconds, slow / seconds))
+
     assert fast > slow * 1.5, (
-        "asking for 25 frames a second delivered %d in three seconds and "
-        "asking for 5 delivered %d: the rate the caller asks for is not "
-        "reaching the engine" % (fast, slow))
+        "asking for %d frames a second delivered %d in %.0f seconds and "
+        "asking for %d delivered %d: the rate the caller asks for is not "
+        "reaching the engine.\n"
+        "    Before believing that, check the second number against the "
+        "machine: the fast arm is limited by what this host can render, not "
+        "by what was asked (%d would be %.0f frames), so a fast arm far below "
+        "its request means the host is the ceiling and this comparison cannot "
+        "answer the question."
+        % (fast_fps, fast, seconds, slow_fps, slow,
+           fast_fps, fast_fps * seconds))
