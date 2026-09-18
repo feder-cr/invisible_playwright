@@ -6,6 +6,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.22.1] - 2026-09-18
+
+### Fixed
+- **A click is delivered once, whatever the click does to the page.** One
+  `click` could hand the page thirty-nine clicks and then report the action
+  failed; on a control that stays put it did the action twice and reported
+  success. Measured on 0.22.0, three buttons on one page differing only in
+  what their handler does, thirty calls each: a button that does nothing and a
+  button that moves itself were correct thirty times out of thirty, and a
+  button that hides itself received 1068 clicks across 30 calls, all of which
+  were then reported as failures.
+
+  The discriminant is not movement. It is the target ceasing to be hittable by
+  its OWN effect, which is what a modal's close, a cookie banner's accept, a
+  menu item and a submit that becomes a spinner all do.
+
+  The hit target was read before the action and again after it, and both reads
+  raised `WrongHitTarget`, which the retry loop absorbs by starting over -
+  and starting over presses again. The read afterwards cannot answer the
+  question it is asked: once the event has gone out, "the point stopped
+  belonging to the element" is the same observation for a click that missed
+  and for a click that worked. It is gone rather than narrowed.
+
+  What replaces it is one read, between the approach and the press. The read
+  also moved after the approach, which is where the race is: a page that
+  rearranges itself on hover was being judged in the layout from before the
+  pointer arrived.
+
 ## [0.22.0] - 2026-09-17
 
 ### Fixed
