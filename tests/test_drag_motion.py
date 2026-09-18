@@ -428,7 +428,10 @@ def test_a_real_page_sees_a_drag_that_travelled(firefox_binary):
         "  e => window.__e.push([t, e.clientX, e.clientY, e.buttons]), true);"
         "for (const t of ['dragstart','dragover','drop','dragend'])"
         " document.addEventListener(t, e => {"
-        "  window.__d.push(t); if (t !== 'dragstart') e.preventDefault(); },"
+        "  window.__d.push(t);"
+        "  if (t === 'dragover')"
+        "   window.__e.push([t, e.clientX, e.clientY, e.buttons]);"
+        "  if (t !== 'dragstart') e.preventDefault(); },"
         "  true);"
         "</script>")
     with InvisiblePlaywright(seed=42, binary_path=firefox_binary) as browser:
@@ -446,8 +449,6 @@ def test_a_real_page_sees_a_drag_that_travelled(firefox_binary):
         page.evaluate("() => { window.__e = []; }")
         page.mouse.move(700, 120)
         afterwards = page.evaluate("window.__e")
-
-    moves = [e for e in events if e[0] == "mousemove"]
 
     # ⛔ A COMPLETED DRAG DELIVERS NO `mouseup` TO THE PAGE, and this used to
     # assert that it did. That was not wrong when it was written: the drop never
@@ -468,9 +469,26 @@ def test_a_real_page_sees_a_drag_that_travelled(firefox_binary):
         "the button is still down after the drag, so every later event lies: "
         "%s" % afterwards[:3])
 
-    assert len(moves) > 5, (
-        "the whole journey took %d move events" % len(moves))
-    _no_event_carried_the_journey([(e[1], e[2]) for e in moves])
-    held = [e for e in moves if e[3] == 1]
-    assert len(held) > 3, (
-        "only %d of the movement happened with the button down" % len(held))
+    # ⛔ AND THE JOURNEY IS CARRIED BY TWO KINDS OF EVENT, not one. Once the
+    # drag engages, the browser stops sending `mousemove` and sends `dragover`
+    # instead - which is what a real one does, and what ours does now that the
+    # drag is actually adopted. Counting only the mouse half measures HOW LATE
+    # the drag engaged, not how far the pointer went: on an engine that adopts
+    # it immediately, three `mousemove` and forty `dragover` is a full journey,
+    # and the old count read it as a journey of three.
+    kinds = [e[0] for e in events]
+    assert "mousedown" in kinds, "the press never reached the page"
+    press = kinds.index("mousedown")
+    journey = [e for e in events[press + 1:] if e[0] in ("mousemove", "dragover")]
+
+    assert len(journey) > 5, (
+        "the whole journey took %d events: %s" % (len(journey), kinds))
+    _no_event_carried_the_journey([(e[1], e[2]) for e in journey])
+
+    # And every movement that still arrives as a `mousemove` after the press has
+    # to report the button down - one that does not means the press was lost,
+    # which is the failure the old count was really guarding against.
+    after_press = [e for e in events[press + 1:] if e[0] == "mousemove"]
+    assert after_press and all(e[3] == 1 for e in after_press), (
+        "a movement after the press reports the button up, so the press was "
+        "lost: %s" % after_press[:3])
