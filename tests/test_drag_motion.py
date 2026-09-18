@@ -422,10 +422,14 @@ def test_a_real_page_sees_a_drag_that_travelled(firefox_binary):
         "#b{position:absolute;left:520px;top:380px;width:120px;height:80px}"
         "</style>"
         "<div id='a' draggable='true'>source</div><div id='b'>target</div>"
-        "<script>window.__e=[];"
+        "<script>window.__e=[];window.__d=[];"
         "for (const t of ['mousemove','mousedown','mouseup'])"
         " document.addEventListener(t,"
         "  e => window.__e.push([t, e.clientX, e.clientY, e.buttons]), true);"
+        "for (const t of ['dragstart','dragover','drop','dragend'])"
+        " document.addEventListener(t, e => {"
+        "  window.__d.push(t); if (t !== 'dragstart') e.preventDefault(); },"
+        "  true);"
         "</script>")
     with InvisiblePlaywright(seed=42, binary_path=firefox_binary) as browser:
         page = browser.new_page()
@@ -434,10 +438,36 @@ def test_a_real_page_sees_a_drag_that_travelled(firefox_binary):
         page.evaluate("() => { window.__e = []; }")
         page.drag_and_drop("#a", "#b")
         events = page.evaluate("window.__e")
+        dragged = page.evaluate("window.__d")
+        # Move again, on its own record, to see what the pointer reports AFTER
+        # the gesture. This is the release check, and it is deliberately not
+        # folded into `events`: a jump from the target to here is not part of
+        # the journey and would be measured as if it were.
+        page.evaluate("() => { window.__e = []; }")
+        page.mouse.move(700, 120)
+        afterwards = page.evaluate("window.__e")
 
     moves = [e for e in events if e[0] == "mousemove"]
-    assert [e[0] for e in events].count("mouseup") == 1, (
-        "no mouseup, so the button is still down and every later event lies")
+
+    # ⛔ A COMPLETED DRAG DELIVERS NO `mouseup` TO THE PAGE, and this used to
+    # assert that it did. That was not wrong when it was written: the drop never
+    # arrived, so the release reached the page as a plain `mouseup`, and
+    # counting it was a cheap proxy for the thing that actually matters - that
+    # the button is not left down. [B213] made the drag complete, so the release
+    # now arrives as `drop` + `dragend`, the way it does in a real browser, and
+    # the proxy became false while the intent it stood for stayed true.
+    #
+    # So the intent is asserted DIRECTLY - what does the pointer report once the
+    # gesture is over - and the drag is required to have COMPLETED, which the
+    # proxy never checked. Without that second half, "no mouseup" would also be
+    # satisfied by a gesture that broke in some new way.
+    assert "dragend" in dragged, (
+        "the gesture did not complete as a drag, it only did %s - so the "
+        "absence of a mouseup says nothing" % (dragged or "nothing"))
+    assert afterwards and all(e[3] == 0 for e in afterwards), (
+        "the button is still down after the drag, so every later event lies: "
+        "%s" % afterwards[:3])
+
     assert len(moves) > 5, (
         "the whole journey took %d move events" % len(moves))
     _no_event_carried_the_journey([(e[1], e[2]) for e in moves])
