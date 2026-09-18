@@ -185,12 +185,15 @@ def test_force_skips_the_hit_target_check_too():
     actions = _actions(hit="<div id='overlay'> intercepts the pointer")
     ran: list = []
 
-    out = actions._with_hit_target(MAIN, "element", (10.0, 20.0),
-                                   lambda: ran.append("acted") or "ok",
-                                   force=True)
+    out = actions._act_on_target(MAIN, "element", (10.0, 20.0),
+                                 approach=lambda: ran.append("approached"),
+                                 commit=lambda: ran.append("acted") or "ok",
+                                 force=True)
 
     assert out == "ok"
-    assert ran == ["acted"]
+    # Forced skips the CHECK, not the approach: a press with no pointer
+    # movement before it is the most recognisable shape a click has.
+    assert ran == ["approached", "acted"]
     assert actions.inj.checks == 0
 
 
@@ -200,7 +203,8 @@ def test_without_force_a_covered_element_still_refuses():
 
     actions = _actions(hit="<div id='overlay'> intercepts the pointer")
     with pytest.raises(WrongHitTarget, match="overlay"):
-        actions._with_hit_target(MAIN, "element", (10.0, 20.0), lambda: "ok")
+        actions._act_on_target(MAIN, "element", (10.0, 20.0),
+                               approach=lambda: None, commit=lambda: "ok")
 
 
 def test_a_forced_trial_does_not_check_the_hit_target():

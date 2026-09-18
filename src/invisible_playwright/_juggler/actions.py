@@ -326,10 +326,25 @@ class Actions:
                     raise
                 reason = "the node detached while I was using it"
             except WrongHitTarget as e:
-                # ⛔ This too is a condition of the WORLD, not a failure:
-                # the page moved between the check and the event. We start
-                # over, and the point gets recalculated on the new
-                # geometry.
+                # ⛔ This too is a condition of the WORLD, not a failure: the
+                # point stopped belonging to the element before we committed,
+                # so nothing was done and starting over is free. The point gets
+                # recalculated on the new geometry.
+                #
+                # ⛔ AND THAT SENTENCE IS THE INVARIANT THIS LOOP RESTS ON:
+                # STARTING OVER IS SOUND ONLY WHILE NOTHING HAS HAPPENED. It
+                # was broken for four versions. `_act_on_target` used to read
+                # the DOM again AFTER the event and raise this same exception
+                # on what it found, so "the click missed" and "the click worked
+                # and the control moved out from under the pointer" arrived
+                # here as the same word - and this line repeated the action.
+                # Measured on 0.22.0: thirty-nine clicks delivered for one
+                # call, and a toggle flipped twice and reported success.
+                #
+                # Nothing may raise this after committing. An action that needs
+                # to report something about what it did afterwards must say so
+                # in its RESULT: a retry loop cannot un-press a button, so it
+                # must never be handed a reason to press one twice.
                 reason = "the event would have landed elsewhere (%s)" % e
             finally:
                 # Only what this loop resolved. Disposing the caller's handle
@@ -366,50 +381,72 @@ class Actions:
         return (point[0] + main["x"] - here["x"],
                 point[1] + main["y"] - here["y"])
 
-    def _with_hit_target(self, f, element, point, act, *, force: bool = False):
-        """Acts only if the point belongs to the intended element, and says so
-        again afterwards.
+    def _act_on_target(self, f, element, point, *, approach, commit,
+                       force: bool = False):
+        """Approach, check that the point still belongs to the element, and
+        only then do the thing that cannot be taken back.
 
-        ⛔ `force` SKIPS IT, AND THAT IS NOT AN EXEMPTION - IT IS WHAT THE
-        OPTION MEANS. "Receives events" is one of the actionability checks
+        ⛔ `force` SKIPS THE CHECK, AND THAT IS NOT AN EXEMPTION - IT IS WHAT
+        THE OPTION MEANS. "Receives events" is one of the actionability checks
         `force` is documented to bypass, and an overlay intercepting the
         pointer is the ordinary reason somebody passes it. Honouring `force`
         on the state checks alone would leave it half wired, which is the
         defect this was: an option accepted on every public signature that
         changed nothing a caller could observe.
 
-        ⛔ IT USED TO BE AN INTERCEPTOR, and the difference is the point of
-        this function. An interceptor watched the event WHILE it arrived and
-        BLOCKED it when the point had stopped belonging to the element. That
-        closed the race between the check and the event - and it cost two things
-        that were worse than the race.
+        ⛔ IT USED TO BE AN INTERCEPTOR, and that history is why the shape here
+        matters. An interceptor watched each event WHILE it arrived and BLOCKED
+        the ones whose point had stopped belonging to the element. It needed
+        capture listeners for the duration of every action, and the block
+        itself was a tell: a real `mousedown` that vanishes under
+        `preventDefault` is not something any input stack produces.
 
-        It needed capture listeners on the PAGE's window for the duration of
-        every action, the last thing this package left there. And the block
-        itself was the tell: a real `mousedown` that vanishes under
-        `preventDefault` is not something any input stack produces, so the
-        defence announced us exactly when it worked.
+        It was replaced by two pure DOM reads, one before the action and one
+        after, and the one AFTER is what this corrects.
 
-        Two pure reads instead. The one BEFORE refuses to act on a point that
-        has already stopped belonging to the element; the one AFTER catches the
-        target that moved in between and turns it into a retry. What a page sees
-        in that case is a click that landed where the thing it was aimed at used
-        to be, which is what a hand produces when a layout shifts under it.
+        ⛔ A CHECK AFTER THE EVENT CANNOT ANSWER THE QUESTION IT IS ASKED, AND
+        IT DROVE A RETRY. Once the event has gone out, these two are the SAME
+        observation:
 
-        Measured by `tests/gates/injected_page_surface.js`: the bundle now
-        touches the page's window zero times, in every phase.
+            the point stopped belonging to the element BEFORE the event, so the
+            click landed on something else;
+
+            the point stopped belonging to the element BECAUSE of the event, so
+            the click landed exactly where it was aimed and the control did
+            what it exists to do.
+
+        The second is not an edge case, it is most controls. Measured on the
+        published 0.22.0, one `browser_click` per call: a button that hides
+        itself on click received THIRTY-NINE clicks and the call then reported
+        failure; a panel toggle was opened and closed by a single call, which
+        reported success; a button that only moves, and one that does nothing,
+        were correct thirty times out of thirty. The discriminant is not
+        movement - it is the target ceasing to be hittable BY ITS OWN EFFECT.
+
+        A check whose negative result carries no information cannot gate
+        anything, so it is gone rather than narrowed. What it leaves behind is
+        the invariant `_retry` depends on: starting over is sound only while
+        nothing has happened, and every raise here is now before `commit`.
+
+        ⛔ AND THE READ MOVED AFTER `approach`, WHICH IS WHERE THE RACE IS. It
+        used to run before the pointer moved, so a page that rearranges itself
+        on hover - a menu opening under the cursor is the ordinary case - was
+        judged in the layout that existed before the thing that changed it.
+        What is left is one round trip between this read and the press. Closing
+        that one belongs to the engine, the only place that can verify and
+        dispatch without a gap; it is not closed by reading the DOM again
+        afterwards, which is what this function just stopped doing.
+
+        Measured by `tests/gates/injected_page_surface.js`: the bundle touches
+        the page's window zero times, in every phase.
         """
-        if force:
-            return act()
-        here = self._hit_point(f, point)
-        before = self.inj.check_hit_target(f, element, here)
-        if before != "done":
-            raise WrongHitTarget(before)
-        result = act()
-        after = self.inj.check_hit_target(f, element, here)
-        if after != "done":
-            raise WrongHitTarget(after)
-        return result
+        approach()
+        if not force:
+            verdict = self.inj.check_hit_target(f, element,
+                                                self._hit_point(f, point))
+            if verdict != "done":
+                raise WrongHitTarget(verdict)
+        return commit()
 
     # ── waiting ─────────────────────────────────────────────────────────────
     def wait_for_selector(self, selector: str, *, state: str = "visible",
@@ -462,9 +499,12 @@ class Actions:
     def hover(self, selector: str, *, timeout: float = 30.0, frame_id: Optional[str] = None,
               position=None, element_id: Optional[str] = None, **opts):
         def run(f, element, point):
-            return self._with_hit_target(
+            # The move IS the action here, so there is nothing to approach
+            # first: the check sits immediately before the only event.
+            return self._act_on_target(
                 f, element, point,
-                lambda: self._mouse_event("mousemove", point) or point,
+                approach=lambda: None,
+                commit=lambda: self._mouse_event("mousemove", point) or point,
                 force=bool(opts.get("force")))
         return self._retry(selector, run, timeout=timeout, element_id=element_id,
                            frame_id=frame_id, position=position, **opts)
@@ -475,20 +515,23 @@ class Actions:
               element_id: Optional[str] = None, **opts):
         def run(f, element, point):
             def act():
-                # The order is that of a user: approach, press, release.
-                # Skipping the mousemove leaves the page without the
-                # hover, and there are sites that open the menu right
-                # there.
-                # ⛔ The move carries the modifiers too. A page that reads
-                # `event.shiftKey` on `mouseover` - menus do - would otherwise
-                # see an unmodified approach followed by a modified click,
-                # which no real input device produces.
-                self._mouse_event("mousemove", point, modifiers=modifiers)
                 self._click_at_point(point, button=button, clicks=clicks,
                                      modifiers=modifiers, delay_ms=delay_ms)
                 return point
-            return self._with_hit_target(f, element, point, act,
-                                         force=bool(opts.get("force")))
+            # The order is that of a user: approach, press, release. Skipping
+            # the mousemove leaves the page without the hover, and there are
+            # sites that open the menu right there - which is also why the
+            # target is checked BETWEEN the two rather than before both.
+            # ⛔ The move carries the modifiers too. A page that reads
+            # `event.shiftKey` on `mouseover` - menus do - would otherwise
+            # see an unmodified approach followed by a modified click,
+            # which no real input device produces.
+            return self._act_on_target(
+                f, element, point,
+                approach=lambda: self._mouse_event("mousemove", point,
+                                                   modifiers=modifiers),
+                commit=act,
+                force=bool(opts.get("force")))
         return self._retry(selector, run, timeout=timeout, frame_id=frame_id,
                            position=position, element_id=element_id, **opts)
 
@@ -538,16 +581,16 @@ class Actions:
             if self.inj.element_state(f, element, state):
                 return "already there"
 
-            def act():
-                self._mouse_event("mousemove", point)
-                self._click_at_point(point)
-            # ⛔ GOES THROUGH THE INTERCEPTOR like `click`, and it isn't a
+            # ⛔ GOES THROUGH THE SAME PATH AS `click`, and it isn't a
             # finishing touch: the first draft called `_click_at_point`
             # directly and failed on the very page that shifts its layout
             # at 1200 ms. One single place knows how to click; two know it
             # only until one of them learns something the other doesn't.
-            self._with_hit_target(f, element, point, act,
-                                  force=bool(opts.get("force")))
+            self._act_on_target(
+                f, element, point,
+                approach=lambda: self._mouse_event("mousemove", point),
+                commit=lambda: self._click_at_point(point),
+                force=bool(opts.get("force")))
             if not self.inj.element_state(f, element, state):
                 raise EvaluationError(
                     "clicked but the box stayed %s: someone intercepted "
