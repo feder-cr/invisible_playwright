@@ -6,6 +6,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.22.2] - 2026-09-18
+
+### Fixed
+- **`__version__` describes the code, not the install record.** It came from
+  `importlib.metadata`, which answers about the distribution the installer put
+  there. For a wheel that is the same artifact as the code. For
+  `pip install -e` the metadata is written once while the code keeps moving,
+  and pulling does not touch it. Measured minutes after the checkout had been
+  brought to zero commits behind `origin/main`: the record said 0.16.2 while
+  the tree declared 0.22.1, six releases apart.
+
+  That matters here more than in most packages, because this is the one a
+  measurement names. Read from the program, the X in "measured against
+  invisible-playwright X" was the moment somebody ran `pip install -e`, not the
+  code under test.
+
+  The version is now the install record for a normal install, and for an
+  editable one the version the source tree declares plus a `+editable` local
+  segment, so a tree that can carry uncommitted work is never read as the
+  published release of the same number. Which of the two an install is comes
+  from what `pip` itself wrote in `direct_url.json` (PEP 610), not from a guess
+  about `__file__`. The record is still reported, under
+  `__install_record_version__`, the way `invisible_core` already names it.
+
+- **Two tests were exercising whatever was installed rather than this code.**
+  The `--version` and `-V` arms spawned a subprocess, and a subprocess does not
+  inherit pytest's `pythonpath`. In CI the two coincide, because the workflow
+  installs this repository editable; from a worktree they do not, and the arms
+  went red against a checkout they were never meant to measure.
+
 ## [0.22.1] - 2026-09-18
 
 ### Fixed

@@ -15,6 +15,7 @@ import re
 import subprocess
 import sys
 from contextlib import redirect_stdout
+from pathlib import Path
 
 import pytest
 
@@ -24,12 +25,37 @@ from invisible_playwright import __version__, cli
 
 pytestmark = pytest.mark.unit
 
+# ⛔ A SUBPROCESS DOES NOT INHERIT pytest's `pythonpath`, SO WITHOUT THIS IT
+# TESTS WHATEVER IS INSTALLED INSTEAD OF THE CODE UNDER TEST. In CI the two are
+# the same thing, because the workflow installs this repository with
+# `pip install -e .`; from a worktree they are not, and the arms below went red
+# against a checkout they were never meant to measure. Being inside a
+# repository is not evidence that a test is testing that repository.
+def _run(*args):
+    import os
+    env = dict(os.environ)
+    here = str(Path(__file__).resolve().parents[1] / "src")
+    env["PYTHONPATH"] = here + os.pathsep + env.get("PYTHONPATH", "")
+    return subprocess.run([sys.executable, "-m", "invisible_playwright", *args],
+                          capture_output=True, text=True, timeout=15, env=env)
 
-def test_version_matches_installed_package_metadata():
-    """__version__ must come from importlib.metadata, not a hardcoded literal,
-    so it can never drift from the pyproject.toml `version` field."""
+
+
+def test_the_install_record_is_still_reported_under_its_own_name():
+    """This asserted `__version__ == importlib.metadata.version(...)`,
+    with a docstring saying the point was that the version can never
+    drift from the `pyproject.toml` field. The assertion did not hold that: an
+    editable install freezes the metadata while the tree keeps moving, measured
+    here at 0.16.2 against a tree declaring 0.22.1. The equality was true of the
+    INSTALL RECORD all along, which is the fact this line was really about, and
+    that fact now has a name of its own.
+
+    What the docstring wanted - never drifting from the tree - is held by
+    `test_the_version_describes_the_code.py` against real `pip` installs.
+    """
     from importlib.metadata import version as pkg_version
-    assert __version__ == pkg_version("invisible-playwright")
+    assert invisible_playwright.__install_record_version__ == pkg_version(
+        "invisible-playwright")
 
 
 def test_version_is_not_the_stale_010_string():
@@ -73,10 +99,7 @@ def test_dash_dash_version_flag_works():
     no top-level --version flag, only the `version` subcommand. Now the
     Python convention works too."""
     # argparse's --version action calls sys.exit(0) directly, so use subprocess.
-    r = subprocess.run(
-        [sys.executable, "-m", "invisible_playwright", "--version"],
-        capture_output=True, text=True, timeout=15,
-    )
+    r = _run("--version")
     assert r.returncode == 0, f"--version returned {r.returncode}, stderr={r.stderr!r}"
     # argparse may emit on stdout or stderr depending on version
     combined = r.stdout + r.stderr
@@ -87,10 +110,7 @@ def test_dash_dash_version_flag_works():
 def test_no_args_prints_help_not_traceback():
     """`python -m invisible_playwright` with no args should be graceful
     (print help, exit non-zero) rather than crashing with a traceback."""
-    r = subprocess.run(
-        [sys.executable, "-m", "invisible_playwright"],
-        capture_output=True, text=True, timeout=15,
-    )
+    r = _run()
     # Either prints help (rc=2) or shows usage. Must NOT contain a traceback.
     assert "Traceback" not in (r.stdout + r.stderr)
     assert "usage:" in (r.stdout + r.stderr).lower()
@@ -98,10 +118,7 @@ def test_no_args_prints_help_not_traceback():
 
 def test_dash_V_short_flag_works():
     """Alias `-V` for `--version` (Python convention)."""
-    r = subprocess.run(
-        [sys.executable, "-m", "invisible_playwright", "-V"],
-        capture_output=True, text=True, timeout=15,
-    )
+    r = _run("-V")
     assert r.returncode == 0
     assert __version__ in (r.stdout + r.stderr)
 
