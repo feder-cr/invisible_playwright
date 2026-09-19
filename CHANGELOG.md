@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-09-20
+
+### Changed
+- **The engine floor moves to firefox-33.** It is the first build where a drag
+  gesture is delivered, where a gesture interrupted by a navigation does not
+  leave the page dead to the pointer, and where the renderer acks every mouse
+  event it handles - the ack this driver's questions about input rest on, and
+  the one the engine had lost in its port to Firefox 150.
+
+  On the drag: until now the pinned engine sent its mouse events through a
+  door that could not dispatch `dragover` at all, and then lost the
+  acknowledgement that upstream used to await, so a drag born in the gap
+  between two calls went unnoticed. Measured against the previous engine, a
+  humanised journey opened 0 drag sessions out of 20; against this one, 5 out
+  of 5, and the dose-response on the pause between events went from 5
+  deliveries out of 24 to 24 out of 24, which is the threshold disappearing
+  rather than moving. Nothing in this package changed to get that: the pin
+  carries it, and a consumer only ever runs the engine its seal names.
+
+  The 0.22.3 that was prepared and never published pinned firefox-32, a build
+  that delivered the drag and, under load, failed clicks more often than the
+  engine it replaced - measured on the same runners, the same day: 0 red runs
+  out of 6 before, 1 out of 4 with that engine alone. That is the defect the
+  entry below closes, and it is why that version went out as this one instead.
+
 ### Fixed
 - **A pointer action that did not reach its element no longer reports
   success.** `hover`, `click`, `check` and `uncheck` now ask the engine where
@@ -21,30 +46,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   action sent and the engine waits for the renderer's ack of it before it
   looks, because a `mousemove` is coalesced and dispatched at the next refresh
   tick, after a question sent right behind it.
-
-## [0.22.3] - 2026-09-19
-
-### Changed
-- **The engine floor moves to firefox-32, which is the first build where a drag
-  gesture is delivered.** Until now the pinned engine sent its mouse events
-  through a door that could not dispatch `dragover` at all, and then lost the
-  acknowledgement that upstream used to await: a drag started in the gap
-  between two calls, where nothing was watching for it. Measured against the
-  previous engine, a humanised journey opened 0 drag sessions out of 20; against
-  this one, 5 out of 5, and the dose-response on the pause between events went
-  from 5 deliveries out of 24 to 24 out of 24, which is the threshold
-  disappearing rather than moving.
-
-  Nothing in this package changed to get that. The pin is what carries it: a
-  consumer only ever runs the engine its seal names, so the fix reaches nobody
-  who is still resolving `invisible_core==31.23.0`.
-
-  ⛔ This also ends an intermittency that looked like a defect in this package
-  and was not. Two e2e tests - one asserting that a `hover` reaches the page
-  through a handle, one that a checkbox ends up checked - failed on some runs
-  and passed on others, on commits that could not have caused it, including one
-  whose whole diff was a JSON data file. They were the same missing
-  acknowledgement, seen from a different angle.
+- **The e2e test that asserted a `hover` reaches the page through a handle
+  asserted an entrance, not a move.** It listened for `mouseover`, which fires
+  only when the pointer enters the element, and did not control where the
+  previous action had left the pointer; whether it passed depended on the
+  humanised path of the action before it. It now says what it means. This was
+  the red that appeared on runs whose whole diff was a data file, and it was
+  the test, not the driver.
 
 ## [0.22.2] - 2026-09-18
 
