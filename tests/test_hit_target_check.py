@@ -68,10 +68,29 @@ class _Lifecycle:
     main_frame = MAIN
 
 
+class _Conn:
+    """The engine's side of the ONE question asked after the press: where did
+    the events land. It is not a read of the geometry, and `log` does not see
+    it - the property this file asserts is that nothing is READ after the
+    press, and this is not a read."""
+
+    def __init__(self):
+        self.asked: list = []
+
+    def send(self, method, params=None, **kw):
+        self.asked.append(method)
+        if method == "Page.pointerLanded":
+            return {"landings": [{"type": t, "landed": True, "on": ""}
+                                 for t in (params or {}).get("types", [])]}
+        return {}
+
+
 def _actions(verdicts=("done",), origins=None, log=None) -> Actions:
     actions = Actions.__new__(Actions)
     actions.lifecycle = _Lifecycle()
     actions.inj = _Injected(verdicts, origins, log)
+    actions.c = _Conn()
+    actions.session = "s"
     return actions
 
 
@@ -119,6 +138,25 @@ def test_the_target_is_read_ONCE_and_never_after_the_press():
         "the target was read %d times; a read after the press is unanswerable"
         % len(actions.inj.points))
     assert log[-1] == "commit", "something happened after the press"
+
+
+def test_after_the_press_the_engine_is_asked_where_it_LANDED_not_the_geometry():
+    """⛔ THE GAP IS CLOSED BY THE ENGINE, NOT BY A THIRD READ. What follows the
+    press is one question to the engine - `Page.pointerLanded`, answered from
+    what it recorded when it dispatched - and no read of the injected script
+    at all. A read after the press is the known-bad above; a recorded landing
+    is the thing that CAN tell a miss from a control that did its job. [B217]
+    """
+    log: list = []
+    actions = _actions(log=log)
+    approach, commit = _halves(log)
+
+    actions._act_on_target(MAIN, "element", (10.0, 20.0),
+                           approach=approach, commit=commit)
+
+    assert actions.c.asked == ["Page.pointerLanded"]
+    assert len(actions.inj.points) == 1
+    assert log[-1] == "commit"
 
 
 def test_a_point_that_has_already_moved_stops_the_press_HAPPENING():

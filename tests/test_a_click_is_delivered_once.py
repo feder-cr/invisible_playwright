@@ -27,7 +27,8 @@ from __future__ import annotations
 
 import pytest
 
-from invisible_playwright._juggler.actions import Actions, ElementNotActionable
+from invisible_playwright._juggler.actions import (ActionMissed, Actions,
+                                                   ElementNotActionable)
 
 MAIN = "frame-main"
 POINT = (40.0, 60.0)
@@ -54,13 +55,40 @@ class _Connection:
     def __init__(self, page=None):
         self.sent: list = []
         self.page = page
+        # The engine numbers every mouse event it dispatches and acks it by
+        # that number once the renderer has handled it. The number is what
+        # the landing question must carry, or it is asked about the wrong
+        # moment.
+        self.dispatched = 0
 
     def send(self, method, params=None, session=None, timeout=None):
         self.sent.append((method, params))
-        # A click completes on the release, which is when a page's handler runs.
-        if (method == "Page.dispatchMouseEvent" and self.page is not None
-                and (params or {}).get("type") == "mouseup"):
-            self.page.press()
+        if method == "Page.dispatchMouseEvent" and self.page is not None:
+            self.dispatched += 1
+            kind = (params or {}).get("type")
+            # ⛔ WHERE AN EVENT LANDS IS DECIDED WHEN IT IS DISPATCHED, and
+            # the engine remembers it: that is what `Page.pointerLanded` reads
+            # back. A page that moves while the pointer travels changes where
+            # the MOVE lands; a handler on the press changes where the RELEASE
+            # lands; a handler on the release changes nothing about the
+            # release itself, which is why a button that hides on click is
+            # still a hit.
+            if kind == "mousemove":
+                self.page.on_move(self.page)
+            self.page.landed[kind] = self.page.hittable
+            if kind == "mousedown":
+                self.page.on_down(self.page)
+            # A click completes on the release, which is when a page's
+            # handler runs - if the release reached the button at all.
+            if kind == "mouseup" and self.page.landed["mouseup"]:
+                self.page.press()
+            return {"eventId": self.dispatched}
+        if method == "Page.pointerLanded":
+            return {"landings": [
+                {"type": t, "landed": self.page.landed.get(t, False),
+                 "on": "" if self.page.landed.get(t, False)
+                 else "<div id='something-else'>"}
+                for t in (params or {}).get("types", [])]}
         if method == "Page.getContentQuads":
             x, y = POINT
             return {"quads": [{"p1": {"x": x - 10, "y": y - 5},
@@ -83,11 +111,18 @@ class _Page:
     driver asks about the element is answered from THIS state - so the test
     describes a page, not a sequence of canned verdicts."""
 
-    def __init__(self, on_press=None):
+    def __init__(self, on_press=None, on_down=None, on_move=None):
         self.hittable = True
         self.visible = True
         self.on_press = on_press or (lambda page: None)
+        # Runs after the press has landed, before the release: a page that
+        # rearranges itself on `mousedown`.
+        self.on_down = on_down or (lambda page: None)
+        # Runs before the move lands: the layout shifting while the pointer
+        # is still travelling.
+        self.on_move = on_move or (lambda page: None)
         self.presses = 0
+        self.landed: dict = {}
 
     def press(self):
         self.presses += 1
@@ -202,3 +237,80 @@ def test_a_point_that_was_never_the_element_still_refuses_without_pressing():
 
     assert page.presses == 0, "it pressed a point that belonged to something else"
     assert actions.c.downs() == 0
+
+
+def test_a_target_that_leaves_between_press_and_release_is_REPORTED_not_repeated():
+    """⛔ THE SILENCE THIS FILE USED TO LEAVE. The check before the press
+    passes - the pointer is on the button - then the button moves on
+    `mousedown`, the release lands elsewhere, and no click is ever born. The
+    driver said "done". Measured on a moving target, 8 times out of 8
+    ([B217]).
+
+    The answer is not a second read of the geometry, which cannot tell this
+    from the button that hides itself above: it is where the release LANDED,
+    which the engine recorded when it dispatched it. And it is reported, not
+    retried: the press happened, and pressing again is the defect the rest of
+    this file exists to prevent.
+    """
+    def leaves(page):
+        page.hittable = False
+
+    page = _Page(on_down=leaves)
+    actions = _actions(page)
+
+    with pytest.raises(ActionMissed, match="mouseup landed on"):
+        actions.click("#b", timeout=2.0)
+
+    assert page.presses == 0, "the release never reached the button"
+    assert actions.c.downs() == 1, "it pressed again after a miss"
+
+
+def test_a_hover_whose_target_left_during_the_travel_is_REPORTED():
+    """`hover` has no approach: its one event IS the move, so the check runs
+    while the pointer is still elsewhere and the travel that follows is the
+    whole gap. Measured: 2 silent misses out of 8 on a moving target ([B217]).
+    """
+    def leaves(page):
+        page.hittable = False
+
+    page = _Page(on_move=leaves)
+    actions = _actions(page)
+
+    with pytest.raises(ActionMissed, match="mousemove landed on"):
+        actions.hover("#b", timeout=2.0)
+
+
+def test_the_landing_question_names_the_LAST_event_the_commit_sent():
+    """⛔ THE QUESTION AND THE INPUT DO NOT SHARE A QUEUE. A `mousemove` is
+    coalesced and dispatched at the next refresh tick, so a question sent
+    right after it can be answered first - measured two times in four, from an
+    empty record, while the page had already seen the very move it was asked
+    about. The engine acks each event by the id it returned; the question
+    carries the id of the LAST event this commit sent, and the engine waits
+    for that ack before it looks. Here a click sends approach, press and
+    release: the question must name the release, not the approach.
+    """
+    page = _Page()
+    actions = _actions(page)
+
+    actions.click("#b", timeout=2.0)
+
+    asked = [p for m, p in actions.c.sent if m == "Page.pointerLanded"]
+    assert len(asked) == 1
+    assert asked[0]["afterEventId"] == actions.c.dispatched
+    assert actions.c.dispatched == 3, "approach, press, release"
+
+
+def test_force_makes_a_landing_elsewhere_the_request_and_not_a_miss():
+    """`force` means "send it where the pointer is", and an overlay receiving
+    it is then what was asked for: the landing is not checked, as the hit
+    target before it is not."""
+    def leaves(page):
+        page.hittable = False
+
+    page = _Page(on_down=leaves)
+    actions = _actions(page)
+
+    actions.click("#b", timeout=2.0, force=True)
+
+    assert actions.c.downs() == 1

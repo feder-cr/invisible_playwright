@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+- **A pointer action that did not reach its element no longer reports
+  success.** `hover`, `click`, `check` and `uncheck` now ask the engine where
+  each event actually landed, as recorded at dispatch by a privileged listener
+  the page cannot see, and raise `ActionMissed` when the move, the press or
+  the release fell on something else. Measured on a target that moves: `hover`
+  returned normally 2 times out of 8 and `click` 8 times out of 8 with the
+  page having seen no event at all. The miss is reported, not retried - the
+  press happened, and repeating it is the defect the retry loop exists to
+  prevent. `force` skips this as it skips the hit-target check. Requires an
+  engine that answers `Page.pointerLanded` and returns an `eventId` from
+  `Page.dispatchMouseEvent`: the question carries the id of the last event the
+  action sent and the engine waits for the renderer's ack of it before it
+  looks, because a `mousemove` is coalesced and dispatched at the next refresh
+  tick, after a question sent right behind it.
+
 ## [0.22.3] - 2026-09-19
 
 ### Changed

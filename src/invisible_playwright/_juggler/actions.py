@@ -43,6 +43,25 @@ class ElementNotActionable(TimeoutError):
     """The loop timed out. The message carries the reason for the LAST turn."""
 
 
+class ActionMissed(RuntimeError):
+    """The event went out and landed on something other than the element.
+
+    ⛔ NOT RETRYABLE, AND THAT IS THE WHOLE DIFFERENCE FROM `WrongHitTarget`.
+    That one is raised BEFORE anything happened, so starting over is free.
+    This one is raised after: a press has been delivered to whatever was under
+    the pointer, and a loop that repeated the action would be pressing twice.
+
+    It exists because the alternative was silence. Measured 2026-09-19 with
+    a target that moves (`tests/gates/hover_non_mente.py` in the workbench):
+    `hover()` returned normally 2 times out of 8 with the page having seen
+    no event at all, and `click()` 8 times out of 8 - the hit-target check
+    before the press passed, then the element left between `mousedown` and
+    `mouseup`, the two landed on different nodes and no `click` was ever
+    born. Nothing after the commit looked, for a reason that is right (see
+    `_act_on_target`), so the caller was told "done". [B217]
+    """
+
+
 class WrongHitTarget(RuntimeError):
     """The event would have landed on ANOTHER element. RETRYABLE condition.
 
@@ -80,6 +99,12 @@ def _normalize_options(options) -> list:
 
 
 class Actions:
+    #: The id of the last mouse event dispatched, as `Page.dispatchMouseEvent`
+    #: returned it. A class default so that a bench which builds this object
+    #: without `__init__` still has one, and so that "no event sent yet" reads
+    #: as 0 - the value that also means "the engine returned no id".
+    _last_event_id = 0
+
     def __init__(self, connection, session: str, lifecycle, injected,
                  session_seed=None, motion_budget_s=None):
         self.c = connection
@@ -382,7 +407,8 @@ class Actions:
                 point[1] + main["y"] - here["y"])
 
     def _act_on_target(self, f, element, point, *, approach, commit,
-                       force: bool = False):
+                       force: bool = False,
+                       lands: tuple = ("mousedown", "mouseup")):
         """Approach, check that the point still belongs to the element, and
         only then do the thing that cannot be taken back.
 
@@ -439,6 +465,23 @@ class Actions:
 
         Measured by `tests/gates/injected_page_surface.js`: the bundle touches
         the page's window zero times, in every phase.
+
+        ⛔ AND WHAT CLOSES THE GAP IS NOT A THIRD READ OF THE GEOMETRY. It is
+        the engine telling us where each event LANDED, recorded at dispatch by
+        a privileged listener the page cannot see (`Page.pointerLanded`). That
+        answer distinguishes what a read after the fact cannot: an event that
+        hit the element and then saw it move away by its own effect landed ON
+        the element, and says so. `lands` names the events the commit emits -
+        the press and the release for a click, the one move for a hover - and
+        every one of them must have landed on the element or inside it, which
+        is also the condition under which the DOM composes a `click`. A miss
+        raises `ActionMissed`, which `_retry` does not catch: something has
+        happened, and the invariant this loop rests on is that it starts over
+        only while nothing has.
+
+        `force` skips this as it skips the check before: the caller has said
+        the event is to go wherever the pointer is, and an overlay receiving it
+        is then not a miss but the request. [B217]
         """
         approach()
         if not force:
@@ -446,7 +489,25 @@ class Actions:
                                                 self._hit_point(f, point))
             if verdict != "done":
                 raise WrongHitTarget(verdict)
-        return commit()
+        result = commit()
+        if not force and lands:
+            # `afterEventId` is what makes the answer about THIS commit: the
+            # input and the question do not share a queue - a `mousemove` is
+            # coalesced and dispatched at the next refresh tick - and without
+            # it the engine answered from an empty record two times in four
+            # while the page had already seen the very move it was asked about.
+            answer = self.c.send("Page.pointerLanded",
+                                 {"frameId": f, "objectId": element,
+                                  "types": list(lands),
+                                  "afterEventId": self._last_event_id},
+                                 session=self.session, timeout=10)
+            missed = [l for l in answer["landings"] if not l["landed"]]
+            if missed:
+                raise ActionMissed(
+                    "the action went out but did not reach the element: "
+                    + "; ".join("%s landed on %s" % (l["type"], l["on"])
+                                for l in missed))
+        return result
 
     # ── waiting ─────────────────────────────────────────────────────────────
     def wait_for_selector(self, selector: str, *, state: str = "visible",
@@ -505,7 +566,10 @@ class Actions:
                 f, element, point,
                 approach=lambda: None,
                 commit=lambda: self._mouse_event("mousemove", point) or point,
-                force=bool(opts.get("force")))
+                force=bool(opts.get("force")),
+                # The one event a hover emits. Without this the check after
+                # the commit would ask about a press that never went out.
+                lands=("mousemove",))
         return self._retry(selector, run, timeout=timeout, element_id=element_id,
                            frame_id=frame_id, position=position, **opts)
 
@@ -987,8 +1051,13 @@ class Actions:
              "modifiers": modifiers or self.keyboard.modifier_mask()}
         if click_count is not None:
             p["clickCount"] = click_count
-        self.c.send("Page.dispatchMouseEvent", p,
-                    session=self.session, timeout=10)
+        answer = self.c.send("Page.dispatchMouseEvent", p,
+                             session=self.session, timeout=10)
+        # The id the renderer will ack once it has handled this event. Kept so
+        # that the landing question after a commit waits for exactly the last
+        # event the commit sent; 0 from an engine that does not return one, in
+        # which case the question is asked without waiting. [B217]
+        self._last_event_id = (answer or {}).get("eventId", 0)
         self.position = (point[0], point[1])
 
     def _type(self, text: str):

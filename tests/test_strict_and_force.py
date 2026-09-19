@@ -103,6 +103,11 @@ class _Conn:
                                "p2": {"x": 50.0, "y": 20.0},
                                "p3": {"x": 50.0, "y": 30.0},
                                "p4": {"x": 10.0, "y": 30.0}}]}
+        if method == "Page.pointerLanded":
+            # This engine has a static page: whatever was sent landed. The
+            # landing that MISSES is modelled in test_a_click_is_delivered_once.
+            return {"landings": [{"type": t, "landed": True, "on": ""}
+                                 for t in (params or {}).get("types", [])]}
         return {}
 
 

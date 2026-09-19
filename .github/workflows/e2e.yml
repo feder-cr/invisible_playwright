@@ -90,6 +90,14 @@ jobs:
           sudo "$(which python)" -m playwright install-deps firefox
       - name: Fetch the published firefox binary
         run: echo "FF=$(python -m invisible_playwright fetch | tail -1)" >> "$GITHUB_ENV"
+      - name: The protocol mirror agrees with the engine it is pinned to
+        # `_juggler/protocol.py` is generated from the Protocol.js INSIDE the
+        # shipped binary, and nothing used to tie the two together after a pin
+        # bump: the mirror sat at 71 commands while the pinned engine declared
+        # 75, with the unit test that fixes the count green the whole time,
+        # because a count checks the mirror against itself. This is the only
+        # job that has the binary, so this is where the comparison belongs.
+        run: python scripts/gen_juggler_protocol.py --check --binary "$(dirname "$FF")"
       - name: Run the full e2e suite under a virtual display
         # PYTHONUNBUFFERED, and it is not a nicety. Without it Python block-buffers
         # stdout when it is a pipe, and this step printed NOTHING for 39 minutes

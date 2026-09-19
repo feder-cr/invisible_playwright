@@ -22,8 +22,16 @@ def test_the_generated_protocol_has_the_five_domains():
     """If the generator ingests a wrong Protocol.js, the count moves."""
     domains = {n.split(".")[0] for n in COMMANDS}
     assert domains == {"Browser", "Page", "Network", "Runtime", "Heap"}
-    assert len(COMMANDS) == 71, "commands: %d" % len(COMMANDS)
-    assert len(EVENTS) == 34, "events: %d" % len(EVENTS)
+    # ⛔ THESE TWO NUMBERS WERE 71 AND 34 WHILE THE PINNED ENGINE ALREADY
+    # DECLARED 75 AND 35, and this test was green the whole time: it fixes
+    # the count of the mirror, not the mirror's agreement with the engine, so
+    # a mirror that stops being regenerated stays "right" forever. The four
+    # commands it lacked (`Network.getResponseBody`, the three screencast
+    # ones) and the one event were shipped by the engine and never mirrored.
+    # What ties the mirror to the engine is `gen_juggler_protocol.py --check`
+    # against the pinned binary, run where the binary is - the e2e job.
+    assert len(COMMANDS) == 76, "commands: %d" % len(COMMANDS)
+    assert len(EVENTS) == 35, "events: %d" % len(EVENTS)
 
 
 def test_the_commands_the_client_will_use_are_declared():
@@ -31,7 +39,11 @@ def test_the_commands_the_client_will_use_are_declared():
     command does not degrade, it REJECTS. These are the ones on the
     minimum path."""
     for name in ("Browser.enable", "Browser.createBrowserContext",
-                 "Browser.newPage", "Page.navigate", "Runtime.evaluate"):
+                 "Browser.newPage", "Page.navigate", "Runtime.evaluate",
+                 # Asked after every click and hover since [B217]: an engine
+                 # without it refuses the question, and the mirror must say so
+                 # before a browser does.
+                 "Page.pointerLanded"):
         assert name in COMMANDS, name
 
 
