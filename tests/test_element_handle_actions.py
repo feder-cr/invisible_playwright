@@ -52,6 +52,12 @@ PAGE = b"""<!doctype html>
     window.registro.ordine.push('click');
   });
   b.addEventListener('mouseover', () => window.registro.ordine.push('hover'));
+  // Counted apart from `ordine`, which asserts an exact opening sequence: a
+  // move pushed in there would change what `ordine[:2]` means. The count is
+  // what tells "the pointer never came" from "the pointer was already here",
+  // and those are different defects.
+  window.registro.movimenti = 0;
+  b.addEventListener('mousemove', () => window.registro.movimenti++);
   for (const id of ['casella','tendina'])
     document.getElementById(id).addEventListener('change',
       () => window.registro.change.push(id));
@@ -245,9 +251,33 @@ def test_the_nine_actions_reach_the_page_through_a_handle(firefox_binary):
             assert page.query_selector("#tendina").select_option("b") == ["b"]
             assert page.eval_on_selector("#tendina", "e => e.value") == "b"
 
-            page.evaluate("() => { window.registro.ordine = [] }")
+            # ⛔ THE POINTER IS MOVED AWAY FIRST, AND SAYING SO IS THE POINT.
+            # The button reports arrival through `mouseover`, which fires when
+            # the pointer ENTERS it and never while it moves about INSIDE it.
+            # The actions above leave the pointer wherever they happen to leave
+            # it, so this used to assert something conditional on a state the
+            # test neither set nor declared.
+            #
+            # Measured on ten runs of each arm: hovering a target the pointer is
+            # already on delivers the mousemove 10 times out of 10 and the
+            # mouseover 0 times out of 10. That is the whole of the
+            # intermittency - red in about half the CI runs, green here, for
+            # weeks, on a test that was right about everything except its own
+            # precondition.
+            page.query_selector("#testo").hover()
+            page.evaluate("() => { window.registro.ordine = []; "
+                          "window.registro.movimenti = 0 }")
             page.query_selector("#bottone").hover()
-            assert "hover" in log()["ordine"]
+            dopo = log()
+            # Two assertions because there are two ways to fail, and one message
+            # for both would hide which. Nothing arriving at all is an action
+            # that returned as if it had acted; arriving without entering is the
+            # precondition above going wrong again.
+            assert dopo["movimenti"] > 0, (
+                "hover() returned, and the page saw no pointer movement at all")
+            assert "hover" in dopo["ordine"], (
+                "the pointer moved over the button but never entered it: it was "
+                "already inside when hover() was called")
 
             page.query_selector("#testo").focus()
             assert page.evaluate("() => document.activeElement.id") == "testo"
