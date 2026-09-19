@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.22.3] - 2026-09-19
+
+### Changed
+- **The engine floor moves to firefox-32, which is the first build where a drag
+  gesture is delivered.** Until now the pinned engine sent its mouse events
+  through a door that could not dispatch `dragover` at all, and then lost the
+  acknowledgement that upstream used to await: a drag started in the gap
+  between two calls, where nothing was watching for it. Measured against the
+  previous engine, a humanised journey opened 0 drag sessions out of 20; against
+  this one, 5 out of 5, and the dose-response on the pause between events went
+  from 5 deliveries out of 24 to 24 out of 24, which is the threshold
+  disappearing rather than moving.
+
+  Nothing in this package changed to get that. The pin is what carries it: a
+  consumer only ever runs the engine its seal names, so the fix reaches nobody
+  who is still resolving `invisible_core==31.23.0`.
+
+  ⛔ This also ends an intermittency that looked like a defect in this package
+  and was not. Two e2e tests - one asserting that a `hover` reaches the page
+  through a handle, one that a checkbox ends up checked - failed on some runs
+  and passed on others, on commits that could not have caused it, including one
+  whose whole diff was a JSON data file. They were the same missing
+  acknowledgement, seen from a different angle.
+
 ## [0.22.2] - 2026-09-18
 
 ### Fixed
