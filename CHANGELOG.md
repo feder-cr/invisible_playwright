@@ -6,6 +6,53 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-09-20
+
+### Changed
+- **`headless=True` on Windows creates the browser on a hidden Win32 desktop
+  instead of asking the engine to cloak its window.** The spawner now calls
+  `CreateProcessW` itself, naming a fresh desktop object in
+  `STARTUPINFO.lpDesktop` - the one field `subprocess` cannot set - so the
+  launcher, the parent, the GPU process and every content process are born
+  off screen, out of the taskbar and out of alt-tab, with no cooperation from
+  the binary. Linux is unchanged (Xvfb). The pref `zoom.stealth.cloak_windows`
+  is no longer emitted and `invisible_core.cloak_prefs` is gone; the engine
+  is stock on that surface, and the next engine release removes the dead
+  hook.
+
+  Measured on the sealed firefox-33 before shipping, same seed hidden against
+  headed: `hasFocus`, `visibilityState`, `innerWidth/Height`,
+  `outerWidth/Height`, `screenX/Y`, `screen.*`, `devicePixelRatio` and the
+  WebGL renderer string identical, ANGLE D3D11 on both, one Firefox window on
+  the session's desktop and none on the interactive one, three cross-origin
+  navigations in a row without a content-process crash. The two sandbox keys
+  that a hidden desktop needs (`security.sandbox.gpu.level=0`,
+  `security.sandbox.content.level=4`, measured in 2026-05) ride only when the
+  desktop was actually created, never from the platform name.
+
+  Why: the owner chose a stock engine on this surface, and the same
+  mechanism a mass-test harness has used since 2026-05 for dozens of parallel
+  workers. What made it possible now and not in June is that the Node driver
+  is gone: the process is ours to create.
+
+### Known limitation
+- **`page.screencast.start()` is refused, with the reason, on a `headless=True`
+  session on Windows.** From a hidden desktop the window capture starts and
+  delivers no frame (measured: 0 in 15 s, where the same window on the visible
+  desktop gives 93 in 4 s), because the compositor only composes the active
+  desktop. Until 0.23.0 the cloaked window was on the active desktop and the
+  capture worked. A refusal that names the cause is the same choice the engine
+  makes for true headless; a silent black stream is not. `page.screenshot()`
+  is unaffected, and `headless=False` keeps the screencast. Tracked as [B220]
+  in the workbench; the fix belongs in the engine's window capturer.
+
+### Removed
+- `tests/test_cloak.py`, replaced by `tests/test_hidden_desktop.py`, which
+  also carries the control arm the old guard lacked: a headed window is found
+  on the interactive desktop before a hidden one is asserted absent from it.
+- `build_prefs(headless=...)`: the argument selected the cloak layer and
+  selects nothing now. `virtual_display` is the fact that remains.
+
 ## [0.23.0] - 2026-09-20
 
 ### Changed

@@ -174,29 +174,46 @@ def test_e9_linux_build_prefs_omits_windows_sandbox_key(monkeypatch):
 
 
 @pytest.mark.e2e
-def test_e9b_windows_build_prefs_omits_sandbox_key_when_no_real_desktop(monkeypatch):
-    """E9b (B172, 2026-08-24): on Windows, ``make_virtual_display()``
-    ALWAYS returns None - the binary's own cloak replaced the
-    ``CreateDesktop`` alt-desktop this workaround was written for. The
-    two sandbox-weakening prefs must NOT appear: applying them widens the
-    sandbox for a desktop that is never created.
+def test_e9b_windows_build_prefs_follows_the_desktop_that_was_created(monkeypatch):
+    """E9b (B172, 2026-08-24; inverted 2026-09-20): the two sandbox keys
+    follow the FACT that a hidden desktop exists, never the platform.
 
-    This is the regression the fix in ``_session.build_prefs`` guards:
-    before it, ``virtual_display`` was guessed as
-    ``headless and platform=="win32"`` BEFORE ``make_virtual_display()``
-    ever ran, so it was ``True`` on every headless Windows session
-    regardless of whether an alt-desktop actually existed.
+    Until 2026-09-20 ``make_virtual_display()`` returned None on Windows
+    (the binary cloaked its own window) and this test pinned the keys
+    ABSENT there. Now Windows creates a Win32 desktop the browser is
+    spawned on, so with ``headless=True`` the keys must be present - and
+    with ``headless=False``, where no desktop is created, still absent.
+    What has not changed is the shape B172 fixed: ``virtual_display`` is
+    read off ``self._virtual_display`` AFTER ``_resolve_headless()`` ran,
+    not guessed from ``headless and platform=="win32"`` before it.
     """
     import sys as _sys
     monkeypatch.setattr(_sys, "platform", "win32")
 
-    from invisible_playwright import _session as _l
-    monkeypatch.setattr(_l, "make_virtual_display", lambda: None)
+    class _FakeDesktop:
+        name = "invpw_fake"
 
-    ip = InvisiblePlaywright(seed=42, headless=True)
-    ip._resolve_headless()
-    assert ip._virtual_display is None, "Windows must never get a real alt-desktop"
-    prefs = ip._build_prefs()
+        def start(self) -> None:
+            pass
+
+        def stop(self) -> None:
+            pass
+
+    from invisible_playwright import _session as _l
+    monkeypatch.setattr(_l, "make_virtual_display", lambda: _FakeDesktop())
+
+    hidden = InvisiblePlaywright(seed=42, headless=True)
+    hidden._resolve_headless()
+    assert hidden._virtual_display is not None, "the desktop was not wired up"
+    prefs = hidden._build_prefs()
+    assert prefs["security.sandbox.gpu.level"] == 0
+    assert prefs["security.sandbox.content.level"] == 4
+    assert "zoom.stealth.cloak_windows" not in prefs
+
+    headed = InvisiblePlaywright(seed=42, headless=False)
+    headed._resolve_headless()
+    assert headed._virtual_display is None
+    prefs = headed._build_prefs()
     assert "security.sandbox.gpu.level" not in prefs
     assert "security.sandbox.content.level" not in prefs
 

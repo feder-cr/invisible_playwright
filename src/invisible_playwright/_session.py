@@ -21,7 +21,6 @@ the two classes is `await`, and nothing else belongs in this file.
 from __future__ import annotations
 
 import os
-import sys
 from ._cursor import (ENGINE_BINARY,
                       ENGINE_PYTHON,
                       enable_for as _enable_cursor_engine,
@@ -30,7 +29,8 @@ from ._engine import resolve_executable
 from ._juggler.server import MOTION_BUDGET_PREF, SESSION_SEED_PREF
 from typing import Any, Dict, Optional
 
-from invisible_core import compose_session_prefs, make_virtual_display
+from invisible_core import (DESKTOP_ENV, compose_session_prefs,
+                            make_virtual_display)
 from invisible_core.launch import (FontManifestMismatch,
                                    cached_font_manifest_path,
                                    verify_font_manifest)
@@ -129,6 +129,14 @@ def build_env(
     profile: Any = None,
     executable: Optional[str] = None,
     base_env: Optional[Dict[str, str]] = None,
+    #: What the session's hidden surface wants in the browser's environment
+    #: (`make_virtual_display().launch_env()`), or nothing. ⛔ Applied LAST and
+    #: over a cleared slot: the desktop name is a fact of THIS session, and a
+    #: headed session opened while a hidden one is still alive in the same
+    #: process must not inherit the hidden one's desktop through
+    #: `os.environ`. `INVPW_DESKTOP` is removed unconditionally first for the
+    #: same reason.
+    display_env: Optional[Dict[str, str]] = None,
 ) -> Dict[str, str]:
     """The environment the Firefox subprocess is launched with, minus the token.
 
@@ -198,6 +206,8 @@ def build_env(
         # environment only overrode. With the second source removed, the
         # condition became expressible in one line.
         env[WEBRTC_NO_IPV6_ENV] = "1"
+    env.pop(DESKTOP_ENV, None)
+    env.update(display_env or {})
     return env
 
 
@@ -207,7 +217,6 @@ def build_prefs(
     locale: Optional[str],
     timezone: Optional[str],
     extra_prefs: Optional[Dict[str, Any]],
-    headless: bool,
     virtual_display: bool,
     cursor_engine: str,
     humanize: Any,
@@ -229,11 +238,6 @@ def build_prefs(
     #
     # What stays here is this path's DELIVERY and its two decisions:
     #
-    #   cloak      Windows and macOS hide the headless window through the
-    #              binary's own cloak (DWMWA_CLOAK / NSWindow alpha), so the
-    #              pref has to reach the build. The composer applies it with
-    #              setdefault, which is the precedence it had here: an explicit
-    #              user override wins.
     #   humanize   The pref selects WHICH generator runs, not whether motion
     #              happens. While the wrapper draws the path it must be false,
     #              or every waypoint we send would itself be expanded into a
@@ -256,13 +260,12 @@ def build_prefs(
         locale=locale,
         timezone=timezone,
         extra_prefs=extra_prefs,
-        # The REAL value, not a guess: B172, 2026-08-24. The caller
-        # passes the actual result of make_virtual_display() - if it
-        # created nothing (always the case on Windows, where the cloak
-        # has replaced the alternate desktop), this is False here, and
-        # the sandbox workarounds meant for that desktop do not apply.
+        # The REAL value, not a guess: B172, 2026-08-24. The caller passes
+        # whether `make_virtual_display()` actually created something - an
+        # Xvfb on Linux, a Win32 desktop on Windows - and the sandbox
+        # workarounds meant for that desktop apply only then. Nothing here
+        # reads the platform: the fact travels, not a prediction of it.
         virtual_display=virtual_display,
-        cloak=bool(headless and sys.platform in ("win32", "darwin")),
         humanize=(_cursor_max_seconds(humanize)
                   if cursor_engine == ENGINE_BINARY else False),
         show_cursor=show_cursor,
@@ -419,10 +422,14 @@ class CommonLaunch:
         """Translate the user's ``headless`` flag.
 
         When ``True``, Firefox stays in headed mode (real rendering pipeline →
-        coherent fingerprint) and the window is hidden: on Linux via a fresh
-        Xvfb spawned here; on Windows/macOS via the binary's own window cloak
-        (the ``zoom.stealth.cloak_windows`` pref added in ``_build_prefs``), so
-        ``make_virtual_display()`` returns ``None`` and nothing is spawned.
+        coherent fingerprint) and the window is hidden by drawing on a screen
+        nobody looks at: on Linux a fresh Xvfb spawned here; on Windows a
+        fresh Win32 desktop the spawner creates the browser on
+        (``STARTUPINFO.lpDesktop``, read from ``INVPW_DESKTOP``). The engine
+        is stock on this surface: no pref hides anything.
+
+        ``self._virtual_display`` is the fact ``_build_prefs`` reads to decide
+        whether the desktop workarounds apply (B172).
         """
         if not self._headless:
             return False
@@ -475,11 +482,13 @@ class CommonLaunch:
         part: children inherit the environment, so every process in the tree
         carries it and teardown can find its own tree and only its own.
         """
+        vd = self._virtual_display
         return self._session_token.stamp(
             build_env(timezone=self._timezone,
-                               srflx_declared=self._srflx_declared,
-                               profile=self._profile,
-                               executable=resolve_executable(self._binary_path)))
+                      srflx_declared=self._srflx_declared,
+                      profile=self._profile,
+                      executable=resolve_executable(self._binary_path),
+                      display_env=vd.launch_env() if vd is not None else None))
 
     def _build_prefs(self) -> Dict[str, Any]:
         """Fingerprint prefs plus humanize toggle (always set explicitly).
@@ -494,7 +503,6 @@ class CommonLaunch:
             locale=self._locale,
             timezone=self._timezone,
             extra_prefs=self._extra_prefs,
-            headless=self._headless,
             virtual_display=self._virtual_display is not None,
             cursor_engine=self._cursor_engine,
             humanize=self._humanize,

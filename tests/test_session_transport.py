@@ -32,7 +32,7 @@ from invisible_playwright._session import build_prefs
 
 def _prefs(**kw):
     base = dict(profile=generate_profile(42, None), locale="en-US",
-                timezone="", extra_prefs=None, headless=False,
+                timezone="", extra_prefs=None,
                 virtual_display=False, cursor_engine=ENGINE_PYTHON,
                 humanize=True, session_seed=42)
     base.update(kw)

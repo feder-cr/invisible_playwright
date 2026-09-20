@@ -365,14 +365,94 @@ class Connection(EventListeners):
 
 # ── launch ──────────────────────────────────────────────────────────────────
 
+class _WindowsProcess:
+    """The four things `launch` and `Connection.close` ask of a process,
+    over a raw process handle.
+
+    It exists because `subprocess.Popen` cannot name the DESKTOP a process is
+    created on: CPython's `STARTUPINFO` carries `dwFlags`, `wShowWindow`, the
+    three std handles and `lpAttributeList`, and nothing else - `lpDesktop`
+    is not reachable from it. The hidden-desktop launch needs exactly that
+    field, so the spawn below calls `CreateProcessW` itself and this is the
+    handle it gives back, with the same surface the Popen used to have:
+    `pid`, `poll()`, `returncode`, `wait()`, `terminate()`, `stdout`.
+    """
+
+    STILL_ACTIVE = 259
+
+    def __init__(self, handle: int, pid: int, stdout) -> None:
+        self._handle = handle
+        self.pid = pid
+        self.stdout = stdout
+        self.returncode: Optional[int] = None
+
+    def _kernel32(self):
+        import ctypes
+        return ctypes.WinDLL("kernel32", use_last_error=True)
+
+    def poll(self) -> Optional[int]:
+        if self.returncode is None and self._handle:
+            import ctypes
+            from ctypes import wintypes
+            code = wintypes.DWORD(0)
+            k32 = self._kernel32()
+            if k32.GetExitCodeProcess(wintypes.HANDLE(self._handle),
+                                      ctypes.byref(code)) and \
+                    code.value != self.STILL_ACTIVE:
+                self.returncode = int(code.value)
+                k32.CloseHandle(wintypes.HANDLE(self._handle))
+                self._handle = 0
+        return self.returncode
+
+    def wait(self, timeout: Optional[float] = None) -> int:
+        from ctypes import wintypes
+        if self.returncode is None and self._handle:
+            ms = 0xFFFFFFFF if timeout is None else int(timeout * 1000)
+            self._kernel32().WaitForSingleObject(wintypes.HANDLE(self._handle),
+                                                 wintypes.DWORD(ms))
+        code = self.poll()
+        if code is None:
+            raise subprocess.TimeoutExpired(str(self.pid), timeout or 0)
+        return code
+
+    def terminate(self) -> None:
+        if self.poll() is None and self._handle:
+            from ctypes import wintypes
+            self._kernel32().TerminateProcess(wintypes.HANDLE(self._handle),
+                                              wintypes.UINT(1))
+
+    kill = terminate
+
+
 def _spawn_windows(executable, argv, env):
-    import _winapi
+    """`CreateProcessW` by hand, for the one field `subprocess` cannot set.
+
+    The browser is created on the desktop named by `INVPW_DESKTOP` when the
+    session asked to be hidden (`invisible_core._headless`), and on the
+    caller's own desktop otherwise. That variable is consumed HERE and does
+    not reach the browser: the engine never reads it.
+
+    Everything else is what the `Popen` call used to do, made explicit:
+    exactly four handles are inherited - the two Juggler pipe ends, the
+    child's end of the stdout pipe, and a NUL for stdin - through
+    `PROC_THREAD_ATTRIBUTE_HANDLE_LIST`, so a second session starting in the
+    same instant cannot hand its pipe ends to this browser and lose the
+    ability to notice its own closing. `bInheritHandles=TRUE` with that list
+    inherits those four and nothing else.
+    """
+    import ctypes
     import msvcrt
+    import _winapi
+    from ctypes import wintypes
+
+    from invisible_core import DESKTOP_ENV
+
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
 
     def inheritable(h):
         """⛔ CPython's `_winapi.CreatePipe` calls Windows' CreatePipe with
         NULL security attributes, so the handles are NOT inheritable.
-        Passing them in `handle_list` as they were made `CreateProcess`
+        Passing them in the handle list as they were made `CreateProcess`
         fail with `WinError 87 - The parameter is incorrect`, which does
         not name the cause. They get duplicated asking for inheritance,
         and the original is closed."""
@@ -388,23 +468,109 @@ def _spawn_windows(executable, argv, env):
     its_read, our_write = _winapi.CreatePipe(0, 0)
     our_read, its_write = _winapi.CreatePipe(0, 0)
     its_read, its_write = inheritable(its_read), inheritable(its_write)
+    # stdout and stderr merged on one pipe, as before: readiness and the
+    # last words of a browser that dies at startup are both read from it.
+    out_read, out_write = _winapi.CreatePipe(0, 0)
+    out_write = inheritable(out_write)
+    # stdin from NUL. `STARTF_USESTDHANDLES` wants three valid handles, and
+    # the browser must not inherit the caller's console input.
+    generic_read, share_rw, open_existing = 0x80000000, 0x3, 3
+    nul = _winapi.CreateFile("NUL", generic_read, share_rw, 0, open_existing,
+                             0, 0)
+    nul = inheritable(nul)
 
     env = dict(env)
+    desktop = env.pop(DESKTOP_ENV, None)
     # `atoi` on the C++ side: the value must be DECIMAL.
     env["PW_PIPE_READ"] = str(int(its_read))
     env["PW_PIPE_WRITE"] = str(int(its_write))
 
-    si = subprocess.STARTUPINFO()
-    si.lpAttributeList = {"handle_list": [int(its_read), int(its_write)]}
-    # `handle_list` REQUIRES close_fds=True: it is the only way Windows
-    # inherits exactly those two handles and nothing else.
-    p = subprocess.Popen([executable] + argv, env=env, startupinfo=si,
-                         close_fds=True, stdout=subprocess.PIPE,
-                         stderr=subprocess.STDOUT)
+    class STARTUPINFOW(ctypes.Structure):
+        _fields_ = [("cb", wintypes.DWORD), ("lpReserved", wintypes.LPWSTR),
+                    ("lpDesktop", wintypes.LPWSTR), ("lpTitle", wintypes.LPWSTR),
+                    ("dwX", wintypes.DWORD), ("dwY", wintypes.DWORD),
+                    ("dwXSize", wintypes.DWORD), ("dwYSize", wintypes.DWORD),
+                    ("dwXCountChars", wintypes.DWORD),
+                    ("dwYCountChars", wintypes.DWORD),
+                    ("dwFillAttribute", wintypes.DWORD),
+                    ("dwFlags", wintypes.DWORD), ("wShowWindow", wintypes.WORD),
+                    ("cbReserved2", wintypes.WORD),
+                    ("lpReserved2", ctypes.c_void_p),
+                    ("hStdInput", wintypes.HANDLE),
+                    ("hStdOutput", wintypes.HANDLE),
+                    ("hStdError", wintypes.HANDLE)]
+
+    class STARTUPINFOEXW(ctypes.Structure):
+        _fields_ = [("StartupInfo", STARTUPINFOW),
+                    ("lpAttributeList", ctypes.c_void_p)]
+
+    class PROCESS_INFORMATION(ctypes.Structure):
+        _fields_ = [("hProcess", wintypes.HANDLE), ("hThread", wintypes.HANDLE),
+                    ("dwProcessId", wintypes.DWORD),
+                    ("dwThreadId", wintypes.DWORD)]
+
+    k32.InitializeProcThreadAttributeList.argtypes = (
+        ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD,
+        ctypes.POINTER(ctypes.c_size_t))
+    k32.UpdateProcThreadAttribute.argtypes = (
+        ctypes.c_void_p, wintypes.DWORD, ctypes.c_size_t, ctypes.c_void_p,
+        ctypes.c_size_t, ctypes.c_void_p, ctypes.c_void_p)
+    k32.CreateProcessW.argtypes = (
+        wintypes.LPCWSTR, wintypes.LPWSTR, ctypes.c_void_p, ctypes.c_void_p,
+        wintypes.BOOL, wintypes.DWORD, ctypes.c_void_p, wintypes.LPCWSTR,
+        ctypes.c_void_p, ctypes.POINTER(PROCESS_INFORMATION))
+
+    inherited = (wintypes.HANDLE * 4)(its_read, its_write, out_write, nul)
+    size = ctypes.c_size_t(0)
+    k32.InitializeProcThreadAttributeList(None, 1, 0, ctypes.byref(size))
+    attrs = ctypes.create_string_buffer(size.value)
+    if not k32.InitializeProcThreadAttributeList(attrs, 1, 0, ctypes.byref(size)):
+        raise ctypes.WinError(ctypes.get_last_error())
+    proc_thread_attribute_handle_list = 0x20002
+    if not k32.UpdateProcThreadAttribute(
+            attrs, 0, proc_thread_attribute_handle_list, inherited,
+            ctypes.sizeof(inherited), None, None):
+        raise ctypes.WinError(ctypes.get_last_error())
+
+    si = STARTUPINFOEXW()
+    si.StartupInfo.cb = ctypes.sizeof(STARTUPINFOEXW)
+    si.StartupInfo.dwFlags = 0x100  # STARTF_USESTDHANDLES
+    si.StartupInfo.hStdInput = nul
+    si.StartupInfo.hStdOutput = out_write
+    si.StartupInfo.hStdError = out_write
+    if desktop:
+        si.StartupInfo.lpDesktop = desktop
+    si.lpAttributeList = ctypes.cast(attrs, ctypes.c_void_p)
+
+    # Sorted case-insensitively, which is the order Windows keeps its own
+    # block in; `CREATE_UNICODE_ENVIRONMENT` says it is wide.
+    block = "".join("%s=%s\0" % kv for kv in
+                    sorted(env.items(), key=lambda kv: kv[0].upper())) + "\0"
+    env_block = ctypes.create_unicode_buffer(block, len(block) + 1)
+    # `CreateProcessW` may write into the command line: a mutable buffer.
+    cmdline = ctypes.create_unicode_buffer(
+        subprocess.list2cmdline([executable] + argv))
+    create_unicode_environment, extended_startupinfo_present = 0x400, 0x80000
+    pi = PROCESS_INFORMATION()
+    ok = k32.CreateProcessW(
+        None, cmdline, None, None, True,
+        create_unicode_environment | extended_startupinfo_present,
+        env_block, None, ctypes.byref(si), ctypes.byref(pi))
+    err = ctypes.get_last_error()
+    k32.DeleteProcThreadAttributeList(attrs)
     # The child's ends no longer serve us: keeping them open would
     # prevent us from noticing that the browser has closed.
-    _winapi.CloseHandle(its_read)
-    _winapi.CloseHandle(its_write)
+    for h in (its_read, its_write, out_write, nul):
+        _winapi.CloseHandle(h)
+    if not ok:
+        for h in (our_read, our_write, out_read):
+            _winapi.CloseHandle(h)
+        raise OSError(err, "CreateProcessW failed for %s%s: %s" % (
+            executable, (" on desktop %r" % desktop) if desktop else "",
+            ctypes.FormatError(err).strip()))
+    k32.CloseHandle(pi.hThread)
+    stdout = os.fdopen(msvcrt.open_osfhandle(out_read, os.O_RDONLY), "rb")
+    p = _WindowsProcess(int(pi.hProcess), int(pi.dwProcessId), stdout)
     return (msvcrt.open_osfhandle(our_write, 0),
             msvcrt.open_osfhandle(our_read, os.O_RDONLY), p)
 

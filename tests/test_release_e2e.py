@@ -21,8 +21,8 @@ TWO THINGS THIS FILE USED TO GET WRONG, both kept in the tests that fixed them:
 
 And the launch test was skipped on Windows for a reason that was false -
 "headless launch requires a display server". It does not on Windows, where
-`headless=True` keeps the real rendering pipeline and hides the window through
-the binary's own cloak. The primary target was the one platform this never ran
+`headless=True` keeps the real rendering pipeline and creates the browser on
+a hidden Win32 desktop. The primary target was the one platform this never ran
 on. It runs there now.
 
 The cache is a temp dir per run (`INVISIBLE_PLAYWRIGHT_CACHE_DIR`), so these
@@ -439,9 +439,9 @@ def test_playwright_launch_against_real_site(clean_venv: Path,
     NO LONGER SKIPPED ON WINDOWS, and the reason it was is worth recording:
     the skip said "headless launch path requires display server". That is not
     true on Windows and never was - `headless=True` there keeps the real
-    rendering pipeline and hides the window through the binary's own cloak
-    (`zoom.stealth.cloak_windows`), so no display server is involved. Linux is
-    the platform that needs one, and it gets Xvfb.
+    rendering pipeline and creates the browser on a hidden Win32 desktop
+    (`CreateDesktop` + `STARTUPINFO.lpDesktop`), so no display server is
+    involved. Linux is the platform that needs one, and it gets Xvfb.
 
     So the primary target was the one platform this never ran on, for a stated
     reason that was false. The two most recent defects in this package were

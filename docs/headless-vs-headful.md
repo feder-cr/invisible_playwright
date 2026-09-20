@@ -70,15 +70,17 @@ what this project does when you ask for `headless=True`.
 The browser is launched **headed** and the window is hidden, by a different mechanism on
 each platform:
 
-- **Windows.** The browser cloaks its own windows through the compositor, so they render
-  on the real GPU and never appear on screen, in the taskbar or in the switcher.
-- **macOS.** The window is kept fully transparent with occlusion checks pinned, so the
-  system does not stop drawing it.
+- **Windows.** A fresh desktop object is created for the session and the browser process
+  is created *on* it, so the whole tree - launcher, parent, GPU and content processes -
+  lives on a desktop nobody switches to. It renders on the real GPU and never appears on
+  screen, in the taskbar or in the switcher. The browser binary is not involved in the
+  hiding at all.
 - **Linux.** A private virtual display is started for the session and the browser is
   pointed at it, because X11 and Wayland have no per-window equivalent that keeps the
   GPU rendering.
 
-The point of all three is the same: stay on the code path a visible browser uses.
+The point of both is the same: stay on the code path a visible browser uses, and hide
+the screen rather than the window.
 
 Being straight about the limits, because they matter:
 
@@ -108,27 +110,39 @@ same process level passed throughout, which is exactly why this went unnoticed: 
 thing validating the behaviour and the thing shipping it were not using the same
 mechanism.
 
-The fix is a compositor-level cloak, set on the window itself rather than on any
-thread or process, which is also why it needs to live in the browser binary: only the
-window's own owning process can set that attribute. Validated
-afterward against a visible, headful window on the same machine: identical fingerprint
-surface (no `visibilityState`, focus, canvas or WebGL tell), a real GPU-composited
-screenshot, and a passing result on a commercial detector that specifically checks for
-masked headless state. A per-platform automated check now asserts the underlying
-window attribute directly - the cloak flag on Windows, the transparency and occlusion
-state on macOS - rather than trusting a screenshot alone.
+The first fix was a compositor-level cloak, set on the window itself from inside the
+browser binary, because only the window's own owning process can set that attribute.
+It worked, and it was validated against a visible, headful window on the same machine:
+identical fingerprint surface, a real GPU-composited screenshot, a passing result on a
+commercial detector that specifically checks for masked headless state.
 
-**The same fix closed a second, unrelated-looking bug for free.** An earlier hiding
-approach had put the browser's main process on one virtual desktop and left its
-sandboxed content processes on a different one by default. Ordinary page loads never
-noticed. A page that triggered a cross-process navigation - handing the active tab from
-one content process to another mid-session - did notice: the window being reparented
-expected both processes on the same desktop, found them split across two, and the tab
-crashed. Because the compositor-level cloak keeps every process on the single real
-desktop and hides at the window level instead, that split stopped existing as a
-possibility, and the crash went away as a side effect of fixing something else
-entirely. It's a reminder that "which mechanism hides the window" and "which processes
-can actually talk to each other" are not as separate as they look.
+It was replaced anyway, for a reason that has nothing to do with whether it worked: it
+was a patch inside the browser on a surface that has nothing to do with fingerprinting,
+and the fewer of those a modified browser carries, the less there is to diverge from
+the original. The current mechanism puts the hiding back where the operating system
+already offers it. A desktop object is created per session and the browser *process*
+is created on it - the process, not the thread, which is exactly the scope the latent
+bug above had got wrong. Every child inherits it. Nothing in the browser knows it is
+hidden, because from where it stands it is not: it has a desktop, a compositor and a
+GPU like any other window. Validated the same way, same seed hidden against headed:
+focus, visibility, inner and outer size, screen position, screen geometry, pixel ratio
+and the WebGL renderer string all identical, one window on the session's desktop and
+none on the interactive one.
+
+**Two things a separate desktop changes, and why they are handled rather than hoped
+away.** A browser's process sandbox assumes its parent lives on the interactive
+desktop. Its GPU process cannot parent the compositor window across desktops under the
+default sandbox level, and its content processes above a certain level are placed on
+the sandbox's own window station. Left alone, the first means a software renderer under
+a hardware renderer string, and the second means a tab that dies on the first
+cross-process navigation - handing the active tab from one content process to another
+mid-session - because the window being reparented expects both processes on the same
+desktop and finds them split across two. Both were measured, and both are closed by
+two sandbox settings the session applies only when it actually created a desktop:
+never from the platform name, always from the fact. An automated check asserts the
+result directly - a headed window found on the interactive desktop as the control, then
+a hidden one absent from it and present on its own, still rendering - rather than
+trusting a screenshot alone.
 
 ## How to find out which one is your problem
 

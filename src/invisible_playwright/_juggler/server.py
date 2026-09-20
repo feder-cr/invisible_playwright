@@ -2563,6 +2563,23 @@ class PageDispatcher(Dispatcher):
         if self._screencast_id:
             raise ProtocolException(
                 "a screencast is already running on this page; stop it first")
+        # ⛔ REFUSED WITH THE REASON, NOT SERVED AS A STREAM OF NOTHING. On a
+        # hidden Win32 desktop (`headless=True` on Windows since 2026-09-20)
+        # the window capture starts and never delivers a frame: the compositor
+        # only composes the active desktop, so there is no composed surface to
+        # read for a window that lives on one nobody has switched to. Measured
+        # 2026-09-20 against firefox-33: 0 frames in 15 s, where the same
+        # window on the visible desktop gives 93 in 4 s. The engine makes the
+        # same choice for true headless, where there is no native window at
+        # all. `70-known-bugs.md` [B220] carries the measurement and what a
+        # real fix would look like; this refusal only closes the silence.
+        if self.browser.hidden_desktop:
+            raise ProtocolException(
+                "screencast is not available for a headless=True session on "
+                "Windows: the browser lives on a hidden desktop and the "
+                "window capture delivers no frames from there (0 in 15 s, "
+                "measured). Launch with headless=False to watch the window, "
+                "or use page.screenshot() for the page content.")
         if params.get("record"):
             raise ProtocolException(
                 "screencast to a video FILE is not available: the engine "
@@ -2978,7 +2995,8 @@ class BrowserDispatcher(Dispatcher):
 
     def __init__(self, server, browser_type: "BrowserTypeDispatcher",
                  conn: Any, version: str, session_seed: Any = None,
-                 motion_budget_s: Any = None) -> None:
+                 motion_budget_s: Any = None,
+                 hidden_desktop: bool = False) -> None:
         self.conn = conn
         self.browser_type = browser_type
         #: ⛔ THE SESSION'S SEED, and the reason it lives on the BROWSER rather
@@ -2991,6 +3009,10 @@ class BrowserDispatcher(Dispatcher):
         #: downstream reads that as "no rhythm" rather than as a default one.
         self.session_seed = session_seed
         self.motion_budget_s = motion_budget_s
+        #: The browser was created on a Win32 desktop nobody looks at
+        #: (`invisible_core._headless`). The one thing that changes for the
+        #: protocol is the window capture, see `op_screencast_start`.
+        self.hidden_desktop = hidden_desktop
         self._sessions: Dict[str, str] = {}
         self._sessions_ready = threading.Condition()
         # ⛔ THE EVENTS OF A SESSION START BEFORE ANYBODY IS LISTENING, and
@@ -3456,9 +3478,15 @@ class BrowserTypeDispatcher(Dispatcher):
             # swallows one hook's failure so it cannot stop the others.
             self.server.on_shutdown(lambda: _remove_profile(profile))
         version = _read_version(executable)
+        # Read from the SAME environment the spawner read it from: the fact
+        # that a hidden desktop was named is what the screencast refusal
+        # rests on, and a second reading of it elsewhere would be a second
+        # opinion about where this browser lives.
+        from invisible_core import DESKTOP_ENV
         browser = BrowserDispatcher(self.server, self, conn, version,
                                     session_seed=session_seed,
-                                    motion_budget_s=motion_budget_s)
+                                    motion_budget_s=motion_budget_s,
+                                    hidden_desktop=bool(env.get(DESKTOP_ENV)))
         return {"browser": browser.channel}
 
 

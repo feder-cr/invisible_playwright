@@ -38,7 +38,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 #: information. These are the ones that drive a browser through the seam.
 FILES = [
     "tests/test_juggler_transport.py",
-    "tests/test_cloak.py",
+    "tests/test_hidden_desktop.py",
     "tests/test_new_page_defaults.py",
     "tests/test_cross_origin_iframe.py",
     "tests/test_file_chooser.py",

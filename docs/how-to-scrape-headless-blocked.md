@@ -55,15 +55,15 @@ with InvisiblePlaywright(seed=42, headless=True) as browser:
 `browser` here is a real Playwright `Browser`, so every standard method works exactly
 as documented upstream. What is different is what `headless=True` means underneath:
 this engine renders on the code path a visible window uses, and hides the window
-itself rather than switching to a stripped rendering mode. On Windows that is a
-compositor-level cloak on the window; on Linux it is a private virtual display; on
-macOS the window stays transparent with occlusion checks pinned. The point of all
-three is the same, and it is worth being specific about it because the same product
-did not always get this right: for several releases, `headless=True` on Windows
-rendered the browser on the real desktop anyway, because the hiding mechanism moved
-the launching *thread* to an invisible desktop while the browser's own child
-processes inherited the *parent process's* desktop instead, and stayed visible
-regardless. The fix had to move to the window itself, in the browser binary, because
+itself rather than switching to a stripped rendering mode. On Windows the browser
+process is created on a fresh desktop object nobody switches to; on Linux it is a
+private virtual display. The point of both is the same, and it is worth being specific
+about it because the same product did not always get this right: for several releases,
+`headless=True` on Windows rendered the browser on the real desktop anyway, because
+the hiding mechanism moved the launching *thread* to an invisible desktop while the
+browser's own child processes inherited the *parent process's* desktop instead, and
+stayed visible regardless. The fix is to name the desktop when the process is created,
+so the whole tree is born there - the browser binary is not involved, because
 only the window's own owning process can set that attribute. See
 [headless vs headful](headless-vs-headful.md) for the full account and why it stayed
 unnoticed for as long as it did.

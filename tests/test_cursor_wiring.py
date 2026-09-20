@@ -288,7 +288,7 @@ def _humanize_subset(session):
     from invisible_core import generate_profile
     prefs = build_prefs(
         profile=generate_profile(seed=42), locale="en-US", timezone="UTC",
-        extra_prefs=None, headless=False, virtual_display=False,
+        extra_prefs=None, virtual_display=False,
         cursor_engine=session._cursor_engine, humanize=session._humanize,
         show_cursor=None)
     return {k: v for k, v in prefs.items() if k.startswith("stealthfox.humanize")}
@@ -303,7 +303,7 @@ def test_maxtime_is_never_set_without_the_toggle():
     for engine in (_cursor.ENGINE_PYTHON, _cursor.ENGINE_OFF):
         prefs = build_prefs(
             profile=generate_profile(seed=42), locale="en-US", timezone="UTC",
-            extra_prefs=None, headless=False, virtual_display=False,
+            extra_prefs=None, virtual_display=False,
             cursor_engine=engine, humanize=True, show_cursor=None)
         assert prefs["stealthfox.humanize"] is False
         assert "stealthfox.humanize.maxTime" not in prefs

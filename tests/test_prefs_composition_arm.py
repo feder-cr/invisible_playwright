@@ -46,7 +46,7 @@ DELIBERATE_VS_PUBLIC_API = {
 def test_the_wrapper_composes_what_the_public_api_composes():
     profile = generate_profile(SEED)
     mine = build_prefs(profile=profile, locale=LOCALE, timezone=TZ,
-                       extra_prefs=None, headless=False, virtual_display=False,
+                       extra_prefs=None, virtual_display=False,
                        cursor_engine=ENGINE_PYTHON, humanize=True)
     public = get_default_stealth_prefs(SEED, locale=LOCALE, timezone=TZ)
 
@@ -73,10 +73,10 @@ def test_the_binary_engine_still_produces_the_cap_it_always_did():
     """
     profile = generate_profile(SEED)
     binary = build_prefs(profile=profile, locale=LOCALE, timezone=TZ,
-                         extra_prefs=None, headless=False, virtual_display=False,
+                         extra_prefs=None, virtual_display=False,
                          cursor_engine=ENGINE_BINARY, humanize=2.5)
     python = build_prefs(profile=profile, locale=LOCALE, timezone=TZ,
-                         extra_prefs=None, headless=False, virtual_display=False,
+                         extra_prefs=None, virtual_display=False,
                          cursor_engine=ENGINE_PYTHON, humanize=2.5)
 
     assert binary["stealthfox.humanize"] is True
@@ -94,30 +94,45 @@ def test_a_zero_cap_with_the_binary_engine_means_the_default_not_off():
     falsy and switched the generator off, which is a different browser.
     """
     prefs = build_prefs(profile=generate_profile(SEED), locale=LOCALE,
-                        timezone=TZ, extra_prefs=None, headless=False,
+                        timezone=TZ, extra_prefs=None,
                         virtual_display=False,
                         cursor_engine=ENGINE_BINARY, humanize=0)
     assert prefs["stealthfox.humanize"] is True
     assert prefs["stealthfox.humanize.maxTime"] == "1.5"
 
 
-@pytest.mark.skipif(sys.platform not in ("win32", "darwin"),
-                    reason="the cloak is a Windows/macOS path")
-def test_headless_still_applies_the_cloak_without_beating_extra_prefs():
-    """setdefault, which is the precedence this layer had here before the core
-    took it: an explicit user override wins over the cloak."""
-    from invisible_core import cloak_prefs
+@pytest.mark.skipif(sys.platform != "win32",
+                    reason="the hidden desktop is a Windows path")
+def test_a_hidden_desktop_brings_its_two_sandbox_keys_and_nothing_hides_by_pref():
+    """The window is hidden by WHERE the browser is created, not by a pref.
 
-    key = next(iter(cloak_prefs()))
-    plain = build_prefs(profile=generate_profile(SEED), locale=LOCALE,
-                        timezone=TZ, extra_prefs=None, headless=True,
-                        virtual_display=False,
-                        cursor_engine=ENGINE_PYTHON, humanize=True)
+    ⛔ `zoom.stealth.cloak_windows` must never come back: from 2026-06-11 to
+    2026-09-20 it switched on a DWMWA_CLOAK inside the binary, and the owner
+    chose a stock engine on that surface. The two keys that DO ride with a
+    hidden desktop are the sandbox workarounds measured in 2026-05 (§P16,
+    #18 Bug A), emitted only when the desktop was actually created, with
+    setdefault so an explicit override still wins.
+    """
+    without = build_prefs(profile=generate_profile(SEED), locale=LOCALE,
+                          timezone=TZ, extra_prefs=None,
+                          virtual_display=False,
+                          cursor_engine=ENGINE_PYTHON, humanize=True)
+    hidden = build_prefs(profile=generate_profile(SEED), locale=LOCALE,
+                         timezone=TZ, extra_prefs=None,
+                         virtual_display=True,
+                         cursor_engine=ENGINE_PYTHON, humanize=True)
     overridden = build_prefs(profile=generate_profile(SEED), locale=LOCALE,
-                             timezone=TZ, extra_prefs={key: "mine"},
-                             headless=True, virtual_display=False,
-                             cursor_engine=ENGINE_PYTHON,
-                             humanize=True)
+                             timezone=TZ,
+                             extra_prefs={"security.sandbox.gpu.level": 1},
+                             virtual_display=True,
+                             cursor_engine=ENGINE_PYTHON, humanize=True)
 
-    assert key in plain, "the cloak pref did not reach a headless session"
-    assert overridden[key] == "mine", "the cloak overwrote an explicit override"
+    for prefs in (without, hidden, overridden):
+        assert "zoom.stealth.cloak_windows" not in prefs, (
+            "the in-binary cloak pref is back")
+    assert "security.sandbox.gpu.level" not in without
+    assert "security.sandbox.content.level" not in without
+    assert hidden["security.sandbox.gpu.level"] == 0
+    assert hidden["security.sandbox.content.level"] == 4
+    assert overridden["security.sandbox.gpu.level"] == 1, (
+        "the desktop workaround overwrote an explicit override")
