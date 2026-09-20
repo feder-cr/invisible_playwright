@@ -19,6 +19,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   presses `Delete`, as Playwright does, so the page gets the trusted
   `InputEvent` (`deleteContentForward`) a user's Delete gives, and `change`
   waits for blur as it does for a user.
+- **A same-document navigation now reaches the client.** A `pushState`, a
+  hash change or the route change of a single-page application arrives from
+  the engine as `Page.sameDocumentNavigation`, and the server updated its own
+  record of the frame and sent nothing up: `page.url` kept the URL of the
+  last full load, `wait_for_url` never resolved and `framenavigated` never
+  fired. A click that worked therefore timed out, on every site that routes
+  in the client rather than reloading. The event now goes up as a `navigated`
+  without a `newDocument`, the shape upstream sends, so the client tells it
+  from a full load the way it always did.
 
 ## [0.25.7] - 2026-09-25
 

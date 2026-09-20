@@ -652,6 +652,10 @@ class FrameDispatcher(Dispatcher):
         #: `navigated` events. A frame created before it navigates keeps an
         #: empty url forever unless something updates this.
         self.url = url
+        #: Same reason, and both navigation events report it: a same-document
+        #: navigation carries no name, so it has to repeat the one the frame
+        #: already has rather than blank it.
+        self.name = name
         super().__init__(server, page.context,
                          {"url": url, "name": name,
                           "loadStates": load_states or ["commit"]})
@@ -1926,11 +1930,32 @@ class PageDispatcher(Dispatcher):
         elif method == "Page.navigationCommitted":
             child = self.frame_for(params["frameId"])
             child.url = params.get("url") or ""
+            child.name = params.get("name") or ""
             child.emit("navigated", {
                 "url": child.url,
-                "name": params.get("name") or "",
+                "name": child.name,
                 "newDocument": self.navigation_document(params.get("navigationId")),
             })
+        elif method == "Page.sameDocumentNavigation":
+            # ⛔ THE CLIENT HAS TO HEAR THIS ONE TOO, and until 2026-09-20 it
+            # did not. A pushState, a hash change, the route change of every
+            # single-page application arrives as this event and not as a
+            # `navigationCommitted`; the lifecycle updated its own record of
+            # the frame's URL and nothing went up, so `page.url` kept the URL
+            # of the last full load and `wait_for_url` never resolved.
+            # Measured against a page that routes in the client: the fetch
+            # returned 200, the content changed, `location.href` changed, and
+            # `page.url` still named the previous document thirty seconds
+            # later - a click that worked, reported as a timeout.
+            #
+            # No `newDocument`: that key is how the client tells a full load
+            # from this, and `wait_for_navigation` reads `newDocument.request`
+            # to answer with a Response. There is no document here, so there
+            # is nothing to announce - the same shape upstream's
+            # `_onSameDocumentNavigation` sends.
+            child = self.frame_for(params["frameId"])
+            child.url = params.get("url") or ""
+            child.emit("navigated", {"url": child.url, "name": child.name})
 
     #: How many entries are kept. ⛔ A CAP, not a history: a page printing in
     #: a loop would exhaust the memory of the process DRIVING it, and a driver
