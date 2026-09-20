@@ -62,6 +62,11 @@ jobs:
     needs: already-published
     if: needs.already-published.outputs.present != 'yes'
     runs-on: ubuntu-latest
+    # `checks: read` for the step below, which asks what the e2e concluded on
+    # this commit. Job level rather than workflow level: no other job needs it.
+    permissions:
+      contents: read
+      checks: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -83,6 +88,29 @@ jobs:
             echo "tag v$TAG does not name the version in pyproject.toml ($HAVE)" >&2
             exit 1
           fi
+
+      - name: the e2e is GREEN on the commit being tagged
+        # ⛔ THE SUITE BELOW IS THE DEFAULT SELECTION, WHICH DESELECTS `e2e`. So
+        # until this step existed, the job that decides whether a release goes
+        # out had never looked at the suite that drives a browser: a red there
+        # stopped neither a merge nor a tag. 0.22.1 was tagged from a main whose
+        # e2e was red, and nothing said so because nothing was looking.
+        #
+        # It ASKS rather than re-runs. The e2e has already run on this commit;
+        # running it again here would cost five minutes to learn what one API
+        # call answers. What was missing was not a second measurement, it was
+        # somebody reading the first one.
+        #
+        # The selftest runs first, because a gate that has only ever printed
+        # PASS is not a gate - and this one's verdict is a pure function, so its
+        # ten known-bad cases cost nothing and need no network.
+        if: github.event_name == 'push'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python scripts/e2e_is_green.py --selftest
+          python scripts/e2e_is_green.py --repo "$GITHUB_REPOSITORY" --sha "$GITHUB_SHA"
 
       - name: the pinned invisible-core is ON THE INDEX
         # THE ordering rule, as a gate instead of a sentence in a runbook. This
