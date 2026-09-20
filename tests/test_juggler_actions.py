@@ -21,7 +21,6 @@ PAGE = b"""<!doctype html><html><head><title>actions</title></head><body>
 <input id=field>
 <input id=date type=date>
 <div id=events data-count="0" data-trusted=""></div>
-<div id=late style="display:none"><button id=slow>delayed</button></div>
 <input id=checkbox type=checkbox>
 <input id=already type=checkbox checked>
 <select id=choice><option value=a>A</option><option value=b>B</option></select>
@@ -29,6 +28,14 @@ PAGE = b"""<!doctype html><html><head><title>actions</title></head><body>
 <div id=dbl data-n="0" ondblclick="this.dataset.n=(+this.dataset.n+1)">double</div>
 <div id=source draggable=true style="width:60px;height:30px">drag</div>
 <div id=target data-drop="0" style="width:60px;height:30px">here</div>
+<!-- LAST in the flow, on purpose. It appears 1.2 s after load, and while it
+     stood above the checkboxes its appearance pushed them down by one line.
+     A `check("#checkbox")` that straddled that instant verified the point on
+     the checkbox and pressed on #slow, which is what the engine now reports
+     (ActionMissed: mousedown landed on button#slow) and what the CI saw as
+     "clicked but the box stayed unchecked" one run in twelve since
+     2026-09-05. Nothing below it is acted on by another test. [B217] -->
+<div id=late style="display:none"><button id=slow>delayed</button></div>
 <script>
   const log = document.getElementById('keys');
   document.addEventListener('keydown', ev => {

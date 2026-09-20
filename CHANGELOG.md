@@ -32,6 +32,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   entry below closes, and it is why that version went out as this one instead.
 
 ### Fixed
+- **Under load, a humanised movement no longer collapses into a jump.** The
+  pacer drops an event whose successor is already due rather than sending it
+  late, and that rule had no ceiling in space: on a loaded machine nearly every
+  point was overtaken, the destination survived, and one event carried 89% of
+  an 820 px journey with a timestamp exactly where the plan put it. Now an
+  event is dropped only while the one after it lies within twice the plan's
+  largest step of the last position sent; past that it goes out late, still no
+  closer to the previous one than the 8 ms floor, and the movement overruns
+  its budget by however much the machine is behind. The one overslept sample
+  the Windows timer produces is still dropped, and the plan still ends on
+  time. Both drivers now tell the pacer where the pointer starts, so the first
+  drops are measured from where it really is.
 - **A pointer action that did not reach its element no longer reports
   success.** `hover`, `click`, `check` and `uncheck` now ask the engine where
   each event actually landed, as recorded at dispatch by a privileged listener

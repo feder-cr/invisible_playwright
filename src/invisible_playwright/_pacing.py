@@ -148,15 +148,29 @@ class Pacer:
 
     When the platform cannot deliver an event on time - Windows quantises a short
     sleep to the system timer, so a 12 ms request routinely returns after 16 -
-    the event is DROPPED rather than sent late. The rule is parameter-free: an
-    event is skipped when the NEXT event is already due, because sending it then
-    would be sending two events at one instant and would push the whole rest of
-    the movement backwards. What survives is a stream whose timestamps still land
-    where the plan put them, at whatever density the machine can actually
-    produce.
+    the event is DROPPED rather than sent late: an event is skipped when the
+    NEXT event is already due, because sending it then would be sending two
+    events at one instant and would push the whole rest of the movement
+    backwards. What survives is a stream whose timestamps still land where the
+    plan put them.
+
+    ⛔ BUT ONLY WHILE THE DROP STAYS SMALL IN SPACE. A dropped event hands its
+    distance to the next one that goes out, and that rule alone had no ceiling:
+    on a loaded machine nearly every point was overtaken, the destination
+    survived, and one event carried 89% of an 820 px journey with a timestamp
+    exactly where the plan put it - a plausible rhythm wrapped around a jump
+    no device makes. So an event may be dropped only if the event AFTER it lies
+    within REACH of the last position actually sent, where reach is twice the
+    plan's largest step: the one overslept sample the timer case produces
+    merges two steps into one, and that is what is allowed. Beyond it the event
+    is sent late instead, still no closer to the previous one than the floor,
+    and the plan overruns its budget by however much the machine is behind. A
+    hand that is slowed down is a hand; a hand that teleports is not. [B214]
 
     The last event is never dropped (it is where the movement ends) and neither
-    is a wheel notch (it carries a delta nobody else will send).
+    is a wheel notch (it carries a delta nobody else will send). ``origin`` is
+    where the pointer is before the first event: the reach of the first drops
+    is measured from there, and without it from the first event of the plan.
 
     Usage, from either a synchronous or an asynchronous driver::
 
@@ -182,10 +196,11 @@ class Pacer:
     _EMIT = "emit"
 
     __slots__ = ("_evs", "_emit_last", "_min_gap", "_i", "_phase", "_t0",
-                 "_last_emit", "delivered")
+                 "_last_emit", "_ref", "_reach", "delivered")
 
     def __init__(self, evs: Iterable[Ev], *, emit_last: bool = True,
-                 min_gap_ms: float = MIN_EVENT_INTERVAL_MS) -> None:
+                 min_gap_ms: float = MIN_EVENT_INTERVAL_MS,
+                 origin: Optional[Tuple[float, float]] = None) -> None:
         self._evs: List[Ev] = list(evs)
         self._emit_last = emit_last
         self._min_gap = float(min_gap_ms) / 1000.0
@@ -193,8 +208,30 @@ class Pacer:
         self._phase = self._DEADLINE
         self._t0: Optional[float] = None
         self._last_emit: Optional[float] = None
+        #: The last position that actually went out - the origin until then.
+        self._ref: Optional[Tuple[float, float]] = (
+            (float(origin[0]), float(origin[1])) if origin is not None
+            else ((self._evs[0].x, self._evs[0].y) if self._evs else None))
+        #: How far from `_ref` the event after a dropped one may lie: twice the
+        #: plan's own largest step, i.e. one skipped sample at the plan's peak
+        #: speed. Not a pixel constant - a plan drawn for a short hop and one
+        #: drawn across the screen each get the ceiling their own shape sets.
+        self._reach = 2.0 * max(
+            (_distance(a.x, a.y, b.x, b.y)
+             for a, b in zip(self._evs, self._evs[1:])), default=0.0)
         #: How many events have been reported emitted.
         self.delivered = 0
+
+    def _droppable(self, i: int) -> bool:
+        """May event *i* be skipped, handing its distance to the next one?"""
+        ev = self._evs[i]
+        if i == len(self._evs) - 1 or ev.is_wheel:
+            return False
+        nxt = self._evs[i + 1]
+        if self._ref is None:
+            return True
+        return _distance(self._ref[0], self._ref[1], nxt.x, nxt.y) \
+            <= self._reach + 1e-9
 
     def step(self, now: float) -> Tuple[str, Any]:
         """What to do at *now*: ``(SLEEP, seconds)``, ``(EMIT, ev)`` or
@@ -209,7 +246,7 @@ class Pacer:
         while self._i < n:
             ev = self._evs[self._i]
             last = self._i == n - 1
-            droppable = not last and not ev.is_wheel
+            droppable = self._droppable(self._i)
 
             if self._phase == self._DEADLINE:
                 wait = self._t0 + ev.t_ms / 1000.0 - now
@@ -227,7 +264,9 @@ class Pacer:
             if self._phase == self._GAP:
                 # Catching up after an overslept deadline must not produce two
                 # events in the same instant: that is an event rate no device
-                # reports, and it is as visible as being late was.
+                # reports, and it is as visible as being late was. An event
+                # that cannot be dropped - the last, a notch, or one whose
+                # successor is out of reach - waits out the floor and goes.
                 if self._last_emit is not None:
                     behind = self._min_gap - (now - self._last_emit)
                     if behind > 0:
@@ -248,6 +287,8 @@ class Pacer:
         """The event :meth:`step` handed out went out at *now*."""
         self.delivered += 1
         self._last_emit = now
+        ev = self._evs[self._i]
+        self._ref = (ev.x, ev.y)
         self._advance()
 
     def dropped(self) -> None:
@@ -261,6 +302,10 @@ class Pacer:
     def _advance(self) -> None:
         self._i += 1
         self._phase = self._DEADLINE
+
+
+def _distance(x0: float, y0: float, x1: float, y1: float) -> float:
+    return ((x1 - x0) ** 2 + (y1 - y0) ** 2) ** 0.5
 
 
 def clamp_to_viewport(x: float, y: float, w: Optional[float],
@@ -340,7 +385,8 @@ def fit_timeline(evs: List[Ev], budget_s: float) -> List[Ev]:
 
 
 def drive(evs: Iterable[Ev], emit_move: Any, *, emit_wheel: Any = None,
-          emit_last: bool = True, now: Any = None, sleep: Any = None) -> int:
+          emit_last: bool = True, now: Any = None, sleep: Any = None,
+          origin: Optional[Tuple[float, float]] = None) -> int:
     """The SYNCHRONOUS driver of :class:`Pacer`. Returns events sent.
 
     The asynchronous one lives in :mod:`._cursor`, because it has to ``await``
@@ -349,14 +395,15 @@ def drive(evs: Iterable[Ev], emit_move: Any, *, emit_wheel: Any = None,
     in both cases.
 
     ``now`` and ``sleep`` are injectable so a test can drive a whole timeline
-    without waiting for it.
+    without waiting for it. ``origin`` is where the pointer is before the plan
+    starts, the reference for the pacer's reach until something is sent.
     """
     evs = list(evs)
     if not evs:
         return 0
     clock = now if now is not None else time.perf_counter
     wait = sleep if sleep is not None else time.sleep
-    pacer = Pacer(evs, emit_last=emit_last)
+    pacer = Pacer(evs, emit_last=emit_last, origin=origin)
     with fine_timer():
         while True:
             what, arg = pacer.step(clock())

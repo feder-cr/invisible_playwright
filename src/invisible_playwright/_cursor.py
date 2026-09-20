@@ -587,19 +587,21 @@ async def _dispatch(
     *,
     timer: Any = None,
     emit_last: bool = True,
+    origin: Optional[Tuple[float, float]] = None,
 ) -> int:
     """The ASYNCHRONOUS driver of :class:`._pacing.Pacer`. Returns events sent.
 
     The rules it obeys - absolute deadlines from one ``t0``, drop rather than
-    send late, never two events in one instant - are not written here: they are
-    in :mod:`._pacing`, because the server's drag is synchronous and has to obey
-    the same ones. This function supplies a clock and a way of waiting; it makes
-    no decision the pacer has not already made.
+    send late while the drop stays within reach, never two events in one
+    instant - are not written here: they are in :mod:`._pacing`, because the
+    server's drag is synchronous and has to obey the same ones. This function
+    supplies a clock, a way of waiting and where the pointer starts from; it
+    makes no decision the pacer has not already made.
     """
     tm = timer if timer is not None else _TIMER
     if not evs:
         return 0
-    pacer = _pacing.Pacer(evs, emit_last=emit_last)
+    pacer = _pacing.Pacer(evs, emit_last=emit_last, origin=origin)
     with _fine_timer():
         while True:
             what, arg = pacer.step(tm.now())
@@ -884,7 +886,8 @@ async def _travel(
         await raw_move(x, y)
         cursor.x, cursor.y = x, y
 
-    await _dispatch(evs, emit, timer=timer, emit_last=False)
+    await _dispatch(evs, emit, timer=timer, emit_last=False,
+                    origin=(cursor.x, cursor.y))
     cursor.x, cursor.y = to_x, to_y
     cursor.last_event_at = (timer or _TIMER).now()
     return 0.0
@@ -909,7 +912,8 @@ async def _run_steps(
         await emit_move(x, y)
         cursor.x, cursor.y = x, y
 
-    await _dispatch(evs, move, emit_wheel, timer=timer, emit_last=emit_last)
+    await _dispatch(evs, move, emit_wheel, timer=timer, emit_last=emit_last,
+                    origin=(cursor.x, cursor.y))
     if not emit_last and evs:
         cursor.x, cursor.y = evs[-1].x, evs[-1].y
     cursor.last_event_at = (timer or _TIMER).now()

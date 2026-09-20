@@ -862,7 +862,8 @@ class Actions:
             return 1
         return _pacing.drive(
             evs, lambda x, y: self._mouse_event("mousemove", (x, y),
-                                                buttons=buttons))
+                                                buttons=buttons),
+            origin=(x0, y0))
 
     def drag_and_drop(self, source: str, target: str, *,
                       timeout: float = 30.0,
