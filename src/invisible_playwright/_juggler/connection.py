@@ -433,12 +433,31 @@ def _spawn_windows(executable, argv, env):
     not reach the browser: the engine never reads it.
 
     Everything else is what the `Popen` call used to do, made explicit:
-    exactly four handles are inherited - the two Juggler pipe ends, the
-    child's end of the stdout pipe, and a NUL for stdin - through
+    exactly five handles are inherited - the two Juggler pipe ends, the
+    child's end of the stdout pipe, a second handle to that same end for
+    stderr, and the read end of a pipe for stdin - through
     `PROC_THREAD_ATTRIBUTE_HANDLE_LIST`, so a second session starting in the
     same instant cannot hand its pipe ends to this browser and lose the
     ability to notice its own closing. `bInheritHandles=TRUE` with that list
-    inherits those four and nothing else.
+    inherits those five and nothing else.
+
+    ⛔ THE THREE STD HANDLES ARE SHAPED FOR FIREFOX'S LAUNCHER, and the first
+    draft of this function got two of them wrong. `firefox.exe` runs first as
+    a launcher that creates the real browser with a handle list of its own,
+    built from its stdin, stdout and stderr plus the Juggler pipe
+    (`browser/app/winlauncher/LauncherProcessWin.cpp`, `ProcThreadAttributes.h`).
+    That list takes only DISK and PIPE handles, silently drops anything else
+    while still naming it as a std handle, and is never de-duplicated - and
+    Windows refuses a handle list with the same handle twice. A NUL device for
+    stdin (a CHAR handle) and one handle for both stdout and stderr made the
+    launcher's `CreateProcessW` fail with ERROR_INVALID_PARAMETER (Event Log,
+    `LauncherProcessWin.cpp:580`); the launcher then disabled itself for that
+    path in the registry (`|Browser` = 0) and ran on as the browser itself,
+    so the session worked and `tests/test_first_launch_from_a_new_path.py`
+    was the only thing that saw it. `Popen` never tripped it because CPython
+    duplicates every std handle separately. So: stdin is the read end of a
+    pipe whose write end is closed at once (EOF, and a PIPE type), and stderr
+    is its own duplicate of the stdout pipe.
     """
     import ctypes
     import msvcrt
@@ -470,14 +489,20 @@ def _spawn_windows(executable, argv, env):
     its_read, its_write = inheritable(its_read), inheritable(its_write)
     # stdout and stderr merged on one pipe, as before: readiness and the
     # last words of a browser that dies at startup are both read from it.
+    # Two HANDLES to it, one per std slot: the launcher's list must not hold
+    # the same handle twice (see the docstring).
     out_read, out_write = _winapi.CreatePipe(0, 0)
     out_write = inheritable(out_write)
-    # stdin from NUL. `STARTF_USESTDHANDLES` wants three valid handles, and
-    # the browser must not inherit the caller's console input.
-    generic_read, share_rw, open_existing = 0x80000000, 0x3, 3
-    nul = _winapi.CreateFile("NUL", generic_read, share_rw, 0, open_existing,
-                             0, 0)
-    nul = inheritable(nul)
+    current_process = _winapi.GetCurrentProcess()
+    err_write = _winapi.DuplicateHandle(current_process, out_write,
+                                        current_process, 0, True,
+                                        _winapi.DUPLICATE_SAME_ACCESS)
+    # stdin from a pipe with no writer: the browser reads EOF, never the
+    # caller's console, and the launcher can forward a PIPE handle where it
+    # drops a NUL device.
+    in_read, in_write = _winapi.CreatePipe(0, 0)
+    in_read = inheritable(in_read)
+    _winapi.CloseHandle(in_write)
 
     env = dict(env)
     desktop = env.pop(DESKTOP_ENV, None)
@@ -520,7 +545,8 @@ def _spawn_windows(executable, argv, env):
         wintypes.BOOL, wintypes.DWORD, ctypes.c_void_p, wintypes.LPCWSTR,
         ctypes.c_void_p, ctypes.POINTER(PROCESS_INFORMATION))
 
-    inherited = (wintypes.HANDLE * 4)(its_read, its_write, out_write, nul)
+    inherited = (wintypes.HANDLE * 5)(its_read, its_write, out_write,
+                                      err_write, in_read)
     size = ctypes.c_size_t(0)
     k32.InitializeProcThreadAttributeList(None, 1, 0, ctypes.byref(size))
     attrs = ctypes.create_string_buffer(size.value)
@@ -535,9 +561,9 @@ def _spawn_windows(executable, argv, env):
     si = STARTUPINFOEXW()
     si.StartupInfo.cb = ctypes.sizeof(STARTUPINFOEXW)
     si.StartupInfo.dwFlags = 0x100  # STARTF_USESTDHANDLES
-    si.StartupInfo.hStdInput = nul
+    si.StartupInfo.hStdInput = in_read
     si.StartupInfo.hStdOutput = out_write
-    si.StartupInfo.hStdError = out_write
+    si.StartupInfo.hStdError = err_write
     if desktop:
         si.StartupInfo.lpDesktop = desktop
     si.lpAttributeList = ctypes.cast(attrs, ctypes.c_void_p)
@@ -560,7 +586,7 @@ def _spawn_windows(executable, argv, env):
     k32.DeleteProcThreadAttributeList(attrs)
     # The child's ends no longer serve us: keeping them open would
     # prevent us from noticing that the browser has closed.
-    for h in (its_read, its_write, out_write, nul):
+    for h in (its_read, its_write, out_write, err_write, in_read):
         _winapi.CloseHandle(h)
     if not ok:
         for h in (our_read, our_write, out_read):
