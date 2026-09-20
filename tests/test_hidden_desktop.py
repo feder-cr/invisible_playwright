@@ -103,3 +103,23 @@ def test_hidden_desktop_takes_the_window_off_screen_but_keeps_rendering(firefox_
 
         # 4) the page does not read a backgrounded browser.
         assert page.evaluate("document.visibilityState") == "visible"
+
+        # 5) the WINDOW can still be watched from there. The engine's cropping
+        #    capturer used to crop a visible window from the screen, which
+        #    shows the input desktop only, and moved the capture thread there
+        #    for good: 0 frames in 15 s on firefox-33. firefox-34 keeps a
+        #    window of another desktop on the window capturer. This is the
+        #    line that makes the engine's release gate prove it per build.
+        frames = []
+
+        def on_frame(frame):
+            frames.append(frame)
+
+        page.screencast.start(on_frame=on_frame)
+        deadline = time.time() + 15
+        while not frames and time.time() < deadline:
+            time.sleep(0.1)
+        page.screencast.stop()
+        assert frames, ("no screencast frame arrived from the hidden desktop "
+                        "in 15 s: the window capturer is not being used there")
+        assert frames[0]["data"][:3] == b"\xff\xd8\xff", "not a JPEG"

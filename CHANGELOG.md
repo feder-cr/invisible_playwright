@@ -35,16 +35,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   workers. What made it possible now and not in June is that the Node driver
   is gone: the process is ours to create.
 
-### Known limitation
-- **`page.screencast.start()` is refused, with the reason, on a `headless=True`
-  session on Windows.** From a hidden desktop the window capture starts and
-  delivers no frame (measured: 0 in 15 s, where the same window on the visible
-  desktop gives 93 in 4 s), because the compositor only composes the active
-  desktop. Until 0.23.0 the cloaked window was on the active desktop and the
-  capture worked. A refusal that names the cause is the same choice the engine
-  makes for true headless; a silent black stream is not. `page.screenshot()`
-  is unaffected, and `headless=False` keeps the screencast. Tracked as [B220]
-  in the workbench; the fix belongs in the engine's window capturer.
+### Requires
+- **The firefox-34 engine, for the screencast of a hidden session.** On
+  firefox-33 a `headless=True` session on Windows starts the window capture
+  and never receives a frame: the engine's cropping capturer saw a visible,
+  uncloaked window and cropped it from the SCREEN, which shows the input
+  desktop only, and the screen capturer moved the capture thread there, after
+  which the window capturer could not read the window either. firefox-34
+  keeps a window that lives on another desktop on the window capturer, whose
+  `PrintWindow` reads it in full from its own desktop. Measured 2026-09-20:
+  0 frames in 15 s on firefox-33, both screencast tests green on the fixed
+  build, hidden. `tests/test_hidden_desktop.py` now asks for a frame from the
+  hidden session, so the engine's release gate proves it on every build.
 
 ### Removed
 - `tests/test_cloak.py`, replaced by `tests/test_hidden_desktop.py`, which

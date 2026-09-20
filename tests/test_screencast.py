@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import http.server
 import socketserver
-import sys
 import threading
 import time
 from types import SimpleNamespace
@@ -66,24 +65,8 @@ def _bare_page(conn):
     page.session = "session-1"
     page.disposed = False
     page._screencast_id = None
-    page.context = SimpleNamespace(browser=SimpleNamespace(
-        conn=conn, hidden_desktop=False))
+    page.context = SimpleNamespace(browser=SimpleNamespace(conn=conn))
     return page, up
-
-
-def test_a_hidden_desktop_refuses_before_asking_the_engine():
-    """The refusal is the server's, not the engine's: nothing reaches the
-    wire. The known-bad input is a page that asks `Page.startScreencast` and
-    then waits for frames that a hidden desktop never produces ([B220])."""
-    from invisible_playwright._juggler.dispatcher import ProtocolException
-    conn = RecordingConnection()
-    page, _ = _bare_page(conn)
-    page.context.browser.hidden_desktop = True
-    with pytest.raises(ProtocolException) as refused:
-        page.op_screencast_start({"sendFrames": True})
-    assert "hidden desktop" in str(refused.value)
-    assert "headless=False" in str(refused.value)
-    assert not conn.sent, "the refusal let a command reach the engine"
 
 
 def test_start_asks_the_engine_for_the_whole_window():
@@ -178,38 +161,6 @@ def _serve(body):
     return H
 
 
-#: ⛔ HEADED ON WINDOWS, HIDDEN EVERYWHERE ELSE, and the reason is measured.
-#: Since 2026-09-20 `headless=True` on Windows creates the browser on a hidden
-#: Win32 desktop, and from there the window capture delivers no frame at all
-#: (0 in 15 s against firefox-33, where the same window on the visible desktop
-#: gives 93 in 4 s): the compositor only composes the active desktop. The
-#: server refuses `screencast.start()` there with the reason, see
-#: `test_a_hidden_desktop_session_refuses_the_screencast_with_the_reason`
-#: below. On Linux `headless=True` is an Xvfb and the X11 capture works, which
-#: is what the CI under `xvfb-run` exercises. [B220] in the workbench.
-_SCREENCAST_HEADLESS = sys.platform != "win32"
-
-
-@pytest.mark.e2e
-@pytest.mark.skipif(sys.platform != "win32",
-                    reason="the hidden desktop is the Windows path")
-def test_a_hidden_desktop_session_refuses_the_screencast_with_the_reason(firefox_binary):
-    """⛔ REFUSED WITH THE REASON, NOT SERVED AS A STREAM OF NOTHING. A caller
-    who asks for frames from a hidden-desktop session gets told why there are
-    none and what to do instead, on the `start()` call, before waiting 15 s
-    for a frame that never comes. The known-bad input is the 0.23.0
-    behaviour: `start()` succeeded and the handler was never called."""
-    from invisible_playwright import InvisiblePlaywright
-    with InvisiblePlaywright(seed=42, binary_path=firefox_binary,
-                             headless=True) as browser:
-        page = browser.new_page()
-        with pytest.raises(Exception) as refused:
-            page.screencast.start(on_frame=lambda frame: None)
-    message = str(refused.value)
-    assert "hidden desktop" in message and "headless=False" in message, (
-        "the refusal does not name the cause and the way out: %s" % message)
-
-
 @pytest.mark.e2e
 def test_a_screencast_frame_is_a_jpeg_of_the_whole_window(firefox_binary):
     """Through the public API, against a real engine: the frames are JPEG
@@ -232,7 +183,7 @@ def test_a_screencast_frame_is_a_jpeg_of_the_whole_window(firefox_binary):
 
     try:
         with InvisiblePlaywright(seed=42, binary_path=firefox_binary,
-                                 headless=_SCREENCAST_HEADLESS) as browser:
+                                 headless=True) as browser:
             page = browser.new_page()
             page.set_viewport_size({"width": 800, "height": 600})
             page.goto(url)
@@ -401,7 +352,7 @@ def test_asking_for_a_higher_rate_actually_delivers_more_frames(firefox_binary):
     slow_fps, fast_fps = 2, 25
     try:
         with InvisiblePlaywright(seed=42, binary_path=firefox_binary,
-                                 headless=_SCREENCAST_HEADLESS) as browser:
+                                 headless=True) as browser:
             slow = count(browser.new_page(), slow_fps, seconds)
             fast = count(browser.new_page(), fast_fps, seconds)
     finally:
