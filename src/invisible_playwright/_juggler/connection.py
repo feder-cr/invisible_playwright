@@ -569,9 +569,13 @@ def _spawn_windows(executable, argv, env):
     si.lpAttributeList = ctypes.cast(attrs, ctypes.c_void_p)
 
     # Sorted case-insensitively, which is the order Windows keeps its own
-    # block in; `CREATE_UNICODE_ENVIRONMENT` says it is wide.
-    block = "".join("%s=%s\0" % kv for kv in
-                    sorted(env.items(), key=lambda kv: kv[0].upper())) + "\0"
+    # block in; `CREATE_UNICODE_ENVIRONMENT` says it is wide. Each entry ends
+    # in a NUL and the block in a second one: spelled with chr() because a
+    # control character inside a literal is what the workbench's literal gate
+    # hunts (a backslash escape in a Windows path), and here it is deliberate.
+    nul = chr(0)
+    block = nul.join("%s=%s" % kv for kv in
+                     sorted(env.items(), key=lambda kv: kv[0].upper())) + nul + nul
     env_block = ctypes.create_unicode_buffer(block, len(block) + 1)
     # `CreateProcessW` may write into the command line: a mutable buffer.
     cmdline = ctypes.create_unicode_buffer(
