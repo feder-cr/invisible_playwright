@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.25.3] - 2026-09-21
+
+### Fixed
+- **A transient gateway error on the engine download is asked again instead
+  of ending the install.** Nothing in the package had ever asked twice: a
+  `504 Gateway Time-out` from GitHub on the 262 MB archive came out as
+  `error: 504` and that was the end of it, on a CI runner and on the machine
+  of anyone whose first use of the package landed on one. The download now
+  makes up to three attempts on the failures that mean "ask again" (408,
+  429, 500, 502, 503, 504, dropped connections, read timeouts, a stream that
+  dies mid-transfer), waits 2s and then 8s between them, honours a
+  `Retry-After` the server sends up to a minute, and says on stderr that it
+  is doing so. A permanent answer is unchanged and still comes out on the
+  first ask: a 404 keeps reaching the message that explains a withdrawn tag,
+  and the download deadline is never repeated, because retrying it would
+  multiply the very wait it exists to cap.
+
+### Requires
+- `invisible-core` 34.27.0, which carries that change. Same engine
+  (firefox-34), no change in this package beyond the pin.
+
 ## [0.25.2] - 2026-09-21
 
 ### Changed
