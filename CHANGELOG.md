@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.25.2] - 2026-09-21
+
+### Changed
+- **One composer for the launch environment.** `_session.build_env` was a
+  twin of the core's `launch.build_launch_env`, and the hidden surface's half
+  of the contract (the variables `launch_env()` names, including the ones to
+  remove) lived only in the twin. The wrapper now verifies the font manifest
+  against the executable, which is the one thing that needs the executable,
+  and delegates the composition to the core. Same environment on the wire.
+
+### Requires
+- `invisible-core` 34.26.0, where `build_launch_env` takes `display_env`.
+  Same engine (firefox-34).
+
 ## [0.25.1] - 2026-09-21
 
 ### Fixed

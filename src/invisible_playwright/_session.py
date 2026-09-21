@@ -29,9 +29,9 @@ from ._engine import resolve_executable
 from ._juggler.server import MOTION_BUDGET_PREF, SESSION_SEED_PREF
 from typing import Any, Dict, Optional
 
-from invisible_core import (DESKTOP_ENV, compose_session_prefs,
-                            make_virtual_display)
+from invisible_core import compose_session_prefs, make_virtual_display
 from invisible_core.launch import (FontManifestMismatch,
+                                   build_launch_env,
                                    cached_font_manifest_path,
                                    verify_font_manifest)
 
@@ -105,17 +105,6 @@ except ImportError as _exc:  # pragma: no cover - exercised by the old-core prob
         f"pulls the core it was built against."
     ) from _exc
 
-#: The proxy egress IP fed to nICEr's bridge as the srflx override. An explicit
-#: caller-supplied value wins over the one discovered at launch.
-WEBRTC_IP_ENV = "STEALTHFOX_WEBRTC_PUBLIC_IP"
-WEBRTC_NO_IPV6_ENV = "STEALTHFOX_WEBRTC_DISABLE_IPV6"
-
-
-#: The engine reads this at startup; see build_env for why a pref cannot
-#: work here. Never rename: it is part of the binary contract.
-FONT_MANIFEST_ENV = "STEALTHFOX_FONT_MANIFEST"
-
-
 def build_env(
     *,
     timezone: Optional[str],
@@ -156,10 +145,15 @@ def build_env(
 
     `profile=None` sets nothing, which leaves the engine on its own copy - the
     floor that keeps a browser launched without this package rendering.
+
+    What is composed here is only what needs the EXECUTABLE: the manifest is
+    verified against the engine's own fonts before its path is handed over.
+    The environment itself is composed by the core's `build_launch_env`, the
+    one place that knows TZ, the WebRTC declaration, the manifest variable and
+    the hidden surface's `launch_env()`; until 0.25.2 this function was a twin
+    of that body, and the hidden-surface half of the contract lived only here.
     """
-    env = dict(base_env if base_env is not None else os.environ)
-    if timezone:
-        env["TZ"] = tz_env(timezone)
+    manifest_path = None
     manifest = getattr(getattr(profile, "font", None), "manifest", "")
     if manifest:
         # Refuse rather than hand the engine metrics for faces it does not
@@ -180,40 +174,10 @@ def build_env(
                     f"{len(missing)} face file(s) the engine does not carry "
                     f"(e.g. {missing[:3]}). Engine: {executable}. The metrics "
                     f"would describe fonts that are not there.")
-        path = cached_font_manifest_path(manifest)
-        if path is not None:
-            # setdefault: an already-set value wins, same rule as the WebRTC IP.
-            env.setdefault(FONT_MANIFEST_ENV, str(path))
-    # WebRTC srflx override, plus dropping IPv6 from gathering.
-    webrtc_ip = env.get(WEBRTC_IP_ENV) or srflx_declared
-    if webrtc_ip:
-        env[WEBRTC_IP_ENV] = webrtc_ip
-        # ONLY behind a proxy, and the reason is a measurement.
-        #
-        # A retail Firefox on a dual-stack connection emits an IPv6 srflx with
-        # the REAL global address, in the clear: mDNS obfuscation only covers
-        # host candidates. Behind an IPv4 proxy that address would be a leak
-        # and, worse, an inconsistency - HTTP goes out through the proxy and
-        # WebRTC shows home. So there the filter is needed.
-        #
-        # Without a proxy it protects against NOTHING and costs form: measured
-        # on 2026-08-25 against the retail install on the same connection, the
-        # retail emits 6 candidates (host UDP x2, host TCP x2, srflx v4, srflx
-        # v6) while we were emitting 3. We looked like an IPv4-only machine
-        # where the reference is dual-stack.
-        #
-        # Before today this `if` was not involved: the filter was always
-        # turned on by the pref `zoom.stealth.webrtc.disable_ipv6`, which the
-        # environment only overrode. With the second source removed, the
-        # condition became expressible in one line.
-        env[WEBRTC_NO_IPV6_ENV] = "1"
-    env.pop(DESKTOP_ENV, None)
-    for k, v in (display_env or {}).items():
-        if v is None:
-            env.pop(k, None)
-        else:
-            env[k] = v
-    return env
+        manifest_path = cached_font_manifest_path(manifest)
+    return build_launch_env({}, timezone=timezone, srflx_declared=srflx_declared,
+                            manifest_path=manifest_path, base_env=base_env,
+                            display_env=display_env)
 
 
 def build_prefs(
