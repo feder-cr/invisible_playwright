@@ -42,6 +42,16 @@ _WAYLAND_VARS = ("WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "XDG_SESSION_TYPE",
                  "PULSE_SERVER", "WSL2_GUI_APPS_ENABLED")
 
 
+#: Set in THIS process before each launch, with a value unique to the arm.
+#: The browser's environment is composed from a copy of ``os.environ``, so
+#: the browser we launch inherits it and nobody else's does: the e2e runs
+#: under xdist with several workers, each a process of its own, launching
+#: Firefox at the same time (measured in CI: "expected one new Firefox, saw
+#: 2"). Counting processes was the wrong question; carrying a mark is the
+#: same road every inherited variable takes.
+_MARK = "INVPW_TEST_MARK"
+
+
 def _firefox_environments(binary: str) -> dict:
     """``{pid: env}`` for every PARENT Firefox process of ``binary``."""
     out = {}
@@ -61,11 +71,13 @@ def _firefox_environments(binary: str) -> dict:
     return out
 
 
-def _new_since(before: dict, now: dict) -> dict:
-    """The one environment that appeared since ``before``, or fail loudly."""
-    fresh = {pid: env for pid, env in now.items() if pid not in before}
-    assert len(fresh) == 1, "expected exactly one new Firefox, saw %d" % len(fresh)
-    return next(iter(fresh.values()))
+def _ours(binary: str, mark: str) -> dict:
+    """The environment of the one Firefox born with ``mark``."""
+    marked = [env for env in _firefox_environments(binary).values()
+              if env.get(_MARK) == mark]
+    assert len(marked) == 1, (
+        "expected exactly one Firefox carrying %s=%s, saw %d" % (_MARK, mark, len(marked)))
+    return marked[0]
 
 
 @pytest.mark.e2e
@@ -81,24 +93,24 @@ def test_hidden_display_stays_with_its_session(firefox_binary, monkeypatch):
 
     async def scenario():
         # 1) control: a headed session lands on the caller's display.
-        none = _firefox_environments(firefox_binary)
+        monkeypatch.setenv(_MARK, "headed-control")
         async with InvisiblePlaywright(seed=42, binary_path=firefox_binary,
                                        headless=False) as browser:
             page = await browser.new_page()
             await page.goto("about:blank")
-            headed = _new_since(none, _firefox_environments(firefox_binary))
+            headed = _ours(firefox_binary, "headed-control")
         assert headed["DISPLAY"] == host_display, (
             "a headed session was not born on the caller's DISPLAY, so the "
             "arms below could not tell hidden from broken")
 
         # 2) hidden: the session's own Xvfb, X11 pinned, Wayland stripped.
-        none = _firefox_environments(firefox_binary)
+        monkeypatch.setenv(_MARK, "hidden")
         hidden_session = InvisiblePlaywright(seed=42, binary_path=firefox_binary,
                                              headless=True)
         async with hidden_session as browser:
             page = await browser.new_page()
             await page.goto("about:blank")
-            hidden = _new_since(none, _firefox_environments(firefox_binary))
+            hidden = _ours(firefox_binary, "hidden")
             xvfb = hidden_session._virtual_display._display
             assert xvfb and xvfb != host_display
             assert hidden["DISPLAY"] == xvfb, (
@@ -110,24 +122,24 @@ def test_hidden_display_stays_with_its_session(firefox_binary, monkeypatch):
                 assert var not in hidden, (
                     "%s reached the hidden browser: a variable the session "
                     "names for removal came back from the process" % var)
-            assert dict(os.environ) == process_env, (
+            assert {k: v for k, v in os.environ.items() if k != _MARK} == process_env, (
                 "starting the hidden session wrote into os.environ")
 
             # 3) B221 itself: a headed session opened while the hidden one is
             #    alive is born where it was asked to be.
-            seen = _firefox_environments(firefox_binary)
+            monkeypatch.setenv(_MARK, "headed-beside-hidden")
             async with InvisiblePlaywright(seed=7, binary_path=firefox_binary,
                                            headless=False) as other:
                 page = await other.new_page()
                 await page.goto("about:blank")
-                concurrent = _new_since(seen, _firefox_environments(firefox_binary))
+                concurrent = _ours(firefox_binary, "headed-beside-hidden")
             assert concurrent["DISPLAY"] == host_display, (
                 "a headed session opened beside a hidden one was born on the "
                 "hidden one's Xvfb %r" % xvfb)
             assert concurrent.get("WAYLAND_DISPLAY") == "wayland-test", (
                 "the headed session lost a variable only the hidden one drops")
 
-        assert dict(os.environ) == process_env, (
+        assert {k: v for k, v in os.environ.items() if k != _MARK} == process_env, (
             "stopping the hidden session wrote into os.environ")
 
     asyncio.run(scenario())
