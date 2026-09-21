@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.25.4] - 2026-09-21
+
+### Fixed
+- **Asking again is the caller's choice, not the downloader's.** 0.25.3 put
+  the retry inside the shared download primitive, so the geoip database
+  refresh inherited it - and that caller had already written down the
+  opposite answer, because it holds a cached copy it falls back on. A
+  transient failure there would have spent up to ten seconds of backoff, at
+  browser-session start, on the way to the fallback it was taking anyway, and
+  printed retry lines in a path designed to be silent. The attempt count is
+  now the caller's: the engine download keeps three, and the geoip refresh
+  asks once when it has a cache and three times when it does not, which is
+  the case where the failure is terminal for the session.
+
+### Requires
+- `invisible-core` 34.28.0, which carries that change. Same engine
+  (firefox-34), no change in this package beyond the pin.
+
 ## [0.25.3] - 2026-09-21
 
 ### Fixed
