@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-09-21
+
+### Fixed
+- **On Linux the Xvfb display no longer travels through `os.environ`.**
+  `_LinuxVirtualDisplay.start()` used to write `DISPLAY`, `MOZ_ENABLE_WAYLAND`
+  and `GDK_BACKEND` into the process environment and pop the five Wayland
+  variables from it, restoring everything in `stop()`. Every session's
+  environment is a copy of `os.environ`, so a `headless=False` session opened
+  while an Xvfb session was still alive in the same process was born on the
+  Xvfb and never appeared. The whole fact now travels in the surface's
+  `launch_env()`, the same channel the Windows hidden desktop already used: the
+  variables to set, and, named with `None`, the ones the browser must not
+  carry; `build_env` applies both to the session's environment only.
+
+### Requires
+- `invisible-core` 34.25.0, where `launch_env()` gained the `None` half of the
+  contract. Same engine (firefox-34).
+
 ## [0.24.0] - 2026-09-21
 
 ### Changed

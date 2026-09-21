@@ -130,13 +130,14 @@ def build_env(
     executable: Optional[str] = None,
     base_env: Optional[Dict[str, str]] = None,
     #: What the session's hidden surface wants in the browser's environment
-    #: (`make_virtual_display().launch_env()`), or nothing. ⛔ Applied LAST and
-    #: over a cleared slot: the desktop name is a fact of THIS session, and a
-    #: headed session opened while a hidden one is still alive in the same
-    #: process must not inherit the hidden one's desktop through
-    #: `os.environ`. `INVPW_DESKTOP` is removed unconditionally first for the
-    #: same reason.
-    display_env: Optional[Dict[str, str]] = None,
+    #: (`make_virtual_display().launch_env()`), or nothing. A value of `None`
+    #: names a variable the browser must NOT carry (the Wayland ones an Xvfb
+    #: session drops). ⛔ Applied LAST and over a cleared slot: the surface is
+    #: a fact of THIS session, and a headed session opened while a hidden one
+    #: is still alive in the same process must not inherit the hidden one's
+    #: desktop or display through `os.environ`. `INVPW_DESKTOP` is removed
+    #: unconditionally first for the same reason.
+    display_env: Optional[Dict[str, Optional[str]]] = None,
 ) -> Dict[str, str]:
     """The environment the Firefox subprocess is launched with, minus the token.
 
@@ -207,7 +208,11 @@ def build_env(
         # condition became expressible in one line.
         env[WEBRTC_NO_IPV6_ENV] = "1"
     env.pop(DESKTOP_ENV, None)
-    env.update(display_env or {})
+    for k, v in (display_env or {}).items():
+        if v is None:
+            env.pop(k, None)
+        else:
+            env[k] = v
     return env
 
 
