@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.25.1] - 2026-09-21
+
+### Fixed
+- **A launch environment the caller names is the whole environment.** The
+  in-process Juggler server added the named variables onto its own process
+  environment, so a variable `build_env` had removed came back: measured on
+  0.25.0 from the index, a `headless=True` session on Linux was born with
+  `WAYLAND_DISPLAY` still set, and only `GDK_BACKEND=x11` kept it off the
+  real desktop. The server now hands the engine exactly what was named;
+  naming nothing (a bare launch) still inherits, because a browser with no
+  `PATH` starts and then cannot reach the network.
+
 ## [0.25.0] - 2026-09-21
 
 ### Fixed

@@ -902,6 +902,72 @@ def test_a_profile_WE_made_is_removed_and_the_caller_s_is_not():
         module.juggler.launch = real
 
 
+def test_a_named_launch_environment_is_the_whole_environment(monkeypatch):
+    """⛔ A variable the caller REMOVED must not come back from this process.
+
+    `_session.build_env` composes the browser's full environment and drops
+    what the session's hidden surface names with `None` (an Xvfb session
+    drops the Wayland variables). Until 0.25.1 the server ADDED the named
+    variables onto `dict(os.environ)`, so the removal never reached the
+    browser: measured on 0.25.0 from the index, the hidden Firefox was born
+    with `WAYLAND_DISPLAY=wayland-0` in `/proc/<pid>/environ`. The known-bad
+    input is that merge. The other half stays: a launch that names nothing
+    inherits, because a browser with no `PATH` and no `SYSTEMROOT` starts and
+    then cannot reach the network."""
+    from invisible_playwright._juggler.server import _launch_environment
+
+    monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
+    monkeypatch.setenv("SYSTEMROOT_OR_PATH_LIKE", "inherited")
+
+    named = _launch_environment([{"name": "DISPLAY", "value": ":123"},
+                                 {"name": "GDK_BACKEND", "value": "x11"}])
+    assert named == {"DISPLAY": ":123", "GDK_BACKEND": "x11"}
+    assert "WAYLAND_DISPLAY" not in named, "the removed variable came back"
+
+    for nothing in (None, []):
+        inherited = _launch_environment(nothing)
+        assert inherited["SYSTEMROOT_OR_PATH_LIKE"] == "inherited"
+        assert inherited["WAYLAND_DISPLAY"] == "wayland-0"
+        assert inherited is not os.environ
+
+
+def test_the_launch_handler_hands_the_named_environment_to_the_engine(monkeypatch):
+    """And the handler uses it: what `juggler.launch` receives is exactly what
+    the caller named, not a patch on top of the server's process."""
+    import shutil
+    from invisible_playwright._juggler.server import (BrowserTypeDispatcher,
+                                                      JugglerServer)
+    from invisible_playwright._juggler import server as module
+
+    monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
+    server = JugglerServer()
+    server.attach(type("R", (), {"emit_message": lambda self, m: None})())
+    seen: list = []
+
+    class FakeConnection(EventListeners):
+        def __init__(self):
+            EventListeners.__init__(self)
+
+        def send(self, method, params=None, session=None, timeout=30):
+            return {"browserContextId": "ctx-1", "targetId": "t-1"}
+
+        def close(self):
+            pass
+
+    def fake_launch(executable, profile_dir, **kwargs):
+        seen.append(kwargs["env"])
+        return FakeConnection()
+
+    monkeypatch.setattr(module.juggler, "launch", fake_launch)
+    kind = BrowserTypeDispatcher(server)
+    kind.op_launch({"executablePath": "x", "firefoxUserPrefs": {},
+                    "env": [{"name": "DISPLAY", "value": ":123"}]})
+    try:
+        assert seen[-1] == {"DISPLAY": ":123"}
+    finally:
+        server.shutdown()
+
+
 def test_removing_a_profile_NEVER_raises():
     """⛔ It runs while the session is already going away, and on Windows a
     file can still be held for a moment after the process that owned it exits.

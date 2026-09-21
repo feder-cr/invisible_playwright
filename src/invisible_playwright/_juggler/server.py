@@ -213,6 +213,21 @@ def take_session_motion(prefs: Dict) -> tuple:
             (None if budget_ms is None else int(budget_ms) / 1000.0))
 
 
+def _launch_environment(named) -> Dict[str, str]:
+    """The environment a launched browser gets, from what the caller named.
+
+    `named` is the protocol's `env`: a list of ``{"name", "value"}`` pairs,
+    or nothing. Naming nothing (no list, or an empty one) means "inherit this
+    process's environment"; naming anything means "this, and only this" - so
+    a variable the caller left out is a variable the browser does not get.
+    The `None` half of a hidden surface's `launch_env()` depends on the
+    second sentence, and the network of a bare launch on the first.
+    """
+    if not named:
+        return dict(os.environ)
+    return {e["name"]: e["value"] for e in named}
+
+
 def _upload_paths(params: Dict) -> list:
     """The local paths out of a `setInputFiles` request.
 
@@ -3356,29 +3371,31 @@ class BrowserTypeDispatcher(Dispatcher):
             raise ProtocolException(
                 "launch needs an executablePath: invisible_playwright pins its "
                 "own engine and never downloads one at launch time")
-        # ⛔ MERGED ONTO THIS PROCESS'S ENVIRONMENT, NEVER REPLACING IT, and
-        # the difference is a browser that cannot reach the network.
+        # ⛔ A NAMED ENVIRONMENT IS THE WHOLE ENVIRONMENT; NAMING NOTHING MEANS
+        # INHERIT. Two facts, one per half, and each was learned the hard way.
         #
-        # A bare `pw.firefox.launch()` sends an EMPTY `env` list - the caller
-        # named no variables, so there are none to name. Taking that literally
+        # Naming nothing: a bare `pw.firefox.launch()` names no variables (the
+        # client sends no `env`, or an empty list). Taking that literally once
         # meant launching Firefox with an environment of exactly nothing: no
         # `SYSTEMROOT`, no `PATH`, no `TEMP`. The browser starts, the protocol
         # works, `about:blank` and `data:` URLs load - and every HTTP
         # navigation comes back `Page.navigationAborted` with
         # `NS_ERROR_OUT_OF_MEMORY`, an error that names neither the cause nor
-        # the environment.
+        # the environment. Invisible to everything on the product path, which
+        # always names a full environment; it surfaced the first time a gate
+        # ran on this transport with a bare launch.
         #
-        # ⛔ AND IT WAS INVISIBLE TO EVERYTHING. The product path passes a
-        # FULL environment (`_session.build_env`), so every test and every gate
-        # that goes through `InvisiblePlaywright` was unaffected; only a caller
-        # using the vendored client directly hit it - which is exactly who
-        # `get_default_stealth_prefs` exists for. It surfaced the first time a
-        # gate ran on this transport with a bare launch.
-        #
-        # The driver has the same semantics: given no `env` it uses its own
-        # process environment, and given some it adds them.
-        env = dict(os.environ)
-        env.update({e["name"]: e["value"] for e in (params.get("env") or [])})
+        # Naming something: until 0.25.1 the named variables were ADDED onto
+        # this process's environment, so a variable the caller had REMOVED
+        # came back from `os.environ`. `_session.build_env` composes the full
+        # environment and drops what the session's hidden surface names with
+        # `None` (the Wayland variables an Xvfb session must not carry); with
+        # the merge, the hidden Firefox was born with `WAYLAND_DISPLAY` anyway
+        # (measured 2026-09-21, 0.25.0 from the index, `/proc/<pid>/environ`).
+        # Only `GDK_BACKEND=x11` kept it off the real desktop. The driver's
+        # semantics are the same as this: a given `env` is the environment the
+        # browser gets, not a patch on top of the driver's own.
+        env = _launch_environment(params.get("env"))
         # ⛔ WHO MAKES THE PROFILE TAKES IT AWAY - AND ONLY THAT ONE. The
         # caller's `userDataDir` is theirs and survives the session by
         # definition; a directory we invented is ours and must not.
