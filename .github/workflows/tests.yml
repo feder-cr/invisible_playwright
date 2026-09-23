@@ -60,6 +60,32 @@ jobs:
           python -m invisible_core.english --selftest
           python -m invisible_core.english
 
+  # A README that promises to beat everything was live here on 2026-09-22 ("it
+  # passes every bot detection test"), and the check that found it ran by hand,
+  # from outside the repository, after the text was public. The logic is
+  # `invisible_core.claims` since core 34.29.0, shared with the MCP server's
+  # repository; what this one reads is declared in `[tool.invisible.claims]`,
+  # and without a declaration it is the README, which is also what PyPI shows.
+  claims:
+    name: the README promises nothing it cannot support
+    needs: core-on-index
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: install the pinned core, which carries the gate
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+      - name: check the claims
+        # --selftest first, for the same reason as the language gate: a check
+        # that has only ever printed "clean" may have gone blind.
+        run: |
+          python -m invisible_core.claims --selftest
+          python -m invisible_core.claims
+
   # `pip install -e ".[dev]"` below resolves `invisible-core==N.M.0` from the
   # package index. The core is published BEFORE this package, so between the
   # first push of this repo and that upload there is a window in which no
@@ -240,7 +266,7 @@ jobs:
   # exits 1 without saying which of five inputs went red is a gate somebody has
   # to open five tabs to read.
   gate:
-    needs: [core-on-index, unit, docs-api, english, version]
+    needs: [core-on-index, unit, docs-api, english, claims, version]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -250,6 +276,7 @@ jobs:
           echo "unit:          ${{ needs.unit.result }}"
           echo "docs-api:      ${{ needs.docs-api.result }}"
           echo "english:       ${{ needs.english.result }}"
+          echo "claims:        ${{ needs.claims.result }}"
           echo "version:       ${{ needs.version.result }}"
           case "${{ needs.unit.result }}" in
             failure|cancelled) echo "the suite did not pass"; exit 1 ;;
@@ -262,6 +289,9 @@ jobs:
           esac
           case "${{ needs.english.result }}" in
             failure|cancelled) echo "the repository is not English"; exit 1 ;;
+          esac
+          case "${{ needs.claims.result }}" in
+            failure|cancelled) echo "the README promises what no measurement supports"; exit 1 ;;
           esac
           case "${{ needs.version.result }}" in
             failure|cancelled) echo "the version this change proposes is already taken"; exit 1 ;;
