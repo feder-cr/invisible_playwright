@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.25.5] - 2026-09-23
+
+### Added
+- **The README is checked for promises no measurement supports, on every
+  change.** A sentence that puts a word quantifying everything next to a
+  circumvention word and a protection word ("it passes every bot detection
+  test") is refused by CI. The check used to run by hand, from outside this
+  repository, after the text was already public. It is `invisible_core.claims`,
+  shared with the MCP server's repository; a circumvention claim on its own
+  stays allowed and is only reported.
+
+### Requires
+- `invisible-core` 34.29.0, which carries that check. Same engine
+  (firefox-34), no change in this package's runtime beyond the pin.
+
 ## [0.25.4] - 2026-09-21
 
 ### Fixed
