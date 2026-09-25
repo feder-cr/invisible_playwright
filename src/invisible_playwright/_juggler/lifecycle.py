@@ -58,6 +58,43 @@ class Frame:
         #: the aborted navigations, with their text, for whoever was
         #: waiting on them
         self.aborted: dict = {}
+        #: every navigation this frame has shown, numbered in the order the
+        #: browser reported it. See `follows`.
+        self._order: dict = {}
+
+    def saw(self, navigation: Optional[str]) -> None:
+        """Number `navigation` the first time the browser mentions it."""
+        if navigation is not None and navigation not in self._order:
+            self._order[navigation] = len(self._order)
+
+    def follows(self, navigation: str) -> bool:
+        """Is the current navigation `navigation` itself, or one that came
+        AFTER it?
+
+        ⛔ TWO DEFECTS SIT ON EITHER SIDE OF THIS LINE, and each fix alone
+        re-opens the other.
+
+        Before ours: `Page.navigate` answers with the navigationId before
+        `navigationStarted` arrives, and in that window the frame still
+        carries the states of the PREVIOUS document. Accepting them made
+        `goto(until="commit")` return in 0.01s on `about:blank` (2026-08-27).
+        A navigation we have not seen yet is therefore never followed.
+
+        After ours: a page that replaces itself from script while it loads -
+        `location.replace`, a JavaScript challenge, YouTube's `?themeRefresh=1`
+        - starts a NEW navigation after ours committed, and ours never
+        reaches `load`: its document is gone. Requiring `f.navigation ==
+        ours` made every such `goto` time out on a page that was ready, 45 s
+        on YouTube and Reddit while stock Playwright answered in 2 to 4 s on
+        the same Firefox (2026-09-25, [B228]). Stock Playwright waits for the
+        frame's lifecycle after our navigation, whichever document carries
+        it, and so does this.
+        """
+        if self.navigation == navigation:
+            return True
+        mine = self._order.get(navigation)
+        current = self._order.get(self.navigation)
+        return mine is not None and current is not None and current > mine
 
 
 class Lifecycle:
@@ -135,6 +172,7 @@ class Lifecycle:
         if method == "Page.navigationStarted":
             f = self._frame(p["frameId"])
             f.navigation = p["navigationId"]
+            f.saw(f.navigation)
             # ⛔ THIS is where the correctness of the whole file lives: the
             # states of the previous document do NOT count for this one.
             f.states = set()
@@ -145,6 +183,7 @@ class Lifecycle:
             nav = p.get("navigationId")
             if nav is not None:
                 f.navigation = nav
+                f.saw(nav)
             f.url = p.get("url", f.url)
             f.states.add("commit")
             return f
@@ -305,10 +344,11 @@ class Lifecycle:
                     # even started.
                     #
                     # The fix is not to wait a moment: it is to require
-                    # that the states belong to OUR navigation. As long as
-                    # `f.navigation` is a different one, whatever we are
-                    # seeing is not ours, no matter what it says.
-                    if navigation is not None and f.navigation != navigation:
+                    # that the states belong to OUR navigation or to one
+                    # that came after it (`Frame.follows` says why the
+                    # second half is not optional). A navigation from
+                    # BEFORE ours is not ours, no matter what it says.
+                    if navigation is not None and not f.follows(navigation):
                         pass
                     elif self._reached(f, state):
                         return
@@ -317,7 +357,7 @@ class Lifecycle:
                     if f is None:
                         reason = "the frame does not exist"
                     elif (navigation is not None
-                          and f.navigation != navigation):
+                          and not f.follows(navigation)):
                         # The message must say THIS, because it is the
                         # case where the states are there but are not
                         # ours, and without this line it would look like

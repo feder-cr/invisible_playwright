@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.25.7] - 2026-09-25
+
+### Fixed
+- **`goto` returns on a page that replaces itself from script while it
+  loads.** YouTube (`?themeRefresh=1`), Reddit's JavaScript challenge and any
+  page that calls `location.replace` before `load` start a new navigation
+  after ours has committed, and `goto` kept waiting for the `load` of the one
+  that was replaced, which never comes: 45 s and a `TimeoutError` on a page
+  that was ready, while stock Playwright answered in 2 to 4 s on the same
+  Firefox. The wait now accepts our navigation or one that came after it, and
+  still refuses the states of the page we are leaving.
+- **A long session no longer freezes the browser.** Its stdout and stderr
+  share one pipe, which was read only until startup. Once Firefox had written
+  a pipe buffer's worth after that, its next write blocked and the browser
+  stopped answering, with no error. The output is now read for the whole life
+  of the process, and when the browser goes away mid-session the error carries
+  its exit code and its last lines instead of only "the pipe is closed".
+
+### Requires
+- `invisible-core` 34.31.0: the GeoIP database now opens under a non-ASCII
+  path, so a Windows user named José or with a CJK account name can start the
+  browser behind a proxy (it failed with `FileNotFoundError` on a database that
+  exists), and a Windows ARM64 Python gets the x86_64 engine instead of being
+  refused. Same engine (firefox-34).
+
 ## [0.25.6] - 2026-09-25
 
 ### Fixed
