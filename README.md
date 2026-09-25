@@ -3,8 +3,8 @@
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/banner-dark.png">
   <img src="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/banner-light.png" alt="invisible_playwright" width="720">
 </picture>
-<h3 align="center">Write Playwright code and it runs on a real antidetect Firefox instead of a detectable one, headless or headed, with an undetected fingerprint.<br>
-Free and open source: it passes the detection suites shown below, so your Python web scraping bypasses captcha and anti-bot detection.</h3>
+<h3 align="center">Playwright gets caught by anti-bots and captchas.<br>
+This one runs on an anti-detect Firefox with an undetected fingerprint, compatible with your existing Playwright code.</h3>
 </div>
 
 ![invisible_playwright - 5/5 detection suites passed](https://raw.githubusercontent.com/feder-cr/invisible_playwright/7a8693c6b4386e9a84dd93bedc479ca8654482e1/docs/screenshots/hero.gif)
