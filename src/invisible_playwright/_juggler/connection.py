@@ -82,6 +82,85 @@ class TargetClosedError(Exception):
     """
 
 
+class ProcessOutput:
+    """The browser's stdout and stderr, read for the WHOLE life of the process
+    by ONE reader, keeping the last lines.
+
+    ⛔ WHY IT EXISTS, measured on 2026-09-25 ([B229]). The two streams go into
+    one pipe, and it used to be read only until the readiness line and never
+    again. A pipe has a fixed buffer - the Windows default, since it is created
+    with size 0 - so once Firefox had written a buffer's worth after startup,
+    its next write BLOCKED, and so did whichever of its threads was writing.
+    Forced with `devtools.console.stdout.content`: a page logging 2 KB still
+    answered, one logging 8 KB never answered again, with 5085 bytes sitting
+    unread in the pipe. The browser stayed alive and silent, with no error
+    anywhere. Ordinary browsing on Windows writes little (76 bytes over ten
+    real sites), which is why it went unseen: it is a clock that runs out in
+    long sessions, on Linux where GTK and fontconfig talk, or with any log on.
+
+    ⛔ ONE READER, NOT A SECOND ONE ADDED AFTER THE FIRST. Readiness is a
+    question asked of this object (`wait_for_ready`), not a loop of its own on
+    the same stream: two readers of one pipe split its lines between them.
+
+    The kept lines are the only account of why a browser stopped. They were
+    already what a failed STARTUP printed; now the same lines are there when
+    the pipe closes in the middle of a session (`Connection.send`).
+    """
+
+    KEEP = 200
+
+    def __init__(self, stream) -> None:
+        import collections
+        self._stream = stream
+        self._lines = collections.deque(maxlen=self.KEEP)
+        self._cv = threading.Condition()
+        self._ready = False
+        self._eof = False
+        self._thread = threading.Thread(target=self._pump, daemon=True,
+                                        name="browser-output")
+        self._thread.start()
+
+    def _pump(self) -> None:
+        try:
+            for raw in iter(self._stream.readline, b""):
+                text = raw.decode("utf-8", "replace").rstrip("\r\n")
+                with self._cv:
+                    if text.strip():
+                        self._lines.append(text)
+                    if _READY in text:
+                        self._ready = True
+                    self._cv.notify_all()
+        except (OSError, ValueError):
+            pass
+        finally:
+            with self._cv:
+                self._eof = True
+                self._cv.notify_all()
+
+    def wait_for_ready(self, process, timeout: float) -> bool:
+        """True when the readiness line arrived within `timeout`. False when it
+        did not, or when the process exited first - in which case whatever it
+        managed to print is drained before answering, because the last line
+        before an exit is usually the one that says why."""
+        deadline = time.monotonic() + timeout
+        with self._cv:
+            while not self._ready and not self._eof:
+                if process.poll() is not None:
+                    drain = time.monotonic() + 1.0
+                    while not self._eof and time.monotonic() < drain:
+                        self._cv.wait(0.05)
+                    break
+                left = deadline - time.monotonic()
+                if left <= 0:
+                    break
+                self._cv.wait(min(left, 0.05))
+            return self._ready
+
+    def tail(self, n: int = 15) -> list:
+        with self._cv:
+            return list(self._lines)[-n:]
+
+
 class EventListeners:
     """Who is subscribed to a connection's events, and how one is delivered.
 
@@ -180,6 +259,9 @@ class Connection(EventListeners):
         self._write_lock = threading.Lock()
         self._closed = False
         self._error: Optional[BaseException] = None
+        #: The browser's own output, when this connection launched it. Read
+        #: here only to say why the pipe closed.
+        self.output: Optional[ProcessOutput] = None
         self._reader = threading.Thread(target=self._read_loop, daemon=True)
         self._reader.start()
 
@@ -250,11 +332,32 @@ class Connection(EventListeners):
             box.append(msg)
             ready.set()
 
+    def _why_closed(self) -> str:
+        """The exit code and the browser's last lines, when there are any.
+
+        "the pipe is closed" alone names neither: it is what a browser that
+        crashed, one that was killed and one that was closed on purpose all
+        look like from here."""
+        parts = []
+        code = None
+        if self._process is not None:
+            try:
+                code = self._process.poll()
+            except Exception:
+                code = None
+        if code is not None:
+            parts.append("the browser exited with code %s" % code)
+        tail = self.output.tail() if self.output is not None else []
+        if tail:
+            parts.append("its last output:\n" + "\n".join("    " + r for r in tail))
+        return ("\n  " + "\n  ".join(parts)) if parts else ""
+
     # ── writing ─────────────────────────────────────────────────────────────
     def send(self, method: str, params: Optional[dict] = None,
              session: Optional[str] = None, timeout: float = 30.0) -> Any:
         if self._closed:
-            raise TargetClosedError("the pipe is closed: %s" % (self._error or ""))
+            raise TargetClosedError("the pipe is closed: %s%s"
+                                    % (self._error or "", self._why_closed()))
         with self._lock:
             self._next_id += 1
             msg_id = self._next_id
@@ -693,7 +796,10 @@ def launch(executable: str, profile_dir: str, *, headless: bool = True,
     # Juggler. It waits for the line, but it does NOT die if it does not
     # arrive: it tries to talk anyway, so the failure mode is a protocol
     # error naming the command instead of a silent timeout.
-    seen, detto = _wait_until_ready(p, ready_timeout)
+    # ONE owner of the browser's output, for the whole life of the process
+    # (`ProcessOutput` says why a second reader would not do).
+    output = ProcessOutput(p.stdout)
+    seen = output.wait_for_ready(p, ready_timeout)
     # ⛔ A BROWSER THAT EXITED SAYS SO HERE, WHERE ITS OUTPUT STILL EXISTS.
     #
     # `stderr` is merged into `stdout` two functions up and read line by line
@@ -708,41 +814,12 @@ def launch(executable: str, profile_dir: str, *, headless: bool = True,
     # PREVIOUS engine - all to recover information the browser had already
     # written and nobody had kept.
     if p.poll() is not None:
-        coda = "\n".join(("    " + r) for r in detto[-15:]) or "    (nothing)"
+        coda = "\n".join(("    " + r) for r in output.tail()) or "    (nothing)"
         raise RuntimeError(
             "the browser exited during startup, before the protocol could be "
             "used.\n  exit code : %s\n  command   : %s\n  it printed:\n%s"
             % (p.returncode, " ".join([executable] + argv), coda))
     c = Connection(to_browser, from_browser, p)
     c.ready_seen = seen
+    c.output = output
     return c
-
-
-def _wait_until_ready(p, timeout: float):
-    """(readiness seen, what the browser printed) - the second half is new.
-
-    The lines are KEPT rather than tested and dropped: they are the only
-    account of a startup that fails, and they cost a list.
-    """
-    detto = []
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if p.poll() is not None:
-            # Drain what is still buffered: the last line before the exit is
-            # usually the one that says why.
-            try:
-                resto = p.stdout.read() or b""
-            except Exception:
-                resto = b""
-            detto += [r for r in resto.decode("utf-8", "replace").split("\n") if r.strip()]
-            return False, detto
-        line = p.stdout.readline()
-        if not line:
-            time.sleep(0.01)
-            continue
-        testo = line.decode("utf-8", "replace").rstrip("\r\n")
-        if testo.strip():
-            detto.append(testo)
-        if _READY in testo:
-            return True, detto
-    return False, detto

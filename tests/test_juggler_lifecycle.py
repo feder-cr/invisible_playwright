@@ -149,6 +149,54 @@ def test_THE_STATES_OF_ONE_NAVIGATION_DO_NOT_COUNT_FOR_ANOTHER():
     assert v.frames["F1"].url == "http://b/"
 
 
+def test_a_navigation_that_REPLACES_ours_after_commit_closes_the_wait():
+    """The known-bad input of [B228], measured 2026-09-25.
+
+    A page that replaces itself from script while it loads - `location.replace`,
+    a JavaScript challenge, YouTube's `?themeRefresh=1` - starts a new
+    navigation after ours committed. Ours never reaches `load` (its document is
+    gone), the new one does, and stock Playwright's `goto` returns on it. This
+    one used to wait for ours until the timeout: 45 s on a ready page.
+    """
+    c, v = lifecycle()
+    events(v,
+           ("Page.frameAttached", {"frameId": "F1"}),
+           ("Page.navigationStarted", {"frameId": "F1", "navigationId": "A"}),
+           ("Page.navigationCommitted", {"frameId": "F1", "navigationId": "A",
+                                         "url": "http://a/", "name": ""}),
+           ("Page.navigationStarted", {"frameId": "F1", "navigationId": "B"}),
+           ("Page.navigationCommitted", {"frameId": "F1", "navigationId": "B",
+                                         "url": "http://a/next", "name": ""}),
+           ("Page.eventFired", {"frameId": "F1", "name": "load"}))
+    v.wait_for_state("F1", "load", navigation="A", timeout=0.5)
+    assert v.frames["F1"].url == "http://a/next"
+
+
+def test_a_navigation_from_BEFORE_ours_does_not_count_even_once_both_are_known():
+    """The other side of the same line: numbering the navigations must not turn
+    an OLDER one into a successor.
+
+    P is the page we are leaving, A is ours and has started. An event of P's
+    that arrives late puts P back as the frame's current navigation, with a
+    load. The wait for A must not settle for it: P came BEFORE A, which is the
+    2026-08-27 defect in its second form. Accepting any navigation that is
+    merely different from ours would pass this, and must not.
+    """
+    c, v = lifecycle()
+    events(v,
+           ("Page.frameAttached", {"frameId": "F1"}),
+           ("Page.navigationStarted", {"frameId": "F1", "navigationId": "P"}),
+           ("Page.navigationStarted", {"frameId": "F1", "navigationId": "A"}),
+           ("Page.navigationCommitted", {"frameId": "F1", "navigationId": "P",
+                                         "url": "http://p/", "name": ""}),
+           ("Page.eventFired", {"frameId": "F1", "name": "load"}))
+    assert v.frames["F1"].navigation == "P"
+    assert not v.frames["F1"].follows("A")
+    with pytest.raises(TimeoutError) as e:
+        v.wait_for_state("F1", "load", navigation="A", timeout=0.3)
+    assert "not our" in str(e.value), e.value
+
+
 def test_sameDocumentNavigation_does_NOT_reset_the_states():
     """It's the same document: a history push does not reload the page,
     and treating it as a navigation makes you wait for a load that never
