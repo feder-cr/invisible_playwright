@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.25.6] - 2026-09-25
+
+### Fixed
+- **The engine starts under Claude Desktop and other MSIX hosts on Windows.**
+  An app installed as an MSIX package (Claude Desktop, the Microsoft Store
+  Python) silently redirects the files its processes write under AppData into
+  its own package folder. The engine was downloaded there, and launching it
+  from the AppData path failed with `[Errno 14001] ... side-by-side
+  configuration is incorrect`, because Windows looks for `mozglue.dll` where
+  the file really is. Retail Firefox fails the same way when installed like
+  that. The engine path handed to the launcher is now the one the file system
+  reports, so it starts. Reported in discussion #256; issue #22 was the same
+  failure.
+
+### Requires
+- `invisible-core` 34.30.0, which carries the fix. Same engine (firefox-34).
+
 ## [0.25.5] - 2026-09-23
 
 ### Added
