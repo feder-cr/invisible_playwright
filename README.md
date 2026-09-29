@@ -305,3 +305,5 @@ This project is for educational purposes only. It is provided as-is, with no war
   <img src="https://raw.githubusercontent.com/feder-cr/invisible_playwright/badges/docs/badges/launches.svg" alt="browser launches">
   <a href="https://github.com/feder-cr/invisible_playwright/stargazers"><img src="https://raw.githubusercontent.com/feder-cr/invisible_playwright/badges/docs/badges/stars.svg" alt="GitHub stars"></a>
 </p>
+
+<p align="center"><sub>Impact-Site-Verification: 3e801e48-34d8-42c0-aad6-cf5c90916cae</sub></p>
