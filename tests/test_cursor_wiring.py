@@ -145,7 +145,7 @@ class _FakeHandle:
     async def bounding_box(self):
         return dict(_BOX)
 
-    async def evaluate(self, expression, arg=None):
+    async def _check_hit_target(self, point):
         # The real one asks the page whether the point hits this element.
         return True
 
@@ -848,7 +848,7 @@ def test_a_point_that_does_not_hit_the_element_is_not_used(stub_motion, monkeypa
     page = _FakePage(_FakeContext(browser))
 
     class _Missing(_FakeHandle):
-        async def evaluate(self, expression, arg=None):
+        async def _check_hit_target(self, point):
             return False
 
     class _FakeFrame:
@@ -864,6 +864,34 @@ def test_a_point_that_does_not_hit_the_element_is_not_used(stub_motion, monkeypa
 
     asyncio.run(_cursor._wrap_frame_action(original)(_FakeFrame(), "#buy"))
     assert "position" not in captured, "an unverified point reached the action"
+
+
+@pytest.mark.unit
+def test_landing_hit_test_uses_fractions_not_main_frame_coordinates(stub_motion, monkeypatch):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    handle = _FakeHandle()
+    frame = SimpleNamespace(query_selector=AsyncMock(return_value=handle))
+    cursor = SimpleNamespace(rng=lambda name: None)
+    hits = AsyncMock(return_value=True)
+    monkeypatch.setattr(_cursor, "_hits", hits)
+    monkeypatch.setattr(_cursor._behaviour, "landing_point",
+                        lambda *args, **kwargs: (410.0, 312.0))
+
+    aim = asyncio.run(_cursor._choose_landing(frame, cursor, "#buy", (), {}))
+    hits.assert_awaited_once_with(handle, 0.1, 0.3)
+    assert aim.override["position"] == {"x": 10.0, "y": 12.0}
+
+
+@pytest.mark.unit
+def test_landing_uses_shared_shadow_aware_hit_test():
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    handle = SimpleNamespace(_check_hit_target=AsyncMock(return_value=True))
+    assert asyncio.run(_cursor._hits(handle, 0.25, 0.75)) is True
+    handle._check_hit_target.assert_awaited_once_with({"x": 0.25, "y": 0.75})
 
 
 @pytest.mark.unit

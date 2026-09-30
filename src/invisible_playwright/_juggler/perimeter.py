@@ -171,7 +171,6 @@ FIXED_AT_BUILD = {
 #: This set is the honest list of what "100% compatible" does not cover today.
 NOT_WIRED_YET = {
     "exposeBinding",
-    "frameElement",
     # ⛔ `reject` shares its handler with `resolve`, and that is how it stayed
     # invisible: the first scan keyed the method table by python name, so the
     # second operation routed to `op_binding_reply` overwrote the first. Two

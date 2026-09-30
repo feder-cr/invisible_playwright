@@ -6,7 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+- Local trusted-input regressions at device pixel ratios 1, 1.2, 1.25, 1.5
+  and 2, including large-offset inputs, shadow roots and nested cross-origin
+  frames. Saved browser zoom has separate regressions: those require the
+  companion engine's page-zoom input correction, not a Python DPR multiplier.
+
 ### Fixed
+- Preserve the resolved frame when waiting for elements and reading handles
+  through nested cross-origin locators. This fixes locator scrolling, bounding
+  boxes, attribute reads and related form operations using the wrong document.
+- Check humanized landing points in the target document's coordinate space
+  instead of silently reverting nested-frame clicks to the geometric center.
+- Reuse the action's shadow-aware hit test for humanized landing hints.
+  Inputs inside open or closed shadow roots no longer discard valid off-center
+  points, and padded ancestors or covering siblings do not count as the target.
+- Expose the parent frame and implement `frame.frame_element()` using the
+  engine's node-adoption command. Keep frame URLs and load states current,
+  including history changes, without replaying a stale `goto` navigation.
 - Emit a request channel, or omit the optional request field, in document
   navigation events. `wait_for_url` and `expect_navigation` no longer crash
   with an `AttributeError` when a navigation has no request. Redirected

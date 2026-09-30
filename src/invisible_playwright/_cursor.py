@@ -807,7 +807,7 @@ async def _target_point(frame: Any, selector: str, position: Any) -> Optional[Tu
 
 
 async def _hits(handle: Any, x: float, y: float) -> bool:
-    """Does (x, y) actually land on this element?
+    """Does the fractional point (x, y) in the element's box hit it?
 
     A bounding box is not the element. An inline link that wraps across two
     lines, a rotated control, a rounded button: all of them have points inside
@@ -816,11 +816,7 @@ async def _hits(handle: Any, x: float, y: float) -> bool:
     would be turning working clicks into hit-target failures.
     """
     try:
-        return bool(await handle.evaluate(
-            "(el, p) => { const e = document.elementFromPoint(p.x, p.y);"
-            " return !!e && (e === el || el.contains(e) || e.contains(el)); }",
-            {"x": x, "y": y},
-        ))
+        return await handle._check_hit_target({"x": x, "y": y})
     except _page_errors():
         return False
 
@@ -1170,7 +1166,10 @@ async def _choose_landing(frame: Any, cursor: Any, selector: str,
             and _may_override(args, kwargs)
             and box["width"] >= _LANDING_MIN_BOX_PX
             and box["height"] >= _LANDING_MIN_BOX_PX
-            and await _hits(handle, landing[0], landing[1])
+            # The box is in main-frame coordinates; the hit test runs in
+            # the handle's document. Fractions keep those spaces separate.
+            and await _hits(handle, (landing[0] - box["x"]) / box["width"],
+                            (landing[1] - box["y"]) / box["height"])
         ):
             return _Aim(box, landing, _landing_override(box, landing))
         # The off-centre point missed the element (it is not a rectangle, or it

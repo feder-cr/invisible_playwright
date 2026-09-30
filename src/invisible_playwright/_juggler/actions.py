@@ -525,7 +525,8 @@ class Actions:
 
     # ── waiting ─────────────────────────────────────────────────────────────
     def wait_for_selector(self, selector: str, *, state: str = "visible",
-                          timeout: float = 30.0, frame_id: Optional[str] = None):
+                          timeout: float = 30.0, frame_id: Optional[str] = None,
+                          strict: bool = False):
         """Waits for a selector to reach a state, and returns its handle.
 
         ⛔ THE HANDLE IS NOT DISPOSED HERE, and that is deliberate: the caller
@@ -546,7 +547,7 @@ class Actions:
         deadline = time.monotonic() + timeout
         reason = "not tried yet"
         while True:
-            element = self.inj.query_selector(frame, selector)
+            element = self.inj.query_selector(frame, selector, strict=strict)
             if state == "detached":
                 if not element:
                     return None

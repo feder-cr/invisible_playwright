@@ -101,7 +101,7 @@ class _FakeHandle:
     async def bounding_box(self):
         return dict(_BOX)
 
-    async def evaluate(self, expression, arg=None):
+    async def _check_hit_target(self, point):
         return True
 
     async def dispose(self):

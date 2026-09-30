@@ -252,6 +252,7 @@ class ElementHandleDispatcher(Dispatcher):
     METHODS = {
         "dispose": "op_dispose",
         "boundingBox": "op_bounding_box",
+        "checkHitTarget": "op_check_hit_target",
         "evaluateExpression": "op_evaluate",
         "textContent": "op_text_content",
         "innerText": "op_inner_text",
@@ -333,6 +334,15 @@ class ElementHandleDispatcher(Dispatcher):
     def op_bounding_box(self, params: Dict) -> Any:
         return {"value": self.injected.bounding_box(
             self.frame.frame_id, self.object_id)}
+
+    def op_check_hit_target(self, params: Dict) -> Any:
+        return {"value": self.injected.call(
+            self.frame.frame_id,
+            "(injected, el, p) => { const r = el.getBoundingClientRect();"
+            " return injected.checkHitTarget(el, {"
+            " x: r.left + p.x * r.width, y: r.top + p.y * r.height"
+            " }) === 'done'; }",
+            {"objectId": self.object_id}, params["point"])}
 
     def op_evaluate(self, params: Dict) -> Any:
         """`handle.evaluate(fn, arg)` - and the SECOND argument is the point.
@@ -644,9 +654,11 @@ class FrameDispatcher(Dispatcher):
 
     def __init__(self, server, page: "PageDispatcher", frame_id: str,
                  url: str = "about:blank", name: str = "",
-                 load_states: Optional[List[str]] = None) -> None:
+                 load_states: Optional[List[str]] = None,
+                 parent_frame: Optional["FrameDispatcher"] = None) -> None:
         self.page = page
         self.frame_id = frame_id
+        self.parent_frame = parent_frame
         #: ⛔ Kept here because the INITIALIZER is a snapshot: the client reads
         #: the url from it once, at creation, and afterwards only from
         #: `navigated` events. A frame created before it navigates keeps an
@@ -656,8 +668,9 @@ class FrameDispatcher(Dispatcher):
         #: navigation carries no name, so it has to repeat the one the frame
         #: already has rather than blank it.
         self.name = name
-        super().__init__(server, page.context,
+        super().__init__(server, page if parent_frame else page.context,
                          {"url": url, "name": name,
+                          "parentFrame": parent_frame.channel if parent_frame else None,
                           "loadStates": load_states or ["commit"]})
 
     # ── the engines, which belong to the page ───────────────────────────────
@@ -687,9 +700,8 @@ class FrameDispatcher(Dispatcher):
             params["url"], frame_id=self.frame_id,
             until=params.get("waitUntil") or "load",
             timeout=(params.get("timeout") or 30000) / 1000.0)
-        self.emit("navigated", {"url": result["url"], "name": "",
-                                "newDocument": self.page.navigation_document(
-                                    result["navigationId"])})
+        # Navigation events come from the engine, not a snapshot taken when
+        # goto's lifecycle wait finished: another navigation may follow it.
         # ⛔ `goto` answers with a Response CHANNEL or null, never with a URL.
         # `_frame.py` calls `from_nullable_channel` on it.
         #
@@ -724,34 +736,30 @@ class FrameDispatcher(Dispatcher):
         if not object_id:
             raise ProtocolException("no element matches %r" % selector)
         try:
-            return {"value": read(object_id)}
+            return {"value": read(frame_id, object_id)}
         finally:
             self.injected.dispose(frame_id, object_id)
 
     def op_text_content(self, params: Dict) -> Any:
-        return self._with_element(params, lambda o: self.injected
-                                  .text_content(self.frame_id, o))
+        return self._with_element(params, self.injected.text_content)
 
     def op_inner_text(self, params: Dict) -> Any:
-        return self._with_element(params, lambda o: self.injected
-                                  .inner_text(self.frame_id, o))
+        return self._with_element(params, self.injected.inner_text)
 
     def op_inner_html(self, params: Dict) -> Any:
-        return self._with_element(params, lambda o: self.injected
-                                  .inner_html(self.frame_id, o))
+        return self._with_element(params, self.injected.inner_html)
 
     def op_input_value(self, params: Dict) -> Any:
-        return self._with_element(params, lambda o: self.injected
-                                  .input_value(self.frame_id, o))
+        return self._with_element(params, self.injected.input_value)
 
     def op_get_attribute(self, params: Dict) -> Any:
-        return self._with_element(params, lambda o: self.injected
-                                  .get_attribute(self.frame_id, o,
+        return self._with_element(params, lambda f, o: self.injected
+                                  .get_attribute(f, o,
                                                  params["name"]))
 
     def _state(self, params: Dict, state: str) -> Any:
-        return self._with_element(params, lambda o: self.injected
-                                  .element_state(self.frame_id, o, state))
+        return self._with_element(params, lambda f, o: self.injected
+                                  .element_state(f, o, state))
 
     def op_is_visible(self, params: Dict) -> Any:
         return self._state(params, "visible")
@@ -1007,8 +1015,9 @@ class FrameDispatcher(Dispatcher):
         # `matches = true` and narrows only on valueOrLabel / value / label /
         # index, so a plain string matches everything and picks the FIRST
         # option. Measured: ["b"] answered ['a'].
+        frame_id, selector = self.enter_frames(params["selector"])
         chosen = self.actions.select_option(
-            params["selector"], params.get("options") or [],
+            selector, params.get("options") or [], frame_id=frame_id,
             timeout=self._timeout(params), **self._act_opts(params))
         return {"values": chosen or []}
 
@@ -1095,12 +1104,15 @@ class FrameDispatcher(Dispatcher):
         return None
 
     def op_wait_for_selector(self, params: Dict) -> Any:
+        frame_id, selector = self.enter_frames(params["selector"])
         state = params.get("state") or "visible"
         object_id = self.actions.wait_for_selector(
-            params["selector"], state=state, timeout=self._timeout(params))
+            selector, state=state, timeout=self._timeout(params),
+            frame_id=frame_id, strict=self._act_opts(params)["strict"])
         if object_id is None:
             return {"element": None}
-        handle = ElementHandleDispatcher(self.server, self, object_id)
+        handle = ElementHandleDispatcher(
+            self.server, self.page.frame_for(frame_id), object_id)
         return {"element": handle.channel}
 
     def op_wait_for_function(self, params: Dict) -> Any:
@@ -1163,7 +1175,7 @@ class FrameDispatcher(Dispatcher):
                 state = expression.split("to.be.", 1)[1]
                 return self._with_element(
                     {"selector": selector},
-                    lambda o: None) and {"matches": True}
+                    lambda f, o: None) and {"matches": True}
         except ProtocolException:
             return {"matches": False, "received": _serialize(None)}
         raise ProtocolException(
@@ -1182,8 +1194,8 @@ class FrameDispatcher(Dispatcher):
         if selector:
             return self._with_element(
                 params,
-                lambda o: self.injected.call(
-                    self.frame_id,
+                lambda f, o: self.injected.call(
+                    f,
                     "(injected, el, o) => injected.ariaSnapshot(el, o)",
                     {"objectId": o}, {"mode": params.get("mode") or "raw"}))
         return {"snapshot": self.injected.call(
@@ -1232,22 +1244,9 @@ class FrameDispatcher(Dispatcher):
             "caller holds")
 
     def op_resolve_selector(self, params: Dict) -> Any:
-        """The frame and selector a locator finally points at.
-
-        ⛔ It answers THIS frame and the selector unchanged, which is correct
-        only because frame-crossing locators are not supported here yet: an
-        `iframe >> internal:control=enter-frame >> ...` would resolve into a
-        child frame upstream. Answering this frame for one of those would be a
-        wrong answer rather than a missing feature, so the compound form is
-        refused.
-        """
-        selector = params.get("selector") or ""
-        if "enter-frame" in selector:
-            raise ProtocolException(
-                "a frame-crossing locator (%s) cannot be resolved yet: "
-                "answering this frame would be a wrong answer, not a missing "
-                "one" % selector[:80])
-        return {"frame": self.channel, "selector": selector}
+        """The frame and selector a locator finally points at."""
+        frame_id, selector = self.enter_frames(params.get("selector") or "")
+        return {"frame": self.page.frame_for(frame_id).channel, "selector": selector}
 
     def op_wait_for_element_state(self, params: Dict) -> Any:
         frame_id, selector = self.enter_frames(params["selector"])
@@ -1265,9 +1264,20 @@ class FrameDispatcher(Dispatcher):
 
     # ── frames as objects ───────────────────────────────────────────────────
     def op_frame_element(self, params: Dict) -> Any:
-        raise ProtocolException(
-            "frameElement needs the owner frame's handle, which this server "
-            "does not track yet")
+        parent = self.parent_frame
+        if parent is None:
+            raise ProtocolException("Frame has been detached or has no parent")
+        # Omitting objectId asks Juggler for this frame's owner element;
+        # its handle must be created in the parent's utility world.
+        result = self.page.send("Page.adoptNode", {
+            "frameId": self.frame_id,
+            "executionContextId": self.injected.context_id(parent.frame_id),
+        })
+        object_id = (result.get("remoteObject") or {}).get("objectId")
+        if not object_id:
+            raise ProtocolException("Frame has been detached")
+        handle = ElementHandleDispatcher(self.server, parent, object_id)
+        return {"element": handle.channel}
 
     # ── selectors that answer many ──────────────────────────────────────────
     def op_query_count(self, params: Dict) -> Any:
@@ -1285,21 +1295,22 @@ class FrameDispatcher(Dispatcher):
     def op_eval_on_selector(self, params: Dict) -> Any:
         return self._with_element(
             params,
-            lambda o: _serialize(self.injected.call(
-                self.frame_id,
+            lambda f, o: _serialize(self.injected.call(
+                f,
                 "(injected, el) => { const r = (%s);"
                 "  return typeof r === 'function' ? r(el) : r; }"
                 % params["expression"],
                 {"objectId": o})))
 
     def op_eval_on_selector_all(self, params: Dict) -> Any:
+        frame_id, selector = self.enter_frames(params["selector"])
         value = self.injected.call(
-            self.frame_id,
+            frame_id,
             "(injected, sel) => { const els = injected.querySelectorAll("
             "  injected.parseSelector(sel), document);"
             "  const r = (%s); return typeof r === 'function' ? r(els) : r; }"
             % params["expression"],
-            params["selector"])
+            selector)
         return {"value": _serialize(value)}
 
     def op_evaluate_handle(self, params: Dict) -> Any:
@@ -1929,6 +1940,8 @@ class PageDispatcher(Dispatcher):
                 })
         elif method == "Page.navigationCommitted":
             child = self.frame_for(params["frameId"])
+            for state in ("commit", "domcontentloaded", "load", "networkidle"):
+                child.emit("loadstate", {"remove": state})
             child.url = params.get("url") or ""
             child.name = params.get("name") or ""
             child.emit("navigated", {
@@ -1936,6 +1949,7 @@ class PageDispatcher(Dispatcher):
                 "name": child.name,
                 "newDocument": self.navigation_document(params.get("navigationId")),
             })
+            child.emit("loadstate", {"add": "commit"})
         elif method == "Page.sameDocumentNavigation":
             # ⛔ THE CLIENT HAS TO HEAR THIS ONE TOO, and until 2026-09-20 it
             # did not. A pushState, a hash change, the route change of every
@@ -2066,9 +2080,11 @@ class PageDispatcher(Dispatcher):
         if existing is not None:
             return existing
         frame = self.lifecycle.frame(frame_id)
+        parent_id = getattr(frame, "parent", None)
         made = FrameDispatcher(
             self.server, self, frame_id,
             url=getattr(frame, "url", "") or "",
+            parent_frame=self.frame_for(parent_id) if parent_id else None,
             load_states=sorted(getattr(frame, "states", []) or []) or ["commit"])
         self._frames[frame_id] = made
         return made
