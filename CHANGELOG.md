@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+- Emit a request channel, or omit the optional request field, in document
+  navigation events. `wait_for_url` and `expect_navigation` no longer crash
+  with an `AttributeError` when a navigation has no request. Redirected
+  navigations return the final document response when one is available.
+
 ## [0.25.7] - 2026-09-25
 
 ### Fixed

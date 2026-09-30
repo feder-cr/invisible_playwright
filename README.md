@@ -83,6 +83,14 @@ with sf as browser:
     # ...
 ```
 
+### Navigation waits
+
+`page.wait_for_url(...)` and `page.expect_navigation()` accept document
+navigations without a network request, such as navigation to `about:blank`.
+For these navigations, `expect_navigation().value` is `None`. When a document
+request exists, it returns that request's response, including the final
+response of an HTTP redirect chain.
+
 ### Reproducible fingerprint
 
 ```python
