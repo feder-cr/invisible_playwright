@@ -921,6 +921,10 @@ class Page(ChannelOwner):
         noWaitAfter: bool = None,
         strict: bool = None,
         force: bool = None,
+        *,
+        # MODIFIED by invisible_playwright: document-origin and input-type guards.
+        expect_origin: str | None = None,
+        expect_input_type: str | None = None,
     ) -> None:
         return await self._main_frame.fill(**locals_to_params(locals()))
 

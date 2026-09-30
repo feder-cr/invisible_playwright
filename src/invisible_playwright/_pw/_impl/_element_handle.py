@@ -28,6 +28,8 @@ from typing import (
     cast,
 )
 
+# MODIFIED by invisible_playwright: validate and redact credential fill errors.
+from invisible_playwright._origin import protect_fill_value
 from invisible_playwright._pw._impl._api_structures import FilePayload, FloatRect, Position
 from invisible_playwright._pw._impl._connection import ChannelOwner, from_nullable_channel
 from invisible_playwright._pw._impl._helper import (
@@ -198,10 +200,14 @@ class ElementHandle(JSHandle):
         timeout: float = None,
         noWaitAfter: bool = None,
         force: bool = None,
+        *,
+        expect_origin: str | None = None,
+        expect_input_type: str | None = None,
     ) -> None:
-        await self._channel.send(
-            "fill", self._frame._timeout, locals_to_params(locals())
-        )
+        with protect_fill_value(value, expect_origin, expect_input_type=expect_input_type):
+            await self._channel.send(
+                "fill", self._frame._timeout, locals_to_params(locals())
+            )
 
     async def select_text(self, force: bool = None, timeout: float = None) -> None:
         await self._channel.send(

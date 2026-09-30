@@ -30,7 +30,9 @@ import time
 from typing import Optional
 
 from .. import _pacing
-from .injected import EvaluationError
+from .._origin import redact_fill_value, validate_fill_expectations
+from .connection import ProtocolError, TargetClosedError
+from .injected import EvaluationError, UTILITY_WORLD
 from .keyboard import BUTTON_MASK, Keyboard, UnknownKey
 
 #: The states a pointer action requires, in the order Playwright asks for
@@ -1004,7 +1006,9 @@ class Actions:
 
     def fill(self, selector: str, text: str, *, timeout: float = 30.0,
              frame_id: Optional[str] = None,
-             element_id: Optional[str] = None, **opts):
+             element_id: Optional[str] = None,
+             expect_origin: str | None = None,
+             expect_input_type: str | None = None, **opts):
         """Writes into a field.
 
         ⛔ It doesn't just write `element.value = ...`: a site listening
@@ -1015,6 +1019,13 @@ class Actions:
         `Page.dispatchTrustedInputEvents`, or they come out with
         `isTrusted: false`, which is the tell measured in [B175].
         """
+        if expect_origin is not None or expect_input_type is not None:
+            validate_fill_expectations(expect_origin, expect_input_type)
+            return self._fill_with_origin(
+                selector, text, expect_origin, timeout=timeout,
+                frame_id=frame_id, element_id=element_id,
+                expect_input_type=expect_input_type, **opts)
+
         def run(f, element, point):
             self.inj.call(f, "(injected, el) => injected.focusNode(el, true)",
                           {"objectId": element})
@@ -1038,6 +1049,64 @@ class Actions:
                            states=["visible", "stable", "enabled",
                                    "editable"],
                            timeout=timeout, frame_id=frame_id, **opts)
+
+    def _fill_with_origin(self, selector, text, expect_origin, *, timeout,
+                          frame_id, element_id, expect_input_type=None, **opts):
+        actual = "unavailable"
+        outcome = "nothing was written"
+
+        def run(f, element, point):
+            nonlocal actual, outcome
+            # Labels resolve to their control, including for the trusted events.
+            target = self.inj.call(
+                f, "(injected, el) => injected.retarget(el, 'follow-label')",
+                {"objectId": element}, by_value=False)
+            if not target:
+                raise EvaluationError("target detached or stale")
+            try:
+                outcome = "write outcome unknown"
+                result = self.inj.call(
+                    f, "(injected, el, v, origin, type) => injected.fillWithOrigin(el, v, origin, type)",
+                    {"objectId": target}, text, expect_origin, expect_input_type)
+                actual = result["actualOrigin"]
+                if result["status"] != "done":
+                    outcome = "nothing was written"
+                    raise EvaluationError(result["status"])
+                outcome = "value was written; trusted event delivery failed"
+                self._trusted_events(f, target, ["input", "change"])
+                outcome = "value was written and trusted events were dispatched"
+                return "done"
+            finally:
+                self.inj.dispose(f, target)
+
+        try:
+            return self._retry(
+                selector, run, element_id=element_id,
+                states=["visible", "stable", "enabled", "editable"],
+                timeout=timeout, frame_id=frame_id, **opts)
+        except (RuntimeError, TimeoutError, TargetClosedError) as error:
+            # Engine exceptions can contain serialized arguments or DOM previews.
+            # Only our fixed markers are safe to carry into a credential error.
+            reason = (
+                str(error) if str(error).startswith("error:origin")
+                else f"{type(error).__name__}: target unavailable, detached or stale"
+            )
+            if isinstance(error, ProtocolError) and any(
+                marker in str(error) for marker in
+                ("Cannot find object", "Cannot find context")
+            ) and outcome == "write outcome unknown":
+                outcome = "nothing was written"
+            f = frame_id or self.lifecycle.main_frame
+            if actual == "unavailable" and (f, UTILITY_WORLD) in self.inj.contexts:
+                try:
+                    actual = self.inj.evaluate(f, "document.defaultView.origin", timeout=1.0)
+                except (EvaluationError, ProtocolError, TimeoutError, TargetClosedError):
+                    actual = "unavailable (document no longer accessible)"
+            message = (
+                f"fill expect_origin={expect_origin!r}, actual origin={actual!r}: "
+                f"{reason}; {outcome}"
+            )
+            raise type(error)(redact_fill_value(message, text)) from None
 
     # ── the tools ───────────────────────────────────────────────────────────
     def _mouse_event(self, event_type: str, point, *, button: int = 0,

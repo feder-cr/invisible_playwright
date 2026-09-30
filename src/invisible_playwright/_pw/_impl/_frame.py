@@ -30,6 +30,8 @@ from typing import (
 
 from pyee import EventEmitter
 
+# MODIFIED by invisible_playwright: validate and redact credential fill errors.
+from invisible_playwright._origin import protect_fill_value
 from invisible_playwright._pw._impl._api_structures import (
     AriaRole,
     DropPayload,
@@ -628,6 +630,9 @@ class Frame(ChannelOwner):
         noWaitAfter: bool = None,
         strict: bool = None,
         force: bool = None,
+        *,
+        expect_origin: str | None = None,
+        expect_input_type: str | None = None,
     ) -> None:
         await self._fill(**locals_to_params(locals()))
 
@@ -640,8 +645,12 @@ class Frame(ChannelOwner):
         strict: bool = None,
         force: bool = None,
         title: str = None,
+        *,
+        expect_origin: str | None = None,
+        expect_input_type: str | None = None,
     ) -> None:
-        await self._channel.send("fill", self._timeout, locals_to_params(locals()))
+        with protect_fill_value(value, expect_origin, expect_input_type=expect_input_type):
+            await self._channel.send("fill", self._timeout, locals_to_params(locals()))
 
     def locator(
         self,

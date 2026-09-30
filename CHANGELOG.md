@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-09-30
+
+### Added
+- `Page.fill`, `Frame.fill`, `Locator.fill` and `ElementHandle.fill` accept
+  `expect_origin` in both APIs. For credential autofill, the element's own
+  document URL/security origins and connection are checked in the same injected
+  call that sets its value, without page-directed keystrokes. The existing trusted
+  `input` and `change` event path notifies the filled control. Omitting the
+  option keeps the existing fill behavior. Opaque iframe/CSP sandbox origins
+  and input-kind changes during focus are refused without writing. No-write
+  refusals include `expect_origin=` and `nothing was written`; an ambiguous
+  transport failure reports an unknown write outcome instead.
+- With `expect_origin`, `expect_input_type` pins the expected HTML input type,
+  case-insensitively, before focus and immediately before writing. Passing
+  `"password"` refuses a field already changed to `text` before fill began.
+  An unknown type name or use without `expect_origin` raises `ValueError`.
+
 ## [0.25.7] - 2026-09-25
 
 ### Fixed

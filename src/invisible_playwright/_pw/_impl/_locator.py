@@ -211,6 +211,10 @@ class Locator:
         timeout: float = None,
         noWaitAfter: bool = None,
         force: bool = None,
+        *,
+        # MODIFIED by invisible_playwright: document-origin and input-type guards.
+        expect_origin: str | None = None,
+        expect_input_type: str | None = None,
     ) -> None:
         params = locals_to_params(locals())
         return await self._frame.fill(self._selector, strict=True, **params)

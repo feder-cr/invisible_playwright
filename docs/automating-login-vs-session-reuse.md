@@ -51,6 +51,51 @@ keystrokes, whether the pointer travelled to the field or teleported, whether a 
 was focused before it was filled, the rhythm between filling the form and submitting
 it - gets checked hardest at exactly the moment a login script runs it.
 
+## When a fresh login is necessary
+
+When a fresh login is needed, bind credential fills to the saved website's
+origin rather than checking `page.url` and then typing:
+
+```python
+page.get_by_label("Password").fill(
+    password, expect_origin="https://example.com", expect_input_type="password"
+)
+```
+
+`expect_origin` is available on `Page.fill`, `Frame.fill`, `Locator.fill` and
+`ElementHandle.fill`, in both sync and async APIs. It must be a serialized
+origin: lowercase scheme and host, an optional non-default port, and no
+credentials, path (not even `/`), query or fragment. Invalid input raises
+`ValueError`.
+
+Both the target document's URL origin and its security origin must match,
+including inside a cross-origin iframe, independently of the top-level page's
+origin. Opaque security origins are refused: an iframe or CSP sandbox without
+`allow-same-origin` cannot receive the value even when its URL matches.
+The connection/origin checks and native input/textarea value write run together;
+focus handlers are followed by another check before the write. The element's
+node name and input type must also stay unchanged across focus, so a password
+field changed to a visible textbox is refused without writing.
+
+For passwords, also pass `expect_input_type="password"`. This requires an
+`<input>` whose type matches before focus and immediately before the native
+write, so a field that changed to `text` before the fill call is refused too.
+Type names are case-insensitive. The option is available on the same four fill
+surfaces in both APIs, requires `expect_origin`, and raises `ValueError` for an
+unknown HTML input type name. Known but non-fillable types remain non-fillable;
+textarea and contenteditable targets cannot satisfy an input-type expectation.
+Omitting `expect_input_type` adds no type expectation.
+
+No-write refusals include `expect_origin=` and `nothing was written`. If a
+transport failure leaves the write outcome unknown, the error says so instead
+of claiming that nothing was written. Credential fill errors omit the supplied
+value. Contenteditable targets are not supported in this mode.
+
+This is password-manager-style autofill: `input` and `change` are trusted, but
+there are no per-key `keydown`, `keypress` or `keyup` events. Omitting the option
+keeps ordinary fill behavior. It guards where the value is written; it does not
+stop scripts on the intended origin from reading or submitting that value.
+
 ## The alternative: don't run the flow at all
 
 Playwright's [`storage_state`](https://playwright.dev/python/docs/api/class-browsercontext#browser-context-storage-state)

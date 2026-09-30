@@ -7215,6 +7215,54 @@ var InjectedScript = class {
     selectedOptions.forEach((option) => option.selected = true);
     return selectedOptions.map((option) => option.value);
   }
+  // MODIFIED by invisible_playwright: credential autofill never types into page focus.
+  fillWithOrigin(element, value, expectOrigin, expectInputType = null) {
+    const refused = (reason) => ({
+      status: "error:origin: " + reason,
+      actualOrigin: element.ownerDocument.defaultView?.origin ?? "unavailable"
+    });
+    // Read the page's native Window.origin through the Xray, not the utility global.
+    const matches = () => element.isConnected &&
+      element.ownerDocument === document &&
+      element.ownerDocument.defaultView?.document === document &&
+      element.ownerDocument.location.origin === expectOrigin &&
+      element.ownerDocument.defaultView.origin !== "null" &&
+      element.ownerDocument.defaultView.origin === expectOrigin;
+    if (!matches())
+      return refused("origin mismatch, opaque origin or target detached/stale");
+    const matchesInputType = () => expectInputType === null ||
+      (element.nodeName === "INPUT" &&
+       element.type.toLowerCase() === expectInputType.toLowerCase());
+    if (!matchesInputType())
+      return refused("input type does not match expect_input_type");
+    const nodeName = element.nodeName;
+    const name = nodeName.toLowerCase();
+    if (name !== "input" && name !== "textarea")
+      return refused("expected an input or textarea");
+    const type = element.type;
+    if (name === "input" && !new Set([
+      "email", "number", "password", "search", "tel", "text", "url",
+      "color", "date", "time", "datetime-local", "month", "range", "week"
+    ]).has(type))
+      return refused("input type cannot be filled");
+    const prototype = name === "input" ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(prototype, "value").set;
+    // Validate on a disconnected native control before touching the real value.
+    const probe = element.cloneNode(false);
+    setter.call(probe, value);
+    if (probe.value !== value)
+      return refused("value is not valid for this control");
+    this.selectText(element);
+    // focus/select listeners can synchronously detach or adopt the target.
+    if (!matches())
+      return refused("origin mismatch or target detached/stale after focus");
+    if (element.nodeName !== nodeName || element.type !== type)
+      return refused("input kind changed during focus");
+    if (!matchesInputType())
+      return refused("input type does not match expect_input_type after focus");
+    setter.call(element, value);
+    return {status: "done", actualOrigin: expectOrigin};
+  }
   fill(node, value) {
     const element = this.retarget(node, "follow-label");
     if (!element)

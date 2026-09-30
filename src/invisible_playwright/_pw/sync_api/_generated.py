@@ -2576,8 +2576,25 @@ class ElementHandle(JSHandle):
         timeout: typing.Optional[typing.Union[float, datetime.timedelta]] = None,
         no_wait_after: typing.Optional[bool] = None,
         force: typing.Optional[bool] = None,
+        expect_origin: typing.Optional[str] = None,
+        expect_input_type: typing.Optional[str] = None,
     ) -> None:
         """ElementHandle.fill
+
+        MODIFIED by invisible_playwright: `expect_origin` is a serialized origin
+        (scheme://host[:port], no path). For credentials, it checks the element's own
+        document URL and security origins, not the top-level frame's, and connection
+        in the same injected call as the native input/textarea value write. Opaque
+        origins and input-kind changes during focus are refused. A mismatch or
+        stale target raises without writing. Invalid origins raise ValueError.
+        This password-manager-style autofill sends trusted input and change,
+        but no keydown/keypress/keyup events. Contenteditable is not supported
+        in this mode. None preserves the ordinary fill behavior.
+
+        With `expect_origin`, `expect_input_type` requires an INPUT with that type
+        before focus and immediately before writing (case-insensitive). Use
+        "password" for password fields. Unknown type names or use without
+        `expect_origin` raise ValueError; None adds no type expectation.
 
         This method waits for [actionability](https://playwright.dev/python/docs/actionability) checks, focuses the element, fills it and triggers an
         `input` event after filling. Note that you can pass an empty string to clear the input field.
@@ -2610,6 +2627,8 @@ class ElementHandle(JSHandle):
                     timeout=to_milliseconds(timeout),
                     noWaitAfter=no_wait_after,
                     force=force,
+                    expect_origin=expect_origin,
+                    expect_input_type=expect_input_type,
                 )
             )
         )
@@ -4765,8 +4784,25 @@ class Frame(SyncBase):
         no_wait_after: typing.Optional[bool] = None,
         strict: typing.Optional[bool] = None,
         force: typing.Optional[bool] = None,
+        expect_origin: typing.Optional[str] = None,
+        expect_input_type: typing.Optional[str] = None,
     ) -> None:
         """Frame.fill
+
+        MODIFIED by invisible_playwright: `expect_origin` is a serialized origin
+        (scheme://host[:port], no path). For credentials, it checks the element's own
+        document URL and security origins, not the top-level frame's, and connection
+        in the same injected call as the native input/textarea value write. Opaque
+        origins and input-kind changes during focus are refused. A mismatch or
+        stale target raises without writing. Invalid origins raise ValueError.
+        This password-manager-style autofill sends trusted input and change,
+        but no keydown/keypress/keyup events. Contenteditable is not supported
+        in this mode. None preserves the ordinary fill behavior.
+
+        With `expect_origin`, `expect_input_type` requires an INPUT with that type
+        before focus and immediately before writing (case-insensitive). Use
+        "password" for password fields. Unknown type names or use without
+        `expect_origin` raise ValueError; None adds no type expectation.
 
         This method waits for an element matching `selector`, waits for [actionability](https://playwright.dev/python/docs/actionability) checks,
         focuses the element, fills it and triggers an `input` event after filling. Note that you can pass an empty string
@@ -4808,6 +4844,8 @@ class Frame(SyncBase):
                     noWaitAfter=no_wait_after,
                     strict=strict,
                     force=force,
+                    expect_origin=expect_origin,
+                    expect_input_type=expect_input_type,
                 )
             )
         )
@@ -11124,8 +11162,25 @@ class Page(SyncContextManager):
         no_wait_after: typing.Optional[bool] = None,
         strict: typing.Optional[bool] = None,
         force: typing.Optional[bool] = None,
+        expect_origin: typing.Optional[str] = None,
+        expect_input_type: typing.Optional[str] = None,
     ) -> None:
         """Page.fill
+
+        MODIFIED by invisible_playwright: `expect_origin` is a serialized origin
+        (scheme://host[:port], no path). For credentials, it checks the element's own
+        document URL and security origins, not the top-level frame's, and connection
+        in the same injected call as the native input/textarea value write. Opaque
+        origins and input-kind changes during focus are refused. A mismatch or
+        stale target raises without writing. Invalid origins raise ValueError.
+        This password-manager-style autofill sends trusted input and change,
+        but no keydown/keypress/keyup events. Contenteditable is not supported
+        in this mode. None preserves the ordinary fill behavior.
+
+        With `expect_origin`, `expect_input_type` requires an INPUT with that type
+        before focus and immediately before writing (case-insensitive). Use
+        "password" for password fields. Unknown type names or use without
+        `expect_origin` raise ValueError; None adds no type expectation.
 
         This method waits for an element matching `selector`, waits for [actionability](https://playwright.dev/python/docs/actionability) checks,
         focuses the element, fills it and triggers an `input` event after filling. Note that you can pass an empty string
@@ -11167,6 +11222,8 @@ class Page(SyncContextManager):
                     noWaitAfter=no_wait_after,
                     strict=strict,
                     force=force,
+                    expect_origin=expect_origin,
+                    expect_input_type=expect_input_type,
                 )
             )
         )
@@ -18009,8 +18066,25 @@ class Locator(SyncBase):
         timeout: typing.Optional[typing.Union[float, datetime.timedelta]] = None,
         no_wait_after: typing.Optional[bool] = None,
         force: typing.Optional[bool] = None,
+        expect_origin: typing.Optional[str] = None,
+        expect_input_type: typing.Optional[str] = None,
     ) -> None:
         """Locator.fill
+
+        MODIFIED by invisible_playwright: `expect_origin` is a serialized origin
+        (scheme://host[:port], no path). For credentials, it checks the element's own
+        document URL and security origins, not the top-level frame's, and connection
+        in the same injected call as the native input/textarea value write. Opaque
+        origins and input-kind changes during focus are refused. A mismatch or
+        stale target raises without writing. Invalid origins raise ValueError.
+        This password-manager-style autofill sends trusted input and change,
+        but no keydown/keypress/keyup events. Contenteditable is not supported
+        in this mode. None preserves the ordinary fill behavior.
+
+        With `expect_origin`, `expect_input_type` requires an INPUT with that type
+        before focus and immediately before writing (case-insensitive). Use
+        "password" for password fields. Unknown type names or use without
+        `expect_origin` raise ValueError; None adds no type expectation.
 
         Set a value to the input field.
 
@@ -18053,6 +18127,8 @@ class Locator(SyncBase):
                     timeout=to_milliseconds(timeout),
                     noWaitAfter=no_wait_after,
                     force=force,
+                    expect_origin=expect_origin,
+                    expect_input_type=expect_input_type,
                 )
             )
         )
