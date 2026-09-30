@@ -65,10 +65,58 @@ def _bare_page():
     page._requests = {}
     page._request_log = []
     page._navigation_requests = {}
+    page.messages = up
     page.context = SimpleNamespace(emit=lambda *a, **k: None, intercepting=False)
     page.frame = SimpleNamespace(frame_id="F1")
     page.frame_for = lambda fid: SimpleNamespace(channel={"guid": "frame@%s" % fid})
     return page
+
+
+@pytest.mark.parametrize("has_request", [False, True])
+@pytest.mark.parametrize("source", ["goto", "committed"])
+def test_new_document_request_is_a_channel_or_omitted(has_request, source):
+    from invisible_playwright._juggler.server import FrameDispatcher
+
+    page = _bare_page()
+    if has_request:
+        _navigate(page, "NAV1")
+    frame = object.__new__(FrameDispatcher)
+    frame.server = page.server
+    frame.guid = "frame@1"
+    frame.disposed = False
+    frame.page = page
+    frame.frame_id = "F1"
+    page.frame_for = lambda fid: frame
+
+    def committed():
+        page._on_juggler_event("Page.navigationCommitted", {
+            "frameId": "F1", "navigationId": "NAV1", "url": "about:blank",
+        })
+
+    if source == "goto":
+        def goto(*args, **kwargs):
+            committed()
+            return {"navigationId": "NAV1", "url": "about:blank"}
+
+        page.lifecycle = SimpleNamespace(goto=goto)
+        frame.op_goto({"url": "about:blank"})
+    else:
+        committed()
+    events = [m for m in page.messages if m["method"] == "navigated"]
+    expected = ({"request": page._navigation_requests["NAV1"].channel}
+                if has_request else {})
+    assert events
+    assert all(event["params"]["newDocument"] == expected for event in events)
+
+
+def test_navigation_document_uses_the_final_redirect_request():
+    page = _bare_page()
+    _navigate(page, "NAV1", request_id="initial", status=302)
+    _navigate(page, "NAV1", request_id="redirected", status=200)
+    assert page.navigation_document("NAV1") == {
+        "request": page._navigation_requests["NAV1"].channel,
+    }
+    assert page._navigation_requests["NAV1"].request_id == "redirected"
 
 
 def _navigate(page, navigation_id, *, request_id="R1", status=200,

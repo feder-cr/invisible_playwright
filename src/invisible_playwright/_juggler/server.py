@@ -684,7 +684,8 @@ class FrameDispatcher(Dispatcher):
             until=params.get("waitUntil") or "load",
             timeout=(params.get("timeout") or 30000) / 1000.0)
         self.emit("navigated", {"url": result["url"], "name": "",
-                                "newDocument": {"request": None}})
+                                "newDocument": self.page.navigation_document(
+                                    result["navigationId"])})
         # ⛔ `goto` answers with a Response CHANNEL or null, never with a URL.
         # `_frame.py` calls `from_nullable_channel` on it.
         #
@@ -1928,7 +1929,7 @@ class PageDispatcher(Dispatcher):
             child.emit("navigated", {
                 "url": child.url,
                 "name": params.get("name") or "",
-                "newDocument": {"request": None},
+                "newDocument": self.navigation_document(params.get("navigationId")),
             })
 
     #: How many entries are kept. ⛔ A CAP, not a history: a page printing in
@@ -1957,6 +1958,11 @@ class PageDispatcher(Dispatcher):
         index[request.navigation_id] = request
         while len(index) > PageDispatcher.LOG_LIMIT:
             del index[next(iter(index))]
+
+    def navigation_document(self, navigation_id: Optional[str]) -> Dict:
+        """The request field is optional, not nullable in Playwright's protocol."""
+        request = self._navigation_requests.get(navigation_id)
+        return {"request": request.channel} if request is not None else {}
 
     def navigation_response(self, navigation_id: Optional[str]) -> Any:
         """The Response CHANNEL for a finished navigation, or None.
@@ -3540,7 +3546,6 @@ class JugglerServer(Server):
                          "utils": utils.channel},
             guid="Playwright")
         return {"playwright": playwright.channel}
-
 
 
 
