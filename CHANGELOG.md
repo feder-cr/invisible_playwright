@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+- **`fill('')` empties the field.** On a text-like input, a textarea or a
+  contenteditable, the injected script only selects the text when the value is
+  empty, and `fill` then asked the engine for bare `input`/`change` events:
+  the page heard about a change while the old text stayed in the field. Inside
+  a shadow root the request failed outright with `NS_ERROR_UNEXPECTED`. It now
+  presses `Delete`, as Playwright does, so the page gets the trusted
+  `InputEvent` (`deleteContentForward`) a user's Delete gives, and `change`
+  waits for blur as it does for a user.
+
 ## [0.25.7] - 2026-09-25
 
 ### Fixed
