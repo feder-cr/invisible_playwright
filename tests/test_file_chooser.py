@@ -35,12 +35,16 @@ from invisible_playwright import InvisiblePlaywright
 PAGE = b"""<!DOCTYPE html><html><body>
 <input id="f" type="file">
 <button id="b" onclick="document.getElementById('f').click()">upload</button>
+<input id="h" type="file" style="display:none">
+<button id="hb" onclick="document.getElementById('h').click()">add document</button>
 <pre id="out"></pre>
 <script>
-document.getElementById('f').addEventListener('change', (e) => {
-  const n = e.target.files.length ? e.target.files[0].name : '(none)';
-  document.getElementById('out').textContent = 'change:' + n;
-});
+for (const id of ['f', 'h']) {
+  document.getElementById(id).addEventListener('change', (e) => {
+    const n = e.target.files.length ? e.target.files[0].name : '(none)';
+    document.getElementById('out').textContent = 'change:' + id + ':' + n;
+  });
+}
 </script></body></html>"""
 
 
@@ -148,3 +152,38 @@ def test_without_interception_the_file_inputs_remain_normal(firefox_binary,
         page.set_input_files("#f", sample_file)
         page.wait_for_timeout(300)
         assert "sample.txt" in page.inner_text("#out")
+
+
+@pytest.mark.e2e
+def test_a_hidden_input_takes_files_through_its_chooser(firefox_binary,
+                                                       local_page, sample_file):
+    """The commonest upload widget: a styled button in front of an
+    `<input type=file>` with `display:none`.
+
+    ⛔ THE CHOOSER OPENED AND THE FILES NEVER ARRIVED. `set_files` asked the
+    hidden input for a quad on every turn of the action loop and timed out
+    with "the element has no quad (it isn't visible)" - a question no hidden
+    element can answer, put by an action that never touches the screen.
+    Measured 2026-10-01 on a credit application's "Add Document" button.
+    """
+    with InvisiblePlaywright(seed=42, binary_path=firefox_binary) as browser:
+        page = browser.new_page()
+        page.goto(local_page, wait_until="load")
+        with page.expect_file_chooser(timeout=15000) as info:
+            page.click("#hb")
+        info.value.set_files(sample_file, timeout=5000)
+        page.wait_for_timeout(400)
+        assert page.inner_text("#out") == "change:h:sample.txt"
+
+
+@pytest.mark.e2e
+def test_a_hidden_input_takes_files_by_selector(firefox_binary, local_page,
+                                                sample_file):
+    """The other door to the same input. Playwright's `set_input_files` has no
+    visibility requirement, and neither may this one."""
+    with InvisiblePlaywright(seed=42, binary_path=firefox_binary) as browser:
+        page = browser.new_page()
+        page.goto(local_page, wait_until="load")
+        page.set_input_files("#h", sample_file, timeout=5000)
+        page.wait_for_timeout(300)
+        assert page.inner_text("#out") == "change:h:sample.txt"

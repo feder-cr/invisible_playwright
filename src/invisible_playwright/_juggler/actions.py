@@ -229,8 +229,18 @@ class Actions:
                timeout: float = 30.0, frame_id: Optional[str] = None,
                position=None, element_id: Optional[str] = None,
                trial: bool = False, strict: bool = False,
-               force: bool = False):
+               force: bool = False, needs_point: bool = True):
         """Resolve, check, act, and if something doesn't match, START OVER.
+
+        ⛔ `needs_point=False` IS FOR AN ACTION THAT DOES NOT TOUCH THE SCREEN.
+        Setting a file input's files goes through the engine, not the pointer,
+        and the input it is aimed at is usually HIDDEN - a styled button in
+        front of an `<input type=file>` with `display:none`. Asking that input
+        for a quad answered "it isn't visible" on every turn until the
+        timeout, so an upload to the commonest upload widget there is could
+        not happen through either door, `set_input_files` or a file chooser's
+        `set_files`. Such an action gets the element and no point: no scroll,
+        no hit test, nothing a hidden element cannot satisfy.
 
         ⛔ `position` travels HERE and not through each action, because the
         point is recomputed on every turn of this loop: an offset applied by
@@ -289,6 +299,10 @@ class Actions:
                 else:
                     element_ok = True
 
+                if element and element_ok and not needs_point:
+                    if trial:
+                        return None
+                    return run(f, element, None)
                 if element and element_ok:
                     # ⛔ SCROLL FIRST, and only when the point is not usable.
                     # Actionability says "visible", which is true of an element
@@ -802,7 +816,8 @@ class Actions:
                         session=self.session, timeout=30)
             return list(files)
         return self._retry(selector, run, states=[], timeout=timeout,
-                           frame_id=frame_id, element_id=element_id, **opts)
+                           frame_id=frame_id, element_id=element_id,
+                           needs_point=False, **opts)
 
     def tap(self, selector: str, *, timeout: float = 30.0, frame_id: Optional[str] = None,
             position=None, **opts):
