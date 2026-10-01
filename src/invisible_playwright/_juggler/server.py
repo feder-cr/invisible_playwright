@@ -26,6 +26,7 @@ hard failure. Everything here creates first and returns the channel second.
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import pathlib
@@ -1638,7 +1639,8 @@ class PageDispatcher(Dispatcher):
     }
 
     def __init__(self, server, context: "BrowserContextDispatcher",
-                 session: str, target_id: str) -> None:
+                 session: str, target_id: str,
+                 opener: Optional["PageDispatcher"] = None) -> None:
         self.context = context
         self.session = session
         self.target_id = target_id
@@ -1665,6 +1667,26 @@ class PageDispatcher(Dispatcher):
         # which needs the main frame this replay is what delivers. The events
         # that precede a page describe its birth, and the initializer built
         # below carries that - the main frame is in it by name.
+        # ⛔ THIS PAGE'S OWN NETWORK EVENTS ARE HELD FROM HERE, not dropped. A
+        # page the SITE opened has usually sent its document request, and had
+        # the response, before this object exists: a PDF in a new tab was
+        # requested, answered and handed to the viewer while the main frame
+        # was still being awaited below. Delivered to nobody, that response
+        # never reached `context.on("response")`, so its body - the only copy
+        # of a file the viewer cannot give back - was out of reach (measured
+        # 2026-10-01: only the favicon's responses arrived). The subscriber is
+        # registered before the replay so the buffered events reach it too,
+        # and it holds rather than handles until the channel exists.
+        self._held: Optional[List] = []
+        self._held_lock = threading.Lock()
+        conn.add_listener(self._route_juggler_event)
+        try:
+            self._build(server, context, session, conn, opener)
+        except BaseException:
+            conn.remove_listener(self._route_juggler_event)
+            raise
+
+    def _build(self, server, context, session, conn, opener) -> None:
         replayed = context.browser.replay(session, conn.dispatch_event)
         self.replayed_events = replayed
         self._frames: Dict[str, Any] = {}
@@ -1693,9 +1715,13 @@ class PageDispatcher(Dispatcher):
         self.frame = FrameDispatcher(server, self, self.main_frame_id)
         viewport = context.options.get("viewport") or {"width": 1280,
                                                        "height": 720}
-        super().__init__(server, context,
-                         {"mainFrame": self.frame.channel,
-                          "viewportSize": viewport, "isClosed": False})
+        initializer = {"mainFrame": self.frame.channel,
+                       "viewportSize": viewport, "isClosed": False}
+        # The client emits `popup` on the opener from the context's `page`
+        # event, and only when the new page names its opener here.
+        if opener is not None and not opener.disposed:
+            initializer["opener"] = opener.channel
+        super().__init__(server, context, initializer)
         self.emit("__adopt__", {"guid": self.frame.guid})
         self.frame.parent = self
         # ⛔ AFTER the Page exists: an event that fires during construction
@@ -1740,15 +1766,36 @@ class PageDispatcher(Dispatcher):
         no error at all: the handler simply never runs, and the user concludes
         their page prints nothing.
         """
-        # ⛔ Registered on the connection's list, never chained. The isolation
-        # that used to live in this closure is now `dispatch_event`'s job and
-        # covers every subscriber instead of just this one.
-        self.conn.add_listener(self._route_juggler_event)
+        # ⛔ Registered on the connection's list, never chained, and already
+        # in `__init__`: what is left here is to stop holding. Only the
+        # NETWORK events held are delivered - the rest describe the page's
+        # birth, which the initializer already carries, and replaying a main
+        # frame's `frameAttached` would announce it twice. Delivered under the
+        # lock, so a live event waits for the held ones and keeps their order:
+        # a response handled before its request is dropped as unknown.
+        with self._held_lock:
+            held, self._held = self._held or [], None
+            for method, params in held:
+                if method.startswith("Network."):
+                    with contextlib.suppress(Exception):
+                        self._on_juggler_event(method, params)
 
     def _route_juggler_event(self, method: str, params: Dict,
                              session) -> None:
-        if session == self.session:
-            self._on_juggler_event(method, params)
+        if session != self.session:
+            return
+        if self._held is not None:
+            with self._held_lock:
+                if self._held is not None:
+                    if len(self._held) < self.HELD_CAP:
+                        self._held.append((method, params))
+                    return
+        self._on_juggler_event(method, params)
+
+    #: Events held while the page is being built. The birth of a page is a
+    #: burst of a few dozen; a page that never finishes building must not
+    #: grow this without bound.
+    HELD_CAP = 512
 
     def _detach_listeners(self) -> None:
         """Unsubscribe this page and everything it owns.
@@ -3063,12 +3110,82 @@ class BrowserDispatcher(Dispatcher):
             with self._sessions_ready:
                 self._sessions[info.get("targetId")] = params.get("sessionId")
                 self._sessions_ready.notify_all()
+            # ⛔ A PAGE THE SITE OPENED HAS NO `newPage` TO ANSWER FOR IT. A
+            # `target=_blank` link, `window.open`, or a PDF attachment Firefox
+            # shows in a tab of its own arrives only as this event, with
+            # `openerId` set. Nothing built a Page for it, so the tab existed in
+            # the browser and nowhere else: `context.pages` never listed it,
+            # `expect_page`/`expect_popup` timed out, and its network events sat
+            # in the buffer below until the cap. Measured 2026-10-01 on a link
+            # to a PDF in a new tab: the target attached, no `page` event. Pages
+            # this server opens itself carry no opener, so this never builds a
+            # second Page for one `op_new_page` is already building.
+            if info.get("type") == "page" and info.get("openerId"):
+                threading.Thread(
+                    target=self._adopt_opened_page,
+                    args=(info, params.get("sessionId")),
+                    name="adopt-%s" % info.get("targetId"), daemon=True).start()
+        elif method == "Browser.detachedFromTarget":
+            # ⛔ A PAGE THE SITE CLOSED (`window.close()`, a viewer tab that
+            # gave way to a download) stayed open to the client forever: only
+            # `page.close()` and `context.close()` ever announced a close.
+            # `announce_closed` is once-guarded, so the detach that follows
+            # those two changes nothing.
+            page = self._page_for_session(params.get("sessionId"))
+            if page is not None:
+                threading.Thread(target=self._page_gone, args=(page,),
+                                 daemon=True).start()
         if session:
             with self._buffer_lock:
                 if session not in self._live:
                     held = self._buffered.setdefault(session, [])
                     if len(held) < self.BUFFER_CAP:
                         held.append((method, params))
+
+    def _context_for(self, context_id: Optional[str]):
+        for context in list(self.contexts):
+            if context.context_id == context_id and not context.disposed:
+                return context
+        return None
+
+    def _page_for_session(self, session: Optional[str]):
+        for context in list(self.contexts):
+            for page in list(context.pages):
+                if page.session == session:
+                    return page
+        return None
+
+    def _adopt_opened_page(self, info: Dict, session: Optional[str]) -> None:
+        """Build the Page for a target the site opened, OFF the reader thread:
+        a Page waits for its main frame, which only the reader can deliver."""
+        context = self._context_for(info.get("browserContextId"))
+        if context is None or not session:
+            # A context this server never handed out (or already closed) has no
+            # client object to hold the page; drop what was buffered for it.
+            if session:
+                self.forget(session)
+            return
+        opener = None
+        for page in list(context.pages):
+            if page.target_id == info.get("openerId"):
+                opener = page
+        try:
+            page = PageDispatcher(self.server, context, session,
+                                  info.get("targetId"), opener=opener)
+        except Exception:
+            # A tab closed before it finished opening: nothing to announce.
+            self.forget(session)
+            return
+        context.pages.append(page)
+        context.emit("page", {"page": page.channel})
+
+    def _page_gone(self, page: "PageDispatcher") -> None:
+        with contextlib.suppress(Exception):
+            self.forget(page.session)
+        with contextlib.suppress(ValueError):
+            page.context.pages.remove(page)
+        with contextlib.suppress(Exception):
+            page.announce_closed()
 
     def replay(self, session: str, deliver) -> int:
         """Hand a new consumer the events of its session that it missed.
