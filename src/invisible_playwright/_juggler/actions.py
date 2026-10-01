@@ -1042,10 +1042,15 @@ class Actions:
                 if text:
                     self._type(text)
                 else:
-                    # Clearing a field doesn't generate keystrokes: the
-                    # events still need to be requested, or the page
-                    # doesn't know it changed.
-                    self._trusted_events(f, element, ["input", "change"])
+                    # ⛔ Clearing is a keystroke, as in Playwright: the
+                    # injected script only SELECTED the text, so `Delete`
+                    # is what empties it, and the page gets the `InputEvent`
+                    # a user's Delete gives (`deleteContentForward`). This
+                    # used to request bare `input`/`change` instead: the
+                    # text stayed in the field, and inside a shadow root the
+                    # request failed outright (the engine's presshell route
+                    # has no document there).
+                    self.keyboard.press("Delete")
             else:
                 self._trusted_events(f, element, ["input", "change"])
             return result
