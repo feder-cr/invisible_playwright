@@ -1773,10 +1773,18 @@ class PageDispatcher(Dispatcher):
         # frame's `frameAttached` would announce it twice. Delivered under the
         # lock, so a live event waits for the held ones and keeps their order:
         # a response handled before its request is dropped as unknown.
+        #
+        # ⛔ AND EACH EVENT ONCE, AT ITS LAST PLACE. One that arrived after this
+        # subscriber was registered but before the replay marked the session
+        # live was both buffered by the browser and held here, so the replay
+        # hands it over a second time, behind events older than it. It is the
+        # same params object both times; keeping its last occurrence restores
+        # the order the engine sent them in and announces each request once.
         with self._held_lock:
             held, self._held = self._held or [], None
-            for method, params in held:
-                if method.startswith("Network."):
+            last = {id(params): i for i, (_, params) in enumerate(held)}
+            for i, (method, params) in enumerate(held):
+                if last[id(params)] == i and method.startswith("Network."):
                     with contextlib.suppress(Exception):
                         self._on_juggler_event(method, params)
 
