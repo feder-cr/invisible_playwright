@@ -30,7 +30,7 @@ def test_the_generated_protocol_has_the_five_domains():
     # ones) and the one event were shipped by the engine and never mirrored.
     # What ties the mirror to the engine is `gen_juggler_protocol.py --check`
     # against the pinned binary, run where the binary is - the e2e job.
-    assert len(COMMANDS) == 76, "commands: %d" % len(COMMANDS)
+    assert len(COMMANDS) == 77, "commands: %d" % len(COMMANDS)
     assert len(EVENTS) == 35, "events: %d" % len(EVENTS)
 
 
