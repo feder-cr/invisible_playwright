@@ -26,9 +26,11 @@ hard failure. Everything here creates first and returns the channel second.
 """
 from __future__ import annotations
 
+import base64
 import json
 import os
 import pathlib
+import shutil
 import tempfile
 import threading
 import time
@@ -228,23 +230,48 @@ def _launch_environment(named) -> Dict[str, str]:
     return {e["name"]: e["value"] for e in named}
 
 
-def _upload_paths(params: Dict) -> list:
-    """The local paths out of a `setInputFiles` request.
+def _upload_paths(server: "JugglerServer", params: Dict) -> list:
+    """The local paths a `setInputFiles` request stands for.
 
     ⛔ ONE READER, because there are two senders. The same request arrives at
     the Frame (a selector) and at the ElementHandle (a chooser already holding
-    the input), and the wire shape is the same for both: `localPaths` today,
-    `files` on older clients, and each entry is either a string or a `{name}`
-    object. Two dispatchers each unpacking that by hand is two places that know
-    one fact, and the second one is always the one that falls behind.
+    the input), and the wire shape is the same for both. Two dispatchers each
+    unpacking that by hand is two places that know one fact, and the second
+    one is always the one that falls behind.
 
-    What it deliberately does NOT read is `payloads` and `streams`: those are
-    the upload path where the CLIENT carries the bytes, which is
-    `createTempFiles` and is outside this package's perimeter by decision.
+    ⛔ THREE SHAPES, AND ONLY ONE WAS READ. The client sends `localPaths` for
+    files, `localDirectory` for a folder (`<input webkitdirectory>`), and
+    `payloads` - name, MIME type and base64 bytes - when the caller hands
+    over content instead of a path. Only `localPaths` was read, so the other
+    two became an EMPTY upload: the input was cleared, `change` fired with
+    no files, and the call returned as if it had worked. Measured on 0.25.7:
+    a payload `note.txt` arrived as `files.length == 0`.
+
+    A payload is written to a file this session owns and goes through the
+    same engine command as a path, so the page receives it the way it
+    receives a file a user picked - and, as for a user's pick, Firefox derives
+    the file's type from its name; the payload's `mimeType` is not carried.
+    `streams` are the remote-connection path (`createTempFiles`), outside the
+    perimeter by decision; this client never sends them to a local server.
+
+    ⛔ A FOLDER IS REFUSED, BY NAME. The engine's `Page.setFileInputFiles`
+    takes files: handed the folder's path it took the TAB down (the next call
+    answered "cannot find session"), measured on firefox-34 and on the engine
+    after it. Read as an empty list, as before, the engine answered with an
+    exception naming neither the folder nor the reason. Both are worse than
+    saying it.
     """
-    raw = params.get("localPaths") or params.get("files") or []
-    return [entry.get("name") if isinstance(entry, dict) else entry
-            for entry in raw]
+    directory = params.get("localDirectory")
+    if directory:
+        raise ProtocolException(
+            "set_input_files with a folder (%s) is not supported: the engine "
+            "takes files, so pass the files inside it instead" % directory)
+    raw = params.get("localPaths") or params.get("files")
+    if raw:
+        return [entry.get("name") if isinstance(entry, dict) else entry
+                for entry in raw]
+    return [server.stage_upload(payload)
+            for payload in params.get("payloads") or []]
 
 
 class ElementHandleDispatcher(Dispatcher):
@@ -600,8 +627,9 @@ class ElementHandleDispatcher(Dispatcher):
         Same action as the Frame's, same helper reading the request: one
         upload, not two.
         """
-        self.frame.actions.set_input_files(_HANDLE, _upload_paths(params),
-                                           **self._act_args(params))
+        self.frame.actions.set_input_files(
+            _HANDLE, _upload_paths(self.server, params),
+            **self._act_args(params))
         return None
 
 class FrameDispatcher(Dispatcher):
@@ -1029,7 +1057,8 @@ class FrameDispatcher(Dispatcher):
 
     def op_set_input_files(self, params: Dict) -> Any:
         frame_id, selector = self.enter_frames(params["selector"])
-        self.actions.set_input_files(selector, _upload_paths(params),
+        self.actions.set_input_files(selector,
+                                     _upload_paths(self.server, params),
                                      timeout=self._timeout(params),
                                      frame_id=frame_id,
                                      **self._act_opts(params))
@@ -3567,6 +3596,34 @@ class JugglerServer(Server):
     #: tables reported it as missing, and the count was wrong by one in the
     #: direction that makes you write code twice.
     METHODS = {"initialize": "op_initialize"}
+
+    def stage_upload(self, payload: Dict) -> str:
+        """A `setInputFiles` payload written to a file, and that file's path.
+
+        Each payload gets a folder of its own, so the file keeps exactly the
+        name the caller gave it - that is the `File.name` the page reads -
+        and two payloads with the same name do not overwrite each other. The
+        name is reduced to its last component: a payload is content, and its
+        name must not choose where on this machine the content is written.
+
+        ⛔ THE FILES LIVE AS LONG AS THE SESSION, not as long as the call. A
+        page reads an uploaded file when it SUBMITS it, which can be minutes
+        after `set_input_files` returned; removing it at the end of the call
+        would leave the input holding a file that no longer exists.
+        """
+        name = os.path.basename((payload.get("name") or "").replace("\\", "/"))
+        if not name:
+            raise ProtocolException(
+                "a file payload needs a name: the page reads it as File.name")
+        root = getattr(self, "_upload_root", None)
+        if root is None:
+            root = tempfile.mkdtemp(prefix="invisible_upload_")
+            self._upload_root = root
+            self.on_shutdown(lambda: shutil.rmtree(root, ignore_errors=True))
+        path = os.path.join(tempfile.mkdtemp(dir=root), name)
+        with open(path, "wb") as out:
+            out.write(base64.b64decode(payload.get("buffer") or ""))
+        return path
 
     def handle_root(self, method: str, params: Dict) -> Any:
         name = self.METHODS.get(method)

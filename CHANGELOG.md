@@ -52,6 +52,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   `<input type=file>` could not receive its files through `set_files` or
   `set_input_files`. The four act on a hidden element now, as they do in
   Playwright.
+- **`set_input_files` with content instead of a path uploads that content.**
+  A `{"name", "mimeType", "buffer"}` payload was read as nothing at all: the
+  input was cleared, `change` fired with no files, and the call returned as
+  if it had worked. The payload now reaches the page as a file with its name
+  and its bytes, through the same path as a file on disk, so its type is the
+  one Firefox gives that name, as for a file a user picks. A folder, which
+  the engine cannot take, is refused with a message that says so.
 
 ## [0.25.7] - 2026-09-25
 
