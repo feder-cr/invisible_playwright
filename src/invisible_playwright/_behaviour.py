@@ -91,6 +91,8 @@ __all__ = [
     "PointerPersona",
     "TypingPersona",
     "plan_typing",
+    "plan_hesitation",
+    "hesitation",
     "plan_click",
     "PlanStats",
     "initial_pointer",
@@ -408,6 +410,19 @@ class TypingPersona:
     # distribution nobody produced.
     hesitation_rate: float
     hesitation_median_ms: float
+    # The spread of one hesitation, sigma of its log-normal. [judg] centred on
+    # the 0.55 every hesitation used to share as a literal inside
+    # `plan_typing`.
+    #
+    # ⛔ A FIELD, BECAUSE TWO PLACES DRAW A HESITATION: a pause in the middle
+    # of a word (`plan_typing`) and the pause between reaching a field and its
+    # first key (`plan_hesitation`). With the spread written at each call site
+    # the second one was a copy, and the first copy lived in another package,
+    # which imported private names of this module to repeat it.
+    #
+    # ⛔ DRAWN LAST, so every field above keeps the value it had for the same
+    # seed.
+    hesitation_sigma: float
 
     @classmethod
     def from_seed(cls, seed: int) -> "TypingPersona":
@@ -423,7 +438,16 @@ class TypingPersona:
             same_key_factor=r.uniform(1.25, 1.75),
             hesitation_rate=r.uniform(0.02, 0.07),
             hesitation_median_ms=r.uniform(420.0, 1250.0),
+            hesitation_sigma=r.uniform(0.40, 0.70),
         )
+
+    def hesitation_ms(self, rng: random.Random) -> float:
+        """One stop to think, in milliseconds, drawn from `rng`.
+
+        The only place a hesitation's distribution is written: `plan_typing`
+        and `plan_hesitation` both draw through here.
+        """
+        return _log_normal(rng, self.hesitation_median_ms, self.hesitation_sigma)
 
 
 def plan_click(persona: PointerPersona, clicks: int = 1,
@@ -484,9 +508,54 @@ def plan_typing(text: str, persona: TypingPersona,
                 gap *= (persona.alternate_hand_factor if a != b
                         else persona.same_hand_factor)
         if r.random() < persona.hesitation_rate:
-            gap += _log_normal(r, persona.hesitation_median_ms, 0.55)
+            gap += persona.hesitation_ms(r)
         out.append((dwell, gap))
     return out
+
+
+def plan_hesitation(persona: TypingPersona, act: str, nonce: int = 0,
+                    times: int = 1) -> float:
+    """How long this typist stops before `act`, in milliseconds: `times` of
+    its hesitations, drawn on the stream for `act` and `nonce`.
+
+    The same hand `plan_typing` pauses with in the middle of a word, so the
+    pause before a field and the pause inside it are one person's. Each act
+    has its own tagged stream, so adding an act cannot move a number another
+    act or the typing itself draws for the same seed; the nonce makes two acts
+    of the same kind in one session two different pauses.
+    """
+    r = _rng(persona.seed, act, nonce)
+    return sum(persona.hesitation_ms(r) for _ in range(max(1, times)))
+
+
+def hesitation(seed: Optional[int], act: str, *, nonce: int = 0,
+               times: int = 1) -> float:
+    """How long the person of session `seed` stops before an act, in SECONDS.
+
+    Public, for a caller that drives an act this package does not perform
+    itself and wants the pause before it to be the session's own: answering a
+    file chooser (find the file, confirm it), reading a page before replying.
+    It is drawn from the same typing persona the engine types with, so it
+    varies per session and per act and is no constant every install shares.
+
+    * `seed` is the session's seed, the one passed to `InvisiblePlaywright`.
+      `None` means humanising is off and returns 0.0: no rhythm, not a
+      default one.
+    * `act` names the kind of act, and each name is its own random stream:
+      the same seed, act and nonce always give the same pause.
+    * `nonce` tells two acts of the same kind apart; pass a counter the
+      caller keeps per session.
+    * `times` sums that many hesitations, for an act made of several stops.
+
+    ``fill`` and ``press_sequentially`` (``type``) take this pause by
+    themselves between focusing a field and its first key, on the act
+    ``"field"`` with one nonce per field on a page starting at 1; a caller
+    does not add one in front of them.
+    """
+    if seed is None:
+        return 0.0
+    return plan_hesitation(TypingPersona.from_seed(int(seed)), act,
+                           nonce, times) / 1000.0
 
 
 # ──────────────────────────────────────────────────────────────────────

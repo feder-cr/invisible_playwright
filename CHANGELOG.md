@@ -8,7 +8,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [0.25.8] - 2026-10-02
 
+### Added
+- **`invisible_playwright.hesitation(seed, act, *, nonce=0, times=1)`**, the
+  session's pause before an act, in seconds, for an act this package does not
+  perform itself (answering a file chooser, say). It is drawn from the same
+  typing persona the keyboard uses, so it varies per session and per act, and
+  it returns 0 when `seed` is `None`. A caller that needed this used to import
+  private names of the package and copy the spread of a hesitation.
+
 ### Fixed
+- **`fill` and `press_sequentially` (`type`) wait a moment between the focus
+  and the first key.** They focused the field and pressed the first key a few
+  milliseconds later, which no hand does, and a page that answers the focus
+  a moment later (a store that writes its stored value back into the input,
+  a formatter, a field that loads its suggestions) wrote over the text that
+  was arriving: on a field whose store empties it 300, 600 or 900 ms after
+  the focus, an address kept only its last letters in 30 fills out of 30. With
+  humanising on, the session's typist now pauses for one of its hesitations,
+  starting again whenever the field changes, for no longer than the action's
+  timeout: the same 30 fills kept the address 10, 7 and 3 times out of 10,
+  each time the pause outlasted the store's timer, which nothing on the page
+  shows in advance. A fill takes a median 0.7 s longer. The page gets no new
+  event, only time, and the field is read from the utility world, where the
+  page cannot see the read. With humanising off nothing changes. The spread
+  of a hesitation is now one field of the typing persona, used by both
+  pauses.
 - **`expect_navigation()` and `wait_for_url()` no longer crash on a new
   document.** Every navigation event announced its document with a request
   of `None`, a value Playwright's protocol does not allow there, and the
