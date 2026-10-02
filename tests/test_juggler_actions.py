@@ -190,10 +190,11 @@ def test_the_fill_events_are_TRUSTED(firefox_binary):
     and the first draft of this test only exercised one. On a TEXT input
     `injected.fill` returns `needsinput` and the text gets TYPED: those
     events are trusted because they come from key presses, and a mutation to
-    `Page.dispatchTrustedInputEvents` **survived** because that line was
+    the trusted-events command of the time **survived** because that line was
     never executed. The path [B175] lives on is the other one: inputs whose
-    value gets SET - `date`, `color`, `range`, `time` - where `fill` returns
-    `done` and the events have to be requested from the trusted command.
+    value gets SET - `date`, `color`, `range`, `time` - where `fill` hands
+    the value to the engine (`Page.setUserInput`), which commits it through
+    Firefox's own user path so that Firefox fires the events.
     """
     actions, inj, f, close = _open(firefox_binary, PAGE)
     try:

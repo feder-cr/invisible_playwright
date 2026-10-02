@@ -90,17 +90,18 @@ def test_fill_empty_clears_with_a_keystroke(page, selector, how):
         ("input", "InputEvent", "deleteContentForward", True)]
 
 
-# -- the events the ENGINE dispatches: a set value, and a select ------------
+# -- a value the ENGINE commits: a select, and a set value -------------------
 #
 # `select_option`, and `fill` on a field whose value is SET rather than typed
-# (`date`, `color`, `range`...), ask the engine for the events with
-# `Page.dispatchTrustedInputEvents`. Up to firefox-34 the engine delivered them
-# through a route that takes the target's uncomposed document: null for any
-# node inside a shadow root, so every `<select>` or set-value field in a web
-# component failed with NS_ERROR_UNEXPECTED, and in the document the events
-# came out `cancelable`, which no user's change is. The engine now dispatches
-# them straight at the element with the init dict Firefox itself uses, and
-# these cases are red on any engine without that.
+# (`date`, `color`, `range`...). Up to firefox-34 the page-side script set the
+# value and the wrapper asked the engine for hand-built `input`/`change`
+# (`Page.dispatchTrustedInputEvents`), through a route that takes the target's
+# uncomposed document: null for any node inside a shadow root, so every
+# `<select>` or set-value field in a web component failed with
+# NS_ERROR_UNEXPECTED, and in the document the events came out `cancelable`,
+# which no user's change is. The engine now commits the value through
+# Firefox's own user paths (`Page.selectOptions`, `Page.setUserInput`) and
+# Firefox fires the events; these cases are red on any engine without that.
 
 #: What Firefox 151 itself fires when a user changes a select or a field,
 #: measured with keyboard input on this engine: both bubble, neither is
