@@ -791,18 +791,22 @@ class Actions:
 
     def press(self, selector: str, key: str, *, timeout: float = 30.0,
               frame_id: Optional[str] = None,
-              element_id: Optional[str] = None, **opts):
+              element_id: Optional[str] = None,
+              dwell_ms: Optional[float] = None, **opts):
         """`press`: focuses and presses, with the modifiers from the name.
 
         No typist's pause before the key, unlike `fill` and `type`: a press is
         one key, most often sent to a field that already holds the focus
         (Enter after typing), where there is no focus for a page to answer
         and the wait between the two calls is the caller's.
+
+        `dwell_ms` is the caller's `delay`, how long the key stays down; None
+        leaves it to the session's hand, as `keyboard.press` does.
         """
         def run(f, element, point):
             self.inj.call(f, "(injected, el) => injected.focusNode(el, true)",
                           {"objectId": element})
-            self.keyboard.press(key)
+            self.keyboard.press(key, dwell_ms=dwell_ms)
             return key
         return self._retry(selector, run,
                            states=["visible", "stable", "enabled"],

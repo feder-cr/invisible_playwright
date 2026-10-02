@@ -164,6 +164,24 @@ class APIRequestContextDispatcher(RefusingDispatcher):
 #: what the alternative reads like.
 _HANDLE = "<element handle>"
 
+
+def _key_delay(params: Dict) -> Optional[float]:
+    """The caller's `delay` for a key operation, in milliseconds, or None.
+
+    ⛔ ONE PLACE READS IT, for the same reason `_act_opts` and `_pointer` exist:
+    six key operations take it, and the copies that each read it on their own
+    were how `page.type(sel, text, delay=100)`, `locator.type`,
+    `press_sequentially` and `locator.press(delay=...)` came to accept it and
+    drop it, while `keyboard.type` and the element-handle `type` honoured it.
+
+    It means two things and the callers say which: for `type` it is the gap
+    between two keys, for `press` the time the key stays down, as Playwright
+    documents both. Either way it overrides the session's hand rather than
+    replacing a rhythm that is otherwise missing.
+    """
+    delay = params.get("delay")
+    return None if delay is None else float(delay)
+
 #: How the session's SEED reaches this server, which otherwise knows no seed at
 #: all. The launcher composes the pref dict in full and `op_launch` already
 #: receives it, so this adds no plumbing; `op_launch` takes the key back out
@@ -598,12 +616,14 @@ class ElementHandleDispatcher(Dispatcher):
         holding `foobar`.
         """
         self.frame.actions.type_text(_HANDLE, params["text"],
-                                     delay=params.get("delay") or 0.0,
+                                     delay=_key_delay(params) or 0.0,
                                      **self._act_args(params))
         return None
 
     def op_press(self, params: Dict) -> Any:
-        self.frame.actions.press(_HANDLE, params["key"], **self._act_args(params))
+        self.frame.actions.press(_HANDLE, params["key"],
+                                 dwell_ms=_key_delay(params),
+                                 **self._act_args(params))
         return None
 
     def op_focus(self, params: Dict) -> Any:
@@ -1035,6 +1055,7 @@ class FrameDispatcher(Dispatcher):
         frame_id, selector = self.enter_frames(params["selector"])
         self.actions.press(selector, params["key"],
                                 timeout=self._timeout(params), frame_id=frame_id,
+                                dwell_ms=_key_delay(params),
                                 **self._act_opts(params))
         return None
 
@@ -1042,6 +1063,7 @@ class FrameDispatcher(Dispatcher):
         frame_id, selector = self.enter_frames(params["selector"])
         self.actions.type_text(selector, params["text"],
                                     timeout=self._timeout(params), frame_id=frame_id,
+                                    delay=_key_delay(params) or 0.0,
                                     **self._act_opts(params))
         return None
 
@@ -2266,7 +2288,7 @@ class PageDispatcher(Dispatcher):
         # ⛔ `delay` IS the dwell here, not a gap: Playwright documents it as
         # the wait between keydown and keyup. It used to be dropped, which is
         # why a press had no duration at all.
-        self.keyboard.press(params["key"], dwell_ms=params.get("delay"))
+        self.keyboard.press(params["key"], dwell_ms=_key_delay(params))
         return None
 
     def op_key_type(self, params: Dict) -> Any:
@@ -2274,7 +2296,7 @@ class PageDispatcher(Dispatcher):
         # it an override of the session's rhythm rather than the only thing
         # standing between the caller and pipe speed.
         self.keyboard.type(params["text"],
-                           delay_ms=params.get("delay") or 0.0)
+                           delay_ms=_key_delay(params) or 0.0)
         return None
 
     def op_key_insert(self, params: Dict) -> Any:

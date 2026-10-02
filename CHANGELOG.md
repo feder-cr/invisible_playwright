@@ -33,6 +33,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   page cannot see the read. With humanising off nothing changes. The spread
   of a hesitation is now one field of the typing persona, used by both
   pauses.
+- **`delay` reaches the keyboard on `page.type`, `locator.type`,
+  `press_sequentially` and `press`.** `keyboard.type` and the element-handle
+  `type` honoured it; the selector operations accepted it and dropped it, so
+  `locator.type("abcd", delay=150)` went out 6, 10 and 22 ms apart, and
+  `locator.press(key, delay=300)` held the key for the session's own time.
+  For `type` it is the gap between two keys and for `press` how long the key
+  stays down, as Playwright documents both, and one reader takes it off the
+  wire for every key operation.
 - **Each tab of a session types, pauses and clicks with its own rhythm.** The
   counters that tell two acts apart (the pause before a field, the intervals
   between keys, how long a click is held, the curve of a drag) lived on each
