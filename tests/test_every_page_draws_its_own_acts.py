@@ -21,6 +21,7 @@ sees in two tabs of one session.
 from __future__ import annotations
 
 import http.server
+import statistics
 import threading
 
 import pytest
@@ -138,7 +139,15 @@ for (const k of ['focus', 'keydown'])
   document.addEventListener(k, e => __ev.push([k, performance.now(), e.target.id || '']), true);
 </script></body></html>"""
 
-TEXT = "hello"
+#: ⛔ LONG ENOUGH FOR THE TWO PLANS TO DIFFER BY MORE THAN A LOADED MACHINE
+#: ADDS. With "hello" the two tabs' four intervals differed by 426 ms in all,
+#: and four browsers at once on four CPUs (the CI runner's `-n 4`) delay a
+#: single key by up to 480 ms: measured on Linux, 0 tabs out of 440 got the
+#: other tab's page number, and the test still failed 2 runs out of 48 and 3
+#: out of 12, each time on one late step. With "helloworld" the plans differ
+#: by 3.6 s more, because the second tab's typist stops to think at the sixth
+#: key and the first tab's does not.
+TEXT = "helloworld"
 
 
 @pytest.fixture(scope="module")
@@ -160,16 +169,37 @@ def page_url():
 
 
 def _planned(seed, page):
-    """The pause and keydown-to-keydown intervals of a page's first fill."""
+    """A page's first fill as the page should see it, in ms: the pause from
+    the field's focus to the first key, then each keydown-to-keydown
+    interval."""
     persona = TypingPersona.from_seed(seed)
     nonce = act_nonce(page, 1)
     plan = plan_typing(TEXT, persona, nonce=nonce)
-    return (hesitation(seed, "field", nonce=nonce),
-            [dwell + gap for dwell, gap in plan[:-1]])
+    return ([hesitation(seed, "field", nonce=nonce) * 1000.0]
+            + [dwell + gap for dwell, gap in plan[:-1]])
 
 
-def _distance(a, b):
-    return sum(abs(x - y) for x, y in zip(a, b))
+def _distance(seen, plan):
+    """How far what a page saw is from a plan, once the delay common to every
+    step is taken out.
+
+    ⛔ ONE TIMELINE AND ONE JUDGE, NOT A VERDICT PER STEP. What a page measures
+    is the plan plus the machine's latency, and under load the latency of a
+    single step reaches a second: measured with four browsers on four CPUs, one
+    protocol round trip inside the pause took 1.28 s. A verdict on the pause
+    alone then has only the gap between the two tabs' pauses to stand on, and
+    a verdict per step lets one late step decide. Summed over the whole
+    timeline, a late step can cost no more than the evidence of that one step,
+    and the other steps still carry the verdict.
+
+    ⛔ AND A COMMON DELAY FAVOURS THE SLOWER PLAN. Latency only adds, so a tab
+    typed with the faster plan drifts toward the slower one by the same amount
+    on every step, and raw nearness then calls it the other tab's. The median
+    of the differences is that common delay; the median rather than the mean,
+    so that the one late step cannot move it."""
+    d = [x - y for x, y in zip(seen, plan)]
+    common = statistics.median(d)
+    return sum(abs(x - common) for x in d)
 
 
 @pytest.mark.e2e
@@ -182,9 +212,12 @@ def test_two_tabs_of_one_session_are_typed_with_two_rhythms(firefox_binary, page
     from invisible_playwright import InvisiblePlaywright
 
     plans = [_planned(SEED, 0), _planned(SEED, 1)]
-    # The seed is one whose two tabs differ by more than the latency can hide.
-    assert abs(plans[0][0] - plans[1][0]) > 0.5
-    assert _distance(plans[0][1], plans[1][1]) > 150
+    # The seed and the text are ones whose two tabs differ by more than the
+    # latency can hide. One late step costs the verdict at most twice that
+    # step's evidence, and never more than twice its own lateness, so the
+    # two plans must differ by more than twice the worst step measured (1.6 s
+    # on a pause, four browsers on four CPUs and a build running beside them).
+    assert _distance(plans[0], plans[1]) > 2 * 1600
 
     seen = []
     with InvisiblePlaywright(seed=SEED, binary_path=firefox_binary,
@@ -203,16 +236,13 @@ def test_two_tabs_of_one_session_are_typed_with_two_rhythms(firefox_binary, page
             # document first, which is not the pause before the field.
             focus = next(t for k, t, on in events if k == "focus" and on == "f")
             keys = [t for k, t, _ in events if k == "keydown"]
-            seen.append(((keys[0] - focus) / 1000,
-                         [b - a for a, b in zip(keys, keys[1:])]))
+            seen.append([keys[0] - focus]
+                        + [b - a for a, b in zip(keys, keys[1:])])
 
-    for tab, (pause, intervals) in enumerate(seen):
+    for tab, timeline in enumerate(seen):
         own, other = plans[tab], plans[1 - tab]
-        assert abs(pause - own[0]) < abs(pause - other[0]), (
-            "tab %d paused %.2f s; its plan is %.2f s, the other tab's %.2f s"
-            % (tab, pause, own[0], other[0]))
-        assert _distance(intervals, own[1]) < _distance(intervals, other[1]), (
-            "tab %d typed with intervals %s; its plan is %s, the other tab's %s"
-            % (tab, [round(i) for i in intervals],
-               [round(i) for i in own[1]], [round(i) for i in other[1]]))
+        assert _distance(timeline, own) < _distance(timeline, other), (
+            "tab %d paused, then typed, with %s ms; its plan is %s, the other "
+            "tab's %s" % (tab, [round(i) for i in timeline],
+                          [round(i) for i in own], [round(i) for i in other]))
 
