@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.25.8] - 2026-10-02
+
 ### Fixed
 - **`expect_navigation()` and `wait_for_url()` no longer crash on a new
   document.** Every navigation event announced its document with a request
