@@ -107,6 +107,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   and its bytes, through the same path as a file on disk, so its type is the
   one Firefox gives that name, as for a file a user picks. A folder, which
   the engine cannot take, is refused with a message that says so.
+- **On Linux, a headless session starts on its own virtual display.** The
+  display counted as ready as soon as its lockfile existed, which Xvfb writes
+  before it opens its sockets: sessions started together could land on each
+  other's display, and an Xvfb that died opening its sockets passed for alive,
+  so the browser failed with `cannot open display`. That was 19 failures and
+  9 errors in one run of this package's Linux e2e suite, and none with the
+  core below. The display is also no longer reachable over TCP.
+
+### Requires
+- `invisible-core` 34.32.0, which carries the display fix. Same engine
+  (firefox-34).
 
 ## [0.25.7] - 2026-09-25
 
