@@ -45,11 +45,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   root the request failed with `NS_ERROR_UNEXPECTED`. It now presses
   `Delete`, as Playwright does: the page gets the trusted `InputEvent`
   (`deleteContentForward`) a user's Delete gives, and `change` waits for blur.
-- **`set_input_files` works on a hidden file input.** It asked the input for
-  a point it never uses, and an input with `display:none` has none, so it
-  timed out: a file chooser opened from the usual styled button in front of a
-  hidden `<input type=file>` could not receive its files through `set_files`
-  or `set_input_files`.
+- **`set_input_files`, `focus`, `blur` and `dispatch_event` work on a hidden
+  element.** Each asked the element for a point it never uses, and an element
+  with `display:none` has none, so the action timed out: a file chooser
+  opened from the usual styled button in front of a hidden
+  `<input type=file>` could not receive its files through `set_files` or
+  `set_input_files`. The four act on a hidden element now, as they do in
+  Playwright.
 
 ## [0.25.7] - 2026-09-25
 

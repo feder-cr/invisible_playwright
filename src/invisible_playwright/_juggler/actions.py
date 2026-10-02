@@ -242,6 +242,12 @@ class Actions:
         `set_files`. Such an action gets the element and no point: no scroll,
         no hit test, nothing a hidden element cannot satisfy.
 
+        ⛔ AND IT IS A PROPERTY OF THE ACTION, NOT OF FILE INPUTS: every action
+        whose `states` are empty declared that it needs no visibility, and the
+        quad put the requirement back. `focus`, `blur` and `dispatch_event` on
+        a `display:none` element timed out the same way, 4 s out of 4, where
+        Playwright performs all three; they pass `needs_point=False` too.
+
         ⛔ `position` travels HERE and not through each action, because the
         point is recomputed on every turn of this loop: an offset applied by
         the caller once would be stale the moment the page moved, which is
@@ -703,7 +709,7 @@ class Actions:
                 f, "(injected, el) => injected.focusNode(el, true)",
                 {"objectId": element})
         return self._retry(selector, run, states=[], timeout=timeout, frame_id=frame_id,
-                           element_id=element_id, **opts)
+                           element_id=element_id, needs_point=False, **opts)
 
     def blur(self, selector: str, *, timeout: float = 30.0,
              frame_id: Optional[str] = None, **opts):
@@ -714,7 +720,7 @@ class Actions:
                 "'error:notconnected'; el.blur(); return 'done'; }",
                 {"objectId": element})
         return self._retry(selector, run, states=[], timeout=timeout, frame_id=frame_id,
-                           **opts)
+                           needs_point=False, **opts)
 
     def select_text(self, selector: str, *, timeout: float = 30.0,
                     frame_id: Optional[str] = None, **opts):
@@ -771,7 +777,7 @@ class Actions:
                 f, "(injected, el, t, d) => injected.dispatchEvent(el, t, d)",
                 {"objectId": element}, event_type, detail or {})
         return self._retry(selector, run, states=[], timeout=timeout, frame_id=frame_id,
-                           **opts)
+                           needs_point=False, **opts)
 
     def press(self, selector: str, key: str, *, timeout: float = 30.0,
               frame_id: Optional[str] = None,
