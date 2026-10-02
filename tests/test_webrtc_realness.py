@@ -508,15 +508,44 @@ def test_not_blocked_behind_tcp_only_socks(socks5_tcp_only):
     # the SOCKS proxy - that's the Fix C regression this sentinel exists to catch.
     assert cands, "behind SOCKS the gather returned ZERO candidates - Fix C regressed (blocked)"
     assert host_is_mdns(cands)
-    # The synthetic srflx (= fake egress) needs the remote origin to load FULLY
-    # through the proxy so the WebRTC proxy config engages. That path is
-    # environment-sensitive (it doesn't always engage on a datacenter CI box even
-    # though host candidates gather), so treat a missing srflx as a skip, not a
-    # failure - the local run validates it where the path is real.
-    if not any(c["address"] == _FAKE_EGRESS for c in srflx_candidates(cands)):
-        pytest.skip("synthetic srflx not engaged in this environment "
-                    "(needs the remote origin fully through the proxy); validated locally")
+    # A missing synthetic srflx used to be a skip, blamed on "a datacenter CI
+    # box". That was wrong, and the skip hid a real defect on every Linux run:
+    # behind a SOCKS proxy with remote DNS the document channel reports
+    # 0.0.0.0 as the server address, and Firefox hands that wildcard to nICEr's
+    # default-route probe. Windows refuses a UDP connect() to 0.0.0.0, so Fix C
+    # fires and the synthetic srflx is born; Linux accepts it and answers
+    # 127.0.0.1, so Fix C never fired, no srflx was born, and real sites saw
+    # WebRTC as blocked. firefox-35 rejects a wildcard target in nICEr itself,
+    # so Linux takes the Windows path. From that engine on, a missing srflx is
+    # the defect this sentinel exists for, on every platform, and it FAILS.
+    # Only an engine older than firefox-35 still skips, naming the known defect.
+    srflx = [c for c in srflx_candidates(cands) if c["address"] == _FAKE_EGRESS]
+    if not srflx:
+        revision = _engine_revision()
+        if revision is not None and revision < 35:
+            pytest.skip(f"engine firefox-{revision} predates the nICEr wildcard "
+                        "fix: behind SOCKS on Linux no synthetic srflx is born "
+                        "(known defect B236, fixed in firefox-35)")
+        pytest.fail("behind SOCKS the gather has no synthetic srflx with "
+                    f"{_FAKE_EGRESS} on engine {_engine_tag()}: real sites see "
+                    f"WebRTC as blocked (B236). Candidates: {res['candidates']}")
     assert creep_get_ipaddress(res["sdp"]) == _FAKE_EGRESS
+
+
+def _engine_tag() -> str:
+    """The release tag of the engine just launched. The launch refuses a binary
+    the active seal does not describe (`verify_engine`), so after a launch the
+    active seal's tag IS the binary's revision."""
+    from invisible_core.seal import active_seal
+    return active_seal().tag
+
+
+def _engine_revision():
+    """N for a `firefox-N` tag (a local seal may append to it, as in
+    `firefox-34-prfix`), or None when the tag says no revision. None never
+    buys a skip: an engine that cannot say it is old is judged as a new one."""
+    m = re.match(r"firefox-(\d+)", _engine_tag())
+    return int(m.group(1)) if m else None
 
 
 # ──────────────────────────────────────────────────────────────────────────

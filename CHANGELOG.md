@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+- **`select_option`, and `fill` on a field whose value is picked rather than
+  typed (`date`, `time`, `color`, `range`...), let the engine commit the value
+  through Firefox's own user path** (`Page.selectOptions`, `Page.setUserInput`).
+  Firefox then fires `input` and `change` itself, with the flags a user's change
+  has (not `cancelable`), and nothing at all when a select did not change. The
+  page-side script used to set the value and ask the engine for hand-built
+  trusted events afterwards (`Page.dispatchTrustedInputEvents`): those came out
+  `cancelable`, and inside a shadow root the request failed with
+  `NS_ERROR_UNEXPECTED`, so a `<select>` or a date field in a web component
+  could not be set at all. This needs the firefox-35 engine, which drops
+  `Page.dispatchTrustedInputEvents`; on firefox-34 these two actions fail with
+  an unknown-command error.
+
+### Tests
+- The WebRTC sentinel behind a TCP-only SOCKS proxy no longer skips a missing
+  synthetic srflx on firefox-35 and later: it fails. The skip blamed the CI
+  machine and hid a Linux defect, where Firefox handed the proxy's wildcard
+  address to the default-route probe and the fallback never fired.
+
 ## [0.25.8] - 2026-10-02
 
 ### Added

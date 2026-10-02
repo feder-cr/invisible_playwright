@@ -6,9 +6,11 @@ name: webrtc-e2e
 # carries the WebRTC fixes (synthetic srflx in genuine nICEr form + the
 # default-route fallback behind a proxy). Run it after publishing such a
 # binary - it is the release gate for "WebRTC looks real behind a proxy".
-# Until that binary ships, test_not_blocked_behind_tcp_only_socks is EXPECTED
-# to fail (the old binary is fully blocked behind a SOCKS proxy), which is the
-# whole point of the gate.
+# On this Linux runner an engine older than firefox-35 never gets the synthetic
+# srflx behind a SOCKS proxy (the wildcard default-route probe, fixed in
+# firefox-35): test_not_blocked_behind_tcp_only_socks skips on it, naming that
+# defect, and the floor below turns the skip red. From firefox-35 on, a
+# missing srflx fails the test itself.
 #
 # No external proxy provider, no credentials: the "behind a proxy" condition is faked by an
 # in-process TCP-only SOCKS5 server (refuses UDP ASSOCIATE) and the egress IP
