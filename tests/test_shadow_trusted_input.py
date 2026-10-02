@@ -88,3 +88,76 @@ def test_fill_empty_clears_with_a_keystroke(page, selector, how):
     # and a contenteditable never fires one.
     assert [(e["type"], e["cls"], e["inputType"], e["trusted"]) for e in events] == [
         ("input", "InputEvent", "deleteContentForward", True)]
+
+
+# -- the events the ENGINE dispatches: a set value, and a select ------------
+#
+# `select_option`, and `fill` on a field whose value is SET rather than typed
+# (`date`, `color`, `range`...), ask the engine for the events with
+# `Page.dispatchTrustedInputEvents`. Up to firefox-34 the engine delivered them
+# through a route that takes the target's uncomposed document: null for any
+# node inside a shadow root, so every `<select>` or set-value field in a web
+# component failed with NS_ERROR_UNEXPECTED, and in the document the events
+# came out `cancelable`, which no user's change is. The engine now dispatches
+# them straight at the element with the init dict Firefox itself uses, and
+# these cases are red on any engine without that.
+
+#: What Firefox 151 itself fires when a user changes a select or a field,
+#: measured with keyboard input on this engine: both bubble, neither is
+#: cancelable, only `input` is composed (HTML spec says the same).
+NATIVE = {"input": {"bubbles": True, "cancelable": False, "composed": True},
+          "change": {"bubbles": True, "cancelable": False, "composed": False}}
+
+
+def _assert_native(events):
+    for e in events:
+        assert e["trusted"] is True, e
+        assert e["cls"] == "Event", e
+        flags = {k: e[k] for k in ("bubbles", "cancelable", "composed")}
+        assert flags == NATIVE[e["type"]], e
+
+
+def _assert_shadow_delivery(page, target):
+    inside = _seen(page, "shadow")
+    assert [(e["type"], e["target"]) for e in inside] == [
+        ("input", target), ("change", target)]
+    _assert_native(inside)
+    # From the document, `input` is retargeted to the host and `change`,
+    # which is not composed, never leaves the shadow root.
+    outside = _seen(page, "document")
+    assert [(e["type"], e["target"]) for e in outside] == [("input", "state")]
+    _assert_native(outside)
+
+
+@pytest.mark.e2e
+@pytest.mark.parametrize("how", ["value", "label"])
+def test_select_option_inside_open_shadow_root(page, how):
+    selected = page.select_option(
+        "#state >> #select", **{how: "TX" if how == "value" else "Texas"})
+
+    assert selected == ["TX"]
+    assert page.eval_on_selector("#state >> #select", "el => el.value") == "TX"
+    _assert_shadow_delivery(page, "select")
+
+
+@pytest.mark.e2e
+def test_fill_set_value_inside_open_shadow_root(page):
+    page.fill("#state >> #date", "2026-09-30")
+
+    assert page.eval_on_selector("#state >> #date", "el => el.value") == "2026-09-30"
+    _assert_shadow_delivery(page, "date")
+
+
+@pytest.mark.e2e
+def test_light_dom_events_carry_native_flags(page, tmp_path):
+    sample = tmp_path / "sample.txt"
+    sample.write_bytes(b"x")
+
+    page.select_option("#light", value="TX")
+    page.set_input_files("#light-file", str(sample))
+
+    events = _seen(page, "document")
+    assert [(e["type"], e["target"]) for e in events] == [
+        ("input", "light"), ("change", "light"),
+        ("input", "light-file"), ("change", "light-file")]
+    _assert_native(events)

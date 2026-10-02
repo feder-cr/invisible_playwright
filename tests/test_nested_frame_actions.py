@@ -22,6 +22,7 @@ needs, at a fraction of the browsers. Each case is one browser, headless.
 from __future__ import annotations
 
 import json
+import sqlite3
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -556,3 +557,151 @@ def test_pointer_at_large_offset_with_dpr(firefox_binary, nested_origins, wire,
             center = [round(rect["x"] + rect["width"]/2),
                       round(rect["y"] + rect["height"]/2)]
             assert [round(clicks[0]["x"]), round(clicks[0]["y"])] != center
+
+
+# -- a SAVED PAGE ZOOM: the engine's coordinates, not ours -------------------
+#
+# A persistent profile restores a site's page zoom (`browser.content.full-zoom`
+# in content-prefs.sqlite) with no CSS `zoom` anywhere, and up to firefox-34
+# the engine's trusted input did not account for it: the click went to the
+# unzoomed point, in a nested frame sometimes to the parent document. A device
+# scale (`screen.dpr`, above) is a different thing and was already right.
+# Nothing in Python may correct this by multiplying coordinates; the engine
+# that carries the page-zoom input correction makes these green, and they are
+# red on any engine without it.
+
+def _save_site_zoom(profile_dir, zoom):
+    # Firefox's ContentPrefService2 schema v6, in a disposable test profile.
+    # This is browser zoom, not CSS zoom or the fingerprint's device scale.
+    with sqlite3.connect(profile_dir / "content-prefs.sqlite") as db:
+        db.executescript("""
+            PRAGMA user_version = 6;
+            CREATE TABLE groups (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+            CREATE TABLE settings (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+            CREATE TABLE prefs (id INTEGER PRIMARY KEY,
+                groupID INTEGER REFERENCES groups(id),
+                settingID INTEGER NOT NULL REFERENCES settings(id),
+                value BLOB, timestamp INTEGER NOT NULL DEFAULT 0);
+            CREATE INDEX groups_idx ON groups(name);
+            CREATE INDEX settings_idx ON settings(name);
+            CREATE INDEX prefs_idx ON prefs(timestamp, groupID, settingID);
+            INSERT INTO groups VALUES (1, '127.0.0.1');
+            INSERT INTO settings VALUES (1, 'browser.content.full-zoom');
+        """)
+        db.execute("INSERT INTO prefs (groupID, settingID, value) VALUES (1, 1, ?)", (zoom,))
+
+
+def _zoomed_session(firefox_binary, profile_dir, *, dpr, humanize, width=3200,
+                    height=1800):
+    from invisible_playwright import InvisiblePlaywright
+
+    return InvisiblePlaywright(
+        seed=20260929, binary_path=firefox_binary, humanize=humanize, headless=True,
+        timezone="America/Chicago", locale="en-US", profile_dir=profile_dir,
+        pin={"screen.dpr": dpr, "screen.width": width, "screen.height": height},
+    )
+
+
+@pytest.mark.e2e
+@pytest.mark.parametrize("dpr,zoom", [(1.25, 1.2), (1, 0.5)])
+def test_zoomed_binary_motion_and_wheel(firefox_binary, nested_origins, tmp_path,
+                                        monkeypatch, dpr, zoom):
+    """The binary cursor's moves and a wheel land on the input under a saved
+    zoom, in and out, combined with a fractional device scale."""
+    monkeypatch.setenv("INVPW_CURSOR_ENGINE", "binary")
+    _save_site_zoom(tmp_path, zoom)
+    with _zoomed_session(firefox_binary, tmp_path, dpr=dpr, humanize=True) as context:
+        page = _timed(context.new_page())
+        page.goto(nested_origins["origin"] + "/dpr-document")
+        page.wait_for_function(
+            "dpr => Math.abs(devicePixelRatio - dpr) < 0.00001", arg=dpr * zoom)
+        locator = page.locator("input")
+        page.evaluate("""() => {
+            const el = document.querySelector('input');
+            window.moves = [];
+            window.wheels = [];
+            document.addEventListener('mousemove', e => moves.push(
+                {x:e.clientX, y:e.clientY, trusted:e.isTrusted}));
+            el.addEventListener('wheel', e => {
+                wheels.push({x:e.clientX, y:e.clientY, trusted:e.isTrusted,
+                             deltaY:e.deltaY});
+                e.preventDefault();
+            }, {passive:false});
+        }""")
+        locator.click()
+        page.mouse.wheel(0, 80)
+        page.wait_for_function("wheels.length > 0")
+        rect = locator.evaluate("el => el.getBoundingClientRect().toJSON()")
+        events = page.evaluate("({moves, wheels})")
+        assert len(events["moves"]) > 1
+        assert len(events["wheels"]) == 1
+        # Preserve sendWheelEvent's existing device-pixel delta semantics.
+        assert events["wheels"][0]["deltaY"] == pytest.approx(80 / (dpr * zoom))
+        for event in (events["moves"][-1], events["wheels"][0]):
+            assert event["trusted"]
+            assert rect["left"] <= event["x"] <= rect["right"]
+            assert rect["top"] <= event["y"] <= rect["bottom"]
+
+
+@pytest.mark.e2e
+@pytest.mark.parametrize("zoom,mode,nested,humanize", [
+    (1.2, "document", False, False),
+    (1.2, "closed", True, True),
+    (1.5, "open", True, False),
+    (1.5, "document", False, True),
+    (2, "closed", False, False),
+    (2, "open", True, True),
+])
+def test_pointer_with_saved_site_zoom(firefox_binary, nested_origins, tmp_path, wire,
+                                      zoom, mode, nested, humanize):
+    _save_site_zoom(tmp_path, zoom)
+    with _zoomed_session(firefox_binary, tmp_path, dpr=1, humanize=humanize) as context:
+        page = _timed(context.new_page())
+        path = "/dpr-top-" if nested else "/dpr-"
+        page.goto(nested_origins["origin"] + path + mode)
+        page.wait_for_function("z => Math.abs(devicePixelRatio - z) < 0.00001", arg=zoom)
+        frame = frames(page)[1] if nested else page.main_frame
+        assert frame.evaluate("devicePixelRatio") == pytest.approx(zoom)
+        locator = frame.locator("input")
+        rect = locator.evaluate("el => el.getBoundingClientRect().toJSON()")
+        try:
+            locator.click()
+        finally:
+            print(json.dumps({
+                "dpr": frame.evaluate("devicePixelRatio"), "zoom": zoom,
+                "mode": mode, "nested": nested, "humanize": humanize,
+                "rect": rect, "wire": wire, "events": frame.evaluate("recorded"),
+            }, indent=2))
+        clicks = frame.evaluate(
+            "recorded.filter(e => e.type === 'click' && e.target === 'input')")
+        assert len(clicks) == 1
+        assert clicks[0]["trusted"]
+        assert rect["left"] <= clicks[0]["x"] <= rect["right"]
+        assert rect["top"] <= clicks[0]["y"] <= rect["bottom"]
+
+
+@pytest.mark.e2e
+def test_saved_zoom_does_not_send_child_click_to_parent(
+    firefox_binary, nested_origins, tmp_path,
+):
+    _save_site_zoom(tmp_path, 1.2)
+    with _zoomed_session(firefox_binary, tmp_path, dpr=1, humanize=False) as context:
+        page = _timed(context.new_page())
+        page.goto(nested_origins["top"])
+        page.wait_for_function("Math.abs(devicePixelRatio - 1.2) < 0.00001")
+        page.locator("#payment").evaluate("el => el.style.marginLeft = '700px'")
+        payment, widget = frames(page)
+        payment.locator("#widget").evaluate("el => el.style.marginLeft = '200px'")
+        payment.evaluate("""() => {
+            window.recorded = [];
+            document.addEventListener('mousedown', e => recorded.push(
+                {target:e.target.nodeName, x:e.clientX, y:e.clientY,
+                 trusted:e.isTrusted}), true);
+        }""")
+        try:
+            widget.locator("#checkbox").click()
+        finally:
+            print("payment events:", payment.evaluate("recorded"))
+            print("widget clicks:", widget.evaluate("clicks"))
+        assert widget.evaluate("clicks") == [True]
+        assert payment.evaluate("recorded") == []
