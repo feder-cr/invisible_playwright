@@ -7211,9 +7211,11 @@ var InjectedScript = class {
     }
     if (remainingOptionsToSelect.length)
       return "error:optionsnotfound";
-    select.value = void 0;
-    selectedOptions.forEach((option) => option.selected = true);
-    return selectedOptions.map((option) => option.value);
+    // MODIFIED by invisible_playwright: resolves, does not select. The engine
+    // selects through the dropdown's own path (Page.selectOptions), which is
+    // what makes Firefox fire `input`/`change` itself.
+    return { indices: selectedOptions.map((option) => options.indexOf(option)),
+             values: selectedOptions.map((option) => option.value) };
   }
   fill(node, value) {
     const element = this.retarget(node, "follow-label");
@@ -7236,10 +7238,10 @@ var InjectedScript = class {
       if (kInputTypesToSetValue.has(type)) {
         value = value.trim();
         input.focus();
-        input.value = value;
-        if (input.value !== value)
-          throw this.createStacklessError("Malformed value");
-        return "done";
+        // MODIFIED by invisible_playwright: does not set the value. The engine
+        // commits it through Firefox's user path (Page.setUserInput), which
+        // refuses a malformed value before the page sees anything.
+        return { setUserInput: value };
       }
     } else if (element.nodeName.toLowerCase() === "textarea") {
     } else if (!element.isContentEditable) {

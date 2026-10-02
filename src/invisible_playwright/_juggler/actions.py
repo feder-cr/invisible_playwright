@@ -748,11 +748,11 @@ class Actions:
                       element_id: Optional[str] = None, **opts):
         """`select_option`. Options are given by value, label or index.
 
-        ⛔ And the `input`/`change` events are requested from the TRUSTED
-        command after the mutation, same as for `fill`: without it, a
-        `<select>` changes value and the page doesn't know it - and if the
-        injected script dispatched them they would come out with
-        `isTrusted: false`, which is [B175].
+        ⛔ The injected script only RESOLVES which options are meant; the
+        engine selects them through the dropdown's own path
+        (`Page.selectOptions`), so Firefox fires `input`/`change` itself, and
+        fires nothing when the selection did not change. Selected from the
+        page they came out with `isTrusted: false`, which is [B175].
         """
         wanted = _normalize_options(options)
 
@@ -762,8 +762,11 @@ class Actions:
                 {"objectId": element}, wanted)
             if isinstance(r, str) and r.startswith("error:"):
                 raise EvaluationError("selectOptions: %s" % r)
-            self._trusted_events(f, element, ["input", "change"])
-            return r
+            self.c.send("Page.selectOptions",
+                        {"frameId": f, "objectId": element,
+                         "indices": r["indices"]},
+                        session=self.session, timeout=10)
+            return r["values"]
         return self._retry(selector, run,
                            states=["visible", "stable", "enabled"],
                            timeout=timeout, frame_id=frame_id,
@@ -1071,17 +1074,20 @@ class Actions:
         """Writes into a field.
 
         ⛔ It doesn't just write `element.value = ...`: a site listening
-        for `input`/`change` would see nothing. The injected script does
-        the mutation and says what's needed next - `needsinput` if the
-        text still needs typing, `done` if the value was set and only the
-        events are missing. And those events are requested from
-        `Page.dispatchTrustedInputEvents`, or they come out with
-        `isTrusted: false`, which is the tell measured in [B175].
+        for `input`/`change` would see nothing. The injected script says
+        what's needed - `needsinput` if the text has to be typed, or
+        `{"setUserInput": value}` for a control a user sets by picking
+        (date, color, range...). That value is committed by the ENGINE
+        through Firefox's own user path (`Page.setUserInput`), so Firefox
+        fires the events with the shape a user's pick gets; built here or in
+        the page they came out untrusted ([B175]) or with the wrong shape.
 
         ⛔ AND THE FIRST KEY DOES NOT FOLLOW THE FOCUS IN THE SAME BREATH:
         `_reach_field` stands between them, before the injected script
         selects what the field holds, so what gets selected and replaced is
-        what the page left there once it had answered the focus.
+        what the page left there once it had answered the focus. A picked
+        value waits the same: the person who focuses a date field does not
+        commit a date in the same millisecond either.
         """
         deadline = time.monotonic() + timeout
 
@@ -1092,7 +1098,12 @@ class Actions:
                 {"objectId": element}, text)
             if isinstance(result, str) and result.startswith("error:"):
                 raise EvaluationError("fill: %s" % result)
-            if result == "needsinput":
+            if isinstance(result, dict) and "setUserInput" in result:
+                self.c.send("Page.setUserInput",
+                            {"frameId": f, "objectId": element,
+                             "value": result["setUserInput"]},
+                            session=self.session, timeout=10)
+            elif result == "needsinput":
                 if text:
                     self._type(text)
                 else:
@@ -1105,8 +1116,6 @@ class Actions:
                     # `change` no user can produce, and inside a shadow root
                     # firefox-34 refused the request (NS_ERROR_UNEXPECTED).
                     self.keyboard.press("Delete")
-            else:
-                self._trusted_events(f, element, ["input", "change"])
             return result
         return self._retry(selector, run, element_id=element_id,
                            states=["visible", "stable", "enabled",
@@ -1230,16 +1239,3 @@ class Actions:
             # error mid-typing would get swallowed and the text
             # reinserted from scratch, doubling what had already gone in.
             self.keyboard.insert_text(text)
-
-    def _trusted_events(self, frame_id: str, element: str, types: list):
-        """⛔ Goes through the command our OWN fork added to Juggler.
-
-        Dispatching from the injected script would produce `isTrusted:
-        false`, and mixing trusted and untrusted events on the same form
-        is a cheaper tell than any single signal: no enumeration API, just
-        one `addEventListener`. Measured in [B175].
-        """
-        self.c.send("Page.dispatchTrustedInputEvents",
-                    {"frameId": frame_id, "objectId": element,
-                     "types": types},
-                    session=self.session, timeout=10)
