@@ -18,7 +18,8 @@ types at a fixed interval has a single spike. The spike is the signal.
 
 This page is about the behavioural layer, not the fingerprint one. It answers the
 question honestly: a real browser emitting real key events gets you past every check
-that reads the *events*, and none of the checks that read the *rhythm*. The rhythm is
+that reads the *events*, and a real event says nothing about the *rhythm*. Inside one
+typing call the package keeps a rhythm of its own; between your calls the rhythm is
 code you write, and this page is about writing it well.
 
 ## Yes, and it is a different question from your fingerprint
@@ -38,9 +39,12 @@ because the engine does not decide when your loop calls the next keypress. You d
 
 invisible_playwright is built to answer the first question the way a real browser does.
 It drives a genuine Firefox, patched at the C++ level, so the key events are real,
-OS-level, trusted events rather than synthesized DOM dispatches. It does nothing about
-the second question, and it cannot, which is the honest and slightly annoying core of
-this whole topic.
+OS-level, trusted events rather than synthesized DOM dispatches. It answers part of the
+second question too: with `humanize` on, which is the default, `fill()`, `type()` and
+`press_sequentially()` hold each key and wait between keys on a rhythm drawn from the
+session's seed, and pause before the first key of a field. What it cannot pace is your
+loop, the time between one call and the next, and that is the honest and slightly
+annoying core of this whole topic.
 
 ## What a keystroke detector actually measures
 
@@ -150,10 +154,16 @@ stops to think, which a flat jitter never does. If you want dwell variance too, 
 some keys fractionally longer by pressing `down` and `up` separately with a short sleep
 between them, rather than the atomic `press`.
 
-The seed still does its job here. `seed=42` fixes the fingerprint so the *machine* is
-reproducible; the typing rhythm is deliberately not seeded, because the point of a
-rhythm is that it differs every time. If you need a failing run to be reproducible while
-you debug, seed the `random` module too, and unseed it in production.
+The seed does two jobs here. `seed=42` fixes the fingerprint, so the *machine* is
+reproducible, and it fixes the package's own typist: how long each key is held, the gaps
+inside a `type()` call made without a `delay`, and the pause before a field's first key
+are all drawn from it. Measured on one machine, two sessions with seed 42 typing the same
+text opened with gaps of 221, 111, 105, 162, 76 and 303 ms and of 209, 103, 99, 163, 77
+and 303 ms, the same draw under a few milliseconds of latency, while seed 43 opened with
+104, 89, 160, 59, 142 and 456. Inside one session nothing repeats: each field, each call
+and each tab gets its own draw. The `random` calls in `human_type` above are yours, and
+nothing seeds them. If you need a failing run of that loop to be reproducible while you
+debug, seed the `random` module too, and unseed it in production.
 
 ## What invisible_playwright fixes here, and what it does not
 
@@ -167,9 +177,10 @@ from a physical keyboard. The fingerprint, the TLS handshake and the driver laye
 read as a genuine Firefox, which is *why* the browser passes most detection: it is not
 pretending to be real, it is real. That is the whole design.
 
-What it does not fix, and cannot: the cadence. The browser cannot make your loop pause
-like a person, because your loop is upstream of the browser. If you script a uniform
-`delay`, you ship a uniform histogram, and a genuine browser emitting it does not make
+What it does not fix, and cannot: the cadence of your loop. The package paces the keys
+inside one typing call; it cannot make the time between your calls look like a person,
+because your loop is upstream of the browser. If you script a uniform sleep between
+presses, you ship a uniform histogram, and a genuine browser emitting it does not make
 it look human. The same honesty applies to everything outside the browser process. A
 real browser does not clean up a datacenter IP, reset a per-account quota, respect a
 rate limit, or slow down a session that clicks faster than a person reads. Those are
@@ -202,8 +213,8 @@ identical gaps, which is the single strongest bot signal there is. Real events, 
 rhythm.
 
 **Is the problem that the events are fake?** Not with invisible_playwright. The events
-are real, trusted, OS-level key events. The problem is purely the timing, which you
-control.
+are real, trusted, OS-level key events. The problem is the timing: inside one typing
+call the package draws it from the session's seed, and between your calls it is yours.
 
 **What distribution should I use for the gaps?** A right-skewed one, centred around
 100 to 130 ms with a long tail, plus an occasional longer stall. Not a flat uniform
