@@ -108,7 +108,9 @@ def test_a_full_navigation_still_announces_its_document():
                            {"frameId": "F1", "navigationId": "N1",
                             "url": "http://127.0.0.1/other"})
 
-    (method, params), = frame.emitted
+    # A new document also resets the frame's load states around the event;
+    # this test is about the `navigated` one.
+    (method, params), = [e for e in frame.emitted if e[0] == "navigated"]
     assert method == "navigated"
     assert params["url"] == "http://127.0.0.1/other"
     assert "newDocument" in params, params

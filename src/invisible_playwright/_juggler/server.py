@@ -336,13 +336,19 @@ class ElementHandleDispatcher(Dispatcher):
             self.frame.frame_id, self.object_id)}
 
     def op_check_hit_target(self, params: Dict) -> Any:
-        return {"value": self.injected.call(
-            self.frame.frame_id,
-            "(injected, el, p) => { const r = el.getBoundingClientRect();"
-            " return injected.checkHitTarget(el, {"
-            " x: r.left + p.x * r.width, y: r.top + p.y * r.height"
-            " }) === 'done'; }",
-            {"objectId": self.object_id}, params["point"])}
+        """Would an event at this MAIN-FRAME point land on this element?
+
+        ⛔ NOT A PLAYWRIGHT METHOD: the humanised cursor (`_cursor._hits`) is
+        its only caller, asking about the off-centre point it is about to aim
+        at. The point is in the space `boundingBox` answers in, and the answer
+        is the one the action's own check gives (`Actions.hit_target`): the
+        same frame shift, the same shadow-aware test. A second hit test here
+        would be a second definition of where a click lands.
+        """
+        point = params["point"]
+        return {"value": self.page.actions.hit_target(
+            self.frame.frame_id, self.object_id,
+            (float(point["x"]), float(point["y"]))) == "done"}
 
     def op_evaluate(self, params: Dict) -> Any:
         """`handle.evaluate(fn, arg)` - and the SECOND argument is the point.
@@ -1267,13 +1273,7 @@ class FrameDispatcher(Dispatcher):
         parent = self.parent_frame
         if parent is None:
             raise ProtocolException("Frame has been detached or has no parent")
-        # Omitting objectId asks Juggler for this frame's owner element;
-        # its handle must be created in the parent's utility world.
-        result = self.page.send("Page.adoptNode", {
-            "frameId": self.frame_id,
-            "executionContextId": self.injected.context_id(parent.frame_id),
-        })
-        object_id = (result.get("remoteObject") or {}).get("objectId")
+        object_id = self.injected.adopt(self.frame_id, into=parent.frame_id)
         if not object_id:
             raise ProtocolException("Frame has been detached")
         handle = ElementHandleDispatcher(self.server, parent, object_id)
@@ -2049,7 +2049,7 @@ class PageDispatcher(Dispatcher):
                 # Saying nothing loses the event; saying the wrong thing loses
                 # the trust in every event.
                 return
-            adopted = self.injected.adopt(frame_id, context_id, object_id)
+            adopted = self.injected.adopt(frame_id, object_id)
             if not adopted:
                 return
             frame = self.frame_for(frame_id)

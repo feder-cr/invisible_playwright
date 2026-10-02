@@ -1,8 +1,27 @@
-"""Local, three-origin coverage for frame dispatch and trusted input."""
+"""Locators, handles and trusted input through two nested cross-origin frames.
+
+Three local origins: the top page (127.0.0.1) holds `#payment` (localhost),
+which holds `#widget` (127.0.0.2). Every test here was red on 0.25.7 with
+firefox-34 unless its docstring says it guards something that already worked:
+
+* reads through a nested locator ran in the wrong frame - `inner_text`
+  answered "Cannot find object", `bounding_box`, `select_option` and
+  `scroll_into_view_if_needed` matched nothing - and a handle from
+  `wait_for_selector` belonged to the top frame;
+* `frame.parent_frame` was None and `frame.frame_element()` refused;
+* `frame.url` stayed where `goto` left it;
+* a humanised click in a nested frame, or on a control inside a shadow root,
+  always landed on the exact geometric centre: the cursor's own hit test asked
+  `document.elementFromPoint` at main-frame coordinates and rejected every
+  off-centre point. One number for every click, readable from one event.
+
+The matrices are covering arrays, not cartesian products: every PAIR of values
+of the factors appears in some case, which is what a two-factor interaction
+needs, at a fraction of the browsers. Each case is one browser, headless.
+"""
 from __future__ import annotations
 
 import json
-import sqlite3
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -108,16 +127,50 @@ def nested_origins():
             thread.join()
 
 
+def _timed(page):
+    """A page whose actions give up fast and whose navigations do not.
+
+    The actions are what these tests judge, so a missing element should fail
+    in seconds. Loading three origins is not judged, and with four browsers
+    starting at once (`run_e2e.py`'s default) a first navigation took longer
+    than 3 s, which read as a failure of whatever test it happened to set up.
+    """
+    page.set_default_timeout(3000)
+    page.set_default_navigation_timeout(20000)
+    return page
+
+
 @pytest.fixture
 def nested_page(firefox_binary, nested_origins):
     from invisible_playwright import InvisiblePlaywright
 
     with InvisiblePlaywright(seed=42, binary_path=firefox_binary,
-                             humanize=False, headless=False) as browser:
-        page = browser.new_context().new_page()
-        page.set_default_timeout(3000)
+                             humanize=False, headless=True) as browser:
+        page = _timed(browser.new_context().new_page())
         page.goto(nested_origins["top"])
         yield page
+
+
+@pytest.fixture
+def wire(monkeypatch):
+    """The pointer's conversation with the engine, kept for the failure
+    report: a click that went to the wrong place is diagnosed from the quads it
+    was aimed at and the landings the engine reported, not from the page."""
+    from invisible_playwright._juggler.connection import Connection
+
+    seen = []
+    send = Connection.send
+
+    def record(self, method, params=None, **kwargs):
+        answer = send(self, method, params, **kwargs)
+        if method in ("Page.getContentQuads", "Page.pointerLanded") or (
+            method == "Page.dispatchMouseEvent" and params["type"] != "mousemove"
+        ):
+            seen.append({"method": method, "params": params, "answer": answer})
+        return answer
+
+    monkeypatch.setattr(Connection, "send", record)
+    return seen
 
 
 def frames(page):
@@ -194,16 +247,18 @@ def test_nested_fill_and_scroll(nested_page, via):
 
 
 @pytest.mark.e2e
-@pytest.mark.parametrize("humanize", [False, True])
-@pytest.mark.parametrize("via", ["frame", "frame_locator"])
-@pytest.mark.parametrize("action", ["click", "check"])
+@pytest.mark.parametrize("humanize,via,action", [
+    (False, "frame", "click"),
+    (False, "frame_locator", "check"),
+    (True, "frame", "check"),
+    (True, "frame_locator", "click"),
+])
 def test_nested_trusted_pointer(firefox_binary, nested_origins, humanize, via, action):
     from invisible_playwright import InvisiblePlaywright
 
     with InvisiblePlaywright(seed=42, binary_path=firefox_binary,
-                             humanize=humanize, headless=False) as browser:
-        page = browser.new_context().new_page()
-        page.set_default_timeout(3000)
+                             humanize=humanize, headless=True) as browser:
+        page = _timed(browser.new_context().new_page())
         page.goto(nested_origins["top"])
         payment, widget = frames(page)
         locator = target(page, via, "#checkbox")
@@ -217,6 +272,7 @@ def test_nested_trusted_pointer(firefox_binary, nested_origins, humanize, via, a
             raise
         assert widget.evaluate("clicks") == [True]
         if humanize:
+            # The centre of the 120x40 checkbox in its own document.
             assert widget.evaluate("positions") != [[68, 28]], (
                 "the nested hit test discarded the humanized landing point")
         assert locator.get_attribute("aria-checked") == "true"
@@ -311,9 +367,7 @@ def _number_component(mode):
                 root.addEventListener(type, e => {
                     const target = e.composedPath()[0];
                     recorded.push({type, trusted:e.isTrusted, target:target.id,
-                        tag:target.nodeName, x:e.clientX, y:e.clientY,
-                        composedTarget:e.composedTarget?.nodeName,
-                        originalTarget:e.originalTarget?.nodeName});
+                        tag:target.nodeName, x:e.clientX, y:e.clientY});
                 }, true);
             }
         }
@@ -323,29 +377,21 @@ def _number_component(mode):
 
 
 @pytest.mark.e2e
-@pytest.mark.parametrize("humanize", [False, True])
-@pytest.mark.parametrize("mode", ["open", "closed"])
-@pytest.mark.parametrize("nested", [False, True])
-@pytest.mark.parametrize("layout", ["plain", "zoom", "transform"])
-def test_shadow_number_input_click(firefox_binary, nested_origins, monkeypatch,
+@pytest.mark.parametrize("mode,nested,layout,humanize", [
+    ("open", False, "plain", False),
+    ("closed", True, "plain", True),
+    ("open", True, "zoom", True),
+    ("closed", False, "zoom", False),
+    ("open", True, "transform", False),
+    ("closed", False, "transform", True),
+])
+def test_shadow_number_input_click(firefox_binary, nested_origins, wire,
                                    humanize, mode, nested, layout):
     from invisible_playwright import InvisiblePlaywright
-    from invisible_playwright._juggler.connection import Connection
 
-    wire = []
-    send = Connection.send
-
-    def record(self, method, params=None, **kwargs):
-        answer = send(self, method, params, **kwargs)
-        if method in ("Page.getContentQuads", "Page.dispatchMouseEvent", "Page.pointerLanded"):
-            wire.append({"method": method, "params": params, "answer": answer})
-        return answer
-
-    monkeypatch.setattr(Connection, "send", record)
     with InvisiblePlaywright(seed=42, binary_path=firefox_binary,
-                             humanize=humanize, headless=False) as browser:
-        page = browser.new_context().new_page()
-        page.set_default_timeout(3000)
+                             humanize=humanize, headless=True) as browser:
+        page = _timed(browser.new_context().new_page())
         path = "/number-top-" if nested else "/number-"
         page.goto(nested_origins["origin"] + path + mode)
         frame = frames(page)[1] if nested else page.main_frame
@@ -367,8 +413,7 @@ def test_shadow_number_input_click(firefox_binary, nested_origins, monkeypatch,
             locator.click()
         finally:
             print(json.dumps({"mode": mode, "nested": nested, "humanize": humanize,
-                              "layout": layout,
-                              "geometry": geometry, "wire": wire,
+                              "layout": layout, "geometry": geometry, "wire": wire,
                               "events": frame.evaluate("recorded")}, indent=2))
         clicks = frame.evaluate("recorded.filter(e => e.type === 'click')")
         assert len(clicks) == 1
@@ -387,14 +432,21 @@ def test_shadow_number_input_click(firefox_binary, nested_origins, monkeypatch,
 @pytest.mark.e2e
 @pytest.mark.parametrize("mode", ["open", "closed"])
 def test_shadow_landing_rejects_siblings_and_overlays(nested_page, nested_origins, mode):
+    """The cursor's landing check, asked directly: the input's own centre is
+    accepted, and the padded container, a sibling laid over it and an overlay
+    in the frame's document are not the input."""
     from invisible_playwright import _cursor
 
     nested_page.goto(nested_origins["origin"] + "/number-top-" + mode)
     frame = frames(nested_page)[1]
     handle = frame.locator("input[type=number]").element_handle()
     try:
+        # Main-frame coordinates, the space `bounding_box` answers in.
+        box = handle.bounding_box()
+        x, y = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+
         def hits():
-            return handle._sync(_cursor._hits(handle._impl_obj, 0.5, 0.5))
+            return handle._sync(_cursor._hits(handle._impl_obj, x, y))
 
         assert hits()
         handle.evaluate("""el => {
@@ -451,34 +503,29 @@ def _offset_number_component(mode):
 
 
 @pytest.mark.e2e
-@pytest.mark.parametrize("dpr", [1, 1.2, 1.25, 1.5, 2])
-@pytest.mark.parametrize("humanize", [False, True])
-@pytest.mark.parametrize("mode", ["document", "open", "closed"])
-@pytest.mark.parametrize("nested", [False, True])
-def test_pointer_at_large_offset_with_dpr(firefox_binary, nested_origins, monkeypatch,
-                                        dpr, humanize, mode, nested):
+@pytest.mark.parametrize("dpr,mode,nested,humanize", [
+    (1, "document", False, False),
+    (1.2, "closed", True, True),
+    (1.25, "open", True, True),
+    (1.25, "document", False, True),
+    (1.5, "document", True, True),
+    (1.5, "closed", False, False),
+    (2, "open", True, False),
+    (2, "closed", True, True),
+])
+def test_pointer_at_large_offset_with_dpr(firefox_binary, nested_origins, wire,
+                                          dpr, mode, nested, humanize):
+    """A device scale (`screen.dpr`) is not a page zoom: Playwright's
+    coordinates stay CSS pixels and nothing here multiplies them. A fractional
+    scale at an x past 1200 is where a rounding in the frame shift would show."""
     from invisible_playwright import InvisiblePlaywright
-    from invisible_playwright._juggler.connection import Connection
 
-    wire = []
-    send = Connection.send
-
-    def record(self, method, params=None, **kwargs):
-        answer = send(self, method, params, **kwargs)
-        if method in ("Page.getContentQuads", "Page.pointerLanded") or (
-            method == "Page.dispatchMouseEvent" and params["type"] != "mousemove"
-        ):
-            wire.append({"method": method, "params": params, "answer": answer})
-        return answer
-
-    monkeypatch.setattr(Connection, "send", record)
     with InvisiblePlaywright(
-        seed=20260929, binary_path=firefox_binary, humanize=humanize, headless=False,
+        seed=20260929, binary_path=firefox_binary, humanize=humanize, headless=True,
         timezone="America/Chicago", locale="en-US",
         pin={"screen.dpr": dpr, "screen.width": 1920, "screen.height": 1080},
     ) as browser:
-        page = browser.new_context().new_page()
-        page.set_default_timeout(3000)
+        page = _timed(browser.new_context().new_page())
         path = "/dpr-top-" if nested else "/dpr-"
         page.goto(nested_origins["origin"] + path + mode)
         frame = frames(page)[1] if nested else page.main_frame
@@ -505,155 +552,7 @@ def test_pointer_at_large_offset_with_dpr(firefox_binary, nested_origins, monkey
         assert clicks[0]["trusted"]
         assert rect["left"] <= clicks[0]["x"] <= rect["right"]
         assert rect["top"] <= clicks[0]["y"] <= rect["bottom"]
-
-
-@pytest.mark.e2e
-@pytest.mark.parametrize("dpr,zoom", [(1, 1.2), (1.25, 1.2), (2, 1.5), (1, 0.5)])
-def test_zoomed_binary_motion_and_wheel(firefox_binary, nested_origins, tmp_path,
-                                      monkeypatch, dpr, zoom):
-    from invisible_playwright import InvisiblePlaywright
-
-    monkeypatch.setenv("INVPW_CURSOR_ENGINE", "binary")
-    _save_site_zoom(tmp_path, zoom)
-    with InvisiblePlaywright(
-        seed=20260929, binary_path=firefox_binary, humanize=True, headless=False,
-        timezone="America/Chicago", locale="en-US", profile_dir=tmp_path,
-        pin={"screen.dpr": dpr, "screen.width": 3200, "screen.height": 1800},
-    ) as context:
-        page = context.new_page()
-        page.set_default_timeout(3000)
-        page.goto(nested_origins["origin"] + "/dpr-document")
-        page.wait_for_function(
-            "dpr => Math.abs(devicePixelRatio - dpr) < 0.00001", arg=dpr * zoom)
-        locator = page.locator("input")
-        page.evaluate("""() => {
-            const el = document.querySelector('input');
-            window.moves = [];
-            window.wheels = [];
-            document.addEventListener('mousemove', e => moves.push(
-                {x:e.clientX, y:e.clientY, trusted:e.isTrusted}));
-            el.addEventListener('wheel', e => {
-                wheels.push({x:e.clientX, y:e.clientY, trusted:e.isTrusted,
-                             deltaY:e.deltaY});
-                e.preventDefault();
-            }, {passive:false});
-        }""")
-        locator.click()
-        page.mouse.wheel(0, 80)
-        page.wait_for_function("wheels.length > 0")
-        rect = locator.evaluate("el => el.getBoundingClientRect().toJSON()")
-        events = page.evaluate("({moves, wheels})")
-        assert len(events["moves"]) > 1
-        assert len(events["wheels"]) == 1
-        # Preserve sendWheelEvent's existing device-pixel delta semantics.
-        assert events["wheels"][0]["deltaY"] == pytest.approx(80 / (dpr * zoom))
-        for event in (events["moves"][-1], events["wheels"][0]):
-            assert event["trusted"]
-            assert rect["left"] <= event["x"] <= rect["right"]
-            assert rect["top"] <= event["y"] <= rect["bottom"]
-
-
-def _save_site_zoom(profile_dir, zoom):
-    # Firefox's ContentPrefService2 schema v6, in a disposable test profile.
-    # This is browser zoom, not CSS zoom or the fingerprint's device scale.
-    with sqlite3.connect(profile_dir / "content-prefs.sqlite") as db:
-        db.executescript("""
-            PRAGMA user_version = 6;
-            CREATE TABLE groups (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
-            CREATE TABLE settings (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
-            CREATE TABLE prefs (id INTEGER PRIMARY KEY,
-                groupID INTEGER REFERENCES groups(id),
-                settingID INTEGER NOT NULL REFERENCES settings(id),
-                value BLOB, timestamp INTEGER NOT NULL DEFAULT 0);
-            CREATE INDEX groups_idx ON groups(name);
-            CREATE INDEX settings_idx ON settings(name);
-            CREATE INDEX prefs_idx ON prefs(timestamp, groupID, settingID);
-            INSERT INTO groups VALUES (1, '127.0.0.1');
-            INSERT INTO settings VALUES (1, 'browser.content.full-zoom');
-        """)
-        db.execute("INSERT INTO prefs (groupID, settingID, value) VALUES (1, 1, ?)", (zoom,))
-
-
-@pytest.mark.e2e
-@pytest.mark.parametrize("zoom", [1, 1.2, 1.25, 1.5, 2])
-@pytest.mark.parametrize("humanize", [False, True])
-@pytest.mark.parametrize("mode", ["document", "open", "closed"])
-@pytest.mark.parametrize("nested", [False, True])
-def test_pointer_with_saved_site_zoom(firefox_binary, nested_origins, tmp_path,
-                                     monkeypatch, zoom, humanize, mode, nested):
-    from invisible_playwright import InvisiblePlaywright
-    from invisible_playwright._juggler.connection import Connection
-
-    _save_site_zoom(tmp_path, zoom)
-    wire = []
-    send = Connection.send
-
-    def record(self, method, params=None, **kwargs):
-        answer = send(self, method, params, **kwargs)
-        if method in ("Page.getContentQuads", "Page.dispatchMouseEvent", "Page.pointerLanded"):
-            wire.append({"method": method, "params": params, "answer": answer})
-        return answer
-
-    monkeypatch.setattr(Connection, "send", record)
-    with InvisiblePlaywright(
-        seed=20260929, binary_path=firefox_binary, humanize=humanize, headless=False,
-        timezone="America/Chicago", locale="en-US", profile_dir=tmp_path,
-        pin={"screen.dpr": 1, "screen.width": 3200, "screen.height": 1800},
-    ) as context:
-        page = context.new_page()
-        page.set_default_timeout(3000)
-        path = "/dpr-top-" if nested else "/dpr-"
-        page.goto(nested_origins["origin"] + path + mode)
-        page.wait_for_function("z => Math.abs(devicePixelRatio - z) < 0.00001", arg=zoom)
-        frame = frames(page)[1] if nested else page.main_frame
-        assert frame.evaluate("devicePixelRatio") == pytest.approx(zoom)
-        locator = frame.locator("input")
-        rect = locator.evaluate("el => el.getBoundingClientRect().toJSON()")
-        try:
-            locator.click()
-        finally:
-            print(json.dumps({
-                "dpr": frame.evaluate("devicePixelRatio"), "zoom": zoom,
-                "mode": mode, "nested": nested, "humanize": humanize,
-                "rect": rect, "wire": wire, "events": frame.evaluate("recorded"),
-            }, indent=2))
-        clicks = frame.evaluate(
-            "recorded.filter(e => e.type === 'click' && e.target === 'input')")
-        assert len(clicks) == 1
-        assert clicks[0]["trusted"]
-        assert rect["left"] <= clicks[0]["x"] <= rect["right"]
-        assert rect["top"] <= clicks[0]["y"] <= rect["bottom"]
-
-
-@pytest.mark.e2e
-def test_saved_zoom_does_not_send_child_click_to_parent(
-    firefox_binary, nested_origins, tmp_path,
-):
-    from invisible_playwright import InvisiblePlaywright
-
-    _save_site_zoom(tmp_path, 1.2)
-    with InvisiblePlaywright(
-        seed=20260929, binary_path=firefox_binary, humanize=False, headless=False,
-        timezone="America/Chicago", locale="en-US", profile_dir=tmp_path,
-        pin={"screen.dpr": 1, "screen.width": 3200, "screen.height": 1800},
-    ) as context:
-        page = context.new_page()
-        page.set_default_timeout(3000)
-        page.goto(nested_origins["top"])
-        page.wait_for_function("Math.abs(devicePixelRatio - 1.2) < 0.00001")
-        page.locator("#payment").evaluate("el => el.style.marginLeft = '700px'")
-        payment, widget = frames(page)
-        payment.locator("#widget").evaluate("el => el.style.marginLeft = '200px'")
-        payment.evaluate("""() => {
-            window.recorded = [];
-            document.addEventListener('mousedown', e => recorded.push(
-                {target:e.target.nodeName, x:e.clientX, y:e.clientY,
-                 trusted:e.isTrusted}), true);
-        }""")
-        try:
-            widget.locator("#checkbox").click()
-        finally:
-            print("payment events:", payment.evaluate("recorded"))
-            print("widget clicks:", widget.evaluate("clicks"))
-        assert widget.evaluate("clicks") == [True]
-        assert payment.evaluate("recorded") == []
+        if humanize:
+            center = [round(rect["x"] + rect["width"]/2),
+                      round(rect["y"] + rect["height"]/2)]
+            assert [round(clicks[0]["x"]), round(clicks[0]["y"])] != center

@@ -617,7 +617,8 @@ class InjectedScript:
             session=self.session, timeout=10))
         return r.get("value")
 
-    def adopt(self, frame_id: str, context_id: str, element: str):
+    def adopt(self, frame_id: str, element: Optional[str] = None, *,
+              into: Optional[str] = None):
         """Move an objectId from the page's own world into the utility world.
 
         ⛔ AN objectId IS NOT PORTABLE BETWEEN WORLDS. Every other method here
@@ -627,13 +628,19 @@ class InjectedScript:
         inside the context it is given and answers that it does not exist.
         `Page.adoptNode` is the crossing, and it is the same one Playwright's
         own Firefox backend makes for this event.
+
+        With no `element` the engine adopts the frame's OWNER - the `<iframe>`
+        that holds `frame_id` - and it has to land in the world of the frame
+        that element lives in, the parent, which is what `into` names. That is
+        `frame.frame_element()`, and upstream's Firefox backend asks for it the
+        same way.
         """
-        answer = self.c.send(
-            "Page.adoptNode",
-            {"frameId": frame_id,
-             "executionContextId": self.context_id(frame_id),
-             "objectId": element},
-            session=self.session, timeout=10) or {}
+        params = {"frameId": frame_id,
+                  "executionContextId": self.context_id(into or frame_id)}
+        if element is not None:
+            params["objectId"] = element
+        answer = self.c.send("Page.adoptNode", params,
+                             session=self.session, timeout=10) or {}
         return ((answer.get("remoteObject") or {}).get("objectId")) or None
 
     def dispose(self, frame_id: str, element: str) -> None:

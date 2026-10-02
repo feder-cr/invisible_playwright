@@ -83,41 +83,6 @@ with sf as browser:
     # ...
 ```
 
-### Nested frames
-
-Use `frame.locator(...)` or chained `page.frame_locator(...)` for nested
-cross-origin documents, including element reads, scrolling, filling and
-humanized pointer actions. Handles returned by these locators belong to the
-resolved child frame, not the top-level document. `frame.parent_frame` and
-`frame.frame_element()` expose the parent and the iframe element in that parent.
-Frame URLs track committed navigations and same-document history changes.
-
-```python
-checkbox = page.frame_locator("#payment").frame_locator("#widget").get_by_role("checkbox")
-checkbox.check()
-```
-
-Humanized landing points use the action's shadow-aware hit test in the
-target frame. Controls inside open or closed shadow roots retain off-center
-landing without accepting a padded ancestor, sibling or covering element as
-the control. The engine still verifies where the trusted pointer events landed;
-a post-action miss is reported rather than clicked again.
-
-Device scaling (`pin={"screen.dpr": ...}`) and browser page zoom are different.
-A persistent profile can restore a site's page zoom even when CSS `zoom` is
-unset. Engines without the page-zoom input correction can misdirect trusted
-clicks in that state; a Python frame fix alone does not correct it. Do not
-multiply Playwright coordinates by `window.devicePixelRatio` or suppress the
-landing error: native device scaling already works.
-
-### Navigation waits
-
-`page.wait_for_url(...)` and `page.expect_navigation()` accept document
-navigations without a network request, such as navigation to `about:blank`.
-For these navigations, `expect_navigation().value` is `None`. When a document
-request exists, it returns that request's response, including the final
-response of an HTTP redirect chain.
-
 ### Reproducible fingerprint
 
 ```python

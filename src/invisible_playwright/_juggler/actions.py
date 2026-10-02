@@ -350,8 +350,7 @@ class Actions:
                         # would actually ask, and `trial=True, force=True` asks
                         # whether a FORCED action would go through.
                         if not force:
-                            verdict = self.inj.check_hit_target(
-                                f, element, self._hit_point(f, point))
+                            verdict = self.hit_target(f, element, point)
                             if verdict != "done":
                                 raise WrongHitTarget(verdict)
                         return None
@@ -400,6 +399,21 @@ class Actions:
             time.sleep(0.05)
 
     # ── the hit target ──────────────────────────────────────────────────────
+    def hit_target(self, f, element, point) -> str:
+        """Does a MAIN-FRAME point land on `element`? `"done"`, or what is there.
+
+        ⛔ ONE QUESTION, ONE ANSWER, THREE ASKERS: the trial, the check before
+        a commit, and the humanised cursor choosing an off-centre landing
+        (`ElementHandle.checkHitTarget`). The cursor used to answer it on its
+        own with `document.elementFromPoint` at main-frame coordinates, which
+        is wrong twice: inside a nested frame the number means another place,
+        and inside a shadow root the hit is the host, never the control. Both
+        made every landing fail its check and fall back to the exact geometric
+        centre - one number for every click. Asking here means the cursor
+        accepts exactly the points the action itself would accept.
+        """
+        return self.inj.check_hit_target(f, element, self._hit_point(f, point))
+
     def _hit_point(self, f, point):
         """The caller's point, expressed in `f`'s own coordinate space.
 
@@ -499,8 +513,7 @@ class Actions:
         """
         approach()
         if not force:
-            verdict = self.inj.check_hit_target(f, element,
-                                                self._hit_point(f, point))
+            verdict = self.hit_target(f, element, point)
             if verdict != "done":
                 raise WrongHitTarget(verdict)
         result = commit()
@@ -1048,9 +1061,9 @@ class Actions:
                     # is what empties it, and the page gets the `InputEvent`
                     # a user's Delete gives (`deleteContentForward`). This
                     # used to request bare `input`/`change` instead: the
-                    # text stayed in the field, and inside a shadow root the
-                    # request failed outright (the engine's presshell route
-                    # has no document there).
+                    # text stayed in the field, a contenteditable heard a
+                    # `change` no user can produce, and inside a shadow root
+                    # firefox-34 refused the request (NS_ERROR_UNEXPECTED).
                     self.keyboard.press("Delete")
             else:
                 self._trusted_events(f, element, ["input", "change"])

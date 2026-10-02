@@ -807,16 +807,29 @@ async def _target_point(frame: Any, selector: str, position: Any) -> Optional[Tu
 
 
 async def _hits(handle: Any, x: float, y: float) -> bool:
-    """Does the fractional point (x, y) in the element's box hit it?
+    """Does (x, y), in the same main-frame space as the box, land on this element?
 
     A bounding box is not the element. An inline link that wraps across two
     lines, a rotated control, a rounded button: all of them have points inside
     their box that belong to something else. The centre is checked by the
     automation layer itself; a point we chose has to be checked by us, or we
     would be turning working clicks into hit-target failures.
+
+    ⛔ THE QUESTION GOES TO THE SERVER, WHICH ANSWERS IT FOR THE ACTION TOO
+    (`Actions.hit_target`). It used to be answered here with
+    `document.elementFromPoint`, in the element's own document but at the
+    main frame's coordinates: in a nested frame that asked about another
+    place, and in a shadow root the hit is the host, never the control. Both
+    rejected every off-centre point, so those clicks went to the exact
+    geometric centre, one number for every install. `checkHitTarget` is a
+    method of this package's server, not of Playwright's protocol: the Node
+    driver arm (`INVPW_TRANSPORT=driver`) refuses it, and there the landing
+    falls back to the centre.
     """
     try:
-        return await handle._check_hit_target({"x": x, "y": y})
+        return bool(await handle._channel.send(
+            "checkHitTarget", None, {"point": {"x": x, "y": y}},
+            is_internal=True))
     except _page_errors():
         return False
 
@@ -1166,10 +1179,7 @@ async def _choose_landing(frame: Any, cursor: Any, selector: str,
             and _may_override(args, kwargs)
             and box["width"] >= _LANDING_MIN_BOX_PX
             and box["height"] >= _LANDING_MIN_BOX_PX
-            # The box is in main-frame coordinates; the hit test runs in
-            # the handle's document. Fractions keep those spaces separate.
-            and await _hits(handle, (landing[0] - box["x"]) / box["width"],
-                            (landing[1] - box["y"]) / box["height"])
+            and await _hits(handle, landing[0], landing[1])
         ):
             return _Aim(box, landing, _landing_override(box, landing))
         # The off-centre point missed the element (it is not a rectangle, or it

@@ -6,36 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-### Added
-- Local trusted-input regressions at device pixel ratios 1, 1.2, 1.25, 1.5
-  and 2, including large-offset inputs, shadow roots and nested cross-origin
-  frames. Saved browser zoom has separate regressions: those require the
-  companion engine's page-zoom input correction, not a Python DPR multiplier.
-
 ### Fixed
-- Preserve the resolved frame when waiting for elements and reading handles
-  through nested cross-origin locators. This fixes locator scrolling, bounding
-  boxes, attribute reads and related form operations using the wrong document.
-- Check humanized landing points in the target document's coordinate space
-  instead of silently reverting nested-frame clicks to the geometric center.
-- Reuse the action's shadow-aware hit test for humanized landing hints.
-  Inputs inside open or closed shadow roots no longer discard valid off-center
-  points, and padded ancestors or covering siblings do not count as the target.
-- Expose the parent frame and implement `frame.frame_element()` using the
-  engine's node-adoption command. Keep frame URLs and load states current,
-  including history changes, without replaying a stale `goto` navigation.
-- Emit a request channel, or omit the optional request field, in document
-  navigation events. `wait_for_url` and `expect_navigation` no longer crash
-  with an `AttributeError` when a navigation has no request. Redirected
-  navigations return the final document response when one is available.
-- **`fill('')` empties the field.** On a text-like input, a textarea or a
-  contenteditable, the injected script only selects the text when the value is
-  empty, and `fill` then asked the engine for bare `input`/`change` events:
-  the page heard about a change while the old text stayed in the field. Inside
-  a shadow root the request failed outright with `NS_ERROR_UNEXPECTED`. It now
-  presses `Delete`, as Playwright does, so the page gets the trusted
-  `InputEvent` (`deleteContentForward`) a user's Delete gives, and `change`
-  waits for blur as it does for a user.
+- **`expect_navigation()` and `wait_for_url()` no longer crash on a new
+  document.** Every navigation event announced its document with a request
+  of `None`, a value Playwright's protocol does not allow there, and the
+  client died on it with `AttributeError: 'NoneType' object has no attribute
+  '_object'`. The event now carries the navigation's request, or no request
+  when there was none (`about:blank`), and after a redirect
+  `expect_navigation().value` is the final response.
 - **A same-document navigation now reaches the client.** A `pushState`, a
   hash change or the route change of a single-page application arrives from
   the engine as `Page.sameDocumentNavigation`, and the server updated its own
@@ -45,6 +23,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   in the client rather than reloading. The event now goes up as a `navigated`
   without a `newDocument`, the shape upstream sends, so the client tells it
   from a full load the way it always did.
+- **Locators and handles work through nested cross-origin frames.** A
+  locator two frames deep found its element and then read it in the wrong
+  frame: `inner_text` answered "Cannot find object", `bounding_box`,
+  `select_option` and `scroll_into_view_if_needed` matched nothing, and a
+  handle from `wait_for_selector` belonged to the top frame.
+  `frame.parent_frame` is no longer None, `frame.frame_element()` answers
+  instead of refusing, and `frame.url` and the frame's load states follow
+  every new document instead of the last `goto`.
+- **A humanised click lands off-centre in a nested frame and inside a shadow
+  root.** The cursor checked its chosen point with its own hit test, at the
+  top frame's coordinates and blind to shadow roots, so it rejected every
+  off-centre point there and the click went to the exact geometric centre of
+  the element, the same point in every install. The cursor now asks the check
+  the action itself makes before it presses.
+- **`fill('')` and `clear()` empty the field.** On a text input, a textarea
+  or a contenteditable, the injected script only selects the text when the
+  value is empty, and `fill` then asked the engine for bare `input`/`change`
+  events: the page heard about a change while the old text stayed, a
+  contenteditable got a `change` no user can produce, and inside a shadow
+  root the request failed with `NS_ERROR_UNEXPECTED`. It now presses
+  `Delete`, as Playwright does: the page gets the trusted `InputEvent`
+  (`deleteContentForward`) a user's Delete gives, and `change` waits for blur.
+- **`set_input_files` works on a hidden file input.** It asked the input for
+  a point it never uses, and an input with `display:none` has none, so it
+  timed out: a file chooser opened from the usual styled button in front of a
+  hidden `<input type=file>` could not receive its files through `set_files`
+  or `set_input_files`.
 
 ## [0.25.7] - 2026-09-25
 

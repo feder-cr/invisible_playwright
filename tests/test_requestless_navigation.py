@@ -59,7 +59,7 @@ def test_navigation_wait(firefox_binary, redirect_origins, wait, requestless):
     if requestless:
         destination = "about:blank"
     with InvisiblePlaywright(seed=42, binary_path=firefox_binary,
-                             humanize=False, headless=False) as browser:
+                             humanize=False, headless=True) as browser:
         page = browser.new_context().new_page()
         page.goto(start + "/start")
         url = destination if requestless else start + "/redirect"

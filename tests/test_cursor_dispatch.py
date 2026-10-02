@@ -97,12 +97,17 @@ class _FakePage:
 _BOX = {"x": 500.0, "y": 300.0, "width": 140.0, "height": 44.0}
 
 
+class _FakeChannel:
+    async def send(self, method, timeout_calculator=None, params=None, **kwargs):
+        # `checkHitTarget`: the server says the point lands on the element.
+        return True
+
+
 class _FakeHandle:
+    _channel = _FakeChannel()
+
     async def bounding_box(self):
         return dict(_BOX)
-
-    async def _check_hit_target(self, point):
-        return True
 
     async def dispose(self):
         pass

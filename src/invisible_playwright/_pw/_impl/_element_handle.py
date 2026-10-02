@@ -72,11 +72,6 @@ class ElementHandle(JSHandle):
     async def content_frame(self) -> Optional["Frame"]:
         return from_nullable_channel(await self._channel.send("contentFrame", None))
 
-    # MODIFIED by invisible_playwright: reuse the action's shadow-aware hit test
-    # for cursor hints. The point is fractional within the element's box.
-    async def _check_hit_target(self, point: Position) -> bool:
-        return await self._channel.send("checkHitTarget", None, {"point": point})
-
     async def get_attribute(self, name: str) -> Optional[str]:
         return await self._channel.send("getAttribute", None, dict(name=name))
 

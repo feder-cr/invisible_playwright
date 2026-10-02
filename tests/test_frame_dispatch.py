@@ -92,13 +92,9 @@ def test_failed_read_disposes_in_the_resolved_frame(page):
 
 def test_frame_element_adopts_into_parent_world(page):
     widget = page.frame_for("widget")
-    page.injected.context_id.return_value = "payment-utility"
-    page.send = Mock(return_value={"remoteObject": {"objectId": "owner"}})
+    page.injected.adopt.return_value = "owner"
     result = widget.op_frame_element({})
-    page.injected.context_id.assert_called_once_with("payment")
-    page.send.assert_called_once_with("Page.adoptNode", {
-        "frameId": "widget", "executionContextId": "payment-utility",
-    })
+    page.injected.adopt.assert_called_once_with("widget", into="payment")
     handle = page.server._objects[result["element"]["guid"]]
     assert handle.frame is page.frame_for("payment")
     assert handle.object_id == "owner"
@@ -107,9 +103,37 @@ def test_frame_element_adopts_into_parent_world(page):
 def test_frame_element_refuses_main_or_detached_frame(page):
     with pytest.raises(ProtocolException, match="no parent"):
         page.frame.op_frame_element({})
-    page.send = Mock(return_value={"remoteObject": None})
+    page.injected.adopt.return_value = None
     with pytest.raises(ProtocolException, match="detached"):
         page.frame_for("widget").op_frame_element({})
+
+
+@pytest.mark.parametrize("element,into,expected", [
+    # The file chooser's input: a node, moved into its own frame's world.
+    ("node", None, {"frameId": "widget", "executionContextId": "widget-utility",
+                    "objectId": "node"}),
+    # frame_element(): no node, so the engine adopts the frame's owner, and
+    # it has to land in the PARENT's world, where that element lives.
+    (None, "payment", {"frameId": "widget",
+                       "executionContextId": "payment-utility"}),
+])
+def test_adopt_is_one_wire_call_for_both_crossings(element, into, expected):
+    from invisible_playwright._juggler.injected import UTILITY_WORLD, InjectedScript
+
+    sent = []
+
+    class Wire:
+        def send(self, method, params, **kwargs):
+            sent.append((method, params))
+            return {"remoteObject": {"objectId": "adopted"}}
+
+    injected = object.__new__(InjectedScript)
+    injected.c = Wire()
+    injected.session = "session"
+    injected.contexts = {("widget", UTILITY_WORLD): "widget-utility",
+                         ("payment", UTILITY_WORLD): "payment-utility"}
+    assert injected.adopt("widget", element, into=into) == "adopted"
+    assert sent == [("Page.adoptNode", expected)]
 
 
 def test_resolve_selector_returns_child_channel_and_tail(page):
@@ -154,26 +178,16 @@ def test_goto_does_not_overwrite_a_later_navigation_with_its_snapshot(page):
     assert navigations == ["http://localhost/latest"]
 
 
-@pytest.mark.parametrize("has_request", [False, True])
-def test_committed_navigation_request_is_a_channel_or_omitted(page, has_request):
-    if has_request:
-        page._navigation_requests["NAV"] = SimpleNamespace(channel={"guid": "request"})
-    page._on_juggler_event("Page.navigationCommitted", {
-        "frameId": "widget", "navigationId": "NAV", "url": "http://localhost/new",
-    })
-    events = [m for m in page.messages if m["method"] == "navigated"]
-    expected = {"request": {"guid": "request"}} if has_request else {}
-    assert [m["params"]["newDocument"] for m in events] == [expected]
-
-
-def test_cursor_hit_test_uses_the_handle_frame_and_injected_checker(page):
+@pytest.mark.parametrize("verdict,value", [("done", True),
+                                           ("<div#plus> intercepts", False)])
+def test_cursor_hit_test_is_the_action_s_own(page, verdict, value):
+    """The cursor's landing check is `Actions.hit_target`, with the handle's
+    frame and the main-frame point untouched: the frame shift and the
+    shadow-aware test happen there, once, for the action and the cursor."""
     from invisible_playwright._juggler.server import ElementHandleDispatcher
 
     handle = ElementHandleDispatcher(page.server, page.frame_for("widget"), "input")
-    page.injected.call.return_value = True
-    point = {"x": 0.25, "y": 0.75}
-    assert handle.call("checkHitTarget", {"point": point}) == {"value": True}
-    args = page.injected.call.call_args.args
-    assert args[0] == "widget"
-    assert "injected.checkHitTarget" in args[1]
-    assert args[2:] == ({"objectId": "input"}, point)
+    page.actions.hit_target.return_value = verdict
+    answer = handle.call("checkHitTarget", {"point": {"x": 410, "y": 312.5}})
+    assert answer == {"value": value}
+    page.actions.hit_target.assert_called_once_with("widget", "input", (410.0, 312.5))
