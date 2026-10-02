@@ -31,6 +31,7 @@ from __future__ import annotations
 import pytest
 
 from invisible_playwright import _pacing
+from invisible_playwright._behaviour import PageActs
 from invisible_playwright._juggler.actions import Actions
 from invisible_playwright._juggler.keyboard import BUTTON_MASK
 
@@ -104,6 +105,7 @@ def _actions(seed=42, budget_s=None, viewport=(None, None)):
     a.keyboard = _Keyboard()
     a.position = (0.0, 0.0)
     a.motion = None
+    a.acts = PageActs()
     a.motion_budget_s = budget_s
     a.inj = _Injected(*viewport)
     a.lifecycle = _Lifecycle()

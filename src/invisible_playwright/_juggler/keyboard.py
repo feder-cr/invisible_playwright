@@ -122,7 +122,7 @@ class Keyboard:
     remember that Shift is down between Shift's keydown and `a`'s.
     """
 
-    def __init__(self, connection, session: str, persona=None):
+    def __init__(self, connection, session: str, persona=None, *, acts):
         self.c = connection
         self.session = session
         self.modifiers: set = set()
@@ -140,10 +140,17 @@ class Keyboard:
         #: `None` means no rhythm, which is what a caller who turned humanising
         #: off asked for.
         self.persona = persona
-        #: One stream per keyboard, so two `type()` calls in a session do not
-        #: replay the same intervals. Without it a page could match the
+        #: One stream per typed string, so two `type()` calls in a session do
+        #: not replay the same intervals. Without it a page could match the
         #: sequence of gaps between two form fields.
-        self._nonce = 0
+        #:
+        #: ⛔ THE PAGE'S `acts`, NOT A COUNTER OF ITS OWN. This was an integer
+        #: starting at 0 in every keyboard, and there is one keyboard per page,
+        #: so the first string typed in every tab of a session had the same
+        #: intervals. `Actions` hands in its page's numbering, and it is
+        #: required for the reason given there: a default is how a page would
+        #: quietly be numbered as the first one again.
+        self.acts = acts
 
     # ── the resolution ──────────────────────────────────────────────────────
     def describe(self, key: str) -> dict:
@@ -305,8 +312,7 @@ class Keyboard:
         if self.persona is None:
             return [(0.0, 0.0)] * len(text)
         from .._behaviour import plan_typing
-        self._nonce += 1
-        return plan_typing(text, self.persona, nonce=self._nonce)
+        return plan_typing(text, self.persona, nonce=self.acts.next("typing"))
 
     def insert_text(self, text: str) -> None:
         """The text goes in without key events. This is what is needed for

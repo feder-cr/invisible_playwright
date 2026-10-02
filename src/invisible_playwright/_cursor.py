@@ -379,17 +379,17 @@ def page_motion_seed(session_seed: int, ordinal: int) -> int:
 class _Session:
     """Everything a session hands to the pages underneath it."""
 
-    __slots__ = ("seed", "max_seconds", "_ordinal")
+    __slots__ = ("seed", "max_seconds", "pages")
 
     def __init__(self, seed: int, max_seconds: float) -> None:
         self.seed = int(seed)
         self.max_seconds = float(max_seconds)
-        self._ordinal = 0
+        #: The pages' numbers, by the one counter the server numbers its pages
+        #: with too (`_behaviour.SessionActs`).
+        self.pages = _behaviour.SessionActs()
 
     def next_ordinal(self) -> int:
-        n = self._ordinal
-        self._ordinal += 1
-        return n
+        return self.pages.next_page()
 
 
 class _PageCursor:

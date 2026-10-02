@@ -12,7 +12,7 @@ import statistics
 
 import pytest
 
-from invisible_playwright._behaviour import TypingPersona
+from invisible_playwright._behaviour import PageActs, TypingPersona
 from invisible_playwright._juggler.keyboard import Keyboard
 
 
@@ -35,7 +35,7 @@ def slept(monkeypatch):
 
 
 def _keyboard(persona=None):
-    return Keyboard(_Conn(), "session", persona)
+    return Keyboard(_Conn(), "session", persona, acts=PageActs())
 
 
 def test_without_a_persona_nothing_waits(slept):
@@ -124,7 +124,7 @@ def test_the_rhythm_is_the_seeds_and_not_a_constant():
     cannot make it pass."""
     def medians(seed):
         taken: list = []
-        k = Keyboard(_Conn(), "s", TypingPersona.from_seed(seed))
+        k = Keyboard(_Conn(), "s", TypingPersona.from_seed(seed), acts=PageActs())
         import invisible_playwright._juggler.keyboard as mod
         real, mod.time.sleep = mod.time.sleep, taken.append
         try:

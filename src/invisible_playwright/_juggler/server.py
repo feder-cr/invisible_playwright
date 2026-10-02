@@ -36,6 +36,7 @@ import threading
 import time
 from typing import Any, Dict, List, Optional
 
+from .._behaviour import SessionActs
 from . import connection as juggler
 from .actions import Actions
 from .dispatcher import Dispatcher, ProtocolException, Server
@@ -1694,9 +1695,8 @@ class PageDispatcher(Dispatcher):
         self.lifecycle = Lifecycle(conn, session)
         self.injected = InjectedScript(conn, session)
         self.injected.install()
-        self.actions = Actions(conn, session, self.lifecycle, self.injected,
-                               session_seed=context.browser.session_seed,
-                               motion_budget_s=context.browser.motion_budget_s)
+        self.actions = context.browser.actions_for_page(
+            session, self.lifecycle, self.injected)
         # ⛔ THE EVENTS THIS PAGE ALREADY MISSED, handed over now that the two
         # things that need them exist. `Page.frameAttached` and the
         # `Runtime.executionContextCreated` pair are sent by the browser BEFORE
@@ -3082,6 +3082,12 @@ class BrowserDispatcher(Dispatcher):
         #: downstream reads that as "no rhythm" rather than as a default one.
         self.session_seed = session_seed
         self.motion_budget_s = motion_budget_s
+        #: ⛔ THE NUMBER OF EACH PAGE, handed out here for the same reason the
+        #: seed lives here: it belongs to the session, and every context of
+        #: this browser is the same person. Each page's acts draw their nonces
+        #: under its number (`_behaviour.PageActs`), so the first field, key
+        #: and click of a second tab are not the first tab's again.
+        self.acts = SessionActs()
         self._sessions: Dict[str, str] = {}
         self._sessions_ready = threading.Condition()
         # ⛔ THE EVENTS OF A SESSION START BEFORE ANYBODY IS LISTENING, and
@@ -3132,6 +3138,15 @@ class BrowserDispatcher(Dispatcher):
                          {"version": version, "name": "firefox",
                           "browserName": "firefox"})
         self.contexts: List[BrowserContextDispatcher] = []
+
+    def actions_for_page(self, session: str, lifecycle, injected) -> Actions:
+        """The hands of a new page: the session's seed and motion budget, and
+        the page's number in the session, which goes into the nonce of every
+        act it performs. Built here because all three are the session's."""
+        return Actions(self.conn, session, lifecycle, injected,
+                       acts=self.acts.page(),
+                       session_seed=self.session_seed,
+                       motion_budget_s=self.motion_budget_s)
 
     def _route_browser_event(self, method: str, params: Dict, session) -> None:
         if method == "Browser.attachedToTarget":

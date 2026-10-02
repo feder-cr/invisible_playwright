@@ -26,7 +26,7 @@ import pytest
 
 import invisible_playwright
 from invisible_playwright._behaviour import (
-    TypingPersona, hesitation, plan_hesitation, plan_typing,
+    PageActs, TypingPersona, hesitation, plan_hesitation, plan_typing,
 )
 from invisible_playwright._juggler import actions as actions_mod
 from invisible_playwright._juggler.actions import Actions
@@ -170,7 +170,8 @@ def _actions(clock, persona, value=lambda since: ""):
     a.typing_persona = persona
     # The keyboard keeps no rhythm here, so the only time that passes on the
     # clock is the pause under test.
-    a.keyboard = Keyboard(a.c, "session", None)
+    a.acts = PageActs()
+    a.keyboard = Keyboard(a.c, "session", None, acts=a.acts)
     return a, field
 
 

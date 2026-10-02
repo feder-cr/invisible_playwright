@@ -33,6 +33,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   page cannot see the read. With humanising off nothing changes. The spread
   of a hesitation is now one field of the typing persona, used by both
   pauses.
+- **Each tab of a session types, pauses and clicks with its own rhythm.** The
+  counters that tell two acts apart (the pause before a field, the intervals
+  between keys, how long a click is held, the curve of a drag) lived on each
+  page and started again with every new one, so with one seed the first
+  field of every tab waited the same pause and was typed with the same
+  intervals, and the first click of every tab was held for the same time.
+  Measured with seed 106 and three tabs: a pause of 2.14 to 2.16 s in all
+  three, keydown intervals within a few milliseconds of each other, and a
+  hold of 107 to 109 ms. The session now numbers its pages and every act
+  draws under its page's number, as the cursor already did for its paths:
+  the same three tabs pause 2.15, 0.83 and 1.08 s and type with intervals
+  that differ by as much as 274 ms. The same seed still replays the same
+  sequence, and the first tab of a session pauses, types and clicks exactly
+  as before.
 - **`expect_navigation()` and `wait_for_url()` no longer crash on a new
   document.** Every navigation event announced its document with a request
   of `None`, a value Playwright's protocol does not allow there, and the

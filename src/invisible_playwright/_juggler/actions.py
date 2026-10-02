@@ -108,12 +108,9 @@ class Actions:
     #: defaults for the same reason as above: a bench that builds this object
     #: without `__init__` gets "no rhythm", which is what None means.
     typing_persona = None
-    #: How many fields this page has been typed into, so two fields do not get
-    #: the same pause. See `_reach_field`.
-    _field_nonce = 0
 
-    def __init__(self, connection, session: str, lifecycle, injected,
-                 session_seed=None, motion_budget_s=None):
+    def __init__(self, connection, session: str, lifecycle, injected, *,
+                 acts, session_seed=None, motion_budget_s=None):
         self.c = connection
         self.session = session
         self.lifecycle = lifecycle
@@ -148,14 +145,20 @@ class Actions:
                 CursorMotion = None  # type: ignore[assignment]
             if CursorMotion is not None:
                 self.motion = CursorMotion(_sub_seed(session_seed, "server:drag"))
-        #: One stream per Actions, so two clicks in a session do not repeat the
-        #: same durations - the same reason the keyboard keeps one.
-        self._click_nonce = 0
+        #: ⛔ THE NONCE OF EVERY ACT OF THIS PAGE, and it is REQUIRED, not
+        #: defaulted. It carries the page's number in the session
+        #: (`_behaviour.SessionActs.page`), so two clicks, two fields or two
+        #: typed strings never draw the same durations, not even the first act
+        #: of two different tabs. Bare counters here restarted at 1 on every
+        #: page, and a default would bring that back for whoever forgot to
+        #: pass one. The keyboard and the drag draw from this same object.
+        self.acts = acts
         #: ⛔ A SINGLE keyboard per page, and that's the point: it holds
         #: the state of the modifiers. Building one per action would lose
         #: "Shift is down" between a `down` and the next key, and
         #: `Shift+a` would type `a`.
-        self.keyboard = Keyboard(connection, session, self.typing_persona)
+        self.keyboard = Keyboard(connection, session, self.typing_persona,
+                                 acts=acts)
         #: The last pointer position. Used by the wheel and by drag and
         #: drop, which start from where the mouse IS - not from 0,0.
         self.position = (0.0, 0.0)
@@ -898,7 +901,11 @@ class Actions:
         # very pair this replaced. The client's walk drops it for the same
         # reason; found here by the browser arm, because in isolation there is
         # no preceding event for it to duplicate.
-        path = self.motion.path(x0, y0, to_point[0], to_point[1])[1:]
+        # ⛔ `index=`: the generator's own count lives on this page's
+        # instance and restarts with it, so the first drag of every tab drew
+        # the same curve. The page's act nonce numbers it across the session.
+        path = self.motion.path(x0, y0, to_point[0], to_point[1],
+                                index=self.acts.next("drag"))[1:]
         # ⛔ A curved path near an edge leaves the viewport on its own, and a
         # pointer event outside it is not ignored - the browser parks the cursor
         # at the origin, mid-movement. The destination is emitted unclamped: it
@@ -1051,8 +1058,8 @@ class Actions:
         if self.pointer_persona is None:
             return [(0.0, 0.0)] * clicks
         from .._behaviour import plan_click
-        self._click_nonce += 1
-        return plan_click(self.pointer_persona, clicks, nonce=self._click_nonce)
+        return plan_click(self.pointer_persona, clicks,
+                          nonce=self.acts.next("click"))
 
     def fill(self, selector: str, text: str, *, timeout: float = 30.0,
              frame_id: Optional[str] = None,
@@ -1129,7 +1136,8 @@ class Actions:
         belongs to the action that types, and to every caller of it.
 
         The pause is one hesitation of the session's typing persona
-        (`_behaviour.plan_hesitation`, act ``"field"``, one nonce per field),
+        (`_behaviour.plan_hesitation`, act ``"field"``, one nonce per field
+        of the session, from `self.acts`),
         and it starts again from every change the field shows, so a page still
         answering the focus finishes before the first key. Bounded by the
         action's own deadline: a field that never stops changing is typed into
@@ -1157,9 +1165,8 @@ class Actions:
         if self.typing_persona is None:
             return
         from .._behaviour import plan_hesitation
-        self._field_nonce += 1
         pause = plan_hesitation(self.typing_persona, "field",
-                                self._field_nonce) / 1000.0
+                                self.acts.next("field")) / 1000.0
         held = text()
         still_since = time.monotonic()
         while True:

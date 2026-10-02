@@ -14,6 +14,7 @@ import time
 
 import pytest
 
+from invisible_playwright._behaviour import PageActs
 from invisible_playwright._juggler.actions import Actions, ElementNotActionable
 
 PAGE = b"""<!doctype html><html><head><title>actions</title></head><body>
@@ -106,7 +107,7 @@ def _open(binary, body):
     time.sleep(0.4)
     lifecycle.goto("http://127.0.0.1:%d/" % srv.server_address[1],
                    until="load", timeout=30)
-    actions = Actions(c, sess, lifecycle, inj)
+    actions = Actions(c, sess, lifecycle, inj, acts=PageActs())
 
     def close():
         c.close()
@@ -128,7 +129,7 @@ def _dataset(inj, f, sel, attr):
 def test_a_lifecycle_without_a_frame_SAYS_SO_instead_of_timing_out():
     class FakeLifecycle:
         main_frame = None
-    actions = Actions(None, "S", FakeLifecycle(), None)
+    actions = Actions(None, "S", FakeLifecycle(), None, acts=PageActs())
     with pytest.raises(RuntimeError) as e:
         actions.click("#x")
     assert "main frame" in str(e.value)
@@ -156,7 +157,7 @@ def test_typing_does_NOT_send_keypress():
             return {}
 
     c = Fake()
-    Keyboard(c, "S").type("ab")
+    Keyboard(c, "S", acts=PageActs()).type("ab")
     assert c.types, "no key event"
     assert set(c.types) == {"keydown", "keyup"}, (
         "types Juggler rejects: %r" % sorted(set(c.types)))
@@ -328,7 +329,7 @@ def test_a_key_that_does_not_exist_gets_REJECTED_instead_of_coming_out_empty():
     """
     from invisible_playwright._juggler.keyboard import Keyboard, UnknownKey
     c = _Fake()
-    t = Keyboard(c, "S")
+    t = Keyboard(c, "S", acts=PageActs())
     with pytest.raises(UnknownKey):
         t.type(chr(0x4E2D))
     assert not c.events, "sent an event for a key that does not exist"
@@ -343,7 +344,7 @@ def test_shift_changes_the_key_and_control_removes_the_text():
     the `text` comes out empty, read in the driver."""
     from invisible_playwright._juggler.keyboard import Keyboard
     c = _Fake()
-    t = Keyboard(c, "S")
+    t = Keyboard(c, "S", acts=PageActs())
     t.press("Shift+KeyA")
     down = [e for e in c.events
             if e["type"] == "keydown" and e["code"] == "KeyA"]
@@ -363,7 +364,7 @@ def test_keyup_NEVER_carries_the_text():
     dies halfway through. Read in its `_dispatchKeyEvent`, not deduced."""
     from invisible_playwright._juggler.keyboard import Keyboard
     c = _Fake()
-    Keyboard(c, "S").type("aZ1")
+    Keyboard(c, "S", acts=PageActs()).type("aZ1")
     up = [e for e in c.events if e["type"] == "keyup"]
     assert up and all("text" not in e for e in up)
 

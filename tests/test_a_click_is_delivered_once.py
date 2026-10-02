@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import pytest
 
+from invisible_playwright._behaviour import PageActs
 from invisible_playwright._juggler.actions import (ActionMissed, Actions,
                                                    ElementNotActionable)
 
@@ -167,7 +168,7 @@ def _actions(page: _Page) -> Actions:
     # No persona: the rhythm of a press is not what this file is about, and a
     # real one would put real sleeps between the events of every test here.
     actions.pointer_persona = None
-    actions._click_nonce = 0
+    actions.acts = PageActs()
     return actions
 
 

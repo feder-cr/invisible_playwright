@@ -32,6 +32,7 @@ import threading
 
 import pytest
 
+from invisible_playwright._behaviour import PageActs
 from invisible_playwright._juggler.actions import Actions
 
 PAGE = b"""<!doctype html>
@@ -101,7 +102,7 @@ class _Lifecycle:
 
 def _actions():
     inj = _Inj()
-    a = Actions(None, "S", _Lifecycle(), inj)
+    a = Actions(None, "S", _Lifecycle(), inj, acts=PageActs())
     # The point is computed from the quad; here it is always usable, so the loop
     # reaches `run` on the first turn and the test is about what it did to get
     # there rather than about geometry.

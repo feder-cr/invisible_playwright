@@ -16,7 +16,7 @@ import statistics
 
 import pytest
 
-from invisible_playwright._behaviour import PointerPersona, plan_click
+from invisible_playwright._behaviour import PageActs, PointerPersona, plan_click
 from invisible_playwright._juggler.actions import Actions
 
 
@@ -53,7 +53,7 @@ def _actions(seed=42):
     a.session = "session"
     a.keyboard = _Keyboard()
     a.position = (0.0, 0.0)
-    a._click_nonce = 0
+    a.acts = PageActs()
     a.pointer_persona = None if seed is None else PointerPersona.from_seed(seed)
     return a
 
