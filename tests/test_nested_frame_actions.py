@@ -591,6 +591,20 @@ def _save_site_zoom(profile_dir, zoom):
         db.execute("INSERT INTO prefs (groupID, settingID, value) VALUES (1, 1, ?)", (zoom,))
 
 
+def _effective(zoom):
+    """The zoom Gecko APPLIES, which is not always the one asked for.
+
+    The device context keeps a whole number of app units (60 per CSS pixel)
+    per device pixel, so a zoom is rounded to 60/n: 1.2, 1.5 and 2 survive,
+    and 1.1 - the first Ctrl++ step - runs at 60/55 = 1.0909. A test that only
+    uses zooms that divide 60 cannot see an engine that converts with the
+    requested number: measured at 1.1 on a click asked at (1740, 848), 145 px
+    off with no zoom correction, 15 px off with the requested zoom, 0 with
+    the effective one.
+    """
+    return 60 / round(60 / zoom)
+
+
 def _zoomed_session(firefox_binary, profile_dir, *, dpr, humanize, width=3200,
                     height=1800):
     from invisible_playwright import InvisiblePlaywright
@@ -614,7 +628,8 @@ def test_zoomed_binary_motion_and_wheel(firefox_binary, nested_origins, tmp_path
         page = _timed(context.new_page())
         page.goto(nested_origins["origin"] + "/dpr-document")
         page.wait_for_function(
-            "dpr => Math.abs(devicePixelRatio - dpr) < 0.00001", arg=dpr * zoom)
+            "dpr => Math.abs(devicePixelRatio - dpr) < 0.00001",
+            arg=_effective(dpr * zoom))
         locator = page.locator("input")
         page.evaluate("""() => {
             const el = document.querySelector('input');
@@ -645,6 +660,8 @@ def test_zoomed_binary_motion_and_wheel(firefox_binary, nested_origins, tmp_path
 
 @pytest.mark.e2e
 @pytest.mark.parametrize("zoom,mode,nested,humanize", [
+    (1.1, "document", False, False),
+    (1.1, "closed", True, True),
     (1.2, "document", False, False),
     (1.2, "closed", True, True),
     (1.5, "open", True, False),
@@ -659,9 +676,10 @@ def test_pointer_with_saved_site_zoom(firefox_binary, nested_origins, tmp_path, 
         page = _timed(context.new_page())
         path = "/dpr-top-" if nested else "/dpr-"
         page.goto(nested_origins["origin"] + path + mode)
-        page.wait_for_function("z => Math.abs(devicePixelRatio - z) < 0.00001", arg=zoom)
+        page.wait_for_function("z => Math.abs(devicePixelRatio - z) < 0.00001",
+                               arg=_effective(zoom))
         frame = frames(page)[1] if nested else page.main_frame
-        assert frame.evaluate("devicePixelRatio") == pytest.approx(zoom)
+        assert frame.evaluate("devicePixelRatio") == pytest.approx(_effective(zoom))
         locator = frame.locator("input")
         rect = locator.evaluate("el => el.getBoundingClientRect().toJSON()")
         try:
