@@ -23,7 +23,8 @@ THE FOUR WAITS, and which event closes each:
     commit             Page.navigationCommitted
     domcontentloaded   Page.eventFired name=DOMContentLoaded
     load               Page.eventFired name=load
-    networkidle        zero inflight requests for IDLE_QUIET seconds
+    networkidle        `load`, then zero inflight requests for IDLE_QUIET
+                       seconds
 
 ⛔ `sameDocumentNavigation` does NOT clear anything: it is the same
 document, and a history push does not reload the page. Treating it as a
@@ -247,7 +248,21 @@ class Lifecycle:
     # ── waiting ─────────────────────────────────────────────────────────────
     def _reached(self, f: Frame, state: str) -> bool:
         if state == "networkidle":
-            return (self._inflight == 0
+            # ⛔ networkidle IMPLIES `load`, THE WAY `load` IMPLIES
+            # `domcontentloaded`, and this is the one place that says so.
+            # The request counter is page-wide and knows nothing about
+            # documents. With a `beforeunload` listener on the page being
+            # left, Firefox sends `navigationStarted` BEFORE the new
+            # document's request: the counter is zero and has been quiet for
+            # seconds - the OLD page's silence - and the wait was reached
+            # before the new page had been asked for. Measured 2026-10-03
+            # leaving a production single-page login app:
+            # `goto(..., "networkidle")` returned in 78 ms with no Response,
+            # still on the old page, which a caller reads as a same-document
+            # navigation. `load` is cleared on `navigationStarted`, so
+            # requiring it means the quiet is measured on the frame's current
+            # document, for an anchored wait and an unanchored one alike.
+            return ("load" in f.states and self._inflight == 0
                     and time.monotonic() - self._last_activity >= IDLE_QUIET)
         return state in f.states
 
@@ -349,24 +364,6 @@ class Lifecycle:
                     # second half is not optional). A navigation from
                     # BEFORE ours is not ours, no matter what it says.
                     if navigation is not None and not f.follows(navigation):
-                        pass
-                    # ⛔ AND networkidle MUST ALSO WAIT FOR OUR DOCUMENT.
-                    # `_reached` reads one page-wide request counter, which
-                    # knows nothing about navigations. With a `beforeunload`
-                    # listener on the page being left, Firefox sends
-                    # `navigationStarted` BEFORE the new document's request:
-                    # `follows` is then true, the counter is zero and has been
-                    # quiet for seconds - the OLD page's silence - and the
-                    # wait was reached before the new page had been asked
-                    # for. Measured 2026-10-03 leaving a production
-                    # single-page login app: `goto(..., "networkidle")`
-                    # returned in 78 ms with no Response, still on the old
-                    # page, which a caller reads as a same-document
-                    # navigation. `load` is cleared on
-                    # `navigationStarted`, so requiring it means the quiet
-                    # is measured on a document that belongs to us.
-                    elif (state == "networkidle" and navigation is not None
-                          and "load" not in f.states):
                         pass
                     elif self._reached(f, state):
                         return

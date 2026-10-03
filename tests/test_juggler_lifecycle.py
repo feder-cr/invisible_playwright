@@ -254,7 +254,9 @@ def test_the_inflight_counter_does_not_go_below_zero():
 
 def test_networkidle_wants_SILENCE_not_just_zero():
     c, v = lifecycle()
+    # A loaded document: networkidle implies load (see the class test).
     events(v, ("Page.frameAttached", {"frameId": "F1"}),
+           ("Page.eventFired", {"frameId": "F1", "name": "load"}),
            ("Network.requestWillBeSent", {"requestId": "R"}),
            ("Network.requestFinished", {"requestId": "R"}))
     assert v.inflight == 0
@@ -270,7 +272,9 @@ def test_networkidle_unblocks_by_TIMEOUT_not_by_an_event():
     until the next event, it would stay stuck in exactly the case it must
     succeed. Here no event arrives after the last one."""
     c, v = lifecycle()
+    # A loaded document: networkidle implies load (see the class test).
     events(v, ("Page.frameAttached", {"frameId": "F1"}),
+           ("Page.eventFired", {"frameId": "F1", "name": "load"}),
            ("Network.requestWillBeSent", {"requestId": "R"}),
            ("Network.requestFinished", {"requestId": "R"}))
     t0 = time.monotonic()
@@ -409,3 +413,38 @@ def test_goto_networkidle_waits_for_ITS_OWN_document_not_the_quiet_old_one():
     v.wait_for_state("F1", "networkidle", navigation="N1",
                      timeout=IDLE_QUIET * 4)
     assert v.frames["F1"].url == "http://new/"
+
+
+@pytest.mark.parametrize("anchored", [True, False],
+                         ids=["anchored", "unanchored"])
+def test_networkidle_is_never_reached_on_a_document_that_has_not_loaded(anchored):
+    """The class behind the goto case above: networkidle is the last of the
+    four states, so it implies `load` the way `load` implies
+    `domcontentloaded`, and ONE definition says so, for every wait.
+
+    With the requirement written into `goto`'s anchored wait only, a second
+    definition of networkidle existed beside `_reached`, and an unanchored
+    wait during a navigation still read the old page's silence: states
+    cleared by `navigationStarted`, counter at zero, quiet for seconds.
+
+    Known-bad: answer networkidle from the request counter alone again, or
+    gate it on `load` for one kind of wait only.
+    """
+    c, v = lifecycle()
+    events(v, ("Page.frameAttached", {"frameId": "F1"}),
+           ("Page.navigationStarted", {"frameId": "F1", "navigationId": "N0"}),
+           ("Page.navigationCommitted", {"frameId": "F1", "navigationId": "N0",
+                                         "url": "http://old/"}),
+           ("Page.eventFired", {"frameId": "F1", "name": "load"}))
+    time.sleep(IDLE_QUIET * 1.5)  # the old page has gone quiet
+    events(v, ("Page.navigationStarted", {"frameId": "F1", "navigationId": "N1"}))
+    nav = {"navigation": "N1"} if anchored else {}
+
+    with pytest.raises(TimeoutError) as e:
+        v.wait_for_state("F1", "networkidle", timeout=IDLE_QUIET * 2, **nav)
+    assert "networkidle" in str(e.value)
+
+    events(v, ("Page.navigationCommitted", {"frameId": "F1", "navigationId": "N1",
+                                            "url": "http://new/"}),
+           ("Page.eventFired", {"frameId": "F1", "name": "load"}))
+    v.wait_for_state("F1", "networkidle", timeout=IDLE_QUIET * 4, **nav)
