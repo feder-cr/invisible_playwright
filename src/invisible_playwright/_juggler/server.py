@@ -34,6 +34,7 @@ import shutil
 import tempfile
 import threading
 import time
+import warnings
 from typing import Any, Dict, List, Optional
 
 from .._behaviour import SessionActs
@@ -1706,10 +1707,18 @@ class PageDispatcher(Dispatcher):
     }
 
     def __init__(self, server, context: "BrowserContextDispatcher",
-                 session: str, target_id: str) -> None:
+                 session: str, target_id: str,
+                 opener: Optional["PageDispatcher"] = None) -> None:
         self.context = context
         self.session = session
         self.target_id = target_id
+        # ⛔ The once-guard for `announce_closed` lives under this lock, not
+        # in a bare attribute: the close arrives on up to four threads
+        # (`op_close`, the reader's detach, an adoption finishing early, a
+        # context closing underfoot) and check-then-set without it emits
+        # `close` twice when the two interleave between the test and the set.
+        self._close_lock = threading.Lock()
+        self._announced_closed = False
         # The id Juggler gave the running screencast, or None. One per page,
         # because the engine holds one capture sink per window.
         self._screencast_id: Optional[str] = None
@@ -1760,9 +1769,16 @@ class PageDispatcher(Dispatcher):
         self.frame = FrameDispatcher(server, self, self.main_frame_id)
         viewport = context.options.get("viewport") or {"width": 1280,
                                                        "height": 720}
-        super().__init__(server, context,
-                         {"mainFrame": self.frame.channel,
-                          "viewportSize": viewport, "isClosed": False})
+        initializer = {"mainFrame": self.frame.channel,
+                       "viewportSize": viewport, "isClosed": False}
+        if opener is not None:
+            # ⛔ THE OPENER TRAVELS IN THE INITIALIZER, and nowhere else. The
+            # client resolves `page.opener()` from it and emits `popup` on the
+            # opener when the context announces the page - so a page built
+            # without it is tracked but orphaned: present in `context.pages`
+            # while its opener never fires `popup` and `opener()` is None.
+            initializer["opener"] = opener.channel
+        super().__init__(server, context, initializer)
         self.emit("__adopt__", {"guid": self.frame.guid})
         self.frame.parent = self
         # ⛔ AFTER the Page exists: an event that fires during construction
@@ -2745,8 +2761,14 @@ class PageDispatcher(Dispatcher):
             self.browser.forget(self.session)
         except Exception:
             pass
+        # ⛔ And the page leaves the context's list AND the browser's target
+        # map here, so a closed popup is not announced twice and neither
+        # registry grows by one entry per page for the life of the browser.
+        try:
+            self.browser._discard_page(self)
+        except Exception:
+            pass
         self.announce_closed()
-        self.dispose()
         return None
 
     def announce_closed(self) -> None:
@@ -2761,17 +2783,23 @@ class PageDispatcher(Dispatcher):
         against the driver, and the whole point of this exercise is that the
         two answer the same.
         """
-        if getattr(self, "_announced_closed", False):
-            return
-        self._announced_closed = True
-        # ⛔ THE UNSUBSCRIBE HANGS OFF THE SAME ONCE-GUARD AS THE EVENT, on
-        # purpose. Both ways a page can end - `page.close()` and
-        # `context.close()` - already funnel through here, so this is the one
-        # place that knows a page is over; putting the removal anywhere else
-        # would mean two places deciding it, and the one that got missed
-        # would leak a subscriber per page exactly as before.
-        self._detach_listeners()
-        self.emit("close")
+        with self._close_lock:
+            if self._announced_closed:
+                return
+            self._announced_closed = True
+            # ⛔ THE UNSUBSCRIBE HANGS OFF THE SAME ONCE-GUARD AS THE EVENT, on
+            # purpose. Both ways a page can end - `page.close()` and
+            # `context.close()` - already funnel through here, so this is the one
+            # place that knows a page is over; putting the removal anywhere else
+            # would mean two places deciding it, and the one that got missed
+            # would leak a subscriber per page exactly as before.
+            self._detach_listeners()
+            self.emit("close")
+            # ⛔ `dispose` (the `__dispose__` message) rides the SAME lock as
+            # the guard above: `op_close` also disposes after announcing, and
+            # without this two threads racing `close()` could both pass
+            # `dispose`'s own check and send `__dispose__` twice.
+            self.dispose()
         # ⛔ `close` FIRST, THEN `__dispose__`, which is the order the driver
         # uses and not a preference: the client resolves the close on the
         # event, and an object disposed before it is announced is one the
@@ -2786,7 +2814,6 @@ class PageDispatcher(Dispatcher):
         # is why `diff_protocol.py` grew a fifth dimension to see it: the other
         # four compare `__create__`, initializers, events and parentage, and
         # the event comparison skips every method starting with `__`.
-        self.dispose()
 
 
 
@@ -2960,14 +2987,19 @@ class BrowserContextDispatcher(Dispatcher):
         return None
 
     def op_new_page(self, params: Dict) -> Any:
+        """Ask the engine for a page, then wait for its adoption.
+
+        ⛔ THIS DOES NOT BUILD THE PAGE ITSELF, and that is the whole fix for
+        popups. The engine emits `Browser.attachedToTarget` for EVERY page
+        target - requested or spontaneous - and a single adoption path builds
+        the `PageDispatcher` for all of them, so a target can never be built
+        twice (once by this call, once by the event) and a `window.open`
+        target is a page like any other, with its opener recorded.
+        """
         conn = self.conn
         result = conn.send("Browser.newPage",
                            _address(self.context_id, {}), timeout=30)
-        target_id = result["targetId"]
-        session = self.browser.session_for(target_id, timeout=20.0)
-        page = PageDispatcher(self.server, self, session, target_id)
-        self.pages.append(page)
-        self.emit("page", {"page": page.channel})
+        page = self.browser._wait_for_page(result["targetId"], timeout=60.0)
         return {"page": page.channel}
 
     # ── cookies, permissions, geolocation ───────────────────────────────────
@@ -3057,6 +3089,10 @@ class BrowserContextDispatcher(Dispatcher):
                     page.announce_closed()
                 except Exception:
                     pass
+                try:
+                    self.browser._discard_page(page)
+                except Exception:
+                    pass
             self.emit("close")
             self.dispose()
             self.browser.op_close({})
@@ -3077,6 +3113,10 @@ class BrowserContextDispatcher(Dispatcher):
         for page in list(self.pages):
             try:
                 page.announce_closed()
+            except Exception:
+                pass
+            try:
+                self.browser._discard_page(page)
             except Exception:
                 pass
         self.emit("close")
@@ -3145,6 +3185,34 @@ class BrowserDispatcher(Dispatcher):
         #: the life of the browser. Enough to hold the burst that precedes a
         #: `newPage` reply, far too little to be a leak.
         self.BUFFER_CAP = 256
+        # ⛔ EVERY PAGE TARGET, REQUESTED OR NOT, AND THESE COME FIRST -
+        # before the listener below and before `Browser.enable`. The reader
+        # thread can deliver `attachedToTarget` while `Browser.enable` is
+        # still blocking, so anything this listener touches must exist before
+        # it is installed: with the map created after, the very first event
+        # died in `AttributeError` inside the listener. Measured 2026-10-03:
+        # this engine reports no pre-existing tab at enable, so the window
+        # never fired here - but a target arriving between `enable` and the
+        # end of this constructor is a target that PREDATES every context, and
+        # adopting it would mint a phantom page (in a persistent launch the
+        # default context would catch it). Those are recorded for their
+        # session and never adopted: `_adopt_enabled` flips only once this
+        # constructor has fully run.
+        self._targets_lock = threading.Lock()
+        self._page_targets: Dict[str, PageDispatcher] = {}
+        #: Targets whose adoption thread is still building. `op_new_page`
+        #: waits on these instead of building a second dispatcher.
+        self._adopting: set = set()
+        #: Adoption failures, by target. The `newPage` waiter re-raises (and
+        #: pops) them; capped because a spontaneous popup nobody waits for
+        #: must not grow this for the life of the browser.
+        self._adopt_errors: Dict[str, Exception] = {}
+        #: Targets detached BEFORE their adoption finished (a popup closed
+        #: faster than it attached). The adoption still emits `page` first and
+        #: the close right after, so the client always sees them in order.
+        self._detached_early: set = set()
+        self._pages_ready = threading.Condition(self._targets_lock)
+        self._adopt_enabled = False
         # ⛔ THIS ONE RUNS FIRST NOW, WHERE THE CHAIN RAN IT LAST, and the
         # change is deliberate rather than incidental. A chain calls the most
         # recently installed link first, so the browser's recorder - installed
@@ -3160,6 +3228,10 @@ class BrowserDispatcher(Dispatcher):
                          {"version": version, "name": "firefox",
                           "browserName": "firefox"})
         self.contexts: List[BrowserContextDispatcher] = []
+        # ⛔ Adoptions start HERE, not at `add_listener` above. Anything the
+        # engine attached in between predates every context (see the note on
+        # the target map): recorded for its session, never built into a page.
+        self._adopt_enabled = True
 
     def actions_for_page(self, session: str, lifecycle, injected) -> Actions:
         """The hands of a new page: the session's seed and motion budget, and
@@ -3176,6 +3248,19 @@ class BrowserDispatcher(Dispatcher):
             with self._sessions_ready:
                 self._sessions[info.get("targetId")] = params.get("sessionId")
                 self._sessions_ready.notify_all()
+            # ⛔ EVERY page target is adopted, not just requested ones. This
+            # listener runs on the connection's reader thread, so it only
+            # CLAIMS the target here; the building happens on a daemon thread
+            # (`PageDispatcher` blocks waiting for its main frame, and the
+            # reader must never block).
+            if (info.get("type") or "page") == "page" and info.get("targetId"):
+                self._spawn_adoption(info.get("targetId"),
+                                     params.get("sessionId"),
+                                     info.get("browserContextId"),
+                                     info.get("openerId"))
+        elif method == "Browser.detachedFromTarget":
+            self._handle_detach(params.get("targetId"),
+                                params.get("sessionId"))
         if session:
             with self._buffer_lock:
                 if session not in self._live:
@@ -3220,6 +3305,175 @@ class BrowserDispatcher(Dispatcher):
                         % (target_id, timeout))
                 self._sessions_ready.wait(left)
             return self._sessions[target_id]
+
+    # ── popup adoption: window.open / target=_blank become real Pages ─────────
+    def _spawn_adoption(self, target_id: str, session_id: Optional[str],
+                        browser_context_id: Optional[str],
+                        opener_id: Optional[str]) -> None:
+        """Claim a fresh engine target and build its page off the reader thread."""
+        with self._targets_lock:
+            if not self._adopt_enabled:
+                return
+            if target_id in self._page_targets or target_id in self._adopting:
+                return
+            self._adopting.add(target_id)
+        thread = threading.Thread(
+            target=self._adopt_target,
+            args=(target_id, session_id, browser_context_id, opener_id),
+            daemon=True, name="invpw-adopt-%s" % target_id[:8])
+        thread.start()
+
+    def _adopt_target(self, target_id: str, session_id: Optional[str],
+                      browser_context_id: Optional[str],
+                      opener_id: Optional[str]) -> None:
+        """Build the `PageDispatcher` for one engine target, then announce it.
+
+        A popup goes through EXACTLY the same construction as a `newPage`
+        page - lifecycle, injected script, buffered-event replay, cursor acts -
+        so it behaves like any other page and carries no observable marker of
+        how it was opened. Stealth is preserved by doing nothing special.
+        """
+        try:
+            session = session_id or self.session_for(target_id, timeout=20.0)
+            context = self._context_for_popup(browser_context_id)
+            with self._targets_lock:
+                opener = self._page_targets.get(opener_id) if opener_id else None
+            page = PageDispatcher(self.server, context, session, target_id,
+                                  opener=opener)
+            # ⛔ `page` BEFORE the registration, on purpose. A detach racing
+            # this build is recorded as early (see `_handle_detach`) and the
+            # close is announced right after, so the client always sees the
+            # page before its close - never a close for a page it has not met.
+            context.emit("page", {"page": page.channel})
+            with self._targets_lock:
+                self._adopting.discard(target_id)
+                self._page_targets[target_id] = page
+                context.pages.append(page)
+                early = target_id in self._detached_early
+                if early:
+                    self._detached_early.discard(target_id)
+                self._pages_ready.notify_all()
+            if early:
+                self._finish_early_detached(page, session)
+        except Exception as failure:
+            with self._targets_lock:
+                self._adopting.discard(target_id)
+                self._adopt_errors[target_id] = failure
+                while len(self._adopt_errors) > 64:
+                    self._adopt_errors.pop(next(iter(self._adopt_errors)))
+                # ⛔ LOUD, before the waiter is woken: a failed adoption that
+                # only lives in `handler_errors` is found by nobody. The warn
+                # precedes the notify so that whoever the waiter wakes (it
+                # re-raises this failure) has necessarily already been told.
+                try:
+                    warnings.warn(
+                        "invisible_playwright: adoption of target %s failed: %s"
+                        % (target_id, failure), RuntimeWarning, stacklevel=2)
+                except Exception:
+                    pass
+                self._pages_ready.notify_all()
+            try:
+                if session_id:
+                    self.forget(session_id)
+            except Exception:
+                pass
+            try:
+                if len(self.conn.handler_errors) < 32:
+                    self.conn.handler_errors.append(
+                        "Browser.attachedToTarget: adoption of target %s "
+                        "failed: %s" % (target_id, failure))
+            except Exception:
+                pass
+
+    def _context_for_popup(self, browser_context_id: Optional[str]
+                           ) -> "BrowserContextDispatcher":
+        """The context an engine target belongs to. The DEFAULT context (a
+        persistent launch) is addressed by ABSENCE - `context_id None` - which
+        is also what the event omits, so the two Nones meet here."""
+        for context in list(self.contexts):
+            if context.context_id == browser_context_id:
+                return context
+        raise ProtocolException(
+            "popup arrived for unknown browserContextId %r: its context was "
+            "closed or never existed here" % (browser_context_id,))
+
+    def _wait_for_page(self, target_id: str, timeout: float) -> PageDispatcher:
+        """The `newPage` half of the single creation path: the adoption thread
+        owns the build, this only waits for it (or re-raises its failure)."""
+        deadline = time.monotonic() + timeout
+        with self._pages_ready:
+            while True:
+                page = self._page_targets.get(target_id)
+                if page is not None:
+                    return page
+                failure = self._adopt_errors.pop(target_id, None)
+                if failure is not None:
+                    raise failure
+                left = deadline - time.monotonic()
+                if left <= 0:
+                    raise ProtocolException(
+                        "no page was attached for target %s in %.0fs: the "
+                        "engine answered Browser.newPage but never emitted "
+                        "Browser.attachedToTarget for it" % (target_id, timeout))
+                self._pages_ready.wait(left)
+
+    def _handle_detach(self, target_id: Optional[str],
+                       session_id: Optional[str]) -> None:
+        """The engine reports a target gone: an engine-side close (or a popup
+        that died before it finished attaching). Never blocks the reader."""
+        if not target_id:
+            return
+        with self._targets_lock:
+            page = self._page_targets.pop(target_id, None)
+            if page is None:
+                if target_id in self._adopting:
+                    self._detached_early.add(target_id)
+                return
+            try:
+                page.context.pages.remove(page)
+            except ValueError:
+                pass
+        with self._sessions_ready:
+            self._sessions.pop(target_id, None)
+        try:
+            self.forget(session_id or page.session)
+        except Exception:
+            pass
+        try:
+            page.announce_closed()
+        except Exception:
+            pass
+
+    def _finish_early_detached(self, page: PageDispatcher, session: str) -> None:
+        """Close a page whose detach beat its own announcement, AFTER the
+        announcement, so the client's `page` and `close` arrive in order."""
+        with self._targets_lock:
+            self._page_targets.pop(page.target_id, None)
+            try:
+                page.context.pages.remove(page)
+            except ValueError:
+                pass
+        with self._sessions_ready:
+            self._sessions.pop(page.target_id, None)
+        try:
+            self.forget(session)
+        except Exception:
+            pass
+        try:
+            page.announce_closed()
+        except Exception:
+            pass
+
+    def _discard_page(self, page: PageDispatcher) -> None:
+        """Drop a client-closed page from the target map and its context's
+        list. Idempotent: the later engine detach for the same target then
+        finds nothing and stays silent."""
+        with self._targets_lock:
+            self._page_targets.pop(getattr(page, "target_id", None), None)
+            try:
+                page.context.pages.remove(page)
+            except (ValueError, AttributeError):
+                pass
 
     #: Context options that are ENGINE state, with the Juggler command and the
     #: field name each one travels in.
