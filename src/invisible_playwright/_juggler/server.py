@@ -1802,6 +1802,26 @@ class PageDispatcher(Dispatcher):
         # that used to live in this closure is now `dispatch_event`'s job and
         # covers every subscriber instead of just this one.
         self.conn.add_listener(self._route_juggler_event)
+        self._hear_lifecycle()
+
+    def _hear_lifecycle(self) -> None:
+        """Take what only the lifecycle can decide and send it up.
+
+        ⛔ networkidle IS NOT AN ENGINE EVENT: it is born in
+        `Lifecycle._settle` on a silence deadline, and until 2026-10-04 it went
+        no further than the lifecycle's own waits. The client never got
+        `loadstate {"add": "networkidle"}`, so `page.wait_for_load_state(
+        "networkidle")`, `wait_for_url(..., wait_until="networkidle")` and
+        `expect_navigation(wait_until="networkidle")` - which wait for exactly
+        that event - timed out on a loaded, silent page. One definition, two
+        consumers: `goto`'s wait and this event.
+        """
+        self.lifecycle.announce = self._on_lifecycle
+
+    def _on_lifecycle(self, what: str, frame_id: str,
+                      url: Optional[str] = None) -> None:
+        if what == "networkidle":
+            self.frame_for(frame_id).emit("loadstate", {"add": "networkidle"})
 
     def _route_juggler_event(self, method: str, params: Dict,
                              session) -> None:

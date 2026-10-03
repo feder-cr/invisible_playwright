@@ -24,7 +24,13 @@ THE FOUR WAITS, and which event closes each:
     domcontentloaded   Page.eventFired name=DOMContentLoaded
     load               Page.eventFired name=load
     networkidle        `load`, then zero inflight requests for IDLE_QUIET
-                       seconds
+                       seconds (`Lifecycle._settle`, the only place)
+
+⛔ networkidle IS A STATE LIKE THE OTHER THREE, kept in `Frame.states` and
+cleared with them, and `announce` hands it to the page so the client hears it
+too. It used to be a predicate evaluated inside `wait_for_state`, which only a
+waiter in THIS process could see: the client's `wait_for_load_state(
+"networkidle")` waits for a `loadstate` event that was never sent.
 
 ⛔ `sameDocumentNavigation` does NOT clear anything: it is the same
 document, and a history push does not reload the page. Treating it as a
@@ -110,6 +116,14 @@ class Lifecycle:
         self._inflight = 0
         self._last_activity = time.monotonic()
         self._cv = threading.Condition()
+        #: Who hears what only this object can decide: `announce(what,
+        #: frame_id, url=None)`, called UNDER the lock and BEFORE any waiter
+        #: is woken, so whatever it sends upward is on its way before the
+        #: answer of a wait that the same event satisfies. Set by the page
+        #: once its channel exists.
+        self.announce = None
+        #: The one pending silence check, or None. See `_settle`.
+        self._settle_timer: Optional[threading.Timer] = None
         # ⛔ REGISTERED, NOT CHAINED, and the difference is not style: this
         # used to capture the previous `on_event` and install a closure over
         # it, so every page added a nested call to the delivery of every
@@ -127,6 +141,11 @@ class Lifecycle:
     def detach(self) -> None:
         """Stop listening. Called when the page this follows goes away."""
         self.c.remove_listener(self._route)
+        with self._cv:
+            self.announce = None
+            if self._settle_timer is not None:
+                self._settle_timer.cancel()
+                self._settle_timer = None
 
     def frame(self, frame_id: str):
         """The frame with this id, or None.
@@ -145,8 +164,54 @@ class Lifecycle:
     def _on_event(self, method: str, p: dict) -> None:
         with self._cv:
             f = self._apply(method, p)
+            self._settle()
             if f is not None or method.startswith("Network."):
                 self._cv.notify_all()
+
+    def _settle(self) -> None:
+        """Give networkidle to every frame whose document has loaded, once the
+        network has been quiet for IDLE_QUIET. Called under the lock.
+
+        ⛔ networkidle IMPLIES `load`, THE WAY `load` IMPLIES
+        `domcontentloaded`. The request counter is page-wide and knows nothing
+        about documents. With a `beforeunload` listener on the page being
+        left, Firefox sends `navigationStarted` BEFORE the new document's
+        request: the counter is zero and has been quiet for seconds - the OLD
+        page's silence. Measured 2026-10-03 leaving a production single-page
+        login app: `goto(..., "networkidle")` returned in 78 ms with no
+        Response, still on the old page. `load` is cleared on
+        `navigationStarted`, so requiring it measures the quiet on the frame's
+        current document.
+
+        ⛔ AND IT IS BORN ON A SILENCE DEADLINE, when NOTHING happens, so no
+        event can deliver it: a timer does, one at a time. A check that finds
+        activity since it was scheduled schedules the remainder.
+
+        Once given it stays until the next document, as in Playwright: a
+        request the page makes later does not take it back.
+        """
+        waiting = [f for f in self.frames.values()
+                   if "load" in f.states and "networkidle" not in f.states]
+        if not waiting or self._inflight:
+            return
+        quiet_for = time.monotonic() - self._last_activity
+        if quiet_for < IDLE_QUIET:
+            if self._settle_timer is None:
+                self._settle_timer = threading.Timer(
+                    IDLE_QUIET - quiet_for, self._settle_later)
+                self._settle_timer.daemon = True
+                self._settle_timer.start()
+            return
+        for f in waiting:
+            f.states.add("networkidle")
+            if self.announce is not None:
+                self.announce("networkidle", f.id)
+        self._cv.notify_all()
+
+    def _settle_later(self) -> None:
+        with self._cv:
+            self._settle_timer = None
+            self._settle()
 
     def _apply(self, method: str, p: dict):
         if method == "Page.ready":
@@ -247,23 +312,8 @@ class Lifecycle:
 
     # ── waiting ─────────────────────────────────────────────────────────────
     def _reached(self, f: Frame, state: str) -> bool:
-        if state == "networkidle":
-            # ⛔ networkidle IMPLIES `load`, THE WAY `load` IMPLIES
-            # `domcontentloaded`, and this is the one place that says so.
-            # The request counter is page-wide and knows nothing about
-            # documents. With a `beforeunload` listener on the page being
-            # left, Firefox sends `navigationStarted` BEFORE the new
-            # document's request: the counter is zero and has been quiet for
-            # seconds - the OLD page's silence - and the wait was reached
-            # before the new page had been asked for. Measured 2026-10-03
-            # leaving a production single-page login app:
-            # `goto(..., "networkidle")` returned in 78 ms with no Response,
-            # still on the old page, which a caller reads as a same-document
-            # navigation. `load` is cleared on `navigationStarted`, so
-            # requiring it means the quiet is measured on the frame's current
-            # document, for an anchored wait and an unanchored one alike.
-            return ("load" in f.states and self._inflight == 0
-                    and time.monotonic() - self._last_activity >= IDLE_QUIET)
+        # One rule for the four: networkidle is born in `_settle`, the
+        # others at event intake, and all of them live in `f.states`.
         return state in f.states
 
     def wait_for_new_navigation(self, frame_id: str, previous: Optional[str],
@@ -385,14 +435,10 @@ class Lifecycle:
                     raise TimeoutError(
                         "%s not reached in %.0fs (%s, inflight requests: "
                         "%d)" % (state, timeout, reason, self._inflight))
-                # ⛔ With `networkidle` you do not sleep until the next
-                # event: the condition becomes true on a SILENCE DEADLINE,
-                # i.e. when NOTHING happens. Waiting for a notify there
-                # would mean waiting forever in exactly the case that is
-                # supposed to succeed.
-                self._cv.wait(min(remaining,
-                                   0.05 if state == "networkidle"
-                                   else remaining))
+                # networkidle comes true on a SILENCE DEADLINE, when nothing
+                # happens; `_settle`'s timer notifies then, so every state
+                # can sleep until the next notify.
+                self._cv.wait(remaining)
 
     # ── navigation ──────────────────────────────────────────────────────────
     def goto(self, url: str, *, frame_id: Optional[str] = None,

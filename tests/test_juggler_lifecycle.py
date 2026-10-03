@@ -448,3 +448,40 @@ def test_networkidle_is_never_reached_on_a_document_that_has_not_loaded(anchored
                                             "url": "http://new/"}),
            ("Page.eventFired", {"frameId": "F1", "name": "load"}))
     v.wait_for_state("F1", "networkidle", timeout=IDLE_QUIET * 4, **nav)
+
+
+def test_networkidle_is_born_once_and_announced_without_anyone_waiting():
+    """networkidle is a STATE of the document, born in one place and handed
+    to whoever listens, like `load`.
+
+    It used to exist only as a predicate evaluated inside `wait_for_state`, so
+    nothing could tell the client: the server never emitted
+    `loadstate {"add": "networkidle"}`, and `page.wait_for_load_state(
+    "networkidle")` - which waits for exactly that event - timed out on a
+    loaded, silent page. Measured on main 2026-10-04: load in 0.0 s,
+    networkidle TimeoutError at 5 s.
+
+    Known-bad: answer networkidle from a predicate inside the wait again, so
+    nobody hears it unless somebody is waiting.
+    """
+    c, v = lifecycle()
+    heard = []
+    v.announce = lambda what, frame_id, url=None: heard.append((what, frame_id))
+    events(v, ("Page.frameAttached", {"frameId": "F1"}),
+           ("Page.navigationStarted", {"frameId": "F1", "navigationId": "N0"}),
+           ("Page.navigationCommitted", {"frameId": "F1", "navigationId": "N0",
+                                         "url": "http://a/"}),
+           ("Network.requestWillBeSent", {"requestId": "R"}),
+           ("Network.requestFinished", {"requestId": "R"}),
+           ("Page.eventFired", {"frameId": "F1", "name": "load"}))
+    time.sleep(IDLE_QUIET * 3)
+    assert heard == [("networkidle", "F1")], heard
+    assert "networkidle" in v.frames["F1"].states
+
+    # A later request does not take it back (Playwright fires it once per
+    # document); the next document does.
+    events(v, ("Network.requestWillBeSent", {"requestId": "R2"}))
+    assert "networkidle" in v.frames["F1"].states
+    events(v, ("Page.navigationStarted", {"frameId": "F1", "navigationId": "N1"}))
+    assert "networkidle" not in v.frames["F1"].states
+    assert heard == [("networkidle", "F1")], heard

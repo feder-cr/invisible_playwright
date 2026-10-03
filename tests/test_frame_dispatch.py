@@ -227,3 +227,24 @@ def test_every_element_callback_receives_the_caller_s_argument(page, method, rec
         page.frame.call(method, params)
     script = page.injected.call.call_args.args[1]
     assert ("r(%s, {\"n\": 2})" % receiver) in script, script
+
+
+def test_networkidle_reaches_the_client_as_a_load_state(page):
+    """The server's half: the lifecycle's networkidle goes up as
+    `loadstate {"add": "networkidle"}` on the frame, which is the event the
+    client's `wait_for_load_state`, `wait_for_url` and `expect_navigation`
+    wait for. It was never emitted.
+
+    Known-bad: drop the announcement, or emit it from a second reading of the
+    network instead of from the lifecycle.
+    """
+    import time
+
+    from invisible_playwright._juggler.lifecycle import IDLE_QUIET
+
+    page._hear_lifecycle()
+    page.lifecycle._on_event("Page.eventFired", {"frameId": "main", "name": "load"})
+    time.sleep(IDLE_QUIET * 3)
+    added = [m["params"] for m in page.messages
+             if m["guid"] == page.frame.guid and m["method"] == "loadstate"]
+    assert {"add": "networkidle"} in added, added
