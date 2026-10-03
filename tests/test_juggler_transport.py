@@ -248,6 +248,11 @@ def test_the_public_API_reads_MANY_elements_without_node(firefox_binary):
             assert page.eval_on_selector("#t", "el => el.textContent") == "hello"
             assert page.eval_on_selector_all(
                 "li.x", "els => els.length") == 3
+            # Playwright's contract is fn(element, arg): the argument is passed on.
+            assert page.eval_on_selector(
+                "#t", "(el, a) => el.textContent + a.suffix", {"suffix": "!"}) == "hello!"
+            assert page.eval_on_selector_all(
+                "li.x", "(els, n) => els.length * n", 2) == 6
     finally:
         os.environ.pop(factory.CHOICE_ENV, None)
         srv.shutdown()

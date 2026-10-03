@@ -1350,8 +1350,9 @@ class FrameDispatcher(Dispatcher):
             lambda f, o: _serialize(self.injected.call(
                 f,
                 "(injected, el) => { const r = (%s);"
-                "  return typeof r === 'function' ? r(el) : r; }"
-                % params["expression"],
+                "  return typeof r === 'function' ? r(el, %s) : r; }"
+                % (params["expression"],
+                   json.dumps(_deserialize(params.get("arg")), default=str)),
                 {"objectId": o})))
 
     def op_eval_on_selector_all(self, params: Dict) -> Any:
@@ -1360,8 +1361,9 @@ class FrameDispatcher(Dispatcher):
             frame_id,
             "(injected, sel) => { const els = injected.querySelectorAll("
             "  injected.parseSelector(sel), document);"
-            "  const r = (%s); return typeof r === 'function' ? r(els) : r; }"
-            % params["expression"],
+            "  const r = (%s); return typeof r === 'function' ? r(els, %s) : r; }"
+            % (params["expression"],
+               json.dumps(_deserialize(params.get("arg")), default=str)),
             selector)
         return {"value": _serialize(value)}
 
