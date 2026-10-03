@@ -7,6 +7,7 @@ default (non-e2e) suite.
 from __future__ import annotations
 
 import threading
+import types
 
 import pytest
 
@@ -43,6 +44,9 @@ def _bare_page():
     page._announced_closed = False
     page.disposed = False
     page._detach_listeners = lambda: None
+    page.ended = []
+    page.context = types.SimpleNamespace(browser=types.SimpleNamespace(
+        _page_over=page.ended.append))
     return page
 
 
@@ -75,3 +79,6 @@ def test_announce_closed_holds_lock_and_emits_close_once():
     closes = [m for m in page.server.sent if m.get("method") == "close"]
     assert len(closes) == 1, f"expected exactly one close, got {len(closes)}"
     assert held, "announce_closed did not run under _close_lock"
+    assert page.ended == [page], (
+        "the browser's registries must be left exactly once, from the "
+        "once-guard, not by each caller of announce_closed")

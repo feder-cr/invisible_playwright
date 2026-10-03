@@ -57,7 +57,8 @@ def _serve(payload: bytes):
 POPUP_HTML = b"""<!doctype html><html><head><title>popup</title></head><body>
 <h1>popup page</h1>
 <button id="ping">ping</button>
-<script>document.getElementById('ping').addEventListener('click', () => document.title = 'pong')</script>
+<script>document.getElementById('ping').addEventListener('click', () => document.title = 'pong')
+if (location.search.indexOf('close=1') >= 0) setTimeout(() => window.close(), 300);</script>
 </body></html>"""
 
 
@@ -71,6 +72,7 @@ def harness():
 <button id="open-features" onclick="window.open('{popup_url}', 'featwin', 'width=600,height=500')">feat</button>
 <button id="open-noopener" onclick="window.open('{popup_url}', '_blank', 'noopener')">noopen</button>
 <a id="open-link" href="{popup_url}" target="_blank">link</a>
+<button id="open-closing" onclick="window.open('{popup_url}?close=1', '_blank')">closing</button>
 </body></html>""".encode("utf-8")
     so, po = _serve(opener_html)
     try:
@@ -337,3 +339,56 @@ def test_window_open_features_headed_humanized(firefox_binary, harness):
             assert popup.is_closed()
         finally:
             ctx.close()
+
+
+def test_popup_document_reaches_the_context(browser, harness):
+    """The popup's OWN document request and response reach
+    `context.on("request")` / `("response")`, once each, with a readable body.
+
+    They are sent before the popup's Page exists, so without the page holding
+    its events from the start of its construction only the subresources
+    arrived: the document - the only copy of a PDF opened in a new tab - was
+    out of reach."""
+    ctx, page = _open_context_page(browser)
+    try:
+        _goto_opener(page, harness)
+        requests, responses = [], []
+        ctx.on("request", lambda r: requests.append(r.url))
+        ctx.on("response", lambda r: responses.append(r))
+        with ctx.expect_page(timeout=15_000) as info:
+            page.click("#open-simple")
+        popup = info.value
+        popup.wait_for_load_state("load", timeout=10_000)
+        popup.wait_for_timeout(500)
+        url = harness["popup_url"]
+        assert requests.count(url) == 1, (url, requests)
+        documents = [r for r in responses if r.url == url]
+        assert len(documents) == 1, (url, [r.url for r in responses])
+        assert b"popup page" in documents[0].body()
+        popup.close()
+    finally:
+        ctx.close()
+
+
+def test_a_popup_the_site_closes_is_closed(browser, harness):
+    """`window.close()` from the popup ends its Page: `close` fires once,
+    `is_closed()` is true and `context.pages` drops it, with no
+    `page.close()` from the caller."""
+    ctx, page = _open_context_page(browser)
+    try:
+        _goto_opener(page, harness)
+        with ctx.expect_page(timeout=15_000) as info:
+            page.click("#open-closing")
+        popup = info.value
+        closes = []
+        popup.on("close", lambda _p: closes.append(1))
+        deadline = 50
+        while not popup.is_closed() and deadline:
+            page.wait_for_timeout(100)
+            deadline -= 1
+        page.wait_for_timeout(300)
+        assert popup.is_closed()
+        assert len(closes) <= 1
+        assert ctx.pages == [page], [p.url for p in ctx.pages]
+    finally:
+        ctx.close()
