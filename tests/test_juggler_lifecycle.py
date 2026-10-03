@@ -287,9 +287,20 @@ def test_networkidle_unblocks_by_TIMEOUT_not_by_an_event():
 def test_a_NULL_navigationId_is_not_an_error():
     """The protocol declares it Nullable: it happens when the navigation
     does not create a new document (an anchor). Waiting for a load there
-    would be a timeout on something that succeeded."""
+    would be a timeout on something that succeeded.
+
+    The engine's same-document event is what `goto` waits for instead, and
+    here it arrives BEFORE the command's reply, which must still count."""
     c, v = lifecycle({"Page.navigate": {"navigationId": None}})
     events(v, ("Page.frameAttached", {"frameId": "F1"}))
+    real_send = c.send
+
+    def send(method, params=None, session=None, timeout=30):
+        if method == "Page.navigate":
+            events(v, ("Page.sameDocumentNavigation",
+                       {"frameId": "F1", "url": "http://a/#x"}))
+        return real_send(method, params, session, timeout)
+    c.send = send
     result = v.goto("http://a/#x", timeout=1)
     assert result == {"navigationId": None, "url": "http://a/#x"}
 
@@ -485,3 +496,39 @@ def test_networkidle_is_born_once_and_announced_without_anyone_waiting():
     events(v, ("Page.navigationStarted", {"frameId": "F1", "navigationId": "N1"}))
     assert "networkidle" not in v.frames["F1"].states
     assert heard == [("networkidle", "F1")], heard
+
+
+def test_a_same_document_goto_answers_after_the_engine_reports_it():
+    """Upstream Playwright's `goto`, for a navigation that creates no
+    document, waits for the frame's same-document navigation before it
+    answers, so the client has the new URL when `goto` returns.
+
+    This one answered the moment `Page.navigate` replied `navigationId: null`,
+    before `Page.sameDocumentNavigation` had arrived: `page.url` kept the old
+    URL until the NEXT call delivered the event. Measured on main 2026-10-04:
+    `goto(url + "#sec")` returned with `page.url == url`, and after a second
+    `goto(url + "#other")` it read `url + "#sec"` - one step behind.
+
+    Known-bad: return on a null navigationId without waiting, or announce the
+    URL after waking the waiter.
+    """
+    c, v = lifecycle({"Page.navigate": {"navigationId": None}})
+    events(v, ("Page.frameAttached", {"frameId": "F1"}),
+           ("Page.navigationCommitted", {"frameId": "F1", "navigationId": "N0",
+                                         "url": "http://a/"}))
+    order = []
+    v.announce = lambda what, frame_id, url=None: order.append((what, url))
+    real_send = c.send
+
+    def send(method, params=None, session=None, timeout=30):
+        out = real_send(method, params, session, timeout)
+        if method == "Page.navigate":
+            threading.Timer(0.2, events, (v, ("Page.sameDocumentNavigation", {
+                "frameId": "F1", "url": "http://a/#x"}))).start()
+        return out
+    c.send = send
+
+    result = v.goto("http://a/#x", timeout=5)
+    order.append(("returned", result["url"]))
+    assert order == [("sameDocument", "http://a/#x"),
+                     ("returned", "http://a/#x")], order

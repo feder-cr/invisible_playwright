@@ -157,7 +157,8 @@ def test_navigation_updates_url_and_clears_old_load_states(page):
         "commit", "domcontentloaded", "load", "networkidle",
     }
     page.messages.clear()
-    page._on_juggler_event("Page.sameDocumentNavigation", {
+    page._hear_lifecycle()
+    page.lifecycle._on_event("Page.sameDocumentNavigation", {
         "frameId": "widget", "url": "http://localhost/new#hash",
     })
     assert widget.url.endswith("#hash")

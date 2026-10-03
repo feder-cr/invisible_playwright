@@ -21,9 +21,11 @@ the client reads to tell the two apart; this server now does the same.
 
 Known-bad inputs, each run against this file before it was trusted:
 
-* removing the `Page.sameDocumentNavigation` branch from
-  `PageDispatcher._on_juggler_event` -> the unit test goes red (no `navigated`
-  is emitted) and the e2e test times out on `wait_for_url`;
+* removing the `sameDocument` branch from `PageDispatcher._on_lifecycle`
+  (which is where the event goes up since 2026-10-04: the lifecycle announces
+  it before it wakes a `goto`, see `test_same_document_goto_e2e.py`) -> the
+  unit test goes red (no `navigated` is emitted) and the e2e test times out on
+  `wait_for_url`;
 * emitting the event WITH a `newDocument` -> the unit test goes red, because
   the client would then wait for a document request that does not exist.
 """
@@ -35,6 +37,9 @@ import threading
 from types import SimpleNamespace
 
 import pytest
+
+from invisible_playwright._juggler.connection import EventListeners
+from invisible_playwright._juggler.lifecycle import Lifecycle
 
 
 # -- the unit half: the shipped event handler, fed the engine's event ---------
@@ -65,14 +70,21 @@ def _page_with_one_frame():
     page.context = SimpleNamespace(emit=lambda *a, **k: None, intercepting=False)
     page.frame = frame
     page.frame_for = lambda fid: frame
+    page.lifecycle = Lifecycle(EventListeners(), "S1")
+    page._hear_lifecycle()
     return page, frame
+
+
+def _engine_reports(page, params):
+    """The engine's event, delivered the way the browser delivers it: to the
+    lifecycle, which announces it to the page."""
+    page.lifecycle._on_event("Page.sameDocumentNavigation", params)
 
 
 def test_a_same_document_navigation_is_reported_to_the_client():
     page, frame = _page_with_one_frame()
 
-    page._on_juggler_event("Page.sameDocumentNavigation",
-                           {"frameId": "F1", "url": "http://127.0.0.1/reports"})
+    _engine_reports(page, {"frameId": "F1", "url": "http://127.0.0.1/reports"})
 
     assert frame.url == "http://127.0.0.1/reports", (
         "the frame kept the old URL: the client's initializer snapshot is "
@@ -89,8 +101,7 @@ def test_the_event_carries_NO_newDocument():
     would make it wait for a response that never comes."""
     page, frame = _page_with_one_frame()
 
-    page._on_juggler_event("Page.sameDocumentNavigation",
-                           {"frameId": "F1", "url": "http://127.0.0.1/#x"})
+    _engine_reports(page, {"frameId": "F1", "url": "http://127.0.0.1/#x"})
 
     (method, params), = frame.emitted
     assert method == "navigated"

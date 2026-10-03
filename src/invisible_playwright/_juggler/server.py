@@ -1820,8 +1820,34 @@ class PageDispatcher(Dispatcher):
 
     def _on_lifecycle(self, what: str, frame_id: str,
                       url: Optional[str] = None) -> None:
+        child = self.frame_for(frame_id)
         if what == "networkidle":
-            self.frame_for(frame_id).emit("loadstate", {"add": "networkidle"})
+            child.emit("loadstate", {"add": "networkidle"})
+        elif what == "sameDocument":
+            # ⛔ THE CLIENT HAS TO HEAR THIS ONE TOO, and until 2026-09-20 it
+            # did not. A pushState, a hash change, the route change of every
+            # single-page application arrives as `Page.sameDocumentNavigation`
+            # and not as a `navigationCommitted`; the lifecycle updated its own
+            # record of the frame's URL and nothing went up, so `page.url` kept
+            # the URL of the last full load and `wait_for_url` never resolved.
+            # Measured against a page that routes in the client: the fetch
+            # returned 200, the content changed, `location.href` changed, and
+            # `page.url` still named the previous document thirty seconds
+            # later - a click that worked, reported as a timeout.
+            #
+            # ⛔ AND IT IS SENT FROM HERE, NOT FROM `_on_juggler_event`, because
+            # of ORDER: the lifecycle calls this under its lock before it wakes
+            # a waiter, so a `goto` to a fragment answers after its `navigated`
+            # (as upstream does). Sent from the page's own listener it raced
+            # the answer, and `page.url` read one step behind (2026-10-04).
+            #
+            # No `newDocument`: that key is how the client tells a full load
+            # from this, and `wait_for_navigation` reads `newDocument.request`
+            # to answer with a Response. There is no document here, so there
+            # is nothing to announce - the same shape upstream's
+            # `_onSameDocumentNavigation` sends.
+            child.url = url or ""
+            child.emit("navigated", {"url": child.url, "name": child.name})
 
     def _route_juggler_event(self, method: str, params: Dict,
                              session) -> None:
@@ -2012,26 +2038,9 @@ class PageDispatcher(Dispatcher):
                 "newDocument": self.navigation_document(params.get("navigationId")),
             })
             child.emit("loadstate", {"add": "commit"})
-        elif method == "Page.sameDocumentNavigation":
-            # ⛔ THE CLIENT HAS TO HEAR THIS ONE TOO, and until 2026-09-20 it
-            # did not. A pushState, a hash change, the route change of every
-            # single-page application arrives as this event and not as a
-            # `navigationCommitted`; the lifecycle updated its own record of
-            # the frame's URL and nothing went up, so `page.url` kept the URL
-            # of the last full load and `wait_for_url` never resolved.
-            # Measured against a page that routes in the client: the fetch
-            # returned 200, the content changed, `location.href` changed, and
-            # `page.url` still named the previous document thirty seconds
-            # later - a click that worked, reported as a timeout.
-            #
-            # No `newDocument`: that key is how the client tells a full load
-            # from this, and `wait_for_navigation` reads `newDocument.request`
-            # to answer with a Response. There is no document here, so there
-            # is nothing to announce - the same shape upstream's
-            # `_onSameDocumentNavigation` sends.
-            child = self.frame_for(params["frameId"])
-            child.url = params.get("url") or ""
-            child.emit("navigated", {"url": child.url, "name": child.name})
+        # `Page.sameDocumentNavigation` is not handled here: the lifecycle
+        # announces it (`_on_lifecycle`), so the `navigated` it causes goes up
+        # BEFORE a `goto` waiting for it answers.
 
     #: How many entries are kept. ⛔ A CAP, not a history: a page printing in
     #: a loop would exhaust the memory of the process DRIVING it, and a driver

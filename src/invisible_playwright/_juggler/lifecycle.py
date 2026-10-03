@@ -68,6 +68,9 @@ class Frame:
         #: every navigation this frame has shown, numbered in the order the
         #: browser reported it. See `follows`.
         self._order: dict = {}
+        #: how many same-document navigations the browser has reported, so a
+        #: `goto` that creates no document can wait for the one it caused.
+        self.same_document = 0
 
     def saw(self, navigation: Optional[str]) -> None:
         """Number `navigation` the first time the browser mentions it."""
@@ -262,7 +265,13 @@ class Lifecycle:
         if method == "Page.sameDocumentNavigation":
             f = self._frame(p["frameId"])
             f.url = p.get("url", f.url)
+            f.same_document += 1
             # ⛔ No clearing here: it is the same document.
+            # Announced HERE, under the lock and before `_on_event` wakes a
+            # waiter, so the page's `navigated` is on its way up before the
+            # answer of a `goto` waiting for this very event.
+            if self.announce is not None:
+                self.announce("sameDocument", f.id, f.url)
             return f
 
         if method == "Page.eventFired":
@@ -451,17 +460,36 @@ class Lifecycle:
         params = {"frameId": fid, "url": url}
         if referer:
             params["referer"] = referer
+        deadline = time.monotonic() + timeout
+        # Counted BEFORE the command: the engine may report the same-document
+        # navigation before its reply arrives.
+        with self._cv:
+            before = self._frame(fid).same_document
         result = self.c.send("Page.navigate", params,
                               session=self.session, timeout=timeout) or {}
         nav = result.get("navigationId")
 
         # ⛔ A NULL `navigationId` is not an error: the protocol declares
-        # it `Nullable`, and it happens when the navigation does not
-        # create a new document - an anchor, or the same URL. There is no
-        # `load` to wait for, and waiting for one would be a timeout on
-        # something that succeeded.
+        # it `Nullable`, and Juggler answers it for a url that differs from
+        # the current one only by its fragment. There is no `load` to wait
+        # for, and waiting for one would be a timeout on something that
+        # succeeded.
+        #
+        # ⛔ BUT THE ANSWER WAITS FOR THE SAME-DOCUMENT NAVIGATION, as
+        # upstream's `goto` does. Answering on the reply put it ahead of
+        # `Page.sameDocumentNavigation`, and the client read the OLD url
+        # after `goto` returned, until its next call delivered the event
+        # (measured 2026-10-04, one step behind on every fragment goto).
         if nav is None:
-            return {"navigationId": None, "url": url}
+            with self._cv:
+                while self._frame(fid).same_document == before:
+                    left = deadline - time.monotonic()
+                    if left <= 0:
+                        raise TimeoutError(
+                            "the same-document navigation to %s was not "
+                            "reported in %.0fs" % (url, timeout))
+                    self._cv.wait(left)
+                return {"navigationId": None, "url": self.frames[fid].url}
 
         self.wait_for_state(fid, until, navigation=nav, timeout=timeout)
         return {"navigationId": nav, "url": self.frames[fid].url}
