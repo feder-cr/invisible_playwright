@@ -1419,15 +1419,15 @@ class RequestDispatcher(Dispatcher):
             # corruption tomorrow; the driver omits the key entirely and this
             # matches it.
             #
-            # ⛔ AND ON THIS BUILD IT IS ALWAYS ABSENT, which is OUR doing and
-            # not the transport's: `NetworkObserver.js` sets `postData:
-            # undefined` in the request event under a stealth patch dated
-            # 2026-08-24, whose comment says nobody asks for it without
-            # `page.route()` or `request.postData()`. The consequence is that
-            # `request.post_data()` answers None for every POST on BOTH
-            # transports - a suppressed value rather than a missing feature,
-            # which is the shape rule 12 is about. It is recorded here because
-            # this is where somebody will come looking.
+            # ⛔ THE ENGINE SENDS IT ONLY WHILE A ROUTE IS SET on the page or
+            # its context. A stealth patch dated 2026-08-24 stopped reading
+            # the body of every POST; through firefox-35 that left
+            # `request.post_data` None for every POST, inside a route guard
+            # too (feder-cr/invisible_core#90). Engines carrying the fix read
+            # it again while interception is on, so a route handler and the
+            # `request` event see the body then, and None without a route.
+            # It is recorded here because this is where somebody will come
+            # looking.
             **({"postData": params["postData"]}
                if params.get("postData") is not None else {}),
             "isNavigationRequest": bool(self.navigation_id),

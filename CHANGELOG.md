@@ -23,6 +23,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   interception hook while that pref is true, so a route set as a guard was
   accepted and saw no request at all while every POST went out. The error
   names the pref and the alternative, `service_workers="block"`.
+- **A routed request carries its body.** `request.post_data`,
+  `post_data_json` and `post_data_buffer` were None for every POST, inside a
+  route handler and on the `request` event alike, because the engine never
+  sent the body (feder-cr/invisible_core#90). With an engine that carries the
+  fix, the body is there whenever a route is set on the page or its context;
+  without a route it stays None, which keeps the engine from copying every
+  POST body.
 
 ## [0.25.8] - 2026-10-02
 
