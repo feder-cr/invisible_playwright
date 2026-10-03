@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.25.10] - 2026-10-04
+
+### Fixed
+- **`eval_on_selector` and `eval_on_selector_all` pass `arg` to the expression.**
+  The argument was dropped, so an expression that read it failed with
+  `a is undefined`. The wrapper that turns the caller's expression into a call
+  was written out by hand in four places, which is how two of them came to
+  forget the argument; it is now built in one.
+
 ## [0.25.9] - 2026-10-03
 
 ### Changed
