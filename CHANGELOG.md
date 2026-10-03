@@ -14,6 +14,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   `a is undefined`. The wrapper that turns the caller's expression into a call
   was written out by hand in four places, which is how two of them came to
   forget the argument; it is now built in one.
+- **`networkidle` waits for the new document, and reaches every wait that
+  asks for it.** After a `goto`, the old page's silence could satisfy
+  `wait_until="networkidle"` before the new document had loaded. And
+  `wait_for_load_state("networkidle")`, `wait_for_url` and `expect_navigation`
+  with `networkidle` always timed out, because the state was computed inside
+  one wait and never sent to the client. It is now a load state like the
+  others, reached once the current document has loaded and the network has
+  been quiet for half a second, and both `goto` and the client read that one
+  definition.
+- **After a `goto` to a fragment of the same page, `page.url` already has the
+  fragment.** The answer came before the navigation event, so the URL stayed
+  one step behind until the next call.
 
 ## [0.25.9] - 2026-10-03
 
