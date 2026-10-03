@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.25.9] - 2026-10-03
+
 ### Changed
 - **`select_option`, and `fill` on a field whose value is picked rather than
   typed (`date`, `time`, `color`, `range`...), let the engine commit the value
@@ -20,11 +22,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   `Page.dispatchTrustedInputEvents`; on firefox-34 these two actions fail with
   an unknown-command error.
 
-### Tests
-- The WebRTC sentinel behind a TCP-only SOCKS proxy no longer skips a missing
-  synthetic srflx on firefox-35 and later: it fails. The skip blamed the CI
-  machine and hid a Linux defect, where Firefox handed the proxy's wildcard
-  address to the default-route probe and the fallback never fired.
+### Fixed
+- **A click lands where it was asked on a page with a saved zoom.** The engine
+  sent page coordinates into the window with no zoom factor, so with a site
+  zoomed to 110% or 120% a click landed 145 or 263 px away, a click meant for
+  an iframe reached its parent, and `set_viewport_size` waited forever. The
+  engine now converts with the zoom Firefox actually applies.
+- **On Linux behind a SOCKS proxy, real sites see WebRTC working.** Firefox
+  handed the proxy's wildcard address to the default-route probe, Linux
+  answered with loopback, and no UDP candidate and no srflx were made: sites
+  reported WebRTC as blocked or the page as manipulated. The engine now falls
+  back as it does on Windows. The WebRTC check behind a TCP-only SOCKS proxy,
+  which skipped this case and blamed the CI machine, now fails instead.
+
+### Requires
+- `invisible-core` 35.32.0, which seals the firefox-35 engine. This version
+  does not run on firefox-34, and earlier versions do not run on firefox-35.
 
 ## [0.25.8] - 2026-10-02
 
