@@ -27,7 +27,6 @@ hard failure. Everything here creates first and returns the channel second.
 from __future__ import annotations
 
 import base64
-import json
 import os
 import pathlib
 import shutil
@@ -50,8 +49,9 @@ from .lifecycle import Lifecycle
 # transport tests import `_write_user_js`, `_serialize`, `_host_of` and
 # `_domain_matches` from HERE, and a move that breaks its callers to tidy a
 # file is not a tidy-up. One definition, two names to reach it.
-from ._marshal import (_as_callable, _button, _console_text, _deserialize,
-                       _guid_of, _headers_array, _js_string, _location,
+from ._marshal import (_as_callable, _button, _called_on, _console_text,
+                       _deserialize, _element_function, _guid_of,
+                       _headers_array, _js_string, _location,
                        _resource_type, _serialize, _with_argument)
 # ⛔ THE PARSER IS THE CORE'S, and briefly it was not: a copy of it lived
 # here for the length of one fix. Two readings of what a proxy is would be
@@ -421,11 +421,7 @@ class ElementHandleDispatcher(Dispatcher):
         driver's `click` carried a `position` and ours did not.
         """
         return {"value": _serialize(self.injected.call(
-            self.frame.frame_id,
-            "(injected, el) => { const r = (%s);"
-            "  return typeof r === 'function' ? r(el, %s) : r; }"
-            % (params["expression"],
-               json.dumps(_deserialize(params.get("arg")), default=str)),
+            self.frame.frame_id, _element_function(params),
             {"objectId": self.object_id}))}
 
     def op_text_content(self, params: Dict) -> Any:
@@ -1348,22 +1344,15 @@ class FrameDispatcher(Dispatcher):
         return self._with_element(
             params,
             lambda f, o: _serialize(self.injected.call(
-                f,
-                "(injected, el) => { const r = (%s);"
-                "  return typeof r === 'function' ? r(el, %s) : r; }"
-                % (params["expression"],
-                   json.dumps(_deserialize(params.get("arg")), default=str)),
-                {"objectId": o})))
+                f, _element_function(params), {"objectId": o})))
 
     def op_eval_on_selector_all(self, params: Dict) -> Any:
         frame_id, selector = self.enter_frames(params["selector"])
         value = self.injected.call(
             frame_id,
             "(injected, sel) => { const els = injected.querySelectorAll("
-            "  injected.parseSelector(sel), document);"
-            "  const r = (%s); return typeof r === 'function' ? r(els, %s) : r; }"
-            % (params["expression"],
-               json.dumps(_deserialize(params.get("arg")), default=str)),
+            "  injected.parseSelector(sel), document); %s }"
+            % _called_on(params, "els"),
             selector)
         return {"value": _serialize(value)}
 

@@ -50,12 +50,42 @@ def _as_callable(expression: str, argument: Any) -> str:
     three of those four failures are silent, which is the bad kind.
 
     A format string is only scanned where the format string itself is, so the
-    expression is an ARGUMENT to `%` and never a place `%` looks. The sibling
-    wrapper in `op_eval_on_selector` was already written this way.
+    expression is an ARGUMENT to `%` and never a place `%` looks.
     """
-    return ("(() => { const r = (%s);"
-            "  return typeof r === 'function' ? r(%s) : r; })()"
-            % (expression, json.dumps(argument, default=str)))
+    return "(() => { %s })()" % _invocation(expression, argument)
+
+
+def _invocation(expression: str, argument: Any, *receivers: str) -> str:
+    """The statements that evaluate the caller's expression and, when it is a
+    function, call it with `receivers` first and the argument last.
+
+    <M> THE ONLY PLACE THAT SPELLS THE CALL. The main-world wrapper above and
+    the three element-scoped ones (`handle.evaluate`, `eval_on_selector`,
+    `eval_on_selector_all`) used to write it out each on its own, and that is
+    how the argument reached `handle.evaluate` and was dropped by the other
+    two: a callback reading its second parameter got `undefined` there.
+
+    The main-world output is pinned byte for byte by
+    `test_the_argument_does_not_rewrite_the_expression.py`, because that one
+    runs as the page.
+    """
+    return ("const r = (%s);  return typeof r === 'function' ? r(%s) : r;"
+            % (expression,
+               ", ".join(receivers + (json.dumps(argument, default=str),))))
+
+
+def _called_on(params: Dict, receiver: str) -> str:
+    """The body of an element-scoped wrapper: the caller's function called
+    with `receiver` and the caller's argument, Playwright's `fn(element, arg)`.
+    """
+    return _invocation(params["expression"], _deserialize(params.get("arg")),
+                       receiver)
+
+
+def _element_function(params: Dict) -> str:
+    """The declaration `handle.evaluate` and `eval_on_selector` both send: one
+    element, then the argument. Both run in the utility world."""
+    return "(injected, el) => { %s }" % _called_on(params, "el")
 
 
 def _deserialize(value: Any) -> Any:

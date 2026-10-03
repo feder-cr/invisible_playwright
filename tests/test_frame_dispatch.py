@@ -191,3 +191,39 @@ def test_cursor_hit_test_is_the_action_s_own(page, verdict, value):
     answer = handle.call("checkHitTarget", {"point": {"x": 410, "y": 312.5}})
     assert answer == {"value": value}
     page.actions.hit_target.assert_called_once_with("widget", "input", (410.0, 312.5))
+
+
+#: The three element-scoped evaluations and the receiver each one hands to the
+#: caller's function before the argument.
+ELEMENT_CALLBACKS = [
+    ("handle.evaluate", "el"),
+    ("evalOnSelector", "el"),
+    ("evalOnSelectorAll", "els"),
+]
+
+
+@pytest.mark.parametrize("method,receiver", ELEMENT_CALLBACKS,
+                         ids=[m for m, _ in ELEMENT_CALLBACKS])
+def test_every_element_callback_receives_the_caller_s_argument(page, method, receiver):
+    """Playwright's contract is `fn(element, arg)` on all three. The argument
+    used to reach `handle.evaluate` only: `eval_on_selector` and
+    `eval_on_selector_all` called `r(el)` / `r(els)`, so a callback reading its
+    second parameter got `undefined` and threw inside the page.
+
+    Known-bad: drop the argument from any of the three scripts, or build one of
+    them by hand again instead of through the shared builder.
+    """
+    from invisible_playwright._juggler.server import ElementHandleDispatcher
+
+    page.frame.enter_frames = Mock(return_value=("widget", "#target"))
+    page.injected.query_selector.return_value = "node"
+    page.injected.call.return_value = 6
+    params = {"selector": "compound", "expression": "(x, a) => a",
+              "arg": {"value": {"o": [{"k": "n", "v": {"n": 2}}]}, "handles": []}}
+    if method == "handle.evaluate":
+        ElementHandleDispatcher(page.server, page.frame_for("widget"),
+                                "node").call("evaluateExpression", params)
+    else:
+        page.frame.call(method, params)
+    script = page.injected.call.call_args.args[1]
+    assert ("r(%s, {\"n\": 2})" % receiver) in script, script

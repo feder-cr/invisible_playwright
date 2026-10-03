@@ -141,3 +141,36 @@ def test_no_placeholder_is_left_anywhere_in_the_package():
     assert not guilty, (
         "the argument placeholder is back, and whatever reads it reads the "
         "caller's code too: %s" % guilty)
+
+
+def test_one_function_builds_every_call_of_the_caller_s_expression():
+    """The class, for the other defect this file's builder had: a second copy.
+
+    `handle.evaluate` was fixed to pass the argument and `eval_on_selector`,
+    built by hand two methods away, kept dropping it, because each wrapper
+    spelled the call on its own. A wrapper is a string literal that contains
+    the call, so the package may hold exactly one, and it is in `_marshal`.
+
+    Known-bad: write the wrapper inline in a dispatcher method again.
+    """
+    root = pathlib.Path(_marshal.__file__).resolve().parents[1]
+    builders = []
+    for path in sorted(root.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Constant) and isinstance(node.value, str)
+                    and "typeof r === 'function'" in node.value):
+                builders.append("%s:%d" % (path.relative_to(root).as_posix(),
+                                           node.lineno))
+    assert len(builders) == 1 and builders[0].startswith("_juggler/_marshal.py"), (
+        "the caller's expression is wrapped in more than one place, so a fix "
+        "to one leaves the others: %s" % builders)
+
+
+def test_the_receiver_comes_first_and_the_argument_second():
+    """`fn(element, arg)`: the element-scoped wrappers name their receiver."""
+    from invisible_playwright._juggler._marshal import _called_on
+
+    body = _called_on({"expression": "f", "arg": {"n": 2}}, "els")
+    assert "r(els, 2)" in body, body
+    assert "r(el, null)" in _called_on({"expression": "f"}, "el")
