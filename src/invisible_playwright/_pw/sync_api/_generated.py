@@ -2576,8 +2576,30 @@ class ElementHandle(JSHandle):
         timeout: typing.Optional[typing.Union[float, datetime.timedelta]] = None,
         no_wait_after: typing.Optional[bool] = None,
         force: typing.Optional[bool] = None,
+        expect_origin: typing.Optional[str] = None,
+        expect_input_type: typing.Optional[str] = None,
     ) -> None:
         """ElementHandle.fill
+
+        MODIFIED by invisible_playwright: `expect_origin` is a serialized origin
+        (scheme://host[:port], no path). The element's own document URL and security
+        origins, connection and input kind are checked before and after the native
+        Page.setUserInput commit. Opaque origins are refused. Pre-check failures
+        say "nothing was written"; invalid expectations raise ValueError.
+        No focus change or keydown/keypress/keyup: Firefox sends beforeinput and
+        input as InputEvent insertReplacementText, then change, for a changed,
+        unfocused password field. An unchanged value sends no events; a focused
+        field defers change until blur. None preserves ordinary fill behavior.
+
+        `expect_input_type` requires an INPUT of that type (case-insensitive),
+        requires `expect_origin`, and rejects unknown names with ValueError.
+        Contenteditable is unsupported. The checks are NOT atomic with the write:
+        navigation can occur between protocol calls, and beforeinput handlers can
+        change the type synchronously. A failed post-check or commit reply causes
+        a native clear attempt and raises "write outcome unknown", even if cleared.
+        Clearing failures are reported. Clearing cannot undo disclosure to script;
+        a type changed and restored between checks is not detected. Trust the
+        expected origin's scripts. See the login guide for these limitations.
 
         This method waits for [actionability](https://playwright.dev/python/docs/actionability) checks, focuses the element, fills it and triggers an
         `input` event after filling. Note that you can pass an empty string to clear the input field.
@@ -2610,6 +2632,8 @@ class ElementHandle(JSHandle):
                     timeout=to_milliseconds(timeout),
                     noWaitAfter=no_wait_after,
                     force=force,
+                    expect_origin=expect_origin,
+                    expect_input_type=expect_input_type,
                 )
             )
         )
@@ -4765,8 +4789,30 @@ class Frame(SyncBase):
         no_wait_after: typing.Optional[bool] = None,
         strict: typing.Optional[bool] = None,
         force: typing.Optional[bool] = None,
+        expect_origin: typing.Optional[str] = None,
+        expect_input_type: typing.Optional[str] = None,
     ) -> None:
         """Frame.fill
+
+        MODIFIED by invisible_playwright: `expect_origin` is a serialized origin
+        (scheme://host[:port], no path). The element's own document URL and security
+        origins, connection and input kind are checked before and after the native
+        Page.setUserInput commit. Opaque origins are refused. Pre-check failures
+        say "nothing was written"; invalid expectations raise ValueError.
+        No focus change or keydown/keypress/keyup: Firefox sends beforeinput and
+        input as InputEvent insertReplacementText, then change, for a changed,
+        unfocused password field. An unchanged value sends no events; a focused
+        field defers change until blur. None preserves ordinary fill behavior.
+
+        `expect_input_type` requires an INPUT of that type (case-insensitive),
+        requires `expect_origin`, and rejects unknown names with ValueError.
+        Contenteditable is unsupported. The checks are NOT atomic with the write:
+        navigation can occur between protocol calls, and beforeinput handlers can
+        change the type synchronously. A failed post-check or commit reply causes
+        a native clear attempt and raises "write outcome unknown", even if cleared.
+        Clearing failures are reported. Clearing cannot undo disclosure to script;
+        a type changed and restored between checks is not detected. Trust the
+        expected origin's scripts. See the login guide for these limitations.
 
         This method waits for an element matching `selector`, waits for [actionability](https://playwright.dev/python/docs/actionability) checks,
         focuses the element, fills it and triggers an `input` event after filling. Note that you can pass an empty string
@@ -4808,6 +4854,8 @@ class Frame(SyncBase):
                     noWaitAfter=no_wait_after,
                     strict=strict,
                     force=force,
+                    expect_origin=expect_origin,
+                    expect_input_type=expect_input_type,
                 )
             )
         )
@@ -11124,8 +11172,30 @@ class Page(SyncContextManager):
         no_wait_after: typing.Optional[bool] = None,
         strict: typing.Optional[bool] = None,
         force: typing.Optional[bool] = None,
+        expect_origin: typing.Optional[str] = None,
+        expect_input_type: typing.Optional[str] = None,
     ) -> None:
         """Page.fill
+
+        MODIFIED by invisible_playwright: `expect_origin` is a serialized origin
+        (scheme://host[:port], no path). The element's own document URL and security
+        origins, connection and input kind are checked before and after the native
+        Page.setUserInput commit. Opaque origins are refused. Pre-check failures
+        say "nothing was written"; invalid expectations raise ValueError.
+        No focus change or keydown/keypress/keyup: Firefox sends beforeinput and
+        input as InputEvent insertReplacementText, then change, for a changed,
+        unfocused password field. An unchanged value sends no events; a focused
+        field defers change until blur. None preserves ordinary fill behavior.
+
+        `expect_input_type` requires an INPUT of that type (case-insensitive),
+        requires `expect_origin`, and rejects unknown names with ValueError.
+        Contenteditable is unsupported. The checks are NOT atomic with the write:
+        navigation can occur between protocol calls, and beforeinput handlers can
+        change the type synchronously. A failed post-check or commit reply causes
+        a native clear attempt and raises "write outcome unknown", even if cleared.
+        Clearing failures are reported. Clearing cannot undo disclosure to script;
+        a type changed and restored between checks is not detected. Trust the
+        expected origin's scripts. See the login guide for these limitations.
 
         This method waits for an element matching `selector`, waits for [actionability](https://playwright.dev/python/docs/actionability) checks,
         focuses the element, fills it and triggers an `input` event after filling. Note that you can pass an empty string
@@ -11167,6 +11237,8 @@ class Page(SyncContextManager):
                     noWaitAfter=no_wait_after,
                     strict=strict,
                     force=force,
+                    expect_origin=expect_origin,
+                    expect_input_type=expect_input_type,
                 )
             )
         )
@@ -18009,8 +18081,30 @@ class Locator(SyncBase):
         timeout: typing.Optional[typing.Union[float, datetime.timedelta]] = None,
         no_wait_after: typing.Optional[bool] = None,
         force: typing.Optional[bool] = None,
+        expect_origin: typing.Optional[str] = None,
+        expect_input_type: typing.Optional[str] = None,
     ) -> None:
         """Locator.fill
+
+        MODIFIED by invisible_playwright: `expect_origin` is a serialized origin
+        (scheme://host[:port], no path). The element's own document URL and security
+        origins, connection and input kind are checked before and after the native
+        Page.setUserInput commit. Opaque origins are refused. Pre-check failures
+        say "nothing was written"; invalid expectations raise ValueError.
+        No focus change or keydown/keypress/keyup: Firefox sends beforeinput and
+        input as InputEvent insertReplacementText, then change, for a changed,
+        unfocused password field. An unchanged value sends no events; a focused
+        field defers change until blur. None preserves ordinary fill behavior.
+
+        `expect_input_type` requires an INPUT of that type (case-insensitive),
+        requires `expect_origin`, and rejects unknown names with ValueError.
+        Contenteditable is unsupported. The checks are NOT atomic with the write:
+        navigation can occur between protocol calls, and beforeinput handlers can
+        change the type synchronously. A failed post-check or commit reply causes
+        a native clear attempt and raises "write outcome unknown", even if cleared.
+        Clearing failures are reported. Clearing cannot undo disclosure to script;
+        a type changed and restored between checks is not detected. Trust the
+        expected origin's scripts. See the login guide for these limitations.
 
         Set a value to the input field.
 
@@ -18053,6 +18147,8 @@ class Locator(SyncBase):
                     timeout=to_milliseconds(timeout),
                     noWaitAfter=no_wait_after,
                     force=force,
+                    expect_origin=expect_origin,
+                    expect_input_type=expect_input_type,
                 )
             )
         )

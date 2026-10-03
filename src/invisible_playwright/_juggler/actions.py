@@ -30,7 +30,9 @@ import time
 from typing import Optional
 
 from .. import _pacing
-from .injected import EvaluationError
+from .._origin import redact_fill_value, validate_fill_expectations
+from .connection import ProtocolError, TargetClosedError
+from .injected import EvaluationError, UTILITY_WORLD
 from .keyboard import BUTTON_MASK, Keyboard, UnknownKey
 
 #: The states a pointer action requires, in the order Playwright asks for
@@ -1070,7 +1072,9 @@ class Actions:
 
     def fill(self, selector: str, text: str, *, timeout: float = 30.0,
              frame_id: Optional[str] = None,
-             element_id: Optional[str] = None, **opts):
+             element_id: Optional[str] = None,
+             expect_origin: str | None = None,
+             expect_input_type: str | None = None, **opts):
         """Writes into a field.
 
         ⛔ It doesn't just write `element.value = ...`: a site listening
@@ -1089,6 +1093,13 @@ class Actions:
         value waits the same: the person who focuses a date field does not
         commit a date in the same millisecond either.
         """
+        if expect_origin is not None or expect_input_type is not None:
+            validate_fill_expectations(expect_origin, expect_input_type)
+            return self._fill_with_origin(
+                selector, text, expect_origin, timeout=timeout,
+                frame_id=frame_id, element_id=element_id,
+                expect_input_type=expect_input_type, **opts)
+
         deadline = time.monotonic() + timeout
 
         def run(f, element, point):
@@ -1121,6 +1132,99 @@ class Actions:
                            states=["visible", "stable", "enabled",
                                    "editable"],
                            timeout=timeout, frame_id=frame_id, **opts)
+
+    def _fill_with_origin(self, selector, text, expect_origin, *, timeout,
+                          frame_id, element_id, expect_input_type=None, **opts):
+        """Check around a native commit, without focusing or synthesizing events.
+
+        These protocol calls are not one atomic task. A synchronous beforeinput
+        listener can change the type; a later navigation can destroy the reply.
+        On either detected failure, attempt native clearing, then report an
+        unknown write outcome: clearing cannot undo a disclosure to page script.
+        """
+        actual = "unavailable"
+        outcome = "nothing was written"
+
+        def run(f, element, point):
+            nonlocal actual, outcome
+            target = self.inj.call(
+                f, "(injected, el) => injected.retarget(el, 'follow-label')",
+                {"objectId": element}, by_value=False)
+            if not target:
+                raise EvaluationError("error:origin: target detached or stale")
+            snapshot = None
+            try:
+                snapshot = self.inj.call(
+                    f, "(injected, el) => ({document: el.ownerDocument, "
+                    "nodeName: el.nodeName, type: el.type})",
+                    {"objectId": target}, by_value=False)
+                if not snapshot:
+                    raise EvaluationError("error:origin: target unavailable")
+
+                def check(value):
+                    return self.inj.call(
+                        f, "(injected, el, snapshot, origin, type, value) => "
+                        "injected.checkFillExpectations(el, snapshot, origin, type, value)",
+                        {"objectId": target}, {"objectId": snapshot},
+                        expect_origin, expect_input_type, value)
+
+                before = check(text)
+                actual = before["actualOrigin"]
+                if before["status"] != "done":
+                    raise EvaluationError(before["status"])
+
+                outcome = "write outcome unknown"
+                try:
+                    self.c.send("Page.setUserInput",
+                                {"frameId": f, "objectId": target, "value": text},
+                                session=self.session, timeout=10)
+                    after = check(None)
+                    actual = after["actualOrigin"]
+                    if after["status"] != "done":
+                        raise EvaluationError(after["status"])
+                except (RuntimeError, TimeoutError, TargetClosedError):
+                    # Never retry the fill after a commit attempt. A failed
+                    # reply is not evidence that the browser did not write.
+                    try:
+                        self.c.send("Page.setUserInput",
+                                    {"frameId": f, "objectId": target, "value": ""},
+                                    session=self.session, timeout=10)
+                        empty = self.inj.call(
+                            f, "(injected, el) => el.value === ''",
+                            {"objectId": target})
+                        outcome += ("; target cleared" if empty is True
+                                    else "; clearing did not leave the target empty")
+                    except (RuntimeError, TimeoutError, TargetClosedError):
+                        outcome += "; native clearing failed or could not be verified"
+                    raise EvaluationError(
+                        "error:origin: native commit or post-check failed") from None
+                return "done"
+            finally:
+                if snapshot:
+                    self.inj.dispose(f, snapshot)
+                self.inj.dispose(f, target)
+
+        try:
+            return self._retry(
+                selector, run, element_id=element_id,
+                states=["visible", "stable", "enabled", "editable"],
+                timeout=timeout, frame_id=frame_id, needs_point=False, **opts)
+        except (RuntimeError, TimeoutError, TargetClosedError) as error:
+            reason = (
+                str(error) if str(error).startswith("error:origin:")
+                else f"{type(error).__name__}: target unavailable, detached or stale"
+            )
+            f = frame_id or self.lifecycle.main_frame
+            if actual == "unavailable" and (f, UTILITY_WORLD) in self.inj.contexts:
+                try:
+                    actual = self.inj.evaluate(f, "document.defaultView.origin", timeout=1.0)
+                except (EvaluationError, ProtocolError, TimeoutError, TargetClosedError):
+                    actual = "unavailable (document no longer accessible)"
+            message = (
+                f"fill expect_origin={expect_origin!r}, actual origin={actual!r}: "
+                f"{reason}; {outcome}"
+            )
+            raise type(error)(redact_fill_value(message, text)) from None
 
     #: What a field holds, for telling whether the page is still changing it.
     #: `textContent` rather than `innerText` for editable content: the question

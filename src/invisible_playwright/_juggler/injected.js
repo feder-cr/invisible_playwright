@@ -7217,6 +7217,42 @@ var InjectedScript = class {
     return { indices: selectedOptions.map((option) => options.indexOf(option)),
              values: selectedOptions.map((option) => option.value) };
   }
+  // MODIFIED by invisible_playwright: read-only checks around Page.setUserInput.
+  checkFillExpectations(element, snapshot, expectOrigin, expectInputType, value) {
+    const actualOrigin = element.ownerDocument.defaultView?.origin ?? "unavailable";
+    const refused = reason => ({status: "error:origin: " + reason, actualOrigin});
+    if (!element.isConnected || element.ownerDocument !== snapshot.document ||
+        element.ownerDocument !== document ||
+        element.ownerDocument.defaultView?.document !== document ||
+        element.ownerDocument.location.origin !== expectOrigin ||
+        actualOrigin === "null" || actualOrigin !== expectOrigin)
+      return refused("origin mismatch, opaque origin or target detached/stale");
+    if (element.nodeName !== snapshot.nodeName || element.type !== snapshot.type)
+      return refused("input kind changed");
+    if (expectInputType !== null &&
+        (element.nodeName !== "INPUT" ||
+         element.type.toLowerCase() !== expectInputType.toLowerCase()))
+      return refused("input type does not match expect_input_type");
+    if (element.nodeName !== "INPUT" && element.nodeName !== "TEXTAREA")
+      return refused("expected an input or textarea");
+    if (element.nodeName === "INPUT" && !new Set([
+      "email", "number", "password", "search", "tel", "text", "url",
+      "color", "date", "time", "datetime-local", "month", "range", "week"
+    ]).has(element.type))
+      return refused("input type cannot be filled");
+    if (value !== null) {
+      // Do not clone a customized built-in or copy event handlers onto a probe.
+      const probe = document.createElement(element.nodeName.toLowerCase());
+      for (const name of element.getAttributeNames()) {
+        if (!name.startsWith("on"))
+          probe.setAttribute(name, element.getAttribute(name));
+      }
+      probe.value = value;
+      if (probe.value !== value)
+        return refused("value is not valid for this control");
+    }
+    return {status: "done", actualOrigin};
+  }
   fill(node, value) {
     const element = this.retarget(node, "follow-label");
     if (!element)

@@ -51,6 +51,69 @@ keystrokes, whether the pointer travelled to the field or teleported, whether a 
 was focused before it was filled, the rhythm between filling the form and submitting
 it - gets checked hardest at exactly the moment a login script runs it.
 
+## When a fresh login is necessary
+
+When a fresh login is needed, bind credential fills to the saved website's
+origin rather than checking `page.url` and then typing:
+
+```python
+page.get_by_label("Password").fill(
+    password, expect_origin="https://example.com", expect_input_type="password"
+)
+```
+
+`expect_origin` is available on `Page.fill`, `Frame.fill`, `Locator.fill` and
+`ElementHandle.fill`, in both sync and async APIs. It must be a serialized
+origin: lowercase scheme and host, an optional non-default port, and no
+credentials, path (not even `/`), query or fragment. Invalid input raises
+`ValueError`.
+
+Both the target document's URL origin and its security origin must match,
+including inside a cross-origin iframe, independently of the top-level page's
+origin. Opaque security origins are refused: an iframe or CSP sandbox without
+`allow-same-origin` cannot receive the value even when its URL matches.
+The utility world checks the resolved element immediately before and after
+`Page.setUserInput`. It must stay connected to the same document, at the same
+origin, with the same node name and input type. This path does not focus, select,
+scroll, type keys, or construct events.
+
+For passwords, also pass `expect_input_type="password"`. This requires an
+`<input>` whose type matches before and after the native write, so a field that
+changed to `text` before the pre-check is refused without writing.
+Type names are case-insensitive. The option is available on the same four fill
+surfaces in both APIs, requires `expect_origin`, and raises `ValueError` for an
+unknown HTML input type name. Known but non-fillable types remain non-fillable;
+textarea and contenteditable targets cannot satisfy an input-type expectation.
+Omitting `expect_input_type` adds no type expectation.
+
+No-write refusals include `expect_origin=` and `nothing was written`. If a
+transport failure leaves the write outcome unknown, the error says so instead
+of claiming that nothing was written. Credential fill errors omit the supplied
+value. Contenteditable targets are not supported in this mode.
+
+For a changed, unfocused password field, Firefox itself fires trusted
+`beforeinput` and `input` as `InputEvent` with
+`inputType="insertReplacementText"`, then `change`, without a focus change.
+This is the native path used by Firefox's password manager. An already-focused
+field defers `change` until blur; an unchanged value produces no events.
+Omitting the option keeps ordinary fill behavior.
+
+**This is not an atomic security boundary.** An ordinary document navigation
+does not replace that document synchronously during one browser task, but the
+checks and commit are separate protocol calls: navigation can occur between
+them. A `beforeinput` handler can synchronously change the input type before
+the value is committed. If the post-check detects a changed type, document,
+origin or connection, or cannot complete, the guard attempts to clear the same
+element through `Page.setUserInput` with an empty string. It then raises
+`write outcome unknown`, never `nothing was written`, even if clearing succeeds.
+If clearing fails, cannot be verified, or a listener repopulates the field, the
+error explicitly says so. A lost commit reply takes this same failure path.
+
+Clearing cannot undo disclosure: page listeners can already have observed or
+submitted the credential, and a type changed and restored between checks is
+not detected. This guard does not protect against hostile scripts on the
+expected origin. Use it only when that origin and its scripts are trusted.
+
 ## The alternative: don't run the flow at all
 
 Playwright's [`storage_state`](https://playwright.dev/python/docs/api/class-browsercontext#browser-context-storage-state)

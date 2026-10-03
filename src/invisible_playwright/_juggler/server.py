@@ -605,7 +605,10 @@ class ElementHandleDispatcher(Dispatcher):
         return None
 
     def op_fill(self, params: Dict) -> Any:
-        self.frame.actions.fill(_HANDLE, params["value"], **self._act_args(params))
+        self.frame.actions.fill(_HANDLE, params["value"],
+                                expect_origin=params.get("expect_origin"),
+                                expect_input_type=params.get("expect_input_type"),
+                                **self._act_args(params))
         return None
 
     def op_type(self, params: Dict) -> Any:
@@ -1013,6 +1016,8 @@ class FrameDispatcher(Dispatcher):
         frame_id, selector = self.enter_frames(params["selector"])
         self.actions.fill(selector, params["value"],
                                timeout=self._timeout(params), frame_id=frame_id,
+                               expect_origin=params.get("expect_origin"),
+                               expect_input_type=params.get("expect_input_type"),
                                **self._act_opts(params))
         return None
 
