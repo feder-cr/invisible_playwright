@@ -366,3 +366,46 @@ def test_the_four_states_are_reached_on_a_real_page(firefox_binary):
         finally:
             c.close()
         srv.shutdown()
+
+
+def test_goto_networkidle_waits_for_ITS_OWN_document_not_the_quiet_old_one():
+    """⛔ The old page's silence must not satisfy the wait for the new one.
+
+    Measured on 2026-10-03: a production single-page login app loaded and went
+    quiet, then `goto(<another site>, wait_until="networkidle")` returned at
+    once with no Response while the browser was still on the old page, so a
+    caller reported a same-document navigation there. `navigationStarted` clears the states, and from then on
+    `follows()` accepts the frame, but networkidle read only the GLOBAL
+    request counter - zero, and quiet for seconds - so it was reached before
+    the new document's request had even been sent.
+    """
+    c, v = lifecycle({"Page.navigate": {"navigationId": "N1"}})
+    events(v, ("Page.frameAttached", {"frameId": "F1"}),
+           ("Page.navigationStarted", {"frameId": "F1", "navigationId": "N0"}),
+           ("Page.navigationCommitted", {"frameId": "F1", "navigationId": "N0",
+                                         "url": "http://old/"}),
+           ("Page.eventFired", {"frameId": "F1", "name": "load"}))
+    time.sleep(IDLE_QUIET * 1.5)  # the old page has gone quiet
+
+    real_send = c.send
+
+    def send(method, params=None, session=None, timeout=30):
+        out = real_send(method, params, session, timeout)
+        if method == "Page.navigate":
+            # the browser starts ours; its document has not answered yet
+            events(v, ("Page.navigationStarted",
+                       {"frameId": "F1", "navigationId": "N1"}))
+        return out
+    c.send = send
+
+    with pytest.raises(TimeoutError) as e:
+        v.goto("http://new/", until="networkidle", timeout=IDLE_QUIET * 2)
+    assert "networkidle" in str(e.value)
+
+    # once ours commits and loads, and the network is quiet, it is reached
+    events(v, ("Page.navigationCommitted", {"frameId": "F1", "navigationId": "N1",
+                                            "url": "http://new/"}),
+           ("Page.eventFired", {"frameId": "F1", "name": "load"}))
+    v.wait_for_state("F1", "networkidle", navigation="N1",
+                     timeout=IDLE_QUIET * 4)
+    assert v.frames["F1"].url == "http://new/"
