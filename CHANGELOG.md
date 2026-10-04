@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.25.11] - 2026-10-04
+
+### Fixed
+- **A page the site opens is a `Page`.** A `window.open()` or a
+  `target=_blank` link opened a tab or a window the client never heard about:
+  no `page` event on the context, no `popup` event on the opener,
+  `expect_page()` and `expect_popup()` timed out, and `context.pages` never
+  listed it. Every page the engine reports is now built on one path, the one
+  `new_page()` uses too, with its opener, so `popup.opener()` answers and the
+  popup is driven like any other page. A popup the site closes with
+  `window.close()` now fires `close` and leaves `context.pages`.
+- **A popup's own document reaches `context.on("request")` and
+  `context.on("response")`**, once each and with its body. It is requested
+  before the popup's page exists, and only its subresources used to arrive;
+  that response is where a PDF opened in a new tab lives.
+
+### Notes
+- A popup opened without a user gesture is still refused by Firefox's popup
+  blocker, as in any Firefox: `page.evaluate("window.open(...)")` returns
+  `null`, because `evaluate` does not carry a user gesture. A real click does.
+
 ## [0.25.10] - 2026-10-04
 
 ### Fixed
