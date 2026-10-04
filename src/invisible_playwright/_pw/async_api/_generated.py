@@ -4733,6 +4733,42 @@ class Frame(AsyncBase):
             )
         )
 
+    async def autofill_login(
+        self,
+        *,
+        origin: str,
+        password: typing.Optional[str] = None,
+        password_selector: typing.Optional[str] = None,
+        username: typing.Optional[str] = None,
+        username_selector: typing.Optional[str] = None,
+        username_type: typing.Optional[str] = None,
+        timeout: typing.Union[float, datetime.timedelta] = 30000,
+    ) -> None:
+        """Frame.autofill_login
+
+        MODIFIED by invisible_playwright: requires the engine release carrying
+        Page.autofillLogin. Autofills a login like Firefox's password manager,
+        with origin checks and both writes in one engine task, username first.
+        Does not focus, click, move the pointer, type keys or submit the form.
+
+        `origin` must be a serialized origin (scheme://host[:port], no path).
+        Supply at least one value/selector pair. Selectors must each resolve to
+        one attached, visible, enabled, editable input in the same frame.
+        Password inputs must have type password. `username_type`, when given,
+        pins the non-password text input type (case-insensitive).
+        `timeout` is milliseconds, default 30000; 0 disables the timeout.
+
+        Returns None for filled/unchanged fields. Refusals say "nothing was
+        written"; other outcomes name each field's status (altered, skipped, cleared or
+        uncleared); a lost reply says "write outcome unknown". Errors redact
+        both values. Clearing cannot undo disclosure to the expected origin's
+        scripts; trust that origin. Ordinary fill is unchanged.
+        """
+        await self._impl_obj.autofill_login(
+            origin=origin, password=password, password_selector=password_selector,
+            username=username, username_selector=username_selector,
+            username_type=username_type, timeout=to_milliseconds(timeout))
+
     def locator(
         self,
         selector: str,
@@ -11123,6 +11159,43 @@ class Page(AsyncContextManager):
                 force=force,
             )
         )
+
+    async def autofill_login(
+        self,
+        *,
+        origin: str,
+        password: typing.Optional[str] = None,
+        password_selector: typing.Optional[str] = None,
+        username: typing.Optional[str] = None,
+        username_selector: typing.Optional[str] = None,
+        username_type: typing.Optional[str] = None,
+        timeout: typing.Union[float, datetime.timedelta] = 30000,
+    ) -> None:
+        """Page.autofill_login
+
+        MODIFIED by invisible_playwright: requires the engine release carrying
+        Page.autofillLogin. Autofills a login like Firefox's password manager,
+        with origin checks and both writes in one engine task, username first.
+        Delegates to the main frame; frame.autofill_login uses that frame.
+        Does not focus, click, move the pointer, type keys or submit the form.
+
+        `origin` must be a serialized origin (scheme://host[:port], no path).
+        Supply at least one value/selector pair. Selectors must each resolve to
+        one attached, visible, enabled, editable input in the same frame.
+        Password inputs must have type password. `username_type`, when given,
+        pins the non-password text input type (case-insensitive).
+        `timeout` is milliseconds, default 30000; 0 disables the timeout.
+
+        Returns None for filled/unchanged fields. Refusals say "nothing was
+        written"; other outcomes name each field's status (altered, skipped, cleared or
+        uncleared); a lost reply says "write outcome unknown". Errors redact
+        both values. Clearing cannot undo disclosure to the expected origin's
+        scripts; trust that origin. Ordinary fill is unchanged.
+        """
+        await self._impl_obj.autofill_login(
+            origin=origin, password=password, password_selector=password_selector,
+            username=username, username_selector=username_selector,
+            username_type=username_type, timeout=to_milliseconds(timeout))
 
     def locator(
         self,

@@ -30,6 +30,8 @@ from typing import (
 
 from pyee import EventEmitter
 
+# MODIFIED by invisible_playwright: origin-bound login autofill.
+from invisible_playwright._origin import protect_autofill_values, validate_autofill_login
 from invisible_playwright._pw._impl._api_structures import (
     AriaRole,
     DropPayload,
@@ -642,6 +644,27 @@ class Frame(ChannelOwner):
         title: str = None,
     ) -> None:
         await self._channel.send("fill", self._timeout, locals_to_params(locals()))
+
+    # MODIFIED by invisible_playwright: one engine-level login-manager write.
+    async def autofill_login(
+        self, *, origin: str, password: Optional[str] = None,
+        password_selector: Optional[str] = None, username: Optional[str] = None,
+        username_selector: Optional[str] = None, username_type: Optional[str] = None,
+        timeout: float = 30000,
+    ) -> None:
+        with protect_autofill_values(username, password):
+            validate_autofill_login(origin, username, username_selector, username_type,
+                                    password, password_selector)
+            try:
+                await self._channel.send("autofillLogin", self._timeout, locals_to_params(locals()))
+            except Exception as error:
+                message = str(error)
+                if not any(marker in message for marker in (
+                    "nothing was written", "write outcome unknown",
+                    "autofill_login: username=", "autofill_login: password=",
+                )):
+                    raise type(error)(f"autofill_login: write outcome unknown; {message}") from None
+                raise
 
     def locator(
         self,

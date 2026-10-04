@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+- **`page.autofill_login` and `frame.autofill_login` fill a login like Firefox's
+  password manager.** One `Page.autofillLogin` engine command checks the origin
+  and both inputs before writing username then password in the same task,
+  without focus, clicks, pointer movement or keystrokes. Fields get Firefox's
+  native autofill highlight; editing one clears only its highlight. Refusals,
+  partial writes and lost replies are distinguished, with both values redacted
+  from errors. Available in the sync and async APIs. Requires the engine release
+  carrying `Page.autofillLogin`; on an older engine the call is refused and
+  nothing is written.
+
 ## [0.25.11] - 2026-10-04
 
 ### Fixed

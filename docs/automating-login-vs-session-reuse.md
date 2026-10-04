@@ -51,6 +51,61 @@ keystrokes, whether the pointer travelled to the field or teleported, whether a 
 was focused before it was filled, the rhythm between filling the form and submitting
 it - gets checked hardest at exactly the moment a login script runs it.
 
+## When a login is needed: native autofill
+
+`page.autofill_login` fills a login like Firefox's password manager, rather than
+typing into focused fields. It requires the engine release carrying
+`Page.autofillLogin`; on an older engine the call is refused with "nothing was
+written", and there is no fallback to ordinary `fill`.
+
+```python
+page.autofill_login(
+    origin="https://example.com",
+    username=username,
+    username_selector="input[name=email]",
+    username_type="email",
+    password=password,
+    password_selector="input[name=password]",
+)
+```
+
+The async API uses the same arguments with `await`. `frame.autofill_login` resolves
+in that frame; `page.autofill_login` starts in the main frame. Supply at least one
+value/selector pair: username-only and password-only forms work too. An empty
+string is a value, not an omitted field. Each selector must match one attached,
+visible, enabled, editable input, and both inputs must belong to the same frame.
+The password must be a password input; the username must be a non-password text
+input. Optional `username_type` pins its type, case-insensitively. `timeout` is in
+milliseconds (default `30000`; `0` disables it).
+
+Pass the expected **serialized origin**, not a login URL:
+`https://example.com`, with an optional non-default port and no credentials, path,
+query or fragment. Opaque origins are refused. The engine checks the origin and
+both fields before writing either, in the same task as the writes. It writes the
+username first, then the password, without focusing, clicking, moving the pointer
+or submitting the form. Changed, unfocused inputs receive trusted `beforeinput`
+and `input` events (`InputEvent`, `insertReplacementText`), then `change`. An
+already-focused input defers `change` until blur. Equal values are not rewritten.
+
+Firefox sets `:autofill` and `:-webkit-autofill` after each field's events, including
+when its value was already equal. Inside the password's input listener, the username
+is already highlighted. Later typing into one field clears only that field's
+highlight.
+
+Success returns `None`. An initial refusal says **"nothing was written"**.
+After writing begins, a failed recheck names each supplied field's status:
+`filled`, `unchanged`, `altered`, `skipped`, `cleared` or `uncleared`, with the engine's
+reason. `altered` means a page listener changed the value without changing the
+field's identity; Firefox leaves that value highlighted and fills the next field.
+`cleared` means the engine cleared the changed field and read it back empty;
+`uncleared` means that cleanup failed. A transport failure or lost reply says
+**"write outcome unknown"** and is never automatically retried. Error messages
+redact both values, including their Python and JSON escaped spellings.
+
+This binds the write to an origin, not to trustworthy page scripts. Listeners run
+during the native write, and clearing cannot undo a value they have already seen.
+Trust the expected origin. Ordinary `fill` remains unchanged.
+
 ## The alternative: don't run the flow at all
 
 Playwright's [`storage_state`](https://playwright.dev/python/docs/api/class-browsercontext#browser-context-storage-state)

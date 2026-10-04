@@ -924,6 +924,15 @@ class Page(ChannelOwner):
     ) -> None:
         return await self._main_frame.fill(**locals_to_params(locals()))
 
+    # MODIFIED by invisible_playwright: the page uses its main frame's autofill.
+    async def autofill_login(
+        self, *, origin: str, password: Optional[str] = None,
+        password_selector: Optional[str] = None, username: Optional[str] = None,
+        username_selector: Optional[str] = None, username_type: Optional[str] = None,
+        timeout: float = 30000,
+    ) -> None:
+        await self._main_frame.autofill_login(**locals_to_params(locals()))
+
     def locator(
         self,
         selector: str,

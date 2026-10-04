@@ -37,6 +37,7 @@ import warnings
 from typing import Any, Dict, List, Optional
 
 from .._behaviour import SessionActs
+from .._origin import protect_autofill_values, validate_autofill_login
 from . import connection as juggler
 from .actions import Actions
 from .dispatcher import Dispatcher, ProtocolException, Server
@@ -657,6 +658,7 @@ class FrameDispatcher(Dispatcher):
         "querySelector": "op_query_selector",
         "click": "op_click",
         "fill": "op_fill",
+        "autofillLogin": "op_autofill_login",
         "title": "op_title",
         "content": "op_content",
         "textContent": "op_text_content",
@@ -1012,6 +1014,29 @@ class FrameDispatcher(Dispatcher):
                                timeout=self._timeout(params), frame_id=frame_id,
                                **self._act_opts(params))
         return None
+
+    def op_autofill_login(self, params: Dict) -> None:
+        username, password = params.get("username"), params.get("password")
+        with protect_autofill_values(username, password):
+            validate_autofill_login(
+                params.get("origin"), username, params.get("username_selector"),
+                params.get("username_type"), password, params.get("password_selector"))
+            selectors = {}
+            frames = set()
+            try:
+                for name in ("username", "password"):
+                    if params.get(name) is not None:
+                        frame, selector = self.enter_frames(params[name + "_selector"])
+                        frames.add(frame)
+                        selectors[name + "_selector"] = selector
+                if len(frames) != 1:
+                    raise ProtocolException("autofill_login selectors must resolve in the same frame")
+            except Exception as error:
+                raise type(error)(f"{error}; nothing was written") from None
+            self.actions.autofill_login(
+                origin=params["origin"], username=username, password=password,
+                username_type=params.get("username_type"), **selectors,
+                frame_id=frames.pop(), timeout=params.get("timeout", 30000) / 1000.0)
 
     def op_check(self, params: Dict) -> Any:
         frame_id, selector = self.enter_frames(params["selector"])
@@ -4007,7 +4032,6 @@ class JugglerServer(Server):
                          "utils": utils.channel},
             guid="Playwright")
         return {"playwright": playwright.channel}
-
 
 
 

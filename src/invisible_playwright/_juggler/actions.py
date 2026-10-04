@@ -26,10 +26,13 @@ that tells you what to look at.
 """
 from __future__ import annotations
 
+import re
 import time
 from typing import Optional
 
 from .. import _pacing
+from .._origin import protect_autofill_values, validate_autofill_login
+from .connection import ProtocolError
 from .injected import EvaluationError
 from .keyboard import BUTTON_MASK, Keyboard, UnknownKey
 
@@ -1121,6 +1124,87 @@ class Actions:
                            states=["visible", "stable", "enabled",
                                    "editable"],
                            timeout=timeout, frame_id=frame_id, **opts)
+
+    def autofill_login(self, *, origin: str, password: str | None = None,
+                       password_selector: str | None = None, username: str | None = None,
+                       username_selector: str | None = None, username_type: str | None = None,
+                       timeout: float = 30.0, frame_id: str | None = None) -> None:
+        """Resolve without focus or pointer work; let the engine check and write."""
+        with protect_autofill_values(username, password):
+            validate_autofill_login(origin, username, username_selector, username_type,
+                                    password, password_selector)
+            deadline = time.monotonic() + timeout if timeout else float("inf")
+            fields = {}
+            sent = False
+
+            def commit(f):
+                nonlocal sent
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise ElementNotActionable("autofill_login timed out before send")
+                sent = True
+                try:
+                    result = self.c.send(
+                        "Page.autofillLogin", {"frameId": f, "origin": origin, **fields},
+                        session=self.session, timeout=remaining if timeout else None)
+                except Exception as error:
+                    message = str(error)
+                    if isinstance(error, ProtocolError) and re.match(
+                        r'^(?:Page\.autofillLogin: )?'
+                        r'(?:error in channel "[^"]+": exception while running method '
+                        r'"autofillLogin" in namespace "page": )?autofillLogin refused:', message
+                    ):
+                        raise RuntimeError(
+                            f"autofill_login: {message}; nothing was written") from None
+                    # The engine's dispatcher refuses an unknown method before
+                    # any page code runs: an engine older than the command.
+                    if isinstance(error, ProtocolError) and (
+                            "method 'Page.autofillLogin' is not supported" in message):
+                        raise RuntimeError(
+                            "autofill_login: this engine has no Page.autofillLogin; "
+                            "nothing was written") from None
+                    raise RuntimeError(
+                        f"autofill_login: write outcome unknown; {message}") from None
+                statuses = {"filled", "unchanged", "altered", "skipped", "cleared", "uncleared"}
+                if not isinstance(result, dict) or any(
+                    not isinstance(result.get(name), str) or result[name] not in statuses
+                    for name in fields
+                ):
+                    raise RuntimeError("autofill_login: write outcome unknown; invalid engine reply")
+                if any(result[name] not in {"filled", "unchanged"} for name in fields):
+                    summary = ", ".join(f"{name}={result[name]}" for name in fields)
+                    reason = result.get("reason") or "engine rejected a field after the write began"
+                    raise RuntimeError(f"autofill_login: {summary}; {reason}")
+
+            def resolve_password(f):
+                if password is None:
+                    return commit(f)
+
+                def run(pf, element, point):
+                    fields["password"] = {
+                        "objectId": element, "value": password, "type": "password"}
+                    return commit(pf)
+                return self._retry(
+                    password_selector, run, frame_id=f, timeout=max(0, deadline - time.monotonic()),
+                    states=["visible", "enabled", "editable"], needs_point=False, strict=True)
+
+            try:
+                if username is None:
+                    resolve_password(frame_id)
+                else:
+                    def run(f, element, point):
+                        fields["username"] = {"objectId": element, "value": username}
+                        if username_type is not None:
+                            fields["username"]["type"] = username_type.lower()
+                        return resolve_password(f)
+                    self._retry(
+                        username_selector, run, frame_id=frame_id,
+                        timeout=max(0, deadline - time.monotonic()),
+                        states=["visible", "enabled", "editable"], needs_point=False, strict=True)
+            except Exception as error:
+                if sent:
+                    raise
+                raise type(error)(f"autofill_login: {error}; nothing was written") from None
 
     #: What a field holds, for telling whether the page is still changing it.
     #: `textContent` rather than `innerText` for editable content: the question
