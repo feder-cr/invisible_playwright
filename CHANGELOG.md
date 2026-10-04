@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.25.12] - 2026-10-04
+
+### Removed
+- **`invisible_playwright.hesitation()`**, added in 0.25.8. The package adds
+  nothing to Playwright's public contract, and this was the one helper that
+  did. Its only use was the pause before answering a file chooser, which now
+  happens inside the standard methods (see below).
+
+### Changed
+- **`set_input_files`, and so `FileChooser.set_files`, hand the files over
+  after a person's pause to pick them.** With humanising on, the files arrive
+  two of the session's hesitations after the call, finding the file and
+  confirming it, bounded by the action's timeout, instead of a few
+  milliseconds after the chooser opened, which no hand does. With humanising
+  off nothing changes.
+
 ## [0.25.11] - 2026-10-04
 
 ### Fixed

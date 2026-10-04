@@ -26,7 +26,7 @@ import pytest
 
 import invisible_playwright
 from invisible_playwright._behaviour import (
-    PageActs, TypingPersona, hesitation, plan_hesitation, plan_typing,
+    PageActs, TypingPersona, plan_hesitation, plan_typing,
 )
 from invisible_playwright._juggler import actions as actions_mod
 from invisible_playwright._juggler.actions import Actions
@@ -64,22 +64,14 @@ def test_adding_the_spread_moved_no_other_field():
         1.3267310852314942, 0.024756001244626846, 1039.740068421786))
 
 
-def test_the_public_hesitation_is_the_sessions_own_and_varies_per_act():
-    assert invisible_playwright.hesitation is hesitation
-    assert "hesitation" in invisible_playwright.__all__
-    one = [hesitation(SEED, "file-chooser", nonce=n) for n in range(1, 6)]
-    assert one == [hesitation(SEED, "file-chooser", nonce=n) for n in range(1, 6)]
-    assert len(set(one)) == 5
-    assert one != [hesitation(7, "file-chooser", nonce=n) for n in range(1, 6)]
-    assert one != [hesitation(SEED, "reading", nonce=n) for n in range(1, 6)]
-    assert all(0.05 < s < 10 for s in one), one
-    assert hesitation(SEED, "x", nonce=3, times=2) == pytest.approx(
-        plan_hesitation(TypingPersona.from_seed(SEED), "x", 3, times=2) / 1000.0)
+def test_the_package_adds_no_pause_helper_to_playwrights_contract():
+    """Decision D82: nothing is added to Playwright's public contract. The
+    pause a caller used to draw through `invisible_playwright.hesitation()`
+    lives inside the standard actions now (`fill`, `type`, `set_input_files`).
 
-
-def test_no_seed_means_no_pause():
-    """Humanising off keeps meaning no rhythm, not a default one."""
-    assert hesitation(None, "file-chooser", nonce=1, times=2) == 0.0
+    Known-bad: export a helper again."""
+    assert not hasattr(invisible_playwright, "hesitation")
+    assert "hesitation" not in invisible_playwright.__all__
 
 
 # ── the actions, on a clock the test moves ────────────────────────────────
@@ -146,6 +138,8 @@ class _Engine:
             return {"quads": [q]}
         if method == "Page.dispatchKeyEvent" and params.get("type") == "keydown":
             self.field.log.append(("key", self.field.clock.now))
+        if method == "Page.setFileInputFiles":
+            self.field.log.append(("files", self.field.clock.now))
         return {}
 
 
@@ -235,6 +229,44 @@ def test_two_fields_get_two_pauses(clock):
     assert _pause(1) != _pause(2)
 
 
+def _file_pause(nonce=1):
+    return plan_hesitation(TypingPersona.from_seed(SEED), "file", nonce,
+                           times=2) / 1000.0
+
+
+def test_files_arrive_after_a_persons_pause_to_pick_them(clock):
+    """`set_input_files`, and so `FileChooser.set_files`, hands the files over
+    two of the session's hesitations after it is called: finding the file and
+    confirming it. Known-bad, before: the files 0 s after the call."""
+    a, field = _actions(clock, TypingPersona.from_seed(SEED))
+    started = clock.now
+    a.set_input_files("#f", ["C:/x/a.txt"], timeout=30)
+    assert _first(field.log, "files") - started == pytest.approx(_file_pause(), abs=1e-6)
+
+
+def test_two_uploads_get_two_pauses_and_the_deadline_bounds_them(clock):
+    a, field = _actions(clock, TypingPersona.from_seed(SEED))
+    started = clock.now
+    a.set_input_files("#f", ["C:/x/a.txt"], timeout=30)
+    second = clock.now
+    a.set_input_files("#f", ["C:/x/b.txt"], timeout=30)
+    times = [t for k, t in field.log if k == "files"]
+    assert [times[0] - started, times[1] - second] == pytest.approx(
+        [_file_pause(1), _file_pause(2)])
+    assert _file_pause(1) != _file_pause(2)
+    short, field2 = _actions(clock, TypingPersona.from_seed(SEED))
+    begin = clock.now
+    short.set_input_files("#f", ["C:/x/a.txt"], timeout=min(0.05, _file_pause() / 2))
+    assert _first(field2.log, "files") - begin <= min(0.05, _file_pause() / 2) + 1e-9
+
+
+def test_without_a_persona_the_files_go_at_once(clock):
+    a, field = _actions(clock, None)
+    started = clock.now
+    a.set_input_files("#f", ["C:/x/a.txt"], timeout=30)
+    assert _first(field.log, "files") == started
+
+
 def test_without_a_persona_the_first_key_follows_the_focus(clock):
     """Humanising off: no pause, and the field is not even read."""
     a, field = _actions(clock, None, value=lambda since: pytest.fail("read"))
@@ -280,11 +312,12 @@ def store_url():
 
 def _seed_whose_first_field_pause_is_longer_than(seconds):
     """A seed whose first pause is known, so the test asserts the mechanism
-    and does not depend on a draw. Read through the PUBLIC function, with the
-    act and nonce its docstring names."""
+    and does not depend on a draw: the first field of a session, act
+    ``"field"`` with nonce 1."""
     for seed in range(1, 5000):
-        if hesitation(seed, "field", nonce=1) > seconds:
-            return seed, hesitation(seed, "field", nonce=1)
+        pause = plan_hesitation(TypingPersona.from_seed(seed), "field", 1) / 1000.0
+        if pause > seconds:
+            return seed, pause
     raise AssertionError("no seed found")
 
 

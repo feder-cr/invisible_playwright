@@ -855,8 +855,30 @@ class Actions:
         ElementHandle for `setInputFiles`, and without this parameter there was
         nothing for that dispatcher to call. Every other action here takes the
         handle; this one was the exception nobody had needed yet.
+
+        ⛔ A PERSON TAKES A MOMENT TO PICK A FILE. Between the chooser opening
+        and the files arriving, a hand finds the file and confirms it; files
+        that land a few milliseconds after the click are a timing no person
+        produces. So the files go in after two hesitations of the session's
+        typing persona (act ``"file"``, one nonce per upload of the session),
+        bounded by the action's deadline. It lives here, inside the standard
+        `set_input_files` and so inside `FileChooser.set_files`, because the
+        product adds nothing to Playwright's contract (decision D82): a caller
+        that used to draw this pause through a public helper no longer needs
+        one. No persona, no pause.
         """
+        deadline = time.monotonic() + timeout
+        paused = []
+
         def run(f, element, point):
+            # Once per upload, not once per attempt of the retry loop: a second
+            # attempt is the same hand still holding the same file.
+            if self.typing_persona is not None and not paused:
+                from .._behaviour import plan_hesitation
+                pause = plan_hesitation(self.typing_persona, "file",
+                                        self.acts.next("file"), times=2) / 1000.0
+                time.sleep(max(0.0, min(pause, deadline - time.monotonic())))
+                paused.append(pause)
             self.c.send("Page.setFileInputFiles",
                         {"frameId": f, "objectId": element,
                          "files": [str(p) for p in files]},

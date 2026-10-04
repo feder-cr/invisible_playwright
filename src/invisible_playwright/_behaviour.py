@@ -94,7 +94,6 @@ __all__ = [
     "TypingPersona",
     "plan_typing",
     "plan_hesitation",
-    "hesitation",
     "plan_click",
     "act_nonce",
     "PageActs",
@@ -157,7 +156,7 @@ def act_nonce(page: int, n: int) -> int:
     """The nonce of the `n`-th act of one kind on the session's `page`-th page.
 
     The page goes in the high bits, so two pages never share a nonce and the
-    first page (0) keeps the plain count 1, 2, 3 that `hesitation` documents.
+    first page (0) keeps the plain count 1, 2, 3.
     """
     return (int(page) << 32) | (int(n) & 0xFFFFFFFF)
 
@@ -602,38 +601,6 @@ def plan_hesitation(persona: TypingPersona, act: str, nonce: int = 0,
     """
     r = _rng(persona.seed, act, nonce)
     return sum(persona.hesitation_ms(r) for _ in range(max(1, times)))
-
-
-def hesitation(seed: Optional[int], act: str, *, nonce: int = 0,
-               times: int = 1) -> float:
-    """How long the person of session `seed` stops before an act, in SECONDS.
-
-    Public, for a caller that drives an act this package does not perform
-    itself and wants the pause before it to be the session's own: answering a
-    file chooser (find the file, confirm it), reading a page before replying.
-    It is drawn from the same typing persona the engine types with, so it
-    varies per session and per act and is no constant every install shares.
-
-    * `seed` is the session's seed, the one passed to `InvisiblePlaywright`.
-      `None` means humanising is off and returns 0.0: no rhythm, not a
-      default one.
-    * `act` names the kind of act, and each name is its own random stream:
-      the same seed, act and nonce always give the same pause.
-    * `nonce` tells two acts of the same kind apart; pass a counter the
-      caller keeps per session, not per page or per tab, or every new page
-      replays the first page's pauses.
-    * `times` sums that many hesitations, for an act made of several stops.
-
-    ``fill`` and ``press_sequentially`` (``type``) take this pause by
-    themselves between focusing a field and its first key, on the act
-    ``"field"`` with one nonce per field (`act_nonce`: 1, 2, 3 on the
-    session's first page, and every later page numbered apart from it); a
-    caller does not add one in front of them.
-    """
-    if seed is None:
-        return 0.0
-    return plan_hesitation(TypingPersona.from_seed(int(seed)), act,
-                           nonce, times) / 1000.0
 
 
 # ──────────────────────────────────────────────────────────────────────

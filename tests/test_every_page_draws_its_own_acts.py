@@ -27,7 +27,7 @@ import threading
 import pytest
 
 from invisible_playwright._behaviour import (
-    TypingPersona, act_nonce, hesitation, plan_typing,
+    TypingPersona, act_nonce, plan_hesitation, plan_typing,
 )
 from invisible_playwright._juggler import actions as actions_mod
 from invisible_playwright._juggler.connection import EventListeners
@@ -111,12 +111,12 @@ def test_the_same_seed_replays_the_same_sequence_across_pages(clock):
                        for _ in range(3)]
 
 
-def test_the_first_page_keeps_the_count_the_public_function_documents(clock):
-    """`hesitation(seed, "field", nonce=1)` is the first field of a session,
-    as its docstring says; a caller who predicts that pause still can."""
+def test_the_first_page_keeps_the_plain_count(clock):
+    """The first field of a session is nonce 1 on the first page: the page
+    number goes in the high bits, so page 0 keeps the plain count."""
     a = _page(_browser())
     assert _first_acts(a, clock)["pause"] == pytest.approx(
-        hesitation(SEED, "field", nonce=1))
+        plan_hesitation(TypingPersona.from_seed(SEED), "field", 1) / 1000.0)
 
 
 def test_the_keyboard_and_the_drag_number_their_acts_on_the_page():
@@ -175,7 +175,7 @@ def _planned(seed, page):
     persona = TypingPersona.from_seed(seed)
     nonce = act_nonce(page, 1)
     plan = plan_typing(TEXT, persona, nonce=nonce)
-    return ([hesitation(seed, "field", nonce=nonce) * 1000.0]
+    return ([plan_hesitation(TypingPersona.from_seed(seed), "field", nonce)]
             + [dwell + gap for dwell, gap in plan[:-1]])
 
 
