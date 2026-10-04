@@ -33,12 +33,26 @@ _WEBGL_RENDERER = """() => {
 }"""
 
 
-def _moz_windows_on(desktop_name):
-    """How many ``MozillaWindowClass`` top-level windows live on a desktop:
-    the caller's own when ``desktop_name`` is None, else the named one."""
+def _moz_windows_on(desktop_name, session):
+    """How many ``MozillaWindowClass`` top-level windows of THIS session live
+    on a desktop: the caller's own when ``desktop_name`` is None, else the
+    named one.
+
+    ⛔ ONLY THE SESSION'S OWN WINDOWS COUNT. This used to count every Mozilla
+    window on the desktop, so any other Firefox open on the machine - another
+    test run, another session, the user's own browser - made a correct build
+    fail with "a headless=True session put a window on the interactive
+    desktop": measured 5 foreign windows, and the same red on firefox-35 and
+    on the build under test. A window belongs to the session when its process
+    carries the session's token, the same stamp the reaper reads.
+    """
     import ctypes
     from ctypes import wintypes
 
+    from invisible_playwright._reaper import find_processes
+
+    mine = {p.pid for p in find_processes(session._session_token)}
+    assert mine, "the session's token matches no process, so nothing could be counted"
     user32 = ctypes.WinDLL("user32", use_last_error=True)
     ENUM = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
     found = []
@@ -47,7 +61,10 @@ def _moz_windows_on(desktop_name):
         c = ctypes.create_unicode_buffer(256)
         user32.GetClassNameW(hwnd, c, 256)
         if c.value == "MozillaWindowClass":
-            found.append(hwnd)
+            pid = wintypes.DWORD()
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+            if pid.value in mine:
+                found.append(hwnd)
         return True
 
     if desktop_name is None:
@@ -67,12 +84,12 @@ def _moz_windows_on(desktop_name):
                     reason="the hidden desktop is the Windows path; Linux hides via Xvfb")
 def test_hidden_desktop_takes_the_window_off_screen_but_keeps_rendering(firefox_binary):
     # Control arm: the enumeration sees a headed window where it should be.
-    with InvisiblePlaywright(seed=42, binary_path=firefox_binary,
-                             headless=False) as browser:
+    headed = InvisiblePlaywright(seed=42, binary_path=firefox_binary, headless=False)
+    with headed as browser:
         page = browser.new_page()
         page.goto("https://example.com", timeout=30_000)
         time.sleep(1.0)
-        assert _moz_windows_on(None) >= 1, (
+        assert _moz_windows_on(None, headed) >= 1, (
             "a headed session left no window on the interactive desktop, so "
             "the enumeration below could not tell hidden from broken")
 
@@ -86,10 +103,10 @@ def test_hidden_desktop_takes_the_window_off_screen_but_keeps_rendering(firefox_
         assert desktop and desktop != "Default"
 
         # 1) not on the desktop the caller is on ...
-        assert _moz_windows_on(None) == 0, (
+        assert _moz_windows_on(None, ip) == 0, (
             "a headless=True session put a window on the interactive desktop")
         # 2) ... but really on its own.
-        assert _moz_windows_on(desktop) >= 1, (
+        assert _moz_windows_on(desktop, ip) >= 1, (
             "no Firefox window on the session's desktop %r" % desktop)
 
         # 3) still the headed pipeline: a real screenshot and a WebGL context.
