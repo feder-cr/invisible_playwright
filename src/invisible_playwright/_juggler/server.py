@@ -1726,11 +1726,20 @@ class PageDispatcher(Dispatcher):
         # registered BEFORE the replay, so the buffered events reach it too,
         # and it holds rather than handles until the channel exists. The idea
         # and its de-duplication are richardpowellus's, from #268.
+        #
+        # ⛔ AFTER THE LIFECYCLE AND THE INJECTED SCRIPT, NOT BEFORE THEM. The
+        # connection calls its subscribers in the order they registered, and
+        # this page's handler reads what those two already learned from the
+        # same event: registered first, a child frame's `frameAttached` reached
+        # the page before the lifecycle knew the frame, and the frame came out
+        # with no parent (`test_nested_frame_actions`, two failures, measured
+        # 2026-10-04). What matters for the hold is only that it precedes the
+        # replay.
         self._held: Optional[List] = []
         self._held_lock = threading.Lock()
-        conn.add_listener(self._route_juggler_event)
         self.lifecycle = Lifecycle(conn, session)
         self.injected = InjectedScript(conn, session)
+        conn.add_listener(self._route_juggler_event)
         try:
             self._build(server, context, session, conn, opener)
         except BaseException:
