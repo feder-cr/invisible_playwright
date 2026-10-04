@@ -72,7 +72,7 @@ page.autofill_login(
 The async API uses the same arguments with `await`. `frame.autofill_login` resolves
 in that frame; `page.autofill_login` starts in the main frame. Supply at least one
 value/selector pair: username-only and password-only forms work too. An empty
-string is a value, not an omitted field. Each selector must match one attached,
+username is refused, as Firefox never fills one. Each selector must match one attached,
 visible, enabled, editable input, and both inputs must belong to the same frame.
 The password must be a password input; the username must be a non-password text
 input. Optional `username_type` pins its type, case-insensitively. `timeout` is in
@@ -96,7 +96,9 @@ Success returns `None`. An initial refusal says **"nothing was written"**.
 After writing begins, a failed recheck names each supplied field's status:
 `filled`, `unchanged`, `altered`, `skipped`, `cleared` or `uncleared`, with the engine's
 reason. `altered` means a page listener changed the value without changing the
-field's identity; Firefox leaves that value highlighted and fills the next field.
+field's identity, while it or a later field was written; Firefox leaves that value
+highlighted and fills the next field. A field whose type changed while it was
+written, even if it was changed back, or that left the document, is cleared.
 `cleared` means the engine cleared the changed field and read it back empty;
 `uncleared` means that cleanup failed. A transport failure or lost reply says
 **"write outcome unknown"** and is never automatically retried. Error messages
