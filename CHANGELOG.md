@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.25.13] - 2026-10-04
+
 ### Added
 - **`page.route()`.** It was refused as an unimplemented gap. A request is
   offered to the page's handlers first and falls through to the context's,
