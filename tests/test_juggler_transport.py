@@ -337,6 +337,44 @@ def test_going_BACK_then_FORWARD_leaves_the_page_readable(firefox_binary):
 
 
 @pytest.mark.e2e
+def test_going_back_over_a_page_the_script_left_without_a_gesture(firefox_binary):
+    """`go_back` goes back like `history.back()`, not like the Back button.
+
+    Firefox's Back button skips history entries the person never interacted
+    with (`browser.navigation.requireUserInteraction`), and `Page.goBack` up to
+    firefox-35 asked that same question, `canGoBack`. A page that leaves by
+    `location.href` from a script has no gesture behind it, so the engine
+    answered `success: false`, `go_back` returned None and the page stayed
+    where it was - 5 out of 5 on firefox-35, and the intermittent first
+    `go_back` of the test above whenever the gesture mark of a `goto` got lost
+    under load. Playwright's `go_back` is `history.back()`: it goes to the
+    previous entry, gesture or not.
+    """
+    os.environ[factory.CHOICE_ENV] = factory.JUGGLER
+    srv = socketserver.TCPServer(("127.0.0.1", 0), _serve(PAGE))
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    url = "http://127.0.0.1:%d/" % srv.server_address[1]
+    from invisible_playwright import InvisiblePlaywright
+    try:
+        with InvisiblePlaywright(seed=42, binary_path=firefox_binary,
+                                 headless=True) as browser:
+            page = browser.new_page()
+            page.goto(url)
+            with page.expect_navigation(timeout=10_000):
+                page.evaluate("location.href = '/second'")
+            assert page.url.endswith("/second")
+            # The position and the document, not the Response: the page comes
+            # back from the back-forward cache, with no request to answer
+            # with, so None is what a successful go_back returns here too.
+            page.go_back(timeout=10_000)
+            assert page.url == url, "go_back stayed on %s" % page.url
+            assert page.locator("#t").inner_text() == "hello"
+    finally:
+        os.environ.pop(factory.CHOICE_ENV, None)
+        srv.shutdown()
+
+
+@pytest.mark.e2e
 def test_set_content_runs_in_the_MAIN_world_without_node(firefox_binary):
     """⛔ THE KNOWN-BAD OF `set_content`. Run from the utility world it answers
     `The operation is insecure` EVERY time: that world has an extended

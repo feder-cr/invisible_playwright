@@ -167,6 +167,52 @@ def test_window_open_with_features_is_a_page(browser, harness):
         ctx.close()
 
 
+def test_window_open_with_a_size_keeps_that_size(browser, harness):
+    """A popup opened with ``width=600,height=500`` reports that size, the
+    way every Firefox does; a tab opened from the same page keeps the
+    context's viewport.
+
+    Up to firefox-35 Juggler gave every popup the context's default viewport,
+    so this popup reported the tab's 1920x947 (whatever the profile's screen
+    minus its chrome is). Retail 151 reports the requested size: 499x400 for
+    a 500x400 request at 1.5 DPR, which is why one CSS pixel of slack is
+    allowed - the profile's DPR is not always 1. The fix is in the engine
+    (the explicit-size chrome flag Juggler tests for, and the appWindow it
+    reads it from), so this fails on any engine without it."""
+    ctx, page = _open_context_page(browser)
+    try:
+        _goto_opener(page, harness)
+        tab_size = page.evaluate("[innerWidth, innerHeight]")
+        with ctx.expect_page(timeout=15_000) as info:
+            page.click("#open-features")
+        popup = info.value
+        popup.wait_for_url(harness["popup_url"], timeout=10_000)
+        popup.wait_for_load_state("load", timeout=10_000)
+        # The size is final when the window is shown; reading it once more
+        # after a beat catches a late resize to the context viewport.
+        first = popup.evaluate("[innerWidth, innerHeight]")
+        popup.wait_for_timeout(1000)
+        size = popup.evaluate("[innerWidth, innerHeight]")
+        assert first == size, (
+            f"the popup changed size after load: {first} then {size}")
+        assert abs(size[0] - 600) <= 1 and abs(size[1] - 500) <= 1, (
+            f"window.open(..., 'width=600,height=500') reported {size}; the "
+            f"opener's tab is {tab_size}. A popup that asked for a size must "
+            f"keep it.")
+        popup.close()
+
+        with ctx.expect_page(timeout=15_000) as info:
+            page.click("#open-simple")
+        tab = info.value
+        tab.wait_for_url(harness["popup_url"], timeout=10_000)
+        assert tab.evaluate("[innerWidth, innerHeight]") == tab_size, (
+            "a window.open without features is a tab of the same window and "
+            "must have the opener's size")
+        tab.close()
+    finally:
+        ctx.close()
+
+
 def test_window_open_noopener_is_a_tracked_page(browser, harness):
     """``noopener`` severs in-page ``window.opener``, but the ENGINE still
     reports the opening target in ``openerId`` - verified at the protocol

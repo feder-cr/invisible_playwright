@@ -1185,10 +1185,12 @@ def test_humanize_default_is_still_on(cls):
 # those differences happen to cancel; nothing was checking that, and a fourth
 # copy could be added tomorrow with no test noticing.
 #
-# The authoritative definition is ``_recaptcha_seed._sub_seed``. Not because it
-# is the nicest - because it is the one that already shipped. Its outputs are
-# baked into the seed -> fingerprint reproducibility this package documents, so
-# it is the copy that cannot be changed; every other copy has to agree with it.
+# The authoritative definition is ``invisible_core._cookies._sub_seed``, the
+# persona cookie mixer. Not because it is the nicest - because it is the one
+# that already shipped (in this package's ``_recaptcha_seed`` until the cookie
+# data moved to the core). Its outputs are baked into the seed -> cookie
+# reproducibility this package documents, so it is the copy that cannot be
+# changed; every copy left in this package has to agree with it.
 #
 # The tests below pin two things: how many copies exist, and that they agree.
 
@@ -1202,7 +1204,8 @@ _FNV_PRIME = 0x100000001B3
 # module stem -> function name. Adding a copy means adding a line here, which
 # is the point: it is a decision, not an accident.
 _EXPECTED_MIXERS = {
-    ("_recaptcha_seed", "_sub_seed"),   # authoritative - already shipped
+    # The authoritative one is in the core (invisible_core._cookies), outside
+    # the package this scan walks.
     ("_behaviour", "_sub_seed"),        # byte-identical copy
     ("_motion", "_mix"),                # same mix, reduced to int31
 }
@@ -1262,7 +1265,7 @@ def test_every_copy_of_the_mix_agrees_with_the_authoritative_one():
     """
     from invisible_playwright._behaviour import _sub_seed as behaviour_mix
     from invisible_playwright._motion import _mix as motion_mix
-    from invisible_playwright._recaptcha_seed import _sub_seed as authoritative
+    from invisible_core._cookies import _sub_seed as authoritative
 
     for seed in _SEED_CORPUS:
         for tag in _TAG_CORPUS:
@@ -1276,7 +1279,7 @@ def test_the_reductions_each_copy_applies_are_the_documented_ones():
     """The one place the copies are allowed to differ, stated explicitly."""
     from invisible_playwright._behaviour import _sub_seed as behaviour_mix
     from invisible_playwright._motion import _mix as motion_mix
-    from invisible_playwright._recaptcha_seed import _sub_seed as authoritative
+    from invisible_core._cookies import _sub_seed as authoritative
 
     for seed in _SEED_CORPUS[:60]:
         for tag in _TAG_CORPUS:
@@ -1299,7 +1302,7 @@ def test_the_page_seed_is_a_different_derivation_and_stays_one():
     fourth FNV copy would show up there as an unexpected mixer.
     """
     assert ("_cursor", "page_motion_seed") not in _fnv_functions()
-    from invisible_playwright._recaptcha_seed import _sub_seed as authoritative
+    from invisible_core._cookies import _sub_seed as authoritative
 
     for seed in _SEED_CORPUS[:40]:
         assert 0 <= _cursor.page_motion_seed(seed, 0) < 2**31

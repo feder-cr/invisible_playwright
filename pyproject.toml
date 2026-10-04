@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "invisible_playwright"
-version = "0.25.13"
+version = "0.26.0"
 description = "Playwright wrapper for a patched Firefox with deterministic stealth profile."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -69,7 +69,7 @@ dependencies = [
     # metadata; nothing in src/ hardcodes a second copy (tests/test_core_pin.py
     # fails if one appears). What stays invisible to install-time machinery is the
     # --no-deps / lockfile residue, and _pin.py is the only layer that sees it.
-    "invisible_core==35.32.0",
+    "invisible_core==36.32.0",
     # ⛔ playwright is NO LONGER a dependency: since the full fork, the Python
     # client lives in src/invisible_playwright/_pw/ and the Node driver in
     # src/invisible_playwright/_driver/. Reintroducing it would not visibly
@@ -117,7 +117,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7", "build>=1", "ruff>=0.6", "pytest-rerunfailures>=14", "pytest-timeout>=2", "pytest-xdist>=3", "playwright==1.61.0"]
+dev = ["pytest>=7", "build>=1", "ruff>=0.6", "pytest-rerunfailures>=14", "pytest-timeout>=2", "pytest-xdist>=3", "playwright==1.61.0", "cryptography>=41"]
 
 [tool.pytest.ini_options]
 markers = [

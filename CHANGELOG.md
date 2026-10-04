@@ -6,6 +6,78 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-10-04
+
+The firefox-36 engine, pinned through `invisible-core` 36.32.0. The core now
+decides the session language once, and every value this package hands the
+browser reads that decision.
+
+### Changed
+- **The engine is firefox-36**, through `invisible-core` 36.32.0 (the
+  required version is exact, as before).
+- **A session reports one language in every value.** `locale="auto"` and an
+  explicit tag both go through `invisible_core.prepare_session_geo`, the same
+  call that resolves the timezone, and the session keeps its result: the
+  language list Firefox's own table gives that tag. `navigator.language`,
+  `navigator.languages`, the locale prefs, the default context's `locale`,
+  the `Accept-Language` header and the Google CONSENT cookie all read it. A
+  region that has no Firefox build of its own used to report two languages:
+  an Australian egress resolved `en-AU` for the locale prefs and `en-US, en`
+  for the language list, so `navigator.language` said `en-US` while the
+  requested locale said `en-AU`. It now reports `en-US` everywhere, as an
+  English Firefox installed in Australia does. The same holds for the other
+  regions in that position (New Zealand, Ireland, India, Singapore, the
+  Philippines and more).
+- **The default context's `locale` is the decided language, not the tag you
+  passed.** `InvisiblePlaywright(locale="fr-FR")` gives contexts `locale="fr"`,
+  the first entry of the French list (`fr, fr-FR, en-US, en`), which is what
+  `navigator.language` reports. `locale=""` now means en-US explicitly
+  instead of leaving the option out.
+- **The persona cookies (`prep_recaptcha=True`) come from the core**
+  (`invisible_core.persona_cookies`). Same cookies for the same seed; the
+  CONSENT cookie's language now reads the decided language instead of the raw
+  tag, so it can no longer name a language the page does not report.
+
+### Fixed
+- **`new_context(locale=...)` is the context's language.** On firefox-35 a
+  context's locale was ignored and every page reported the launch locale. With
+  firefox-36 `navigator.language`, `navigator.languages`, `Intl` and the
+  `Accept-Language` header of the context's pages follow it, and the server
+  sends the engine the whole language list the tag stands for
+  (`de-DE, de, en-US, en` for `de-DE`, as a German Firefox reports), not the
+  bare tag.
+- **Workers speak their context's language**: dedicated, shared and service
+  workers report the same `navigator.languages` and `Intl` locale as the pages
+  that made them. On firefox-35 they reported the launch locale.
+- **Every request carries the `Accept-Language` a retail Firefox sends.**
+  Firefox-35 sent the raw list (`it-IT, it, en-US, en`) on navigations, fetch
+  and XHR and the q-valued form (`it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7`) only
+  from workers; firefox-36 sends the q-valued form everywhere.
+- **`ignore_https_errors=True` loads a self-signed page.** On firefox-35
+  `new_context` failed with `NS_ERROR_NOT_AVAILABLE`.
+- **A routed request carries its body.** `request.post_data`,
+  `post_data_json` and `post_data_buffer` were None for every POST, in a route
+  handler and on the `request` event alike (feder-cr/invisible_core#90). The
+  body is there whenever a route is set on the page or its context; without a
+  route it stays None, which keeps the engine from copying every POST body.
+- **`go_back()` goes back over a page the script left without a gesture**,
+  like `history.back()`. A page that navigated by `location.href` from a
+  script made `go_back()` return None and stay where it was, because the
+  engine asked the Back button's question (was there a user interaction).
+- **A `window.open` popup with a size keeps that size** instead of taking the
+  tab's viewport.
+
+### Removed
+- `invisible_playwright._recaptcha_seed`, a private module: the cookie data is
+  in the core, and the two call sites hand its list to the context.
+
+### Internal
+- The e2e tests for the engine changes above are plain tests: they fail on
+  firefox-35 and pass on firefox-36. The `ignore_https_errors` test needs
+  `cryptography` for its certificate, now in the `dev` extra.
+- A unit test fails if a locale comparison with "auto", or an import of the
+  core names removed in 36.32.0, comes back into this package.
+
 ## [0.25.13] - 2026-10-04
 
 ### Added

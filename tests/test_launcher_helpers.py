@@ -224,14 +224,21 @@ def test_default_context_omits_timezone_when_empty():
 
 @pytest.mark.unit
 def test_default_context_includes_locale_when_set():
+    """The context carries the DECISION's primary, set in __enter__."""
+    from invisible_core import decide_session_locale
     ip = InvisiblePlaywright(seed=42, locale="de-DE")
+    ip._locale = decide_session_locale("de-DE")
     assert ip._default_context_kwargs()["locale"] == "de-DE"
 
 
 @pytest.mark.unit
-def test_default_context_omits_locale_when_empty():
+def test_default_context_with_no_language_asked_is_en_us():
+    """locale="" means nobody asked, which the core decides as en-US: the
+    context says what the prefs say instead of leaving the option out."""
+    from invisible_core import decide_session_locale
     ip = InvisiblePlaywright(seed=42, locale="")
-    assert "locale" not in ip._default_context_kwargs()
+    ip._locale = decide_session_locale("")
+    assert ip._default_context_kwargs()["locale"] == "en-US"
 
 
 # ── InvisiblePlaywright._build_env - WebRTC egress auto-derive ─────────

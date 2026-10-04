@@ -152,8 +152,10 @@ def test_persistent_context_kwargs_INCLUDES_locale_and_timezone():
     `timezone=` would end up sharing whatever TZ the env var set.
 
     Regression-defense: do NOT re-add the firefox-4-era filter."""
+    from invisible_core import decide_session_locale
     obj = InvisiblePlaywright(seed=42, locale="en-GB", timezone="Europe/London",
                               profile_dir="/tmp/x")
+    obj._locale = decide_session_locale("en-GB")  # what __enter__ decides
     kw = obj._persistent_context_kwargs()
     assert kw.get("locale") == "en-GB", (
         f"locale must be in persistent kwargs (firefox-5+ supports it via "
@@ -192,17 +194,16 @@ def no_geo_lookup(monkeypatch):
     Deliberately NOT autouse: a test that means to exercise the geo path should
     have to say so.
     """
-    from invisible_core._geo import SessionGeo
+    from invisible_core import SessionGeo, decide_session_locale
 
+    # ONE lookup since invisible-core 36.32.0: the language is decided inside
+    # the same call (`SessionGeo.locale`), so there is no second name to stub.
+    # Before, `resolve_session_locale` was a separate network call imported
+    # inside __enter__, and stubbing only the geo left these tests at 34 s.
     monkeypatch.setattr("invisible_playwright.launcher.prepare_session_geo",
-                        lambda tz, proxy: SessionGeo("America/New_York", "198.51.100.4"))
-    # BOTH lookups. `locale="auto"` is the default, and `resolve_session_locale`
-    # is imported INSIDE __enter__ from invisible_core, so it has to be patched
-    # on the core module - patching the launcher's namespace does nothing for a
-    # name that is not in it. Stubbing only the first one left the four tests at
-    # 34 seconds, which is how the second one was found.
-    monkeypatch.setattr("invisible_core.resolve_session_locale",
-                        lambda ip, proxy: "en-US")
+                        lambda tz, proxy, locale: SessionGeo(
+                            "America/New_York", "198.51.100.4",
+                            locale=decide_session_locale("en-US")))
     # And the lifetime guard. `bind` waits for the browser tree to APPEAR -
     # correct on a real launch, and here Playwright is a MagicMock so no process
     # ever comes, and each of these four tests sat out the whole 10s deadline.

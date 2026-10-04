@@ -58,7 +58,7 @@ from ._marshal import (_as_callable, _button, _called_on, _console_text,
 # ⛔ THE PARSER IS THE CORE'S, and briefly it was not: a copy of it lived
 # here for the length of one fix. Two readings of what a proxy is would be
 # the same duplication that produced the defect, one layer down.
-from invisible_core import parse_proxy
+from invisible_core import SessionLocale, parse_proxy
 
 from ._profile import (_domain_matches, _host_of, _only_set,
                        _read_version, _remove_profile, _write_user_js)
@@ -1412,15 +1412,15 @@ class RequestDispatcher(Dispatcher):
             # corruption tomorrow; the driver omits the key entirely and this
             # matches it.
             #
-            # ⛔ AND ON THIS BUILD IT IS ALWAYS ABSENT, which is OUR doing and
-            # not the transport's: `NetworkObserver.js` sets `postData:
-            # undefined` in the request event under a stealth patch dated
-            # 2026-08-24, whose comment says nobody asks for it without
-            # `page.route()` or `request.postData()`. The consequence is that
-            # `request.post_data()` answers None for every POST on BOTH
-            # transports - a suppressed value rather than a missing feature,
-            # which is the shape rule 12 is about. It is recorded here because
-            # this is where somebody will come looking.
+            # ⛔ THE ENGINE SENDS IT ONLY WHILE A ROUTE IS SET on the page or
+            # its context. A stealth patch dated 2026-08-24 stopped reading
+            # the body of every POST; through firefox-35 that left
+            # `request.post_data` None for every POST, inside a route guard
+            # too (feder-cr/invisible_core#90). Engines carrying the fix read
+            # it again while interception is on, so a route handler and the
+            # `request` event see the body then, and None without a route.
+            # It is recorded here because this is where somebody will come
+            # looking.
             **({"postData": params["postData"]}
                if params.get("postData") is not None else {}),
             "isNavigationRequest": bool(self.navigation_id),
@@ -3823,6 +3823,25 @@ class BrowserDispatcher(Dispatcher):
             value = params.get(name)
             if value in (None, ""):
                 continue
+            if name == "locale":
+                # ⛔ THE ENGINE TAKES A LANGUAGE LIST, NOT A TAG. The context's
+                # locale becomes the BrowsingContext's LanguageOverride, which
+                # is what navigator.languages is split from and what the
+                # Accept-Language header is prepared from - the same field the
+                # launch locale seeds with `juggler.locale.override`, the full
+                # list invisible_core writes to `intl.accept_languages`. Sent
+                # as the bare tag, a context asking for "de-DE" would report
+                # navigator.languages == ["de-DE"], where a German Firefox
+                # reports de-DE, de, en-US, en; and the default context, which
+                # gets the launch locale through these same defaults, would
+                # drop from the four-entry list the profile declared to one.
+                # The list is the core's decision for that tag, and nothing
+                # here derives it: `SessionLocale.of` applies the same table the
+                # launch decision did, so the default context, which carries
+                # that decision's primary, gets back the list the profile
+                # declared. It refuses "auto": that is decided once, at launch,
+                # from the egress, and this side does not know the proxy.
+                value = SessionLocale.of(value).accept_languages
             self._context_send(command,
                            {"browserContextId": context_id, field: value},
                            timeout=10)

@@ -11,7 +11,7 @@ from invisible_playwright._pw.sync_api import Browser, BrowserContext, Playwrigh
 from . import _session
 from ._cursor import resolve_cursor_engine
 from invisible_core._fpforge import Profile, generate_profile
-from invisible_core import prepare_session_geo
+from invisible_core import SessionLocale, persona_cookies, prepare_session_geo
 from ._engine import assert_wire_version, resolve_executable
 from invisible_core import configure_proxy as _configure_proxy_shared
 from ._reaper import SessionToken, guard_for
@@ -136,11 +136,14 @@ class InvisiblePlaywright(_session.CommonLaunch):
                 ``"auto"`` derives the locale from the egress country - the proxy
                 egress IP, or the host's public IP without a proxy - exactly like
                 ``timezone="auto"``, keeping the browser language consistent with the
-                exit country (a French proxy → ``fr-FR``). Drives
-                ``intl.accept_languages`` → both ``navigator.language``/``languages``
-                AND the q-valued ``Accept-Language`` header (the patched binary builds
-                the header from the pref, never from the raw Playwright locale override,
-                so the two never diverge - see nsHttpHandler STEALTHFOX note).
+                exit country (a French proxy → ``fr``). invisible_core makes the
+                decision (``prepare_session_geo``) and turns the tag into the
+                language list Firefox's own table gives it; every value reads
+                that list: ``navigator.language``/``languages``, the locale
+                prefs, the default context's locale and the q-valued
+                ``Accept-Language`` header. A region with no Firefox build of
+                its own reports the list's first entry everywhere (an
+                Australian egress gives ``en-US, en``, so ``en-US``).
             timezone: IANA zone (e.g. ``"America/New_York"``) - used as-is
                 when set, the only way to force a specific zone. ``""``
                 (default) or ``"auto"`` ALWAYS resolves from the egress IP:
@@ -207,7 +210,11 @@ class InvisiblePlaywright(_session.CommonLaunch):
         # it.
         self._show_cursor = (None if show_cursor is None
                              else bool(show_cursor))
-        self._locale = locale
+        # What the caller ASKED for: "auto" or a tag. The decision is the
+        # core's, made in __enter__ from the egress (prepare_session_geo),
+        # and there is none before it.
+        self._locale_requested = locale
+        self._locale: Optional[SessionLocale] = None
         self._timezone = timezone
         self._extra_prefs = extra_prefs
         self._binary_path = binary_path
@@ -255,8 +262,12 @@ class InvisiblePlaywright(_session.CommonLaunch):
         # concrete IANA zone AND discover the proxy egress IP - one round-trip,
         # before anything reads self._timezone or builds prefs/env. Fail-early
         # if a proxy is set but the egress can't be resolved.
-        _geo = prepare_session_geo(self._timezone, self._proxy)
+        # The language is decided in the same call, from the same egress: the
+        # core resolves "auto" and applies Firefox's language table, and this
+        # session keeps the DECISION (a SessionLocale), never a tag of its own.
+        _geo = prepare_session_geo(self._timezone, self._proxy, self._locale_requested)
         self._timezone = _geo.timezone
+        self._locale = _geo.locale
         self._webrtc_egress_ip = _geo.egress_ip
         # ⛔ TWO DIFFERENT THINGS, and before they were a single field.
         # `_webrtc_egress_ip` is the FACT: where we exit from. It serves the
@@ -269,12 +280,6 @@ class InvisiblePlaywright(_session.CommonLaunch):
         # allocation - the signal a detector running its own TURN reads.
         # The core reads it in one place only.
         self._srflx_declared = _geo.srflx_to_declare()
-        # Geo-aware locale: "auto" derives the language from the egress country (reusing
-        # the egress IP already discovered above), like timezone="auto". Keeps the browser
-        # language consistent with the proxy's country instead of a fixed en-US.
-        if (self._locale or "").strip().lower() == "auto":
-            from invisible_core import resolve_session_locale
-            self._locale = resolve_session_locale(_geo.egress_ip, self._proxy)
         # binary_path= never reaches ensure_binary(), so the engine check lives
         # on the resolved executable rather than inside the fetcher.
         executable = resolve_executable(self._binary_path)
@@ -489,7 +494,16 @@ class InvisiblePlaywright(_session.CommonLaunch):
         defaults = self._default_context_kwargs()
         prep = self._prep_recaptcha
         profile = self._profile  # pass the whole Profile (seed + browsing_history)
-        loc = self._locale  # used by _recaptcha_seed for CONSENT lang+region
+        loc = self._locale  # the session's decision: the CONSENT cookie reads it
+
+        def seed_cookies(ctx):
+            # The cookie list is the core's (persona_cookies, pure data);
+            # handing it to this driver is the only part kept here. A
+            # failure to seed never fails the context, as before.
+            try:
+                ctx.add_cookies(persona_cookies(profile, loc))
+            except Exception:
+                pass
 
         def patched(**kw):
             self._assert_uscita_invariata()
@@ -497,8 +511,7 @@ class InvisiblePlaywright(_session.CommonLaunch):
             merged.update(kw)  # user-supplied wins
             ctx = original(**merged)
             if prep:
-                from ._recaptcha_seed import seed_recaptcha_cookies_sync
-                seed_recaptcha_cookies_sync(ctx, profile, locale=loc)
+                seed_cookies(ctx)
             # ⛔ ALSO `context.new_page`, which is the NORMAL way to open a
             # tab and was the only one left unguarded. The guard sat on
             # `browser.new_context` and `browser.new_page`, so a session
@@ -536,8 +549,7 @@ class InvisiblePlaywright(_session.CommonLaunch):
             page = original_page(**merged)
             ctx = page.context
             if prep:
-                from ._recaptcha_seed import seed_recaptcha_cookies_sync
-                seed_recaptcha_cookies_sync(ctx, profile, locale=loc)
+                seed_cookies(ctx)
             return page
 
         browser.new_page = patched_page  # type: ignore[assignment]
