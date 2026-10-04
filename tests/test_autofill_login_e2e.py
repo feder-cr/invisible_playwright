@@ -217,3 +217,45 @@ def test_async_page_and_frame(firefox_binary, origins):
                     "username.matches(':autofill') && password.matches(':autofill')")
 
     asyncio.run(exercise())
+
+
+@pytest.mark.e2e
+def test_a_type_flipped_and_restored_during_the_write_is_caught(page, origins):
+    """The password lands while the field is a text input; by the time the
+    write returns the page has made it a password again."""
+    page.evaluate("""() => {
+      password.addEventListener('beforeinput', () => { password.type = 'text'; }, {once: true});
+      password.addEventListener('input', () => { password.type = 'password'; }, {once: true});
+    }""")
+    with pytest.raises(Error, match="password=cleared") as failed:
+        _fill(page, origins[0])
+    assert PASSWORD not in str(failed.value)
+    assert page.input_value("#password") == ""
+    assert page.evaluate("password.matches(':autofill')") is False
+
+
+@pytest.mark.e2e
+def test_a_username_the_password_listener_changes_is_not_reported_filled(page, origins):
+    page.evaluate("""password.addEventListener('input', () => {
+      username.value = '';
+    }, {once: true})""")
+    with pytest.raises(Error, match="username=altered") as failed:
+        _fill(page, origins[0])
+    assert "password=filled" in str(failed.value)
+    assert PASSWORD not in str(failed.value)
+    assert page.input_value("#password") == PASSWORD
+
+
+@pytest.mark.e2e
+def test_an_empty_username_is_refused_like_firefox_skips_it(page, origins):
+    """LoginManagerChild neither writes nor highlights an empty stored username."""
+    page.fill("#username", "typed@example.test")
+    page.evaluate("() => { audit = []; }")
+    with pytest.raises(Error, match="nothing was written"):
+        page.autofill_login(origin=origins[0], username="", username_selector="#username",
+                            password=PASSWORD, password_selector="#password")
+    assert page.input_value("#username") == "typed@example.test"
+    assert page.input_value("#password") == ""
+    assert page.evaluate("username.matches(':autofill')") is False
+    assert [e for e in page.evaluate("audit")
+            if e["type"] in ("beforeinput", "input", "change")] == []
