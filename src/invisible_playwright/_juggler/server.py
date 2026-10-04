@@ -1522,8 +1522,8 @@ class ResponseDispatcher(Dispatcher):
         # engine answers `Handler for does not implement method
         # "Network.getResponseBody"` - with a blank where the session should
         # be, which reads like a missing handler and is really a missing
-        # address. The route commands next door get away with `conn.send`
-        # because interception is answered on the browser handler.
+        # address. The route commands next door live on PageHandler too, and
+        # `RouteDispatcher._send` uses `page.send` for the same reason.
         answer = page.send(
             "Network.getResponseBody", {"requestId": rid}) or {}
         if answer.get("evicted"):
@@ -1586,15 +1586,6 @@ class RouteDispatcher(Dispatcher):
         self.answered = False
         super().__init__(server, request.page, {"request": request.channel})
 
-    # ⛔ FIVE LEVELS ON ONE LINE was what this replaced:
-    # `self.request.page.context.browser.conn.send(...)`. A route answering a
-    # request needs the connection; it does not need to know that a request has
-    # a page, a page a context, a context a browser and a browser a `conn`.
-    @property
-    def conn(self) -> "juggler.Connection":
-        return self.request.page.conn
-
-
     def _send(self, command: str, params: Dict) -> Any:
         if self.answered:
             raise ProtocolException(
@@ -1603,8 +1594,12 @@ class RouteDispatcher(Dispatcher):
         self.answered = True
         params = dict(params)
         params["requestId"] = self.request.request_id
-        result = self.conn.send(
-            command, params, timeout=30)
+        # ⛔ ON THE PAGE'S SESSION. The three interception commands are
+        # `Network.*`, which Juggler serves per page; sent on the browser
+        # session they came back "Handler for does not implement method", the
+        # held request was never released and the page hung on its first
+        # request. Every route that ever reached a handler failed this way.
+        result = self.request.page.send(command, params)
         self.dispose()
         return result
 
@@ -1695,12 +1690,17 @@ class PageDispatcher(Dispatcher):
         "webStorageClear": "op_storage_clear",
         "runBeforeUnload": "op_run_before_unload",
         "addInitScript": "op_add_init_script",
+        "setNetworkInterceptionPatterns": "op_set_interception",
     }
 
     def __init__(self, server, context: "BrowserContextDispatcher",
                  session: str, target_id: str,
                  opener: Optional["PageDispatcher"] = None) -> None:
         self.context = context
+        #: True while `page.route()` holds this page's requests. The context
+        #: keeps its own flag: a request is offered to the page's handlers
+        #: first, and the client falls through to the context's.
+        self.intercepting = False
         self.session = session
         self.target_id = target_id
         # ⛔ The once-guard for `announce_closed` lives under this lock, not
@@ -2064,10 +2064,8 @@ class PageDispatcher(Dispatcher):
                 self._remember_navigation(request)
             self.context.emit("request", {"request": request.channel,
                                           "page": self.channel})
-            if self.context.intercepting and params.get("isIntercepted"):
-                route = RouteDispatcher(self.server, request)
-                self.context.emit("route", {"route": route.channel,
-                                            "page": self.channel})
+            if params.get("isIntercepted"):
+                self._offer_route(request)
         elif method == "Network.responseReceived":
             request = self._requests.get(params.get("requestId"))
             if request is not None:
@@ -2243,6 +2241,51 @@ class PageDispatcher(Dispatcher):
             load_states=sorted(getattr(frame, "states", []) or []) or ["commit"])
         self._frames[frame_id] = made
         return made
+
+    def op_set_interception(self, params: Dict) -> Any:
+        """`page.route()`: hold this page's requests until a handler answers.
+
+        It was missing, and the dispatcher refused it as a gap. Juggler's
+        `Network.setRequestInterception` is per page and, like the context's,
+        a boolean: the client filters by url and continues what it does not
+        want.
+        """
+        wanted = bool(params.get("patterns"))
+        if wanted:
+            self.browser.require_interception("page.route()")
+        self.send("Network.setRequestInterception", {"enabled": wanted})
+        self.intercepting = wanted
+        return None
+
+    def _offer_route(self, request: "RequestDispatcher") -> None:
+        """Hand a held request to whoever asked to hold it.
+
+        ⛔ THE PAGE'S CHANNEL WHEN THE PAGE ASKED, the context's otherwise. The
+        client's `Page._on_route` runs the page's handlers and then falls
+        through to the context's, so a request emitted on the page reaches
+        both; one emitted on the context never reaches a `page.route()`.
+
+        ⛔ AND A HELD REQUEST NOBODY CLAIMS IS RELEASED HERE. Interception can
+        be switched off while a request is already held; emitting nothing
+        would leave it held for ever and hang the page silently.
+        """
+        if self.intercepting:
+            owner = self
+        elif self.context.intercepting:
+            owner = self.context
+        else:
+            # ⛔ The engine may have released it already: turning the PAGE's
+            # interception off resumes every request it holds, so this answer
+            # can find nothing and say "Cannot find request". Turning the
+            # CONTEXT's off releases nothing, which is the case this is for.
+            try:
+                self.send("Network.resumeInterceptedRequest",
+                          {"requestId": request.request_id})
+            except (juggler.ProtocolError, juggler.TargetClosedError):
+                pass
+            return
+        route = RouteDispatcher(self.server, request)
+        owner.emit("route", {"route": route.channel, "page": self.channel})
 
     def send(self, command: str, params: Dict) -> Any:
         """A Juggler command on THIS page's session.
@@ -3056,6 +3099,8 @@ class BrowserContextDispatcher(Dispatcher):
         is the reason `route()` on a busy page is slower here than upstream.
         """
         wanted = bool(params.get("patterns"))
+        if wanted:
+            self.browser.require_interception("context.route()")
         self._browser_send("Browser.setRequestInterception",
                            {"enabled": wanted})
         self.intercepting = wanted
@@ -3207,8 +3252,17 @@ class BrowserDispatcher(Dispatcher):
 
     def __init__(self, server, browser_type: "BrowserTypeDispatcher",
                  conn: Any, version: str, session_seed: Any = None,
-                 motion_budget_s: Any = None) -> None:
+                 motion_budget_s: Any = None,
+                 service_workers_enabled: bool = True) -> None:
         self.conn = conn
+        #: ⛔ WHETHER `route()` CAN WORK AT ALL. Firefox asks a channel's
+        #: intercept controller - the hook Juggler holds requests through -
+        #: only while `dom.serviceWorkers.enabled` is true; with it false the
+        #: engine accepts `setRequestInterception`, holds nothing, and every
+        #: request goes out. Measured 2026-10-02: a context route set as a
+        #: guard saw zero requests while two POSTs and a beacon reached the
+        #: server. See `require_interception`.
+        self.service_workers_enabled = service_workers_enabled
         self.browser_type = browser_type
         #: ⛔ THE SESSION'S SEED, and the reason it lives on the BROWSER rather
         #: than on this module: a process can hold two sessions with two seeds,
@@ -3310,6 +3364,23 @@ class BrowserDispatcher(Dispatcher):
         # engine attached in between predates every context (see the note on
         # the target map): recorded for its session, never built into a page.
         self._adopt_enabled = True
+
+    def require_interception(self, what: str) -> None:
+        """Refuse a route this browser cannot honour, instead of ignoring it.
+
+        ⛔ FAIL CLOSED. A route is often a guard - "abort every POST" - and a
+        guard that is accepted and never runs is worse than none: the caller
+        believes it is protected. The check is Firefox's own:
+        `HttpBaseChannel::ShouldIntercept` returns false before asking any
+        intercept controller while the pref is off.
+        """
+        if not self.service_workers_enabled:
+            raise ProtocolException(
+                "%s cannot intercept anything in this browser: it was launched "
+                "with dom.serviceWorkers.enabled=false, and Firefox only offers "
+                "a request to the interception hook while that pref is true, "
+                "so every request would go out unseen. Drop the pref: routes "
+                "work with service workers enabled" % what)
 
     def actions_for_page(self, session: str, lifecycle, injected) -> Actions:
         """The hands of a new page: the session's seed and motion budget, and
@@ -3620,6 +3691,24 @@ class BrowserDispatcher(Dispatcher):
         explicitly asks to express no preference silently keeps whatever the
         profile declared - the one case where the caller was most explicit.
         """
+        # ⛔ `service_workers="block"` REFUSES, because both ways to honour it
+        # are worse than saying no. Playwright's server does it with an init
+        # script that replaces `navigator.serviceWorker.register` with a page
+        # function whose source reads "blocked by Playwright": any page that
+        # calls `toString()` on it, or lists the container's own properties,
+        # reads the automation by name. The engine-wide alternative,
+        # `dom.serviceWorkers.enabled=false`, switches off request
+        # interception with it (see `require_interception`). Ignoring the
+        # option, as this server did until now, tells a caller that service
+        # workers are blocked while a page's own worker keeps answering
+        # requests no route ever sees.
+        if params.get("serviceWorkers") == "block":
+            raise ProtocolException(
+                "service_workers=\"block\" is not supported: Playwright blocks "
+                "them with a page script that any page can read back, and "
+                "this engine has no switch for one context. Leave it out: "
+                "route() holds requests with service workers allowed, except "
+                "the ones a page's own service worker answers")
         for name, command, field in self.ENGINE_OPTIONS:
             value = params.get(name)
             if value in (None, ""):
@@ -3912,9 +4001,11 @@ class BrowserTypeDispatcher(Dispatcher):
             # swallows one hook's failure so it cannot stop the others.
             self.server.on_shutdown(lambda: _remove_profile(profile))
         version = _read_version(executable)
-        browser = BrowserDispatcher(self.server, self, conn, version,
-                                    session_seed=session_seed,
-                                    motion_budget_s=motion_budget_s)
+        browser = BrowserDispatcher(
+            self.server, self, conn, version, session_seed=session_seed,
+            motion_budget_s=motion_budget_s,
+            service_workers_enabled=prefs.get(
+                "dom.serviceWorkers.enabled") is not False)
         return {"browser": browser.channel}
 
 

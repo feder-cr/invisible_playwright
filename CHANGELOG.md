@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+- **`page.route()`.** It was refused as an unimplemented gap. A request is
+  offered to the page's handlers first and falls through to the context's,
+  as in Playwright.
+
+### Fixed
+- **`context.route()` handlers run.** The first request a handler answered
+  was answered on the browser session instead of the page's, the engine
+  refused it, and the page hung on that request.
+- **`route()` refuses, instead of doing nothing, in a browser launched with
+  `dom.serviceWorkers.enabled=false`.** Firefox only offers a request to the
+  interception hook while that pref is true, so a route set as a guard was
+  accepted and saw no request at all while every POST went out. The error
+  names the pref.
+- **`new_context(service_workers="block")` refuses instead of being
+  ignored.** The option was accepted and nothing read it, so a page's own
+  service worker kept answering requests no route saw. Playwright honours it
+  with a page script whose source names Playwright, which any page can read,
+  so it is refused with a sentence saying why. Routes work with service
+  workers allowed.
+
 ## [0.25.12] - 2026-10-04
 
 ### Removed
