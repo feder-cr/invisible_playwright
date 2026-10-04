@@ -10,8 +10,9 @@ Measured on 0.25.8 with seed 106 and three tabs: a pause of 2.14-2.16 s on all
 three, and keydown intervals within a few milliseconds of each other. A site
 that sees two tabs of one session saw the same numbers twice.
 
-The page's number now comes from the session (`BrowserDispatcher.acts`) and is
-part of every nonce. The same seed still gives the same sequence: replaying a
+The page's number now comes with the page (`PageDispatcher.number`: the number
+the client reserved at the `new_page()` call, [B237]) and is part of every
+nonce. The same seed still gives the same sequence: replaying a
 session replays its acts.
 
 The unit half builds pages the way the server does, through
@@ -65,8 +66,8 @@ def _browser(seed=SEED):
                              session_seed=seed)
 
 
-def _page(browser):
-    return browser.actions_for_page("session", None, _Field())
+def _page(browser, number):
+    return browser.actions_for_page("session", None, _Field(), number)
 
 
 @pytest.fixture()
@@ -92,8 +93,8 @@ def test_the_first_acts_of_two_pages_are_two_different_draws(clock):
     """Known-bad, before: the second page's first field, string and click
     drew exactly what the first page's did."""
     browser = _browser()
-    one = _first_acts(_page(browser), clock)
-    two = _first_acts(_page(browser), clock)
+    one = _first_acts(_page(browser, 0), clock)
+    two = _first_acts(_page(browser, 1), clock)
     assert one["pause"] != two["pause"]
     assert one["typing"] != two["typing"]
     assert one["click"] != two["click"]
@@ -105,16 +106,16 @@ def test_the_same_seed_replays_the_same_sequence_across_pages(clock):
     runs = []
     for _ in range(2):
         browser = _browser()
-        runs.append([_first_acts(_page(browser), clock) for _ in range(3)])
+        runs.append([_first_acts(_page(browser, n), clock) for n in range(3)])
     assert runs[0] == runs[1]
-    assert runs[0] != [_first_acts(_page(_browser(SEED + 1)), clock)
-                       for _ in range(3)]
+    other = _browser(SEED + 1)
+    assert runs[0] != [_first_acts(_page(other, n), clock) for n in range(3)]
 
 
 def test_the_first_page_keeps_the_plain_count(clock):
     """The first field of a session is nonce 1 on the first page: the page
     number goes in the high bits, so page 0 keeps the plain count."""
-    a = _page(_browser())
+    a = _page(_browser(), 0)
     assert _first_acts(a, clock)["pause"] == pytest.approx(
         plan_hesitation(TypingPersona.from_seed(SEED), "field", 1) / 1000.0)
 
@@ -123,7 +124,7 @@ def test_the_keyboard_and_the_drag_number_their_acts_on_the_page():
     """One numbering per page: the keyboard holds the page's, not one of its
     own, and the pages of one session are numbered apart."""
     browser = _browser()
-    a, b = _page(browser), _page(browser)
+    a, b = _page(browser, 0), _page(browser, 1)
     assert a.keyboard.acts is a.acts
     assert (a.acts.page, b.acts.page) == (0, 1)
     assert a.acts.next("drag") != b.acts.next("drag")

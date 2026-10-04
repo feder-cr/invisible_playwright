@@ -147,7 +147,7 @@ class Actions:
                 self.motion = CursorMotion(_sub_seed(session_seed, "server:drag"))
         #: ⛔ THE NONCE OF EVERY ACT OF THIS PAGE, and it is REQUIRED, not
         #: defaulted. It carries the page's number in the session
-        #: (`_behaviour.SessionActs.page`), so two clicks, two fields or two
+        #: (`PageDispatcher.number`), so two clicks, two fields or two
         #: typed strings never draw the same durations, not even the first act
         #: of two different tabs. Bare counters here restarted at 1 on every
         #: page, and a default would bring that back for whoever forgot to

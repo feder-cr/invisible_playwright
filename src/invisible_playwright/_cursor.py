@@ -369,9 +369,21 @@ def page_motion_seed(session_seed: int, ordinal: int) -> int:
     in which tabs happened to move. Same session seed plus same tab ordinal
     gives the same path, which is what makes a replayed seed replay the
     cursor. Kept inside int31 for consistency with the rest of the seeding.
+
+    ⛔ EVERY BIT OF THE ORDINAL COUNTS, not only the low 16. A page the site
+    opened is numbered in a space of its own above bit 62 (`_behaviour.
+    popup_number`), and with the old mask two popups shared a path whenever
+    their numbers agreed on 16 bits. The higher bits are folded in only when
+    there are any, so the pages the script asks for (0, 1, 2 ...) keep the
+    seeds they always had.
     """
+    ordinal = int(ordinal)
     h = (int(session_seed) & 0xFFFFFFFF) * 0x9E3779B1
-    h = (h ^ ((int(ordinal) & 0xFFFF) * 0x85EBCA6B)) & 0xFFFFFFFF
+    h = (h ^ ((ordinal & 0xFFFF) * 0x85EBCA6B)) & 0xFFFFFFFF
+    high = ordinal >> 16
+    while high > 0:
+        h = ((h ^ (high & 0xFFFF)) * 0xC2B2AE35) & 0xFFFFFFFF
+        high >>= 16
     h ^= h >> 16
     return h & 0x7FFFFFFF
 
@@ -379,17 +391,25 @@ def page_motion_seed(session_seed: int, ordinal: int) -> int:
 class _Session:
     """Everything a session hands to the pages underneath it."""
 
-    __slots__ = ("seed", "max_seconds", "pages")
+    __slots__ = ("seed", "max_seconds")
 
     def __init__(self, seed: int, max_seconds: float) -> None:
         self.seed = int(seed)
         self.max_seconds = float(max_seconds)
-        #: The pages' numbers, by the one counter the server numbers its pages
-        #: with too (`_behaviour.SessionActs`).
-        self.pages = _behaviour.SessionActs()
 
-    def next_ordinal(self) -> int:
-        return self.pages.next_page()
+
+def page_number(page: Any) -> int:
+    """The page's number in the session, as the server gave it.
+
+    ⛔ READ FROM THE PAGE, NEVER COUNTED HERE. The server sends it in the
+    page's initializer (`PageDispatcher.number`: the number the client
+    reserved at the `new_page()` call, or a popup's derived one), and the
+    server draws the page's acts under it. This cursor used to count its own,
+    at each page's FIRST MOVEMENT: a script that created two pages and moved
+    on the second first gave the second page 0 here and 1 there - two
+    counters for one fact, with two different orders ([B237]).
+    """
+    return int(page._initializer["pageNumber"])
 
 
 class _PageCursor:
@@ -680,9 +700,10 @@ def _cursor_for_page(page: Any) -> Optional[_PageCursor]:
     factory = _motion_factory()
     if factory is None:
         return None
+    seed = page_motion_seed(session.seed, page_number(page))
     try:
         cursor = _PageCursor(
-            page_motion_seed(session.seed, session.next_ordinal()),
+            seed,
             session.max_seconds,
             factory,
         )

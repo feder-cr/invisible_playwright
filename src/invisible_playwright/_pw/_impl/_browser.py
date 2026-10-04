@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import itertools
 from pathlib import Path
 from types import SimpleNamespace
 from typing import (
@@ -36,7 +37,10 @@ from invisible_playwright._pw._impl._api_structures import (
     ViewportSize,
 )
 from invisible_playwright._pw._impl._artifact import Artifact
-from invisible_playwright._pw._impl._browser_context import BrowserContext
+from invisible_playwright._pw._impl._browser_context import (
+    BrowserContext,
+    page_number_for_call,
+)
 from invisible_playwright._pw._impl._cdp_session import CDPSession
 from invisible_playwright._pw._impl._connection import ChannelOwner, from_channel
 from invisible_playwright._pw._impl._errors import is_target_closed_error
@@ -73,6 +77,13 @@ class Browser(ChannelOwner):
         self._cr_tracing_path: Optional[str] = None
 
         self._contexts: Set[BrowserContext] = set()
+        # MODIFIED by invisible_playwright: the numbers of the pages the
+        # script asks for, 0, 1, 2, in the order of the calls. The ONLY counter
+        # of them: the server takes each from its `newPage` request, and the
+        # cursor reads it back from the page (`page_number_for_call` in
+        # `_browser_context.py`). Pages the site opens are numbered by the
+        # server, in a space of their own (`_behaviour.popup_number`).
+        self._page_numbers = itertools.count()
         self._traces_dir: Optional[str] = None
         self._channel.on(
             "context",
@@ -111,6 +122,10 @@ class Browser(ChannelOwner):
         context._tracing._traces_dir = self._traces_dir
         assert self._browser_type is not None
         self._browser_type._playwright.selectors._contexts_for_selectors.add(context)
+
+    def _reserve_page_number(self) -> int:
+        # MODIFIED by invisible_playwright: see `_page_numbers`.
+        return next(self._page_numbers)
 
     def _on_close(self) -> None:
         self._is_connected = False
@@ -222,10 +237,14 @@ class Browser(ChannelOwner):
         clientCertificates: List[ClientCertificate] = None,
     ) -> Page:
         params = locals_to_params(locals())
+        # MODIFIED by invisible_playwright: reserved before the first await,
+        # so the page's number follows this call and not the order in which
+        # the engine answers its `newContext`.
+        number = page_number_for_call(self)
 
         async def inner() -> Page:
             context = await self.new_context(**params)
-            page = await context.new_page()
+            page = await context._new_page(number)
             page._owned_context = context
             context._owner_page = page
             return page

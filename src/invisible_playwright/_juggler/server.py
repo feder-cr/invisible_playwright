@@ -27,6 +27,7 @@ hard failure. Everything here creates first and returns the channel second.
 from __future__ import annotations
 
 import base64
+import contextlib
 import os
 import pathlib
 import shutil
@@ -36,7 +37,7 @@ import time
 import warnings
 from typing import Any, Dict, List, Optional
 
-from .._behaviour import SessionActs
+from .._behaviour import PageActs, popup_number
 from . import connection as juggler
 from .actions import Actions
 from .dispatcher import Dispatcher, ProtocolException, Server
@@ -1694,7 +1695,7 @@ class PageDispatcher(Dispatcher):
     }
 
     def __init__(self, server, context: "BrowserContextDispatcher",
-                 session: str, target_id: str,
+                 session: str, target_id: str, number: int,
                  opener: Optional["PageDispatcher"] = None) -> None:
         self.context = context
         #: True while `page.route()` holds this page's requests. The context
@@ -1703,6 +1704,17 @@ class PageDispatcher(Dispatcher):
         self.intercepting = False
         self.session = session
         self.target_id = target_id
+        #: ⛔ THIS PAGE'S NUMBER IN THE SESSION, GIVEN, NOT COUNTED: the one
+        #: the client reserved at the `new_page()` call, or for a page the
+        #: site opened the one `_behaviour.popup_number` derives from its
+        #: opener (see `BrowserDispatcher._spawn_adoption`). Every act of the
+        #: page draws under it, and it travels to the client in the
+        #: initializer so the cursor draws under the same one.
+        self.number = number
+        #: How many pages the site has opened from this one, which is the
+        #: rank of the next one among them. Moved only under the browser's
+        #: `_targets_lock`, on the reader thread, in the engine's order.
+        self.popups_opened = 0
         # ⛔ The once-guard for `announce_closed` lives under this lock, not
         # in a bare attribute: the close arrives on up to four threads
         # (`op_close`, the reader's detach, an adoption finishing early, a
@@ -1755,7 +1767,7 @@ class PageDispatcher(Dispatcher):
         """The rest of the construction, under `__init__`'s cleanup."""
         self.injected.install()
         self.actions = context.browser.actions_for_page(
-            session, self.lifecycle, self.injected)
+            session, self.lifecycle, self.injected, self.number)
         # ⛔ THE EVENTS THIS PAGE ALREADY MISSED, handed over now that the two
         # things that need them exist. `Page.frameAttached` and the
         # `Runtime.executionContextCreated` pair are sent by the browser BEFORE
@@ -1797,8 +1809,12 @@ class PageDispatcher(Dispatcher):
         self.frame = FrameDispatcher(server, self, self.main_frame_id)
         viewport = context.options.get("viewport") or {"width": 1280,
                                                        "height": 720}
+        # `pageNumber` is ours, not Playwright's: the cursor reads it
+        # (`_cursor._cursor_for_page`), so client and server draw one page's
+        # rhythms under one number.
         initializer = {"mainFrame": self.frame.channel,
-                       "viewportSize": viewport, "isClosed": False}
+                       "viewportSize": viewport, "isClosed": False,
+                       "pageNumber": self.number}
         if opener is not None:
             # ⛔ THE OPENER TRAVELS IN THE INITIALIZER, and nowhere else. The
             # client resolves `page.opener()` from it and emits `popup` on the
@@ -3124,11 +3140,25 @@ class BrowserContextDispatcher(Dispatcher):
         the `PageDispatcher` for all of them, so a target can never be built
         twice (once by this call, once by the event) and a `window.open`
         target is a page like any other, with its opener recorded.
+
+        ⛔ AND IT DOES NOT NUMBER THE PAGE EITHER: the number arrives with the
+        request (`pageNumber`, reserved by the client at the call) and is
+        handed to the adoption through `BrowserDispatcher._asking`. Required,
+        not defaulted: a server-side default is the second counter [B237]
+        removed.
         """
-        conn = self.conn
-        result = conn.send("Browser.newPage",
-                           _address(self.context_id, {}), timeout=30)
-        page = self.browser._wait_for_page(result["targetId"], timeout=60.0)
+        number = params.get("pageNumber")
+        if type(number) is not int or number < 0:
+            raise ProtocolException(
+                "newPage needs the page's number in the session "
+                "(pageNumber), reserved by the client at the call; got %r"
+                % (number,))
+        browser = self.browser
+        with browser._asking(self.context_id) as answered:
+            result = self.conn.send("Browser.newPage",
+                                    _address(self.context_id, {}), timeout=30)
+            answered(result["targetId"], number)
+        page = browser._wait_for_page(result["targetId"], timeout=60.0)
         return {"page": page.channel}
 
     # ── cookies, permissions, geolocation ───────────────────────────────────
@@ -3274,12 +3304,6 @@ class BrowserDispatcher(Dispatcher):
         #: downstream reads that as "no rhythm" rather than as a default one.
         self.session_seed = session_seed
         self.motion_budget_s = motion_budget_s
-        #: ⛔ THE NUMBER OF EACH PAGE, handed out here for the same reason the
-        #: seed lives here: it belongs to the session, and every context of
-        #: this browser is the same person. Each page's acts draw their nonces
-        #: under its number (`_behaviour.PageActs`), so the first field, key
-        #: and click of a second tab are not the first tab's again.
-        self.acts = SessionActs()
         self._sessions: Dict[str, str] = {}
         self._sessions_ready = threading.Condition()
         # ⛔ THE EVENTS OF A SESSION START BEFORE ANYBODY IS LISTENING, and
@@ -3343,6 +3367,19 @@ class BrowserDispatcher(Dispatcher):
         #: Ending the page - registries, session, listeners - is
         #: `announce_closed`'s job alone: see `_page_over`.
         self._detached_early: set = set()
+        #: ⛔ HOW A NEW TARGET LEARNS ITS PAGE NUMBER (see `_spawn_adoption`).
+        #: `Browser.newPage` requests sent and not yet answered, by context;
+        #: and the number each answered request named for its target, until
+        #: that target's adoption takes it. Juggler emits `attachedToTarget`
+        #: BEFORE it answers `newPage` (`TargetRegistry.newPage` waits for the
+        #: target to exist), so an adoption cannot know its number at attach
+        #: and waits for the answer - but only while an answer is pending.
+        self._unanswered: Dict[Optional[str], int] = {}
+        self._answered_numbers: Dict[str, int] = {}
+        #: Pages the site opened whose opener is not a page we know (a
+        #: `noopener` window has no opener in the engine either): the rank of
+        #: the last one, in a space of their own (`_behaviour.popup_number`).
+        self._strays = 0
         self._pages_ready = threading.Condition(self._targets_lock)
         self._adopt_enabled = False
         # ⛔ THIS ONE RUNS FIRST NOW, WHERE THE CHAIN RAN IT LAST, and the
@@ -3382,14 +3419,62 @@ class BrowserDispatcher(Dispatcher):
                 "so every request would go out unseen. Drop the pref: routes "
                 "work with service workers enabled" % what)
 
-    def actions_for_page(self, session: str, lifecycle, injected) -> Actions:
+    def actions_for_page(self, session: str, lifecycle, injected,
+                         number: int) -> Actions:
         """The hands of a new page: the session's seed and motion budget, and
         the page's number in the session, which goes into the nonce of every
-        act it performs. Built here because all three are the session's."""
+        act it performs. The number is the page's own (`PageDispatcher.
+        number`); nothing here counts pages."""
         return Actions(self.conn, session, lifecycle, injected,
-                       acts=self.acts.page(),
+                       acts=PageActs(number),
                        session_seed=self.session_seed,
                        motion_budget_s=self.motion_budget_s)
+
+    @contextlib.contextmanager
+    def _asking(self, context_id: Optional[str]):
+        """One `Browser.newPage` request in flight for `context_id`, for the
+        span of the block. The block calls the yielded function with the
+        target the engine answered and the number the client gave; leaving
+        the block without it (the request failed) still ends the request, so
+        an adoption waiting on it learns it was not this one."""
+        with self._targets_lock:
+            self._unanswered[context_id] = self._unanswered.get(context_id, 0) + 1
+        answer: List = []
+        try:
+            yield lambda target_id, number: answer.append((target_id, number))
+        finally:
+            with self._targets_lock:
+                left = self._unanswered.get(context_id, 1) - 1
+                if left:
+                    self._unanswered[context_id] = left
+                else:
+                    self._unanswered.pop(context_id, None)
+                for target_id, number in answer:
+                    self._answered_numbers[target_id] = number
+                self._pages_ready.notify_all()
+
+    def _number_of_requested(self, target_id: str,
+                             browser_context_id: Optional[str],
+                             timeout: float) -> int:
+        """The number of a target that attached while a `newPage` of its
+        context was unanswered: the number that request named for it, or -
+        once every request of the context is answered and none named it - a
+        page the site opened, numbered as a stray."""
+        deadline = time.monotonic() + timeout
+        with self._pages_ready:
+            while True:
+                number = self._answered_numbers.pop(target_id, None)
+                if number is not None:
+                    return number
+                if not self._unanswered.get(browser_context_id):
+                    self._strays += 1
+                    return popup_number(None, self._strays)
+                left = deadline - time.monotonic()
+                if left <= 0:
+                    raise ProtocolException(
+                        "target %s attached while a newPage was in flight, "
+                        "and no answer named it in %.0fs" % (target_id, timeout))
+                self._pages_ready.wait(left)
 
     def _route_browser_event(self, method: str, params: Dict, session) -> None:
         if method == "Browser.attachedToTarget":
@@ -3461,22 +3546,46 @@ class BrowserDispatcher(Dispatcher):
     def _spawn_adoption(self, target_id: str, session_id: Optional[str],
                         browser_context_id: Optional[str],
                         opener_id: Optional[str]) -> None:
-        """Claim a fresh engine target and build its page off the reader thread."""
+        """Claim a fresh engine target and build its page off the reader thread.
+
+        ⛔ AND DECIDE HOW IT IS NUMBERED HERE, ON THE READER THREAD, because
+        this is the only place that sees the targets in the engine's order;
+        each adoption then builds on a thread of its own, in no order at all.
+        A target with a known opener is that opener's next popup; one that
+        some `newPage` answer named, or may still name, takes the number that
+        request carried (`_number_of_requested`); anything else is a page the
+        site opened with no opener we know, the session's next stray. The
+        popups' numbers live in a space of their own (`_behaviour.
+        popup_number`), so a popup landing between two `new_page()` calls
+        does not shift the second one's number.
+        """
         with self._targets_lock:
             if not self._adopt_enabled:
                 return
             if target_id in self._page_targets or target_id in self._adopting:
                 return
             self._adopting.add(target_id)
+            opener = self._page_targets.get(opener_id) if opener_id else None
+            if opener is not None:
+                opener.popups_opened += 1
+                number: Optional[int] = popup_number(opener.number,
+                                                     opener.popups_opened)
+            elif (target_id in self._answered_numbers
+                  or self._unanswered.get(browser_context_id)):
+                number = None
+            else:
+                self._strays += 1
+                number = popup_number(None, self._strays)
         thread = threading.Thread(
             target=self._adopt_target,
-            args=(target_id, session_id, browser_context_id, opener_id),
+            args=(target_id, session_id, browser_context_id, opener, number),
             daemon=True, name="invpw-adopt-%s" % target_id[:8])
         thread.start()
 
     def _adopt_target(self, target_id: str, session_id: Optional[str],
                       browser_context_id: Optional[str],
-                      opener_id: Optional[str]) -> None:
+                      opener: Optional[PageDispatcher],
+                      number: Optional[int]) -> None:
         """Build the `PageDispatcher` for one engine target, then announce it.
 
         A popup goes through EXACTLY the same construction as a `newPage`
@@ -3485,12 +3594,13 @@ class BrowserDispatcher(Dispatcher):
         how it was opened. Stealth is preserved by doing nothing special.
         """
         try:
+            if number is None:
+                number = self._number_of_requested(
+                    target_id, browser_context_id, timeout=60.0)
             session = session_id or self.session_for(target_id, timeout=20.0)
             context = self._context_for_popup(browser_context_id)
-            with self._targets_lock:
-                opener = self._page_targets.get(opener_id) if opener_id else None
             page = PageDispatcher(self.server, context, session, target_id,
-                                  opener=opener)
+                                  number, opener=opener)
             # ⛔ `page` BEFORE the registration, on purpose. A detach racing
             # this build is recorded as early (see `_handle_detach`) and the
             # close is announced right after, so the client always sees the
@@ -3837,9 +3947,11 @@ class BrowserDispatcher(Dispatcher):
         return {"context": context.channel}
 
     def op_new_page(self, params: Dict) -> Any:
+        params = dict(params)
+        number = params.pop("pageNumber", None)
         context = self.op_new_context(params)
         guid = context["context"]["guid"]
-        return self.server.object(guid).op_new_page({})
+        return self.server.object(guid).op_new_page({"pageNumber": number})
 
     def op_close(self, params: Dict) -> Any:
         try:

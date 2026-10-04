@@ -28,6 +28,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   with a page script whose source names Playwright, which any page can read,
   so it is refused with a sentence saying why. Routes work with service
   workers allowed.
+- **A seed replays which tab has which rhythm, with the async API too.**
+  Every page draws its pauses, keys, clicks, drags and cursor paths under its
+  number in the session. The server counted those numbers in the order the
+  engine answered, so `asyncio.gather(browser.new_page(), browser.new_page())`
+  gave the first call number 1 in 4 runs out of 10, and a popup took the next
+  number too, so a `new_page()` gathered with the click that opens one could
+  take the popup's. The cursor counted a third time, at each page's first
+  movement. The client now reserves the number at the call and the server
+  takes it from the request; a popup is numbered from its opener and its rank
+  among that opener's popups, in a space of its own; the cursor reads the
+  page's number from the page. Pages created one after the other keep the
+  numbers they had (0, 1, 2); a `new_page()` after a popup no longer counts
+  the popup, and popups draw new rhythms.
 
 ## [0.25.12] - 2026-10-04
 

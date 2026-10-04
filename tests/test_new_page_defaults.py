@@ -62,6 +62,17 @@ class _StubBrowser:
 
 
 class _AsyncStubBrowser(_StubBrowser):
+    def __init__(self):
+        super().__init__()
+        # The wrapper reserves each page's number at its own entry, on the
+        # implementation object ([B237]); a stub is its own implementation.
+        self._impl_obj = self
+        self.numbers = []
+
+    def _reserve_page_number(self):
+        self.numbers.append(len(self.numbers))
+        return self.numbers[-1]
+
     async def new_context(self, **kw):          # type: ignore[override]
         self.context_kwargs.append(kw)
         return _AsyncStubContext()

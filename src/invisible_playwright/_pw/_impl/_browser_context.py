@@ -14,6 +14,8 @@
 
 import asyncio
 import json
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from types import SimpleNamespace
 from typing import (
@@ -21,6 +23,7 @@ from typing import (
     Any,
     Callable,
     Dict,
+    Iterator,
     List,
     Literal,
     Optional,
@@ -86,6 +89,48 @@ from invisible_playwright._pw._impl._web_error import WebError
 
 if TYPE_CHECKING:  # pragma: no cover
     from invisible_playwright._pw._impl._browser import Browser
+
+
+# MODIFIED by invisible_playwright: each page the script asks for carries a
+# number in the session, and every rhythm the page draws (the pause before a
+# field, the keys, the clicks, the cursor's paths) is drawn under it. The
+# number is reserved HERE, on the client, at the moment of the call, because
+# that is the only place the order of the calls exists: by the time a request
+# reaches the server, `browser.new_page()` has already waited for its
+# `newContext` answer, so two of them in an `asyncio.gather` arrive in the
+# order the engine answered - the first call was page 1 in 4 runs out of 10,
+# measured on firefox-35 ([B237]). The server takes the number it is given;
+# it no longer counts.
+#
+# A caller above this layer that can WAIT before reaching it (the wrapper
+# checks the proxy's egress first, and only the first call of a burst
+# actually waits for that check) reserves at its own entry instead, with
+# `page_number_reserved`; the number then reaches this layer through the
+# context variable, so whoever is outermost owns the moment of the call.
+_reserved_page_number: "ContextVar[Optional[int]]" = ContextVar(
+    "invisible_playwright_page_number", default=None)
+
+
+def page_number_for_call(browser: "Browser") -> int:
+    """The number of the page this call creates: the one a caller above
+    reserved for it, or the browser's next one."""
+    number = _reserved_page_number.get()
+    if number is not None:
+        _reserved_page_number.set(None)
+        return number
+    return browser._reserve_page_number()
+
+
+@contextmanager
+def page_number_reserved(browser: "Browser") -> Iterator[int]:
+    """Reserve the next page number now, for the page the call inside this
+    block creates."""
+    number = browser._reserve_page_number()
+    token = _reserved_page_number.set(number)
+    try:
+        yield number
+    finally:
+        _reserved_page_number.reset(token)
 
 
 class BrowserContext(ChannelOwner):
@@ -349,7 +394,13 @@ class BrowserContext(ChannelOwner):
     async def new_page(self) -> Page:
         if self._owner_page:
             raise Error("Please use browser.new_context()")
-        return from_channel(await self._channel.send("newPage", None))
+        return await self._new_page(page_number_for_call(self._browser))
+
+    async def _new_page(self, number: int) -> Page:
+        # MODIFIED by invisible_playwright: the page's number in the session
+        # travels with the request (see `page_number_for_call`).
+        return from_channel(
+            await self._channel.send("newPage", None, {"pageNumber": number}))
 
     async def cookies(self, urls: Union[str, Sequence[str]] = None) -> List[Cookie]:
         if urls is None:

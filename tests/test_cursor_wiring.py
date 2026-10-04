@@ -125,8 +125,11 @@ class _FakeContext:
 
 
 class _FakePage:
-    def __init__(self, context, width=1280, height=720):
+    def __init__(self, context, width=1280, height=720, number=0):
         self._browser_context = context
+        # The page's number in the session, as the server's initializer
+        # carries it (`_cursor.page_number`).
+        self._initializer = {"pageNumber": number}
         self._viewport_size = {"width": width, "height": height}
         self.moves = []
         self.wheels = []
@@ -371,11 +374,55 @@ def test_each_page_gets_its_own_stream(stub_motion):
     browser = _FakeBrowser()
     _cursor.enable_for(browser, seed=999, max_seconds=1.0)
     ctx = _FakeContext(browser)
-    a = _cursor._cursor_for_page(_FakePage(ctx))
-    b = _cursor._cursor_for_page(_FakePage(ctx))
+    a = _cursor._cursor_for_page(_FakePage(ctx, number=0))
+    b = _cursor._cursor_for_page(_FakePage(ctx, number=1))
     assert a.seed != b.seed, "two tabs sharing one stream would couple their paths"
     assert a.seed == _cursor.page_motion_seed(999, 0)
     assert b.seed == _cursor.page_motion_seed(999, 1)
+
+
+@pytest.mark.unit
+def test_a_page_moved_first_keeps_the_number_the_server_gave_it(stub_motion):
+    """[B237], second half. Known-bad, before: the cursor counted pages at
+    their FIRST MOVEMENT, so a script that opened p0 and p1 and moved on p1
+    first gave p1 ordinal 0 here while the server, numbering at creation,
+    gave it 1 - one page, two numbers, two layers drawing apart. Now the
+    cursor reads the number the server put in the page's initializer."""
+    browser = _FakeBrowser()
+    _cursor.enable_for(browser, seed=999, max_seconds=1.0)
+    ctx = _FakeContext(browser)
+    p0, p1 = _FakePage(ctx, number=0), _FakePage(ctx, number=1)
+    second = _cursor._cursor_for_page(p1)
+    first = _cursor._cursor_for_page(p0)
+    assert second.seed == _cursor.page_motion_seed(999, 1)
+    assert first.seed == _cursor.page_motion_seed(999, 0)
+
+
+@pytest.mark.unit
+def test_the_motion_seed_reads_every_bit_of_the_page_number():
+    """A page the site opened is numbered above bit 62
+    (`_behaviour.popup_number`); with the old 16-bit mask two such numbers
+    that agreed on their low 16 bits drew the same paths. The pages the
+    script asks for keep the seeds they had: the values below are the old
+    formula's."""
+    from invisible_playwright._behaviour import popup_number
+
+    def old(seed, ordinal):
+        h = (seed & 0xFFFFFFFF) * 0x9E3779B1
+        h = (h ^ ((ordinal & 0xFFFF) * 0x85EBCA6B)) & 0xFFFFFFFF
+        h ^= h >> 16
+        return h & 0x7FFFFFFF
+
+    for seed in (0, 1, 106, 999, 2**31 - 1):
+        for ordinal in (0, 1, 2, 7, 65535):
+            assert _cursor.page_motion_seed(seed, ordinal) == old(seed, ordinal)
+    a = (1 << 62) | 0x1234
+    b = (1 << 62) | (1 << 40) | 0x1234
+    assert _cursor.page_motion_seed(106, a) != _cursor.page_motion_seed(106, b)
+    popups = {_cursor.page_motion_seed(106, popup_number(o, k))
+              for o in (None, 0, 1) for k in range(1, 6)}
+    assert len(popups) == 15
+    assert all(0 <= s < 2**31 for s in popups)
 
 
 @pytest.mark.unit

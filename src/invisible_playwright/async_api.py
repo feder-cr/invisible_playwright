@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
 from invisible_playwright._pw.async_api import Browser, BrowserContext, Playwright, async_playwright
+from invisible_playwright._pw._impl._browser_context import page_number_reserved
 
 from . import _session
 from ._cursor import resolve_cursor_engine
@@ -267,8 +268,14 @@ class InvisiblePlaywright(_session.CommonLaunch):
             _new_page_ctx = ctx.new_page
 
             async def _new_page_guarded(**kw2):
-                await self._assert_uscita_invariata()
-                return await _new_page_ctx(**kw2)
+                # ⛔ THE PAGE'S NUMBER IS RESERVED BEFORE THE CHECK, because
+                # the check is the one await in front of the page: only the
+                # first call of a burst waits for it, so in a gather the
+                # second call would reach the client first and take the
+                # first call's number ([B237]).
+                with page_number_reserved(ctx._impl_obj._browser):
+                    await self._assert_uscita_invariata()
+                    return await _new_page_ctx(**kw2)
 
             ctx.new_page = _new_page_guarded  # type: ignore[assignment]
             return ctx
@@ -278,10 +285,12 @@ class InvisiblePlaywright(_session.CommonLaunch):
         original_page = browser.new_page
 
         async def patched_page(**kw):
-            await self._assert_uscita_invariata()
-            merged = dict(defaults)
-            merged.update(kw)  # user-supplied wins, same rule as new_context
-            page = await original_page(**merged)
+            # Reserved before the check, for `_new_page_guarded`'s reason.
+            with page_number_reserved(browser._impl_obj):
+                await self._assert_uscita_invariata()
+                merged = dict(defaults)
+                merged.update(kw)  # user-supplied wins, same rule as new_context
+                page = await original_page(**merged)
             ctx = page.context
             if prep:
                 from ._recaptcha_seed import seed_recaptcha_cookies_async

@@ -86,8 +86,11 @@ class _FakeBrowser:
 
 
 class _FakePage:
-    def __init__(self, context, width=1280, height=720):
+    def __init__(self, context, width=1280, height=720, number=0):
         self._browser_context = context
+        # The page's number in the session, as the server's initializer
+        # carries it (`_cursor.page_number`).
+        self._initializer = {"pageNumber": number}
         self._viewport_size = {"width": width, "height": height}
         self.moves = []
         self.wheels = []

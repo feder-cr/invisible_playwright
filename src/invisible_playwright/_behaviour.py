@@ -83,7 +83,6 @@ from __future__ import annotations
 
 import math
 import random
-import threading
 from dataclasses import dataclass
 from typing import (Any, Callable, Dict, Iterable, List, Optional, Sequence,
                     Tuple)
@@ -96,8 +95,8 @@ __all__ = [
     "plan_hesitation",
     "plan_click",
     "act_nonce",
+    "popup_number",
     "PageActs",
-    "SessionActs",
     "PlanStats",
     "initial_pointer",
     "landing_point",
@@ -161,6 +160,27 @@ def act_nonce(page: int, n: int) -> int:
     return (int(page) << 32) | (int(n) & 0xFFFFFFFF)
 
 
+def popup_number(opener: Optional[int], k: int) -> int:
+    """The number of the `k`-th page (1, 2, ...) the SITE opened from the page
+    numbered `opener`, or, with `opener` None, the `k`-th one of the session
+    whose opener is not a page we know.
+
+    ⛔ A SEPARATE SPACE FROM THE PAGES THE SCRIPT ASKS FOR, and that is the
+    point. Those are numbered 0, 1, 2 by the client in the order of the calls;
+    a popup arrives when the engine says so, which no script controls, so a
+    popup drawing from the same count would push every later `new_page()` one
+    number further whenever it happened to land first (measured: an
+    `asyncio.gather` of a click that opens a popup and a `new_page()`). Keyed
+    by its opener and its rank among that opener's popups, a popup has a
+    number its own script decides: the second popup the first page opened.
+
+    Bit 62 set and a 62-bit hash below it: never one of the client's small
+    numbers, and two popups collide with odds of 2**-62.
+    """
+    tag = "popup:%s:%d" % ("-" if opener is None else int(opener), int(k))
+    return (1 << 62) | (_sub_seed(0, tag) & ((1 << 62) - 1))
+
+
 class PageActs:
     """Numbers the acts of one page, so no two acts of a session share a stream.
 
@@ -170,9 +190,19 @@ class PageActs:
     of every tab waited the same pause and was typed with the same intervals,
     and the first click of every tab was held for the same time. A site that
     sees two tabs of one session saw the same numbers twice. The page's
-    number, handed out once by the session (`SessionActs`), is now part of
-    every nonce, which is what the client's cursor already did with its page
-    ordinal (`_cursor.page_motion_seed`).
+    number is now part of every nonce, which is what the client's cursor
+    already did with its page ordinal (`_cursor.page_motion_seed`).
+
+    ⛔ AND THE NUMBER IS GIVEN, NEVER COUNTED HERE. A page the script asks for
+    carries the number the client reserved at the CALL (`Browser.
+    _reserve_page_number` in the vendored client), a popup the one
+    `popup_number` derives; the server's `PageDispatcher` holds it and hands
+    it to the client in the page's initializer, where the cursor reads it.
+    The server used to count pages itself as their dispatchers were built,
+    and the cursor counted again at each page's first movement: two counters
+    for one fact, and the server's followed the order in which the engine
+    answered, so with `asyncio.gather` the first page of the call was page 1
+    in 4 runs out of 10 ([B237]).
 
     Reproducible: the same seed and the same acts in the same pages give the
     same sequence. Per page rather than one count for the whole session for
@@ -191,36 +221,6 @@ class PageActs:
         n = self._counts.get(act, 0) + 1
         self._counts[act] = n
         return act_nonce(self.page, n)
-
-
-class SessionActs:
-    """Hands each page of a session its number, 0, 1, 2, in the order asked.
-
-    Owned by whatever object IS the session, never by a module: a process can
-    hold two sessions. Two layers number their pages with it, each holding
-    its own: the server's `BrowserDispatcher`, for the acts it draws, and the
-    client cursor's `_cursor._Session`, for the paths it draws. They cannot
-    hold one object between them: the client's is keyed by the vendored
-    client's objects, which the server never sees, and the seed reaches the
-    server through the launch prefs for that same reason.
-    """
-
-    __slots__ = ("_pages", "_lock")
-
-    def __init__(self) -> None:
-        self._pages = 0
-        self._lock = threading.Lock()
-
-    def next_page(self) -> int:
-        """The next page's number."""
-        with self._lock:
-            n = self._pages
-            self._pages += 1
-        return n
-
-    def page(self) -> PageActs:
-        """The next page, ready to number its acts."""
-        return PageActs(self.next_page())
 
 
 def _clamp(v: float, lo: float, hi: float) -> float:
