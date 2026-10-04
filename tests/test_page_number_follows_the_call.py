@@ -372,12 +372,7 @@ def opener_url():
 ROUNDS = 12
 
 
-@pytest.mark.e2e
-def test_gathered_pages_take_the_numbers_of_their_calls(firefox_binary, opener_url):
-    """In one session: two `browser.new_page()` gathered, then a click that
-    opens a popup gathered with a `new_page()`, twelve times each. Every page
-    the script asked for has the number of its call, in the server and in the
-    client's initializer alike, and no popup ever takes one of those."""
+def _gathered_new_pages(firefox_binary):
     from invisible_playwright.async_api import InvisiblePlaywright
 
     async def drive():
@@ -387,33 +382,64 @@ def test_gathered_pages_take_the_numbers_of_their_calls(firefox_binary, opener_u
             for _ in range(ROUNDS):
                 pages = await asyncio.gather(browser.new_page(),
                                              browser.new_page())
-                seen.append([(_server_number(p), _client_number(p))
-                             for p in pages])
+                seen.extend((_server_number(p), _client_number(p))
+                            for p in pages)
                 for p in pages:
                     await p.close()
+        return seen
+
+    return asyncio.run(drive())
+
+
+def _popups_beside_new_pages(firefox_binary, opener_url):
+    from invisible_playwright.async_api import InvisiblePlaywright
+
+    async def drive():
+        fresh_pages, popups = [], []
+        async with InvisiblePlaywright(seed=106, binary_path=firefox_binary,
+                                       headless=True) as browser:
             ctx = await browser.new_context()
             opener = await ctx.new_page()
             await opener.goto(opener_url)
-            popups = []
             for _ in range(ROUNDS):
                 popped = asyncio.get_running_loop().create_future()
                 opener.once("popup", lambda p: popped.set_result(p))
                 _, fresh = await asyncio.gather(opener.click("#o"),
                                                 ctx.new_page())
                 popup = await asyncio.wait_for(popped, 15)
-                seen.append([(_server_number(fresh), _client_number(fresh))])
+                fresh_pages.append((_server_number(fresh), _client_number(fresh)))
                 popups.append((_server_number(popup), _client_number(popup)))
                 await fresh.close()
                 await popup.close()
-            return seen, _server_number(opener), popups
+            return _server_number(opener), fresh_pages, popups
 
-    seen, opener_number, popups = asyncio.run(drive())
-    # The calls in order: 2 x ROUNDS gathered pages, the opener, then one
-    # `new_page()` per popup round.
-    assert opener_number == 2 * ROUNDS
-    asked = [n for round_ in seen for n in round_]
-    calls = [n for n in range(len(asked) + 1) if n != opener_number]
-    assert asked == [(n, n) for n in calls], (
-        "pages asked for, (server, client), in call order: %s" % asked)
-    assert popups == [(popup_number(opener_number, k),) * 2
+    return asyncio.run(drive())
+
+
+@pytest.mark.e2e
+def test_gathered_pages_take_the_numbers_of_their_calls(firefox_binary):
+    """Two `browser.new_page()` gathered, twelve times in one session: every
+    page has the number of its call, in the server and in the client's
+    initializer alike."""
+    seen = _gathered_new_pages(firefox_binary)
+    assert seen == [(n, n) for n in range(2 * ROUNDS)], (
+        "pages asked for, (server, client), in call order: %s" % seen)
+
+
+@pytest.mark.e2e
+def test_a_popup_takes_no_number_of_a_page_asked_for(firefox_binary, opener_url):
+    """A click that opens a popup gathered with a `new_page()`, twelve times
+    in one session: each new page has the number of its call, and each popup
+    the one its opener and its rank give it.
+
+    ⛔ A SESSION OF ITS OWN, not the tail of the gathered one. After the 24
+    pages of the test above, this loop stalled the engine at its seventh to
+    tenth round (`Browser.newPage` or `Runtime.callFunction` unanswered for
+    30 s) in 6 runs out of 12 with four browsers at once, on main as on this
+    branch alike; in a fresh session, 0 out of 12."""
+    opener_number, fresh_pages, popups = _popups_beside_new_pages(
+        firefox_binary, opener_url)
+    assert opener_number == 0
+    assert fresh_pages == [(n, n) for n in range(1, ROUNDS + 1)], fresh_pages
+    assert popups == [(popup_number(0, k),) * 2
                       for k in range(1, ROUNDS + 1)], popups
