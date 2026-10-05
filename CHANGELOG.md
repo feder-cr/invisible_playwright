@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-## [0.26.0] - 2026-10-04
+## [0.26.0] - 2026-10-05
 
 The firefox-36 engine, pinned through `invisible-core` 36.32.0. The core now
 decides the session language once, and every value this package hands the
