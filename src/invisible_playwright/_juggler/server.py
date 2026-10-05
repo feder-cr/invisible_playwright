@@ -1353,8 +1353,11 @@ class FrameDispatcher(Dispatcher):
                 "add_%s_tag needs one of url, path or content" % tag)
 
         if tag == "script":
+            # `type` is the caller's: "module" makes the tag an ES module,
+            # which a hardcoded text/javascript would quietly undo.
             build = ("const el = document.createElement('script');"
-                          " el.type = 'text/javascript';")
+                     " el.type = %s;"
+                     % _js_string(params.get("type") or "text/javascript"))
             attribute = "src"
         else:
             build = ("const el = document.createElement('style');"

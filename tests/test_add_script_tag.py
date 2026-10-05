@@ -57,6 +57,15 @@ def test_page_script_tag_url_has_run_when_it_returns(page):
 
 
 @pytest.mark.e2e
+def test_script_tag_type_is_the_callers(page):
+    handle = page.add_script_tag(
+        content="export const x = 1; window.fromModule = import.meta.url;",
+        type="module")
+    assert handle.evaluate("el => el.type") == "module"
+    page.wait_for_function("window.fromModule !== undefined")
+
+
+@pytest.mark.e2e
 def test_page_script_tag_url_that_fails_to_load_raises(page):
     with pytest.raises(Exception, match="failed to load"):
         page.add_script_tag(url="http://127.0.0.1:9/missing.js")
