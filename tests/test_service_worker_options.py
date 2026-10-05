@@ -1,0 +1,112 @@
+"""Worker policy is an engine command, with no silent fallback on older builds."""
+from __future__ import annotations
+
+import pytest
+
+from invisible_playwright._juggler.connection import EventListeners, ProtocolError
+from invisible_playwright._juggler.protocol import COMMANDS
+from invisible_playwright._juggler.server import (
+    BrowserDispatcher,
+    BrowserTypeDispatcher,
+    JugglerServer,
+    ProtocolException,
+)
+
+pytestmark = pytest.mark.unit
+_COMMAND = "Browser.setServiceWorkersBlocked"
+_UNSUPPORTED = f"{_COMMAND}: ERROR: method '{_COMMAND}' is not supported"
+
+
+class _Connection(EventListeners):
+    def __init__(self, failure=None):
+        super().__init__()
+        self.sent = []
+        self.failure = failure
+        self.closed = False
+
+    def send(self, method, params=None, session=None, timeout=30):
+        self.sent.append((method, params))
+        if method == _COMMAND and self.failure:
+            raise self.failure
+        return {"browserContextId": "CTX"}
+
+    def close(self):
+        self.closed = True
+
+
+def _browser(failure=None):
+    conn = _Connection(failure)
+    browser = BrowserDispatcher(JugglerServer(), None, conn, "151.0")
+    conn.sent.clear()
+    return browser, conn
+
+
+@pytest.mark.parametrize("persistent", [False, True])
+def test_block_command_precedes_context_exposure_and_other_options(persistent):
+    browser, conn = _browser()
+    method = browser.op_default_context if persistent else browser.op_new_context
+    method({"serviceWorkers": "block", "locale": "en-US"})
+    if not persistent:
+        assert conn.sent.pop(0)[0] == "Browser.createBrowserContext"
+    expected = {"blocked": True}
+    if not persistent:
+        expected["browserContextId"] = "CTX"
+    assert conn.sent[0] == (_COMMAND, expected)
+    assert conn.sent[1][0] == "Browser.setLocaleOverride"
+    assert len(browser.contexts) == 1
+    assert not browser.contexts[0].pages
+    assert all(name != "Browser.setInitScripts" for name, _ in conn.sent)
+
+
+@pytest.mark.parametrize("policy", [None, "allow"])
+def test_unblocked_contexts_do_not_send_a_worker_command(policy):
+    browser, conn = _browser()
+    browser._apply_context_options("CTX", {"serviceWorkers": policy})
+    assert conn.sent == []
+
+
+def test_old_engine_refuses_and_discards_the_unexposed_container():
+    browser, conn = _browser(ProtocolError(_UNSUPPORTED))
+    with pytest.raises(ProtocolException, match=f"engine build lacks {_COMMAND}"):
+        browser.op_new_context({"serviceWorkers": "block"})
+    assert conn.sent[-1] == (
+        "Browser.removeBrowserContext", {"browserContextId": "CTX"})
+    assert not browser.contexts
+
+
+@pytest.mark.parametrize("message", [
+    f"{_COMMAND}: Failed to unregister service worker",
+    f"{_COMMAND}: no response in 30s",
+    "Browser.setLocaleOverride: ERROR: method 'Browser.setLocaleOverride' is not supported",
+])
+def test_a_real_engine_failure_is_not_misreported_as_a_missing_command(message):
+    failure = ProtocolError(message)
+    browser, conn = _browser(failure)
+    with pytest.raises(ProtocolError) as raised:
+        browser.op_new_context({"serviceWorkers": "block"})
+    assert raised.value is failure
+    assert conn.sent[-1][0] == "Browser.removeBrowserContext"
+    assert not browser.contexts
+
+
+def test_failed_persistent_launch_closes_the_browser(monkeypatch):
+    browser, conn = _browser(ProtocolError(_UNSUPPORTED))
+    browser_type = BrowserTypeDispatcher(browser.server)
+    monkeypatch.setattr(browser_type, "op_launch",
+                        lambda _params: {"browser": browser.channel})
+    with pytest.raises(ProtocolException, match=f"engine build lacks {_COMMAND}"):
+        browser_type.op_launch_persistent(
+            {"userDataDir": "/profile", "serviceWorkers": "block"})
+    assert conn.closed
+    assert (_COMMAND, {"blocked": True}) in conn.sent
+    assert not browser.contexts
+
+
+def test_worker_protocol_addresses_the_default_context_without_a_null_id():
+    assert COMMANDS[_COMMAND] == {
+        "params": {"k": "Object", "fields": {
+            "browserContextId": {"k": "Optional", "of": {"k": "String"}},
+            "blocked": {"k": "Boolean"},
+        }},
+        "returns": None,
+    }

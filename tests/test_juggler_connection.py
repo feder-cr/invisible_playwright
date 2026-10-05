@@ -30,7 +30,7 @@ def test_the_generated_protocol_has_the_five_domains():
     # ones) and the one event were shipped by the engine and never mirrored.
     # What ties the mirror to the engine is `gen_juggler_protocol.py --check`
     # against the pinned binary, run where the binary is - the e2e job.
-    assert len(COMMANDS) == 77, "commands: %d" % len(COMMANDS)
+    assert len(COMMANDS) == 78, "commands: %d" % len(COMMANDS)
     assert len(EVENTS) == 35, "events: %d" % len(EVENTS)
 
 
@@ -39,6 +39,7 @@ def test_the_commands_the_client_will_use_are_declared():
     command does not degrade, it REJECTS. These are the ones on the
     minimum path."""
     for name in ("Browser.enable", "Browser.createBrowserContext",
+                 "Browser.setServiceWorkersBlocked",
                  "Browser.newPage", "Page.navigate", "Runtime.evaluate",
                  # Asked after every click and hover since [B217]: an engine
                  # without it refuses the question, and the mirror must say so

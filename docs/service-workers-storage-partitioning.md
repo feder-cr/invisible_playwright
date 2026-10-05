@@ -93,6 +93,31 @@ This is the same shape as every other suppression in this subject: the value you
 was less interesting than the absence you created. If you can leave them enabled, leave
 them enabled, and handle the interception complexity rather than trading it for a signal.
 
+### Engine-native blocking for request guards
+
+`browser.new_context(service_workers="block")` and
+`firefox.launch_persistent_context(..., service_workers="block")` require a binary
+implementing `Browser.setServiceWorkersBlocked`. Older binaries, including the released
+firefox-36, refuse with an error naming that missing command. The wrapper never falls
+back to a page script or to `dom.serviceWorkers.enabled=false`: the latter also disables
+Firefox's request-interception hook, so `route()` refuses in that configuration.
+
+With a supporting binary, Juggler cancels service-worker script downloads in the parent
+process, scoped by `originAttributes.userContextId`. `register()` rejects with Firefox's
+native network-failure exception; no request for the main script reaches the server.
+The container and its prototype are unchanged, and `register.toString()` still reports
+native code. This removes the page-script automation artefact, **not the observable
+absence of a worker**.
+
+Before acknowledging the option, Juggler shuts down and unregisters existing workers
+for that context, including registrations saved in a persistent profile. That removal
+is permanent; turning blocking off does not restore them. A registration listener also
+removes later registrations. Requests in a blocked context are never handed to a
+service-worker intercept controller, while normal page requests still reach `route()`.
+Other contexts and ordinary workers (including their `importScripts()`) are unchanged.
+Apply the option at context creation, before opening or navigating pages; it cannot
+undo requests sent before the policy was applied.
+
 ## What a browser context does and does not separate
 
 A browser context separates storage but nothing about the machine. Two contexts get

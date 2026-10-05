@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+- **Engine-native `service_workers="block"`**, for new and persistent contexts
+  when the binary implements `Browser.setServiceWorkersBlocked`. Worker scripts
+  fail through Firefox's native network-error path, saved registrations are
+  removed before the context is returned, and page request routing stays enabled.
+  No page script or global service-worker preference is changed. Older binaries
+  still refuse, with an error naming the missing engine command.
+
 ## [0.26.0] - 2026-10-05
 
 The firefox-36 engine, pinned through `invisible-core` 36.32.0. The core now
