@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.26.1] - 2026-10-05
+
+### Fixed
+- **`add_script_tag` and `add_style_tag` work, on the page and on a child
+  frame.** The client sends both on the Frame channel, and the server served
+  them on the Page alone, so every call answered `Frame has no method
+  'addScriptTag'`. The returned handle is now usable by later `ElementHandle`
+  calls.
+- **`add_script_tag(type=...)` is honoured.** `type="module"` makes an ES
+  module; the tag was always `text/javascript`.
+
 ## [0.26.0] - 2026-10-05
 
 The firefox-36 engine, pinned through `invisible-core` 36.32.0. The core now

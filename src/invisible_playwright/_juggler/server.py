@@ -703,6 +703,8 @@ class FrameDispatcher(Dispatcher):
         "registerSelectorEngine": "op_register_selector_engine",
         "waitForElementState": "op_wait_for_element_state",
         "setTestIdAttributeName": "op_set_test_id",
+        "addScriptTag": "op_add_script_tag",
+        "addStyleTag": "op_add_style_tag",
     }
 
     def __init__(self, server, page: "PageDispatcher", frame_id: str,
@@ -1317,6 +1319,89 @@ class FrameDispatcher(Dispatcher):
             "script is built: the attribute name is baked into it at "
             "construction. Pass it when the page is created instead of "
             "changing it mid-session")
+
+    # ── tags the page runs ──────────────────────────────────────────────────
+    def _add_tag(self, params: Dict, tag: str) -> Any:
+        """`add_script_tag` / `add_style_tag`.
+
+        ⛔ THE MAIN WORLD, and that is the whole correctness of this method. A
+        tag appended from the utility world would execute BEHIND THE XRAY: it
+        would define nothing the page can see, which is the exact opposite of
+        what these two functions promise. The utility world is right for
+        everything we read and wrong for the one thing the caller wants the
+        page itself to run.
+
+        ⛔ AND A `url` HAS TO BE AWAITED. Appending a `<script src=...>` and
+        returning immediately hands back a handle to a tag whose code has not
+        run yet, so the very next `evaluate` does not see what it defines. The
+        load is awaited here, and a failure to load RAISES rather than
+        answering an element that does nothing.
+
+        ⛔ IT LIVES ON THE FRAME BECAUSE THAT IS WHERE THE CLIENT SENDS IT.
+        `page.add_script_tag` is `page.main_frame.add_script_tag`, so the call
+        arrives on the Frame channel. Registered on the Page alone, every
+        `add_script_tag` and `add_style_tag` - page or child frame - answered
+        `Frame has no method 'addScriptTag'`.
+        """
+        url = params.get("url")
+        content = params.get("content")
+        path = params.get("path")
+        if path:
+            content = pathlib.Path(path).read_text(encoding="utf-8")
+        if url is None and content is None:
+            raise ProtocolException(
+                "add_%s_tag needs one of url, path or content" % tag)
+
+        if tag == "script":
+            # `type` is the caller's: "module" makes the tag an ES module,
+            # which a hardcoded text/javascript would quietly undo.
+            build = ("const el = document.createElement('script');"
+                     " el.type = %s;"
+                     % _js_string(params.get("type") or "text/javascript"))
+            attribute = "src"
+        else:
+            build = ("const el = document.createElement('style');"
+                          " el.type = 'text/css';")
+            attribute = "href"
+            if url is not None:
+                build = ("const el = document.createElement('link');"
+                              " el.rel = 'stylesheet';")
+
+        if url is not None:
+            body = (
+                "(async () => { %s"
+                "  el.%s = %s;"
+                "  const done = new Promise((ok, no) => {"
+                "    el.onload = ok;"
+                "    el.onerror = () => no(new Error('failed to load ' + %s));"
+                "  });"
+                "  (document.head || document.documentElement).appendChild(el);"
+                "  await done; return el; })()"
+                % (build, attribute, _js_string(url), _js_string(url)))
+        else:
+            body = (
+                "(() => { %s el.textContent = %s;"
+                "  (document.head || document.documentElement).appendChild(el);"
+                "  return el; })()" % (build, _js_string(content)))
+
+        object_id = self.injected.evaluate_in_main(
+            self.frame_id, body, by_value=False)
+        # ⛔ THE TAG IS BORN IN THE MAIN WORLD AND THE HANDLE LIVES IN UTILITY.
+        # Every ElementHandle call goes through the utility world, where a
+        # main-world objectId answers `Cannot find object with id`. Adopted,
+        # as `fileChooserOpened` adopts its input, it is the same node.
+        adopted = self.injected.adopt(self.frame_id, object_id)
+        if not adopted:
+            raise ProtocolException(
+                "add_%s_tag appended the tag but could not hand it back" % tag)
+        handle = ElementHandleDispatcher(self.server, self, adopted)
+        return {"element": handle.channel}
+
+    def op_add_script_tag(self, params: Dict) -> Any:
+        return self._add_tag(params, "script")
+
+    def op_add_style_tag(self, params: Dict) -> Any:
+        return self._add_tag(params, "style")
 
     # ── frames as objects ───────────────────────────────────────────────────
     def op_frame_element(self, params: Dict) -> Any:
@@ -2565,70 +2650,11 @@ class PageDispatcher(Dispatcher):
         self.conn.send("Heap.collectGarbage", {}, timeout=30)
         return None
 
-    def _add_tag(self, params: Dict, tag: str) -> Any:
-        """`add_script_tag` / `add_style_tag`.
-
-        ⛔ THE MAIN WORLD, and that is the whole correctness of this method. A
-        tag appended from the utility world would execute BEHIND THE XRAY: it
-        would define nothing the page can see, which is the exact opposite of
-        what these two functions promise. The utility world is right for
-        everything we read and wrong for the one thing the caller wants the
-        page itself to run.
-
-        ⛔ AND A `url` HAS TO BE AWAITED. Appending a `<script src=...>` and
-        returning immediately hands back a handle to a tag whose code has not
-        run yet, so the very next `evaluate` does not see what it defines. The
-        load is awaited here, and a failure to load RAISES rather than
-        answering an element that does nothing.
-        """
-        url = params.get("url")
-        content = params.get("content")
-        path = params.get("path")
-        if path:
-            content = pathlib.Path(path).read_text(encoding="utf-8")
-        if url is None and content is None:
-            raise ProtocolException(
-                "add_%s_tag needs one of url, path or content" % tag)
-
-        if tag == "script":
-            build = ("const el = document.createElement('script');"
-                          " el.type = 'text/javascript';")
-            attribute = "src"
-        else:
-            build = ("const el = document.createElement('style');"
-                          " el.type = 'text/css';")
-            attribute = "href"
-            if url is not None:
-                build = ("const el = document.createElement('link');"
-                              " el.rel = 'stylesheet';")
-
-        if url is not None:
-            body = (
-                "(async () => { %s"
-                "  el.%s = %s;"
-                "  const done = new Promise((ok, no) => {"
-                "    el.onload = ok;"
-                "    el.onerror = () => no(new Error('failed to load ' + %s));"
-                "  });"
-                "  (document.head || document.documentElement).appendChild(el);"
-                "  await done; return el; })()"
-                % (build, attribute, _js_string(url), _js_string(url)))
-        else:
-            body = (
-                "(() => { %s el.textContent = %s;"
-                "  (document.head || document.documentElement).appendChild(el);"
-                "  return el; })()" % (build, _js_string(content)))
-
-        object_id = self.injected.evaluate_in_main(
-            self.frame.frame_id, body, by_value=False)
-        handle = ElementHandleDispatcher(self.server, self.frame, object_id)
-        return {"element": handle.channel}
-
     def op_add_script_tag(self, params: Dict) -> Any:
-        return self._add_tag(params, "script")
+        return self.frame.op_add_script_tag(params)
 
     def op_add_style_tag(self, params: Dict) -> Any:
-        return self._add_tag(params, "style")
+        return self.frame.op_add_style_tag(params)
 
     def op_console_messages(self, params: Dict) -> Any:
         return {"messages": list(self._console_log)}
