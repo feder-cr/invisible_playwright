@@ -95,9 +95,10 @@ def _decided(cls, requested):
 def test_the_default_context_locale_is_the_decision_s_primary(api, requested):
     """`new_context` gets ONE tag, and it is the one navigator.language reports.
 
-    An Australian session decides `en-US, en` (Firefox has no en-AU build); a
-    default context carrying the requested "en-AU" would have been the second
-    answer the 36.32.0 core removed.
+    Since core 36.33.0 an explicit tag goes first ("en-AU, en-US, en"), so the
+    primary is the requested tag; before, an Australian session decided
+    "en-US, en", and a default context carrying "en-AU" would have been a
+    second answer. Either way the context gets the decision's primary.
     """
     if api == "sync":
         from invisible_playwright import InvisiblePlaywright as cls
@@ -109,11 +110,12 @@ def test_the_default_context_locale_is_the_decision_s_primary(api, requested):
 
 
 @pytest.mark.unit
-def test_an_australian_session_s_default_context_is_en_us():
+def test_an_australian_session_s_default_context_is_en_au():
+    """Known-bad until core 36.33.0: "en-US", the requested tag replaced."""
     from invisible_playwright import InvisiblePlaywright
 
     obj = _decided(InvisiblePlaywright, "en-AU")
-    assert obj._default_context_kwargs()["locale"] == "en-US"
+    assert obj._default_context_kwargs()["locale"] == "en-AU"
 
 
 @pytest.mark.unit
