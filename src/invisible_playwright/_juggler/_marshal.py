@@ -191,20 +191,38 @@ def _headers_array(raw) -> List[Dict[str, str]]:
     return out
 
 
+#: Juggler's `cause` and `internalCause` are `nsIContentPolicy` constant names
+#: (`causeTypeToString` in NetworkObserver.js), so they arrive as
+#: `TYPE_XMLHTTPREQUEST`, never `xmlhttprequest`. This is the table the
+#: Playwright driver's ffNetworkManager uses for the same event.
+_CAUSE_TO_RESOURCE_TYPE = {
+    "TYPE_INVALID": "other", "TYPE_OTHER": "other",
+    "TYPE_SCRIPT": "script", "TYPE_IMAGE": "image",
+    "TYPE_STYLESHEET": "stylesheet", "TYPE_OBJECT": "other",
+    "TYPE_DOCUMENT": "document", "TYPE_SUBDOCUMENT": "document",
+    "TYPE_REFRESH": "document", "TYPE_XBL": "other", "TYPE_PING": "other",
+    "TYPE_XMLHTTPREQUEST": "xhr", "TYPE_OBJECT_SUBREQUEST": "other",
+    "TYPE_DTD": "other", "TYPE_FONT": "font", "TYPE_MEDIA": "media",
+    "TYPE_WEBSOCKET": "websocket", "TYPE_CSP_REPORT": "other",
+    "TYPE_XSLT": "other", "TYPE_BEACON": "other", "TYPE_FETCH": "fetch",
+    "TYPE_IMAGESET": "image", "TYPE_WEB_MANIFEST": "manifest",
+}
+_INTERNAL_CAUSE_TO_RESOURCE_TYPE = {
+    "TYPE_INTERNAL_EVENTSOURCE": "eventsource",
+}
+
+
 def _resource_type(params: Dict) -> str:
-    """⛔ Juggler says `cause`, Playwright says `resourceType`, and the two
-    vocabularies only partly overlap. An unmapped cause becomes `other`, which
-    is what upstream does too - guessing a nicer name would make
-    `request.resource_type` disagree with itself between the two transports."""
-    cause = (params.get("cause") or params.get("internalCause") or "").lower()
-    return {
-        "document": "document", "subdocument": "document",
-        "stylesheet": "stylesheet", "script": "script",
-        "image": "image", "imageset": "image",
-        "font": "font", "media": "media",
-        "xmlhttprequest": "xhr", "fetch": "fetch",
-        "websocket": "websocket", "beacon": "other",
-    }.get(cause, "other")
+    """⛔ Juggler says `cause`, Playwright says `resourceType`. The cause is
+    the `nsIContentPolicy` constant's NAME, `TYPE_DOCUMENT`; this table used
+    to be keyed by `document`, so every request came out `other` - a page
+    load, a fetch and an XHR alike. An unmapped cause is still `other`, as
+    in the driver, so `request.resource_type` agrees across transports."""
+    internal = params.get("internalCause") or ""
+    cause = params.get("cause") or ""
+    return (_INTERNAL_CAUSE_TO_RESOURCE_TYPE.get(internal)
+            or _CAUSE_TO_RESOURCE_TYPE.get(cause)
+            or "other")
 
 
 def _button(name: Optional[str]) -> int:
