@@ -187,6 +187,16 @@ def test_the_path_ends_exactly_where_it_was_asked_to(instant):
     assert a.position == (600.0, 400.0)
 
 
+def test_a_glide_to_where_the_pointer_already_is_sends_nothing(instant):
+    """Known-bad: a path from a point to itself is the start alone, `path[1:]`
+    is empty, and `path[-1]` raised IndexError - a drag released where it was
+    pressed killed the action. Nothing moves, so nothing is sent."""
+    a = _actions()
+    a.position = (300.0, 200.0)
+    assert a._glide((300.0, 200.0)) == 0
+    assert _moves(a) == []
+
+
 def test_the_travel_carries_the_button_down(instant):
     """⛔ Gecko gives birth to a drag from movement with the button held. A path
     sent with `buttons=0` is a path that moves the cursor and drags nothing."""

@@ -924,6 +924,13 @@ class Actions:
             self._mouse_event("mousemove", to_point, buttons=buttons)
             return 1
         x0, y0 = self.position
+        # ⛔ ALREADY THERE IS NOT A PATH. A path from a point to itself is the
+        # start alone, `path[1:]` below is then empty, and `path[-1]` raised
+        # IndexError: a drag released where it was pressed killed the action.
+        # Nothing moves, so nothing is sent. (invisible_selenium's copy had this
+        # guard since 2026-09-24; the wrapper's never did.)
+        if (x0, y0) == (to_point[0], to_point[1]):
+            return 0
         # ⛔ `path[1:]`: a path INCLUDES where it starts, and the pointer is
         # already there. Sending it would report a move to the point the last
         # event already reported - two identical events in a row, which is the
