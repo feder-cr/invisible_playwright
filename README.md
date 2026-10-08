@@ -1,7 +1,9 @@
 <div align="center">
 <picture>
+  <source media="(max-width: 600px) and (prefers-color-scheme: dark), (min-width: 768px) and (max-width: 880px) and (prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/banner-narrow-dark.png">
+  <source media="(max-width: 600px), (min-width: 768px) and (max-width: 880px)" srcset="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/banner-narrow-light.png">
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/banner-dark.png">
-  <img src="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/banner-light.png" alt="invisible_playwright" width="720">
+  <img src="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/banner-light.png" alt="invisible_playwright" width="614">
 </picture>
 <h3 align="center">Playwright gets caught by anti-bots and captchas.<br>
 This one runs on an anti-detect Firefox with an undetected fingerprint, compatible with your existing Playwright code.</h3>
