@@ -1,9 +1,9 @@
 <div align="center">
 <picture>
-  <source media="(max-width: 600px) and (prefers-color-scheme: dark), (min-width: 768px) and (max-width: 880px) and (prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/banner-narrow-dark.png">
-  <source media="(max-width: 600px), (min-width: 768px) and (max-width: 880px)" srcset="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/banner-narrow-light.png">
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/banner-dark.png">
-  <img src="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/banner-light.png" alt="invisible_playwright" width="614">
+  <source media="(max-width: 1239px) and (prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/banner-phone-dark.gif">
+  <source media="(max-width: 1239px)" srcset="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/banner-phone-light.gif">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/banner-dark.gif">
+  <img alt="invisible_playwright, Playwright on an anti-detect Firefox. An animation: the two-line switch from Playwright, the fingerprint set inside the engine, a mouse that moves like a hand, and the bot tests it passes." src="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/banner-light.gif" width="100%">
 </picture>
 <h3 align="center">Playwright gets caught by anti-bots and captchas.<br>
 This one runs on an anti-detect Firefox with an undetected fingerprint, compatible with your existing Playwright code.</h3>
