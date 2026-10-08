@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.27.1] - 2026-10-08
+
+### Fixed
+- **A request's `resource_type` says what it is.** Juggler sends a request's
+  `cause` as an `nsIContentPolicy` constant name (`TYPE_DOCUMENT`,
+  `TYPE_XMLHTTPREQUEST`, `TYPE_FETCH`), and the table it was looked up in was
+  keyed by `document`, `xmlhttprequest`, `fetch`, so nothing matched and every
+  request reported `other`. The lookup now uses the Playwright driver's own
+  table, `internalCause` first so an EventSource reports `eventsource`.
+
 ## [0.27.0] - 2026-10-06
 
 ### Changed
