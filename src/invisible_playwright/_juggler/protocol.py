@@ -2,7 +2,7 @@
 Do not edit by hand.
 
 Source: omni.ja!chrome/juggler/content/protocol/Protocol.js
-Commands: 77   Events: 35
+Commands: 78   Events: 35
 
 The browser enforces this schema in a CLOSED WORLD: an undeclared field is
 REJECTED at runtime, not ignored. It therefore serves to verify what WE
@@ -301,6 +301,11 @@ COMMANDS = {'Browser.addBinding': {'params': {'fields': {'browserContextId': {'k
                                                           'enabled': {'k': 'Boolean'}},
                                                'k': 'Object'},
                                     'returns': None},
+ 'Browser.setServiceWorkersBlocked': {'params': {'fields': {'blocked': {'k': 'Boolean'},
+                                                            'browserContextId': {'k': 'Optional',
+                                                                                 'of': {'k': 'String'}}},
+                                                 'k': 'Object'},
+                                      'returns': None},
  'Browser.setTimezoneOverride': {'params': {'fields': {'browserContextId': {'k': 'Optional',
                                                                             'of': {'k': 'String'}},
                                                        'timezoneId': {'k': 'Nullable',
