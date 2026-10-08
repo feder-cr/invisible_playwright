@@ -417,8 +417,9 @@ class CommonLaunch:
 
     def _default_context_kwargs(self) -> Dict[str, Any]:
         # The screen and viewport in CSS pixels, derived once in the core:
-        # the profile's screen is the PANEL, and until core 37.33.0 the panel's
-        # device pixels went out here as CSS (screen.width 1920 at DPR 1.25).
+        # the profile's screen is the PANEL, and until wrapper 0.28.0 the
+        # panel's device pixels went out here as CSS (screen.width 1920 at
+        # DPR 1.25).
         kwargs: Dict[str, Any] = {
             **context_geometry(self._profile),
             # ⛔ device_scale_factor and color_scheme are NO LONGER passed.
