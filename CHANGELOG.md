@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+- **A pointer call answers once the page has handled its event.** With the
+  firefox-39 engine, `page.mouse.move`, `down`, `up` and `click`, and every
+  element action, return after the page's listeners have run, so the next
+  call - a script evaluation, a scroll - can no longer reach the page first.
+  It used to answer when the event was handed over: under load a press could be
+  judged after a scroll sent later, and a short drag lost its drop.
+- **A right click no longer waits for an acknowledgement that never came**
+  (part of the same engine change).
+
 ## [0.30.0] - 2026-10-09
 
 ### Changed
