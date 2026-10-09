@@ -506,7 +506,9 @@ def _offset_number_component(mode):
 @pytest.mark.e2e
 @pytest.mark.parametrize("dpr,mode,nested,humanize", [
     (1, "document", False, False),
-    (1.2, "closed", True, True),
+    # 1.2 was here until core 38: the persona scales are 1, 1.25, 1.5 and 2,
+    # the ones the window frame is measured at, and the core refuses any other.
+    (1.5, "closed", True, True),
     (1.25, "open", True, True),
     (1.25, "document", False, True),
     (1.5, "document", True, True),
