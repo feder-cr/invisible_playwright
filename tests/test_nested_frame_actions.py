@@ -518,13 +518,20 @@ def test_pointer_at_large_offset_with_dpr(firefox_binary, nested_origins, wire,
                                           dpr, mode, nested, humanize):
     """A device scale (`screen.dpr`) is not a page zoom: Playwright's
     coordinates stay CSS pixels and nothing here multiplies them. A fractional
-    scale at an x past 1200 is where a rounding in the frame shift would show."""
+    scale at an x past 1200 is where a rounding in the frame shift would show.
+
+    The panel is pinned at 1920 x 1080 CSS pixels for every scale, i.e. a
+    device panel of 1920*dpr: `screen.width` is the panel, and since core
+    37.33.0 a page reads it divided by the scale, as a real Firefox does. With
+    a 1920 panel at 150% the viewport is 1280 wide and the input at x 1240-1433
+    would sit outside it, which is a different test."""
     from invisible_playwright import InvisiblePlaywright
 
     with InvisiblePlaywright(
         seed=20260929, binary_path=firefox_binary, humanize=humanize, headless=True,
         timezone="America/Chicago", locale="en-US",
-        pin={"screen.dpr": dpr, "screen.width": 1920, "screen.height": 1080},
+        pin={"screen.dpr": dpr, "screen.width": round(1920 * dpr),
+             "screen.height": round(1080 * dpr)},
     ) as browser:
         page = _timed(browser.new_context().new_page())
         path = "/dpr-top-" if nested else "/dpr-"

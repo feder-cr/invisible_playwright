@@ -6,6 +6,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-10-09
+
+### Changed
+- **`service_workers="block"` works per context inside the engine.** With
+  `invisible-core` 37.33.0 and the firefox-37 engine,
+  `new_context(service_workers="block")` and
+  `launch_persistent_context(..., service_workers="block")` turn service
+  workers off for that context through the engine
+  (`Browser.setServiceWorkersBlocked`, contributed by Richard Powell in
+  firefox_antidetect_patch#15 and #299 here). No page script and no global
+  preference are involved, and `route()` still sees every page request. On a
+  persistent profile, turning the block on removes the service workers that
+  profile had saved. A context whose options fail is removed, and a
+  persistent launch whose context fails closes the browser.
+- **The screen a page reads is in CSS pixels.** A 1920x1080 panel at 125%
+  reports `screen.width` 1536 and `screen.height` 864, as Firefox on that
+  monitor does. Before, it reported the panel's device pixels. The default
+  viewport is derived the same way.
+
+### Fixed
+- **On Linux the virtual display keeps X access control on.** The Xvfb
+  display opened for a headed session without a screen used to run with
+  access control off (`-ac`), so any local process could connect to it and
+  read or drive the browser window. It now gets a private session cookie,
+  handed only to the browser, and removed when the session stops.
+- **An empty request header survives a route.** A header with an empty value
+  went out without a route and was dropped when a route continued the
+  request (firefox-37).
+- **A glide to where the pointer already is sends nothing** instead of
+  raising.
+
+### Added
+- `docs/differences-from-playwright.md`: every place this package
+  deliberately behaves differently from Playwright, and why.
+
 ## [0.27.0] - 2026-10-06
 
 ### Changed

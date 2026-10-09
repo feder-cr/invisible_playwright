@@ -13,10 +13,9 @@ an error. Two defects stacked:
 
 And `page.route` was refused outright as an unimplemented gap.
 
-`new_context(service_workers="block")` was accepted and ignored. Playwright
-honours it with a page script that replaces `navigator.serviceWorker.register`
-with a function whose source names Playwright, which every page can read, so
-here it refuses instead, and the route tests run with service workers allowed.
+Service-worker blocking is the engine's own command, never a page script; its
+tests live in tests/test_service_workers_blocked.py, and these tests leave
+service workers allowed.
 """
 from __future__ import annotations
 
@@ -120,22 +119,3 @@ def test_a_route_without_service_workers_refuses_instead_of_ignoring(
         with pytest.raises(Error, match="dom.serviceWorkers.enabled=false"):
             (context if where == "context" else page).route(
                 "**/*", lambda route: route.continue_())
-
-
-@pytest.mark.e2e
-def test_blocking_service_workers_refuses_instead_of_planting_a_page_script(
-        firefox_binary):
-    """Playwright's way to block them is a page-visible override that names
-    Playwright; ignoring the option is a promise nobody keeps. Refusing is
-    the only answer that is true and leaves the page untouched."""
-    from invisible_playwright import InvisiblePlaywright
-    from invisible_playwright.sync_api import Error
-
-    with InvisiblePlaywright(seed=4243, binary_path=firefox_binary,
-                             headless=True) as browser:
-        with pytest.raises(Error, match='service_workers="block" is not '
-                                        'supported'):
-            browser.new_context(service_workers="block")
-        # the browser is still usable after the refusal
-        page = browser.new_context().new_page()
-        assert page.evaluate("1 + 1") == 2

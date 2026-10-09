@@ -3805,7 +3805,12 @@ class BrowserDispatcher(Dispatcher):
         result = self.conn.send("Browser.createBrowserContext",
                                 {"removeOnDetach": True}, timeout=30)
         context_id = result["browserContextId"]
-        self._apply_context_options(context_id, params)
+        try:
+            self._apply_context_options(context_id, params)
+        except BaseException:
+            self.conn.send("Browser.removeBrowserContext",
+                           {"browserContextId": context_id}, timeout=30)
+            raise
         context = BrowserContextDispatcher(self.server, self, params,
                                            context_id)
         self.contexts.append(context)
@@ -3827,24 +3832,23 @@ class BrowserDispatcher(Dispatcher):
         explicitly asks to express no preference silently keeps whatever the
         profile declared - the one case where the caller was most explicit.
         """
-        # ⛔ `service_workers="block"` REFUSES, because both ways to honour it
-        # are worse than saying no. Playwright's server does it with an init
-        # script that replaces `navigator.serviceWorker.register` with a page
-        # function whose source reads "blocked by Playwright": any page that
-        # calls `toString()` on it, or lists the container's own properties,
-        # reads the automation by name. The engine-wide alternative,
-        # `dom.serviceWorkers.enabled=false`, switches off request
-        # interception with it (see `require_interception`). Ignoring the
-        # option, as this server did until now, tells a caller that service
-        # workers are blocked while a page's own worker keeps answering
-        # requests no route ever sees.
+        # `service_workers="block"` is the ENGINE's switch for this context
+        # (`Browser.setServiceWorkersBlocked`, firefox-37). Playwright's own
+        # server honours it with an init script that replaces
+        # `navigator.serviceWorker.register` by a page function whose source
+        # reads "blocked by Playwright", which any page can read back; the
+        # engine-wide `dom.serviceWorkers.enabled=false` switches off request
+        # interception with it. The engine blocks the worker's script load,
+        # removes the context's saved registrations before replying, and keeps
+        # every page request in front of `route()`.
+        #
+        # ⛔ NO PROBE OF THE ENGINE. The package pins one engine through the
+        # core's seal, and that engine has the command; a build without it is
+        # an engine mismatch, refused at launch, not a case to detect here by
+        # reading the text of an error.
         if params.get("serviceWorkers") == "block":
-            raise ProtocolException(
-                "service_workers=\"block\" is not supported: Playwright blocks "
-                "them with a page script that any page can read back, and "
-                "this engine has no switch for one context. Leave it out: "
-                "route() holds requests with service workers allowed, except "
-                "the ones a page's own service worker answers")
+            self._context_send("Browser.setServiceWorkersBlocked", {
+                "browserContextId": context_id, "blocked": True}, timeout=30)
         for name, command, field in self.ENGINE_OPTIONS:
             value = params.get(name)
             if value in (None, ""):
@@ -4047,8 +4051,13 @@ class BrowserTypeDispatcher(Dispatcher):
                 "would be a temporary directory")
         browser_channel = self.op_launch(dict(params, userDataDir=directory))
         browser = self.server.object(browser_channel["browser"]["guid"])
+        try:
+            context = browser.op_default_context(params)["context"]
+        except BaseException:
+            browser.op_close({})
+            raise
         return {"browser": browser_channel["browser"],
-                "context": browser.op_default_context(params)["context"]}
+                "context": context}
 
     def op_launch(self, params: Dict) -> Any:
         executable = params.get("executablePath")
@@ -4255,7 +4264,6 @@ class JugglerServer(Server):
                          "utils": utils.channel},
             guid="Playwright")
         return {"playwright": playwright.channel}
-
 
 
 
