@@ -1,5 +1,7 @@
 <div align="center">
 <picture>
+  <source media="(max-width: 374px) and (prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/banner-small-dark.gif">
+  <source media="(max-width: 374px)" srcset="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/banner-small-light.gif">
   <source media="(max-width: 1239px) and (prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/banner-phone-dark.gif">
   <source media="(max-width: 1239px)" srcset="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/banner-phone-light.gif">
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/banner-dark.gif">
