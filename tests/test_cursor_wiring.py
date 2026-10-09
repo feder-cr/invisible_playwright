@@ -405,7 +405,7 @@ def test_the_motion_seed_reads_every_bit_of_the_page_number():
     that agreed on their low 16 bits drew the same paths. The pages the
     script asks for keep the seeds they had: the values below are the old
     formula's."""
-    from invisible_playwright._behaviour import popup_number
+    from invisible_core.juggler._behaviour import popup_number
 
     def old(seed, ordinal):
         h = (seed & 0xFFFFFFFF) * 0x9E3779B1
@@ -684,7 +684,7 @@ def test_two_seeds_do_not_move_the_same_way():
 def test_the_humanize_cap_is_honoured_end_to_end():
     """``humanize=0.3`` must actually bound a movement, whether or not the
     generator knows about the cap."""
-    from invisible_playwright import _motion
+    from invisible_core.juggler import _motion
 
     motion = _motion.CursorMotion(4242)
     raw = motion.path(10.0, 10.0, 1200.0, 680.0)
@@ -937,7 +937,7 @@ def test_the_landing_is_checked_by_the_server_in_the_box_s_own_space(
     handle = _FakeHandle()
     frame = SimpleNamespace(query_selector=AsyncMock(return_value=handle))
     cursor = SimpleNamespace(rng=lambda name: None)
-    monkeypatch.setattr(_cursor._behaviour, "landing_point",
+    monkeypatch.setattr(_cursor, "landing_point",
                         lambda *args, **kwargs: (410.0, 312.0))
 
     aim = asyncio.run(_cursor._choose_landing(frame, cursor, "#buy", (), {}))
@@ -1203,12 +1203,12 @@ _FNV_PRIME = 0x100000001B3
 
 # module stem -> function name. Adding a copy means adding a line here, which
 # is the point: it is a decision, not an accident.
-_EXPECTED_MIXERS = {
-    # The authoritative one is in the core (invisible_core._cookies), outside
-    # the package this scan walks.
-    ("_behaviour", "_sub_seed"),        # byte-identical copy
-    ("_motion", "_mix"),                # same mix, reduced to int31
-}
+# NONE since 0.30.0: the two copies (`_behaviour._sub_seed`, byte-identical,
+# and `_motion._mix`, reduced to int31) moved with the Juggler client into
+# invisible_core.juggler, beside the authoritative one in invisible_core._cookies,
+# and the core's own census counts them there. A mixer appearing in THIS package
+# again is a fourth copy.
+_EXPECTED_MIXERS: set = set()
 
 
 def _fnv_functions() -> set:
@@ -1246,51 +1246,16 @@ _TAG_CORPUS = ["motion:style", "motion:move:0", "motion:move:137",
 
 
 @pytest.mark.unit
-def test_exactly_three_copies_of_the_sub_stream_mix_exist():
-    """A fourth copy must be a decision, not a surprise.
+def test_no_copy_of_the_sub_stream_mix_lives_in_this_package():
+    """The mix is `invisible_core.seedmix`, ONE copy since 0.30.0.
 
-    This is the test that fails when someone adds a mixer - including one
-    added by copy-paste into a module that has nothing to do with motion.
+    This is the test that fails when someone adds a mixer here - including one
+    added by copy-paste into a module that has nothing to do with motion. The
+    two tests that checked the three copies agreed moved to the core
+    (`tests/test_one_seed_mixer.py`), where the copies became one function,
+    with a digest of what they answered before the merge.
     """
     assert _fnv_functions() == _EXPECTED_MIXERS
-
-
-@pytest.mark.unit
-def test_every_copy_of_the_mix_agrees_with_the_authoritative_one():
-    """Same seed, same tag, same stream - or the copies are not copies.
-
-    ``_motion._mix`` reduces to int31 and the others do not, so the comparison
-    is made after that documented reduction. Everything else about them has to
-    be identical, for every seed in the corpus.
-    """
-    from invisible_playwright._behaviour import _sub_seed as behaviour_mix
-    from invisible_playwright._motion import _mix as motion_mix
-    from invisible_core._cookies import _sub_seed as authoritative
-
-    for seed in _SEED_CORPUS:
-        for tag in _TAG_CORPUS:
-            ref = authoritative(seed, tag)
-            assert behaviour_mix(seed, tag) == ref, (seed, tag)
-            assert motion_mix(seed, tag) == ref & 0x7FFFFFFF, (seed, tag)
-
-
-@pytest.mark.unit
-def test_the_reductions_each_copy_applies_are_the_documented_ones():
-    """The one place the copies are allowed to differ, stated explicitly."""
-    from invisible_playwright._behaviour import _sub_seed as behaviour_mix
-    from invisible_playwright._motion import _mix as motion_mix
-    from invisible_core._cookies import _sub_seed as authoritative
-
-    for seed in _SEED_CORPUS[:60]:
-        for tag in _TAG_CORPUS:
-            assert 0 <= motion_mix(seed, tag) < 2**31
-            for fn in (authoritative, behaviour_mix):
-                value = fn(seed, tag)
-                assert 0 < value < 2**64
-    # A stream seed of exactly zero would collapse two tags onto one stream in
-    # the 64-bit copies, which is why they carry the `or 0xdeadbeef` fallback.
-    assert authoritative(0, "") != 0
-    assert behaviour_mix(0, "") != 0
 
 
 @pytest.mark.unit
@@ -1302,7 +1267,7 @@ def test_the_page_seed_is_a_different_derivation_and_stays_one():
     fourth FNV copy would show up there as an unexpected mixer.
     """
     assert ("_cursor", "page_motion_seed") not in _fnv_functions()
-    from invisible_core._cookies import _sub_seed as authoritative
+    from invisible_core.seedmix import sub_seed as authoritative
 
     for seed in _SEED_CORPUS[:40]:
         assert 0 <= _cursor.page_motion_seed(seed, 0) < 2**31

@@ -32,8 +32,8 @@ import threading
 
 import pytest
 
-from invisible_playwright._behaviour import PageActs
-from invisible_playwright._juggler.actions import Actions
+from invisible_core.juggler._behaviour import PageActs
+from invisible_core.juggler.actions import Actions
 
 PAGE = b"""<!doctype html>
 <html><head><title>handle actions</title></head><body>

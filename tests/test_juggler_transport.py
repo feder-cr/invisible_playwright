@@ -18,7 +18,7 @@ import threading
 import pytest
 
 from invisible_playwright._juggler import transport as factory
-from invisible_playwright._juggler.connection import EventListeners
+from invisible_core.juggler.connection import EventListeners
 
 PAGE = b"""<!doctype html><html><head><title>seam</title></head><body>
 <button id=b onclick="this.dataset.n=(+(this.dataset.n||0)+1)">press</button>
@@ -688,20 +688,6 @@ def test_an_unanswered_dialog_is_dismissed_by_the_client(firefox_binary):
 
 # ── context and page surfaces ───────────────────────────────────────────────
 
-def test_a_cookie_domain_with_a_LEADING_DOT_matches_subdomains():
-    """⛔ A leading dot means "and every subdomain". Comparing the two strings
-    directly is the version that looks right and returns an empty list, so
-    `context.cookies(urls=[...])` would answer nothing for a site-wide
-    cookie."""
-    from invisible_playwright._juggler.server import _domain_matches, _host_of
-    assert _host_of("https://shop.example.com:8443/a/b") == "shop.example.com"
-    assert _domain_matches(".example.com", "shop.example.com")
-    assert _domain_matches("example.com", "example.com")
-    assert not _domain_matches(".example.com", "notexample.com"), (
-        "a suffix match without the dot boundary: badexample.com would pass")
-    assert not _domain_matches("", "example.com")
-
-
 def test_clearing_cookies_with_a_FILTER_is_refused_not_widened():
     """⛔ The engine command clears the WHOLE context and takes no filter.
     Honouring a filtered request by clearing everything is worse than
@@ -1009,13 +995,3 @@ def test_the_launch_handler_hands_the_named_environment_to_the_engine(monkeypatc
         assert seen[-1] == {"DISPLAY": ":123"}
     finally:
         server.shutdown()
-
-
-def test_removing_a_profile_NEVER_raises():
-    """⛔ It runs while the session is already going away, and on Windows a
-    file can still be held for a moment after the process that owned it exits.
-    A profile left behind costs megabytes; an exception here would be a
-    shutdown that fails for a reason nobody cares about."""
-    from invisible_playwright._juggler.server import _remove_profile
-    _remove_profile("C:/this/path/does/not/exist/at/all")
-    _remove_profile("")

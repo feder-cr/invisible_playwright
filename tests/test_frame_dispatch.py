@@ -5,7 +5,7 @@ from unittest.mock import Mock
 import pytest
 
 from invisible_playwright._juggler.dispatcher import Dispatcher, ProtocolException
-from invisible_playwright._juggler.lifecycle import Lifecycle
+from invisible_core.juggler.lifecycle import Lifecycle
 from invisible_playwright._juggler.server import (
     FrameDispatcher,
     JugglerServer,
@@ -118,7 +118,7 @@ def test_frame_element_refuses_main_or_detached_frame(page):
                        "executionContextId": "payment-utility"}),
 ])
 def test_adopt_is_one_wire_call_for_both_crossings(element, into, expected):
-    from invisible_playwright._juggler.injected import UTILITY_WORLD, InjectedScript
+    from invisible_core.juggler.injected import UTILITY_WORLD, InjectedScript
 
     sent = []
 
@@ -241,7 +241,7 @@ def test_networkidle_reaches_the_client_as_a_load_state(page):
     """
     import time
 
-    from invisible_playwright._juggler.lifecycle import IDLE_QUIET
+    from invisible_core.juggler.lifecycle import IDLE_QUIET
 
     page._hear_lifecycle()
     page.lifecycle._on_event("Page.eventFired", {"frameId": "main", "name": "load"})

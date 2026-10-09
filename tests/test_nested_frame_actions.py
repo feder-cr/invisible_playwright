@@ -157,7 +157,7 @@ def wire(monkeypatch):
     """The pointer's conversation with the engine, kept for the failure
     report: a click that went to the wrong place is diagnosed from the quads it
     was aimed at and the landings the engine reported, not from the page."""
-    from invisible_playwright._juggler.connection import Connection
+    from invisible_core.juggler.connection import Connection
 
     seen = []
     send = Connection.send

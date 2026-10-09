@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.30.0] - 2026-10-09
+
+### Changed
+- **The Juggler client this package drives the browser with now lives in
+  `invisible-core`** (38.34.0, `invisible_core.juggler`), shared with
+  invisible-selenium and invisible-puppeteer instead of copied into each. It
+  is the same client: the same seed still draws the same pointer paths, typing
+  rhythm and persona cookies (the core pins a digest of what the three former
+  copies of the seed mixer answered). `invisible_playwright._juggler` keeps
+  the Playwright server.
+- **A `firefoxUserPrefs` value that is not a bool, an int, a float or a
+  string is refused** with a `TypeError` naming the pref. It used to be
+  written as its text (`None` became the string `"None"`), a pref nobody
+  asked for.
+
+### Removed
+- **The private modules of the client**: `_behaviour`, `_motion`, `_pacing`
+  and, under `_juggler`, `connection`, `protocol`, `lifecycle`, `injected`,
+  `actions`, `keyboard`, `keylayout` and `_profile`. Their public names are
+  in `invisible_core.juggler`.
+
 ## [0.29.0] - 2026-10-09
 
 ### Changed

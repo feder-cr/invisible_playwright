@@ -25,12 +25,12 @@ import time
 import pytest
 
 import invisible_playwright
-from invisible_playwright._behaviour import (
+from invisible_core.juggler._behaviour import (
     PageActs, TypingPersona, plan_hesitation, plan_typing,
 )
-from invisible_playwright._juggler import actions as actions_mod
-from invisible_playwright._juggler.actions import Actions
-from invisible_playwright._juggler.keyboard import Keyboard
+from invisible_core.juggler import actions as actions_mod
+from invisible_core.juggler.actions import Actions
+from invisible_core.juggler.keyboard import Keyboard
 
 MAIN = "frame-main"
 SEED = 4242

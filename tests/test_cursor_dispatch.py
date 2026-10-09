@@ -27,7 +27,9 @@ import time
 
 import pytest
 
-from invisible_playwright import _behaviour, _cursor, _motion
+from invisible_core.juggler import _behaviour, _motion
+
+from invisible_playwright import _cursor
 
 pytestmark = pytest.mark.unit
 

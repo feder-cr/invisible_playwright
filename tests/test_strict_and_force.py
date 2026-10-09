@@ -32,7 +32,7 @@ import pytest
 
 from invisible_playwright import InvisiblePlaywright
 from invisible_playwright._juggler import server as server_module
-from invisible_playwright._juggler.actions import Actions, ElementNotActionable
+from invisible_core.juggler.actions import Actions, ElementNotActionable
 
 MAIN = "frame-main"
 
@@ -204,7 +204,7 @@ def test_force_skips_the_hit_target_check_too():
 
 def test_without_force_a_covered_element_still_refuses():
     """The control arm for the one above."""
-    from invisible_playwright._juggler.actions import WrongHitTarget
+    from invisible_core.juggler.actions import WrongHitTarget
 
     actions = _actions(hit="<div id='overlay'> intercepts the pointer")
     with pytest.raises(WrongHitTarget, match="overlay"):

@@ -37,20 +37,20 @@ import time
 import warnings
 from typing import Any, Dict, List, Optional
 
-from .._behaviour import PageActs, popup_number
-from . import connection as juggler
-from .actions import Actions
+from invisible_core.juggler import PageActs, popup_number
+from invisible_core.juggler import connection as juggler
+from invisible_core.juggler.actions import Actions
 from .dispatcher import Dispatcher, ProtocolException, Server
-from .injected import InjectedScript
-from .keyboard import MODIFIER_MASK
-from .lifecycle import Lifecycle
+from invisible_core.juggler.injected import InjectedScript
+from invisible_core.juggler.keyboard import MODIFIER_MASK
+from invisible_core.juggler.lifecycle import Lifecycle
 
 # ⛔ RE-EXPORTED ON PURPOSE, not merely imported. These leaf helpers moved out
 # of this file so that the classes below read as one story instead of being
-# interleaved with functions - but `tests/gates/prefs_byte_parity.py` and the
-# transport tests import `_write_user_js`, `_serialize`, `_host_of` and
-# `_domain_matches` from HERE, and a move that breaks its callers to tidy a
-# file is not a tidy-up. One definition, two names to reach it.
+# interleaved with functions - but the transport tests import `_serialize`
+# from HERE, and a move that breaks its callers to tidy a file is not a
+# tidy-up. One definition, two names to reach it. (The profile helpers and the
+# `user.js` writer are the core's since 0.30.0, and their tests are there.)
 from ._marshal import (_as_callable, _button, _called_on, _console_text,
                        _deserialize, _element_function, _guid_of,
                        _headers_array, _js_string, _location,
@@ -60,8 +60,9 @@ from ._marshal import (_as_callable, _button, _called_on, _console_text,
 # the same duplication that produced the defect, one layer down.
 from invisible_core import SessionLocale, parse_proxy
 
-from ._profile import (_domain_matches, _host_of, _only_set,
-                       _read_version, _remove_profile, _write_user_js)
+from invisible_core import write_user_js
+from invisible_core.juggler import (domain_matches, host_of, only_set,
+                                    read_version, remove_profile)
 
 
 
@@ -1698,7 +1699,7 @@ class RouteDispatcher(Dispatcher):
                           {"errorCode": params.get("errorCode") or "aborted"})
 
     def op_continue(self, params: Dict) -> Any:
-        payload = _only_set({
+        payload = only_set({
             "url": params.get("url"),
             "method": params.get("method"),
             "headers": _headers_array(params.get("headers"))
@@ -1717,7 +1718,7 @@ class RouteDispatcher(Dispatcher):
         if body is not None and not params.get("isBase64"):
             import base64 as _b64
             body = _b64.b64encode(str(body).encode("utf-8")).decode("ascii")
-        return self._send("Network.fulfillInterceptedRequest", _only_set({
+        return self._send("Network.fulfillInterceptedRequest", only_set({
             "status": params.get("status") or 200,
             "statusText": params.get("statusText") or "",
             "headers": _headers_array(params.get("headers")),
@@ -2553,7 +2554,7 @@ class PageDispatcher(Dispatcher):
 
     # ── viewport, media, capture ────────────────────────────────────────────
     def op_set_viewport_size(self, params: Dict) -> Any:
-        self.send("Page.setViewportSize", _only_set(
+        self.send("Page.setViewportSize", only_set(
             {"viewportSize": params.get("viewportSize")}))
         return None
 
@@ -2630,7 +2631,7 @@ class PageDispatcher(Dispatcher):
             else:
                 clip = {"x": box["x"], "y": box["y"],
                         "width": box["width"], "height": box["height"]}
-        result = self.send("Page.screenshot", _only_set({
+        result = self.send("Page.screenshot", only_set({
             "mimeType": "image/jpeg" if params.get("type") == "jpeg"
                         else "image/png",
             "clip": clip,
@@ -3206,9 +3207,9 @@ class BrowserContextDispatcher(Dispatcher):
         cookies = result.get("cookies") or []
         urls = params.get("urls") or []
         if urls:
-            wanted = [_host_of(u) for u in urls]
+            wanted = [host_of(u) for u in urls]
             cookies = [c for c in cookies
-                       if any(_domain_matches(c.get("domain") or "", h)
+                       if any(domain_matches(c.get("domain") or "", h)
                               for h in wanted)]
         return {"cookies": cookies}
 
@@ -4118,7 +4119,7 @@ class BrowserTypeDispatcher(Dispatcher):
         # answered in Python.
         prefs, session_seed, motion_budget_s = take_session_motion(
             params.get("firefoxUserPrefs") or {})
-        _write_user_js(profile, prefs)
+        write_user_js(profile, prefs)
         # ⛔ THE CALLER'S TIMEOUT, not ours. `launch(timeout=)` is a
         # documented option and this server ignored it, so a caller who
         # shortened it waited the full built-in 60 s anyway - and one who
@@ -4165,8 +4166,8 @@ class BrowserTypeDispatcher(Dispatcher):
             # and no longer holds a lock on the profile. Removing it first
             # fails on Windows and fails SILENTLY, because the hook runner
             # swallows one hook's failure so it cannot stop the others.
-            self.server.on_shutdown(lambda: _remove_profile(profile))
-        version = _read_version(executable)
+            self.server.on_shutdown(lambda: remove_profile(profile))
+        version = read_version(executable)
         browser = BrowserDispatcher(
             self.server, self, conn, version, session_seed=session_seed,
             motion_budget_s=motion_budget_s,
