@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-10-09
+
+### Changed
+- **The window a page reads is the one Windows Firefox draws.** With
+  `invisible-core` 38.33.0 and the firefox-38 engine. A maximized window now
+  answers `screenX` -8 and an `outerWidth` 16 wider than `screen.availWidth`
+  at 100%, as Windows Firefox does (it sits the invisible resize border off
+  the screen), where it answered 0 and the work area. Its content starts where
+  retail's does at every display scale (`mozInnerScreenY` 85.6 at 125%). A
+  popup answers its own `outerWidth`, `outerHeight`, `screenX` and `screenY`
+  instead of the main window's, and one opened without a position is placed
+  where Windows Firefox places it. The frame is measured on Windows Firefox
+  151 at the four display scales the personas use.
+
+### Removed
+- **The pins `screen.chrome_w`, `screen.chrome_h`, `screen.window_x` and
+  `screen.window_y`.** The window is no longer four numbers: it follows
+  `screen.dpr`, which takes 1, 1.25, 1.5 or 2, and another value is refused.
+
 ## [0.28.0] - 2026-10-09
 
 ### Changed
