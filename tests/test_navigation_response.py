@@ -304,8 +304,8 @@ def test_wait_for_new_navigation_HANDS_BACK_the_id_it_waited_for():
     knows which navigation happened - and `reload` needs it to answer with a
     Response. Reading the frame afterwards instead would race a navigation the
     page starts on its own."""
-    from invisible_playwright._juggler.connection import EventListeners
-    from invisible_playwright._juggler.lifecycle import Lifecycle
+    from invisible_core.juggler.connection import EventListeners
+    from invisible_core.juggler.lifecycle import Lifecycle
 
     conn = EventListeners()
     lifecycle = Lifecycle(conn, "S1")

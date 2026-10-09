@@ -16,8 +16,8 @@ import statistics
 
 import pytest
 
-from invisible_playwright._behaviour import PageActs, PointerPersona, plan_click
-from invisible_playwright._juggler.actions import Actions
+from invisible_core.juggler._behaviour import PageActs, PointerPersona, plan_click
+from invisible_core.juggler.actions import Actions
 
 
 class _Conn:
@@ -34,7 +34,7 @@ class _Conn:
 def slept(monkeypatch):
     """Every wait the actions ask for, in SECONDS, without taking any."""
     taken: list = []
-    monkeypatch.setattr("invisible_playwright._juggler.actions.time.sleep",
+    monkeypatch.setattr("invisible_core.juggler.actions.time.sleep",
                         taken.append)
     return taken
 

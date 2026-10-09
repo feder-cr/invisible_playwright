@@ -38,7 +38,7 @@ from typing import Any, Callable, Dict, Optional
 from . import perimeter
 # One class for a target that is gone, raised here for a disposed object and
 # by the connection for a closed pipe. Defined there, the lower layer.
-from .connection import TargetClosedError  # noqa: F401 - re-exported on purpose
+from invisible_core.juggler.connection import TargetClosedError  # noqa: F401 - re-exported on purpose
 
 
 

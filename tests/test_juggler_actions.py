@@ -14,8 +14,8 @@ import time
 
 import pytest
 
-from invisible_playwright._behaviour import PageActs
-from invisible_playwright._juggler.actions import Actions, ElementNotActionable
+from invisible_core.juggler._behaviour import PageActs
+from invisible_core.juggler.actions import Actions, ElementNotActionable
 
 PAGE = b"""<!doctype html><html><head><title>actions</title></head><body>
 <button id=ok onclick="this.dataset.clicks=(+(this.dataset.clicks||0)+1)">press</button>
@@ -79,9 +79,9 @@ def _serve(body):
 
 def _open(binary, body):
     from invisible_core.launch import build_launch_plan
-    from invisible_playwright._juggler import connection as conn
-    from invisible_playwright._juggler.injected import InjectedScript
-    from invisible_playwright._juggler.lifecycle import Lifecycle
+    from invisible_core.juggler import connection as conn
+    from invisible_core.juggler.injected import InjectedScript
+    from invisible_core.juggler.lifecycle import Lifecycle
 
     profile_dir = tempfile.mkdtemp(prefix="act_test_")
     plan = build_launch_plan(9, profile_dir=profile_dir, binary_path=binary, timezone="UTC",
@@ -146,7 +146,7 @@ def test_typing_does_NOT_send_keypress():
     that was still perfectly true. A test that breaks when the code moves
     teaches people to delete it.
     """
-    from invisible_playwright._juggler.keyboard import Keyboard
+    from invisible_core.juggler.keyboard import Keyboard
 
     class Fake:
         def __init__(self):
@@ -295,7 +295,7 @@ def test_the_button_mask_is_NOT_a_shifted_one():
     The mutation to reintroduce to try this test: `BUTTON_MASK` set to
     `{0: 1, 1: 2, 2: 4}`.
     """
-    from invisible_playwright._juggler.keyboard import BUTTON_MASK
+    from invisible_core.juggler.keyboard import BUTTON_MASK
     assert BUTTON_MASK == {0: 1, 1: 4, 2: 2}, (
         "left 1, right 2, middle 4 - not 1<<button")
 
@@ -305,7 +305,7 @@ def test_the_modifiers_carry_the_FIREFOX_mask():
     Shift 4, Meta 8, read in `toModifiersMask2`. Juggler translates it itself
     into `nsIDOMWindowUtils.MODIFIER_*`, so sending Gecko's constants from
     here would give wrong modifiers with no error at all."""
-    from invisible_playwright._juggler.keyboard import MODIFIER_MASK
+    from invisible_core.juggler.keyboard import MODIFIER_MASK
     assert MODIFIER_MASK == {"Alt": 1, "Control": 2, "Shift": 4,
                               "Meta": 8}
 
@@ -314,7 +314,7 @@ def test_the_layout_carries_the_keycode_WITHOUT_location():
     """⛔ `Page.dispatchKeyEvent` wants `keyCodeWithoutLocation`, not
     `keyCode`, and the two differ exactly on the keys that exist twice:
     `ShiftLeft` has 160 and 16. A real Firefox puts 16 in the event."""
-    from invisible_playwright._juggler.keyboard import LAYOUT_CLOSURE
+    from invisible_core.juggler.keyboard import LAYOUT_CLOSURE
     s = LAYOUT_CLOSURE["ShiftLeft"]
     assert s["keyCode"] == 160 and s["keyCodeWithoutLocation"] == 16
     assert LAYOUT_CLOSURE["Shift"]["code"] == "ShiftLeft"
@@ -328,7 +328,7 @@ def test_a_key_that_does_not_exist_gets_REJECTED_instead_of_coming_out_empty():
     pass, while the page reads an empty `event.code` on a key that every
     real Firefox names.
     """
-    from invisible_playwright._juggler.keyboard import Keyboard, UnknownKey
+    from invisible_core.juggler.keyboard import Keyboard, UnknownKey
     c = _Fake()
     t = Keyboard(c, "S", acts=PageActs())
     with pytest.raises(UnknownKey):
@@ -343,7 +343,7 @@ def test_shift_changes_the_key_and_control_removes_the_text():
     """The modifier state is the reason the keyboard is a class. ⛔ And
     `Control+a` must NOT insert an "a": with a modifier other than Shift
     the `text` comes out empty, read in the driver."""
-    from invisible_playwright._juggler.keyboard import Keyboard
+    from invisible_core.juggler.keyboard import Keyboard
     c = _Fake()
     t = Keyboard(c, "S", acts=PageActs())
     t.press("Shift+KeyA")
@@ -363,7 +363,7 @@ def test_shift_changes_the_key_and_control_removes_the_text():
 def test_keyup_NEVER_carries_the_text():
     """⛔ Juggler raises `keyup does not support text option` and the typing
     dies halfway through. Read in its `_dispatchKeyEvent`, not deduced."""
-    from invisible_playwright._juggler.keyboard import Keyboard
+    from invisible_core.juggler.keyboard import Keyboard
     c = _Fake()
     Keyboard(c, "S", acts=PageActs()).type("aZ1")
     up = [e for e in c.events if e["type"] == "keyup"]
@@ -454,7 +454,7 @@ def test_a_bare_string_does_NOT_go_through_the_option_filter():
     The mutation to reintroduce: passing `list(options)` instead of
     `_normalize_options(options)` in `select_option`.
     """
-    from invisible_playwright._juggler.actions import _normalize_options
+    from invisible_core.juggler.actions import _normalize_options
     assert _normalize_options(["b"]) == [{"valueOrLabel": "b"}]
     assert _normalize_options([{"value": "b"}]) == [{"value": "b"}]
     assert _normalize_options([{"index": 1}]) == [{"index": 1}]

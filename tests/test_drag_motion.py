@@ -30,10 +30,10 @@ from __future__ import annotations
 
 import pytest
 
-from invisible_playwright import _pacing
-from invisible_playwright._behaviour import PageActs
-from invisible_playwright._juggler.actions import Actions
-from invisible_playwright._juggler.keyboard import BUTTON_MASK
+from invisible_core.juggler import _pacing
+from invisible_core.juggler._behaviour import PageActs
+from invisible_core.juggler.actions import Actions
+from invisible_core.juggler.keyboard import BUTTON_MASK
 
 pytestmark = pytest.mark.unit
 
@@ -110,9 +110,9 @@ def _actions(seed=42, budget_s=None, viewport=(None, None)):
     a.inj = _Injected(*viewport)
     a.lifecycle = _Lifecycle()
     if seed is not None:
-        from invisible_playwright._behaviour import _sub_seed
-        from invisible_playwright._motion import CursorMotion
-        a.motion = CursorMotion(_sub_seed(seed, "server:drag"))
+        from invisible_core.seedmix import sub_seed
+        from invisible_core.juggler._motion import CursorMotion
+        a.motion = CursorMotion(sub_seed(seed, "server:drag"))
     return a
 
 

@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import pytest
 
-from invisible_playwright._juggler.connection import EventListeners, ProtocolError
-from invisible_playwright._juggler.protocol import COMMANDS
+from invisible_core.juggler.connection import EventListeners, ProtocolError
+from invisible_core.juggler.protocol import COMMANDS
 from invisible_playwright._juggler.server import (
     BrowserDispatcher,
     BrowserTypeDispatcher,

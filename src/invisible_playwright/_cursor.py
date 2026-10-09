@@ -123,12 +123,14 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 from weakref import WeakKeyDictionary
 
-from . import _behaviour, _pacing
-from ._pacing import (
-    DONE, SLEEP, Ev as _Ev, clamp_to_viewport as _clamp,
-    fine_timer as _fine_timer,
-    fit_timeline as _fit_timeline,
+from invisible_core.juggler import (
+    DONE, SLEEP, Ev as _Ev, Pacer, PointerPersona, Step,
+    clamp_to_viewport as _clamp, fine_timer as _fine_timer,
+    fit_timeline as _fit_timeline, initial_pointer, landing_point,
+    plan_aimless_move, plan_approach, plan_idle, plan_scroll,
+    steps_from_waypoints, tail_within,
 )
+from invisible_core.seedmix import sub_seed
 
 # The escape hatch. ``INVPW_CURSOR_ENGINE`` picks who generates the motion:
 #   "python"  (default) - this module, seeded from the session seed
@@ -232,8 +234,10 @@ def _reset_warnings() -> None:
 # Anything else is treated as "no generator available" and the session falls
 # back to the browser's own expansion, which is always a working browser.
 try:  # pragma: no cover - exercised by the import-failure test via monkeypatch
-    from . import _motion as _motion_mod  # type: ignore[attr-defined]
-except Exception as _motion_exc:  # noqa: BLE001 - a broken _motion must not break launching
+    # The package that publishes the generator: `_motion_factory` looks the
+    # factory up on it by name, and the tests put a stub module here.
+    from invisible_core import juggler as _motion_mod  # type: ignore[attr-defined]
+except Exception as _motion_exc:  # noqa: BLE001 - a broken generator must not break launching
     _motion_mod = None  # type: ignore[assignment]
     _MOTION_IMPORT_ERROR: Optional[BaseException] = _motion_exc
 else:
@@ -248,7 +252,7 @@ else:
 #: It moved into _pacing on 2026-09-16, with the discipline that reads it, so
 #: the server's drag obeys the same floor as the client's cursor. Re-exported
 #: here because it is part of this module's published surface.
-MIN_EVENT_INTERVAL_MS = _pacing.MIN_EVENT_INTERVAL_MS
+from invisible_core.juggler import MIN_EVENT_INTERVAL_MS  # noqa: E402 - re-exported, see above
 
 
 _MOTION_FACTORY_NAMES = ("CursorMotion", "MotionProfile", "new_motion")
@@ -270,7 +274,7 @@ def _motion_factory() -> Optional[Callable[..., Any]]:
     _warn_once(
         "no-motion",
         "no cursor motion generator found "
-        "(invisible_playwright._motion.CursorMotion)" + detail + "; falling "
+        "(invisible_core.juggler.CursorMotion)" + detail + "; falling "
         "back to the browser's own motion for this process. This is a broken "
         "install, not a configuration.",
     )
@@ -422,7 +426,7 @@ class _PageCursor:
         self.seed = int(seed)
         self.max_seconds = float(max_seconds)
         self._profile = _build_profile(factory, self.seed, self.max_seconds)
-        self.persona = _behaviour.PointerPersona.from_seed(self.seed)
+        self.persona = PointerPersona.from_seed(self.seed)
         self.x: Optional[float] = None
         self.y: Optional[float] = None
         self.busy = False
@@ -467,7 +471,7 @@ class _PageCursor:
                     "using the behaviour planner's instead."
                     % (type(exc).__name__, exc),
                 )
-        return _behaviour.initial_pointer(self.seed, (float(w), float(h)))
+        return initial_pointer(self.seed, (float(w), float(h)))
 
     def here(self, page: Any) -> Tuple[float, float]:
         """Current pointer position, placing it first if it has never moved."""
@@ -514,7 +518,7 @@ class _PageCursor:
                         float(getattr(p, "y", None) if hasattr(p, "y") else p[1]),
                         nominal)
                        for p in raw]
-            return _behaviour.steps_from_waypoints(
+            return steps_from_waypoints(
                 raw, kind=kind, lead_ms=lead_ms, bounds=bounds
             )
 
@@ -523,7 +527,7 @@ class _PageCursor:
     def rng(self, tag: str) -> random.Random:
         """A per-(page, action, purpose) stream. Reproducible from the seed."""
         return random.Random(
-            _behaviour._sub_seed(self.seed, "%s:%d" % (tag, self.action))
+            sub_seed(self.seed, "%s:%d" % (tag, self.action))
         )
 
 
@@ -609,7 +613,7 @@ async def _dispatch(
     emit_last: bool = True,
     origin: Optional[Tuple[float, float]] = None,
 ) -> int:
-    """The ASYNCHRONOUS driver of :class:`._pacing.Pacer`. Returns events sent.
+    """The ASYNCHRONOUS driver of :class:`invisible_core.juggler.Pacer`. Returns events sent.
 
     The rules it obeys - absolute deadlines from one ``t0``, drop rather than
     send late while the drop stays within reach, never two events in one
@@ -621,7 +625,7 @@ async def _dispatch(
     tm = timer if timer is not None else _TIMER
     if not evs:
         return 0
-    pacer = _pacing.Pacer(evs, emit_last=emit_last, origin=origin)
+    pacer = Pacer(evs, emit_last=emit_last, origin=origin)
     with _fine_timer():
         while True:
             what, arg = pacer.step(tm.now())
@@ -986,16 +990,16 @@ def _plan_fidget(cursor: _PageCursor, page: Any, timer: Any) -> List[Any]:
         # A movement that ends nowhere in particular. If every movement of a
         # session terminates on a control then the SET OF ENDPOINTS is a
         # signature on its own, whatever the paths between them look like.
-        steps = _behaviour.plan_aimless_move(
+        steps = plan_aimless_move(
             cursor.seed, cursor.persona, here, bounds,
             nonce=cursor.action, render=cursor.renderer(bounds),
         )
-        return _behaviour.tail_within(steps, budget, here, bounds)
-    steps = _behaviour.plan_idle(
+        return tail_within(steps, budget, here, bounds)
+    steps = plan_idle(
         cursor.seed, cursor.persona, here, bounds, gap_ms,
         nonce=cursor.action, render=cursor.renderer(bounds),
     )
-    return _behaviour.tail_within(steps, budget, here, bounds)
+    return tail_within(steps, budget, here, bounds)
 
 
 # ── the wrappers ────────────────────────────────────────────────────────────
@@ -1190,7 +1194,7 @@ async def _choose_landing(frame: Any, cursor: Any, selector: str,
             return _Aim(box, (box["x"] + float(position["x"]),
                               box["y"] + float(position["y"])), None)
 
-        landing = _behaviour.landing_point(
+        landing = landing_point(
             (box["x"], box["y"], box["width"], box["height"]),
             cursor.rng("cursor:landing"),
             spread=_LANDING_SPREAD, keep=_LANDING_KEEP,
@@ -1233,7 +1237,7 @@ async def _walk_onto(cursor: Any, page: Any, aim: _Aim, move: Any,
         await _run_steps(cursor, fidget, raw, budget_s=spent, timer=timer)
         budget = max(budget - spent, 0.2)
 
-    steps = _behaviour.plan_approach(
+    steps = plan_approach(
         cursor.seed, cursor.persona, cursor.here(page), aim.rect, bounds,
         nonce=cursor.action, landing=aim.landing,
         render=cursor.renderer(bounds),
@@ -1344,7 +1348,7 @@ def _scroll_plan(cursor: _PageCursor, page: Any, delta_x: float, delta_y: float
     if ticks < 2:
         return []
     bounds = _bounds(page)
-    steps = _behaviour.plan_scroll(
+    steps = plan_scroll(
         cursor.seed, cursor.persona, cursor.here(page), bounds,
         ticks=ticks, tick_dy=1.0, nonce=cursor.action,
         render=cursor.renderer(bounds),
@@ -1368,7 +1372,7 @@ def _scroll_plan(cursor: _PageCursor, page: Any, delta_x: float, delta_y: float
             dx, dy = delta_x * frac, delta_y * frac
         used_x += dx
         used_y += dy
-        out.append(_behaviour.Step(x=s.x, y=s.y, delay_ms=s.delay_ms,
+        out.append(Step(x=s.x, y=s.y, delay_ms=s.delay_ms,
                                    kind="wheel", dx=dx, dy=dy))
     return out
 

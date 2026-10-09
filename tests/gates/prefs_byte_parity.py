@@ -10,7 +10,7 @@ this comparison is possible; a looser check throws that away.
 
 ⛔ AND IT NEEDS NO BROWSER. Both writers are pure functions of the prefs dict:
 the driver's is a JavaScript literal builder inside `coreBundle.js`, ours is
-`_write_user_js`. The driver's rules are re-implemented here FROM ITS SOURCE,
+`invisible_core.launch.write_user_js`, the one writer since 0.30.0. The driver's rules are re-implemented here FROM ITS SOURCE,
 read at run time rather than copied - so if upstream's writer changes, this gate
 changes with it instead of silently comparing against a stale transcription.
 
@@ -139,9 +139,9 @@ def driver_user_js(prefs: dict) -> str:
 
 
 def ours(prefs: dict) -> str:
-    from invisible_playwright._juggler.server import _write_user_js
+    from invisible_core.launch import write_user_js
     directory = tempfile.mkdtemp(prefix="prefs_parity_")
-    _write_user_js(directory, prefs)
+    write_user_js(directory, prefs)
     return (pathlib.Path(directory) / "user.js").read_bytes().decode("utf-8")
 
 

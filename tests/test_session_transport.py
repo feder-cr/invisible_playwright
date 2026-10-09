@@ -22,7 +22,7 @@ from __future__ import annotations
 import pytest
 
 from invisible_core._fpforge import generate_profile
-from invisible_playwright._behaviour import TypingPersona
+from invisible_core.juggler._behaviour import TypingPersona
 from invisible_playwright._cursor import ENGINE_PYTHON, max_seconds_for
 from invisible_playwright._juggler.server import (
     MOTION_BUDGET_PREF, SESSION_SEED_PREF, take_session_motion,

@@ -21,9 +21,9 @@ from __future__ import annotations
 
 import pytest
 
-from invisible_playwright._juggler.connection import EventListeners
-from invisible_playwright._juggler.injected import InjectedScript
-from invisible_playwright._juggler.lifecycle import Lifecycle
+from invisible_core.juggler.connection import EventListeners
+from invisible_core.juggler.injected import InjectedScript
+from invisible_core.juggler.lifecycle import Lifecycle
 
 
 class FakeConnection(EventListeners):
