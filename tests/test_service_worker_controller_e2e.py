@@ -8,8 +8,6 @@ import pytest
 
 from invisible_playwright import InvisiblePlaywright
 
-from test_service_worker import fixture_server  # noqa: F401 - the same SW origin
-
 
 @pytest.mark.e2e
 @pytest.mark.parametrize("routed", [False, True])
