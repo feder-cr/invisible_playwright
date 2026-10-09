@@ -41,9 +41,10 @@ from ._reaper import SessionToken, guard_for
 # against stock Firefox 151 on 2026-08-09, a real browser answers
 # outerWidth - innerWidth = 0 and outerHeight - innerHeight = 85; we answered 14
 # and 91, identically on both platforms, because a value invented once agrees
-# with itself forever and no cross-check can see it. The declaration lives in
-# the core as Profile.screen.chrome_w / chrome_h, pinnable like every other
-# surface. These names survive only because async_api imports them.
+# with itself forever and no cross-check can see it. The window lives in the
+# core: since core 38 as a frame per display scale in device pixels
+# (WINDOW_FRAME_BY_DPR), measured on retail Firefox 151 on Windows 11, from
+# which the core derives the viewport this package hands to every context.
 
 # The taskbar is NOT a wrapper constant. It was one, at 40, while the core
 # declared 48 and the engine's compiled floor was 48 - so the viewport was

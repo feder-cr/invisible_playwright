@@ -9,9 +9,8 @@ from invisible_core import generate_profile
 # turned unused in there and were removed. An import is not unused merely
 # because the file holding it does not use it - another module can be reaching
 # a name THROUGH it, and no single-file analysis can see that.
-from invisible_core.constants import (CHROME_H as _CHROME_H,
-                                      CHROME_W as _CHROME_W,
-                                      TASKBAR_PX as _TASKBAR_H)
+from invisible_core.constants import (TASKBAR_PX as _TASKBAR_H,
+                                      WINDOW_FRAME_BY_DPR as _FRAMES)
 from invisible_playwright.launcher import (
     InvisiblePlaywright,
     _IANA_TO_POSIX_TZ,
@@ -63,14 +62,15 @@ def test_chrome_offsets_are_positive_ints():
     viewport fits inside the screen - and the offsets are merely
     non-negative.
     """
-    assert _CHROME_W >= 0
-    assert _CHROME_H > 0
     assert _TASKBAR_H > 0
+    for frame in _FRAMES.values():
+        assert frame.border >= 0 and frame.maximized_ui > 0 and frame.popup_ui > 0
 
-    p = generate_profile(42)
-    assert p.screen.width - p.screen.chrome_w <= p.screen.width
-    assert (p.screen.height - p.screen.taskbar_px
-            - p.screen.chrome_h) <= p.screen.height
+    for seed in range(40):
+        p = generate_profile(seed)
+        width, height = p.screen.viewport
+        assert 0 < width <= p.screen.css_width
+        assert 0 < height <= p.screen.css_height - p.screen.taskbar_px
 
 
 def test_invisible_playwright_constructs_without_launching():
