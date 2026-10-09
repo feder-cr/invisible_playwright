@@ -18,9 +18,7 @@ from invisible_playwright import InvisiblePlaywright, _cursor
 # turned unused in there and were removed. An import is not unused merely
 # because the file holding it does not use it - another module can be reaching
 # a name THROUGH it, and no single-file analysis can see that.
-from invisible_core.constants import (CHROME_H as _CHROME_H,
-                                      CHROME_W as _CHROME_W,
-                                      TASKBAR_PX as _TASKBAR_H)
+from invisible_core.constants import TASKBAR_PX as _TASKBAR_H
 from invisible_playwright.launcher import (
     _IANA_TO_POSIX_TZ,
     _tz_env,
@@ -147,9 +145,11 @@ def test_default_context_viewport_subtracts_window_chrome():
     ip = InvisiblePlaywright(seed=42)
     kw = ip._default_context_kwargs()
     p = ip._profile
-    assert kw["viewport"]["width"] == p.screen.width - _CHROME_W
-    assert kw["viewport"]["height"] == (p.screen.height - p.screen.taskbar_px
-                                        - _CHROME_H)
+    # The core derives it, from the panel, the taskbar and the window frame
+    # at the persona's scale; the wrapper only hands it over.
+    assert (kw["viewport"]["width"], kw["viewport"]["height"]) == p.screen.viewport
+    assert kw["viewport"]["width"] <= p.screen.css_width
+    assert kw["viewport"]["height"] < p.screen.css_height - p.screen.taskbar_px
     # and the profile is the ONE source: the wrapper carried its own 40 while
     # the core declared 48 and the engine floor was 48, so the viewport and
     # screen.availHeight disagreed about the same taskbar. Asserting against
@@ -165,7 +165,9 @@ def test_default_context_viewport_follows_a_pinned_taskbar():
     kw = ip._default_context_kwargs()
     p = ip._profile
     assert p.screen.taskbar_px == 72
-    assert kw["viewport"]["height"] == p.screen.height - 72 - _CHROME_H
+    unpinned = InvisiblePlaywright(seed=42)._default_context_kwargs()
+    assert kw["viewport"]["height"] < unpinned["viewport"]["height"]
+    assert (kw["viewport"]["width"], kw["viewport"]["height"]) == p.screen.viewport
 
 
 @pytest.mark.unit
