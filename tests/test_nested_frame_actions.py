@@ -164,7 +164,9 @@ def wire(monkeypatch):
 
     def record(self, method, params=None, **kwargs):
         answer = send(self, method, params, **kwargs)
-        if method in ("Page.getContentQuads", "Page.pointerLanded") or (
+        # The landings come back with the press and the release themselves
+        # (`landsOn`, firefox-39), so their answers carry them. [B230]
+        if method == "Page.getContentQuads" or (
             method == "Page.dispatchMouseEvent" and params["type"] != "mousemove"
         ):
             seen.append({"method": method, "params": params, "answer": answer})
