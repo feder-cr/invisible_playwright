@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-10-10
+
 ### Fixed
 - **A session no longer leaves its temporary profile behind.** On Windows a
   session longer than a minute left an `invisible_profile_*` directory in
@@ -21,6 +23,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   70 s session left two 4 MB certificate bundles in `%TEMP%`. The browser now
   gets a temporary directory of its own, inside this process's, removed with
   the profile.
+- **Characters that need Shift are typed with Shift.** `@`, `!` and capital
+  letters reached the page with `shiftKey` false and no Shift keydown, a
+  combination no keyboard produces; with Shift held by hand, pressing `2` wrote
+  `2`. They are typed with Shift down now, timed by the session's hand
+  (invisible-core 39.35.0).
+- **A pause before every click.** The press came one protocol round trip after
+  the pointer arrived, where a hand waits a moment. The session's hand now
+  pauses at the end of the approach, before the button goes down.
 
 ## [0.31.0] - 2026-10-10
 
