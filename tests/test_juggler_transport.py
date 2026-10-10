@@ -931,6 +931,75 @@ def test_a_profile_WE_made_is_removed_and_the_caller_s_is_not():
         module.juggler.launch = real
 
 
+def test_the_profile_is_removed_after_the_browser_has_closed(monkeypatch):
+    """⛔ KNOWN-BAD UNTIL B223: the removal was a hook registered after
+    `conn.close`, the hooks run in reverse, so it ran FIRST, with the browser
+    still up - and the comment beside it said the opposite. Measured on
+    Windows: a session longer than a minute left its profile behind, holding
+    only the `saved-telemetry-pings` the browser wrote back while it shut
+    down; 6,091 of them in one %TEMP%. The test above could not see it: its
+    fake connection closes instantly and holds nothing. This one records
+    whether the profile still existed at the moment the browser was closed,
+    and covers the two exits that used to skip the removal altogether: a
+    launch that fails, and a proxy the engine refuses."""
+    from invisible_playwright._juggler.server import (BrowserTypeDispatcher,
+                                                      JugglerServer)
+    from invisible_playwright._juggler import server as module
+    from invisible_playwright._juggler.server import ProtocolException
+
+    seen_at_close: list = []
+    launched: list = []
+
+    class FakeConnection(EventListeners):
+        def __init__(self, profile_dir, refuse_proxy=False):
+            EventListeners.__init__(self)
+            self._profile = pathlib.Path(profile_dir)
+            self._refuse_proxy = refuse_proxy
+
+        def send(self, method, params=None, session=None, timeout=30):
+            if method == "Browser.setBrowserProxy" and self._refuse_proxy:
+                raise RuntimeError("refused")
+            return {"browserContextId": "ctx-1", "targetId": "t-1"}
+
+        def close(self):
+            seen_at_close.append(self._profile.exists())
+
+    def launching(refuse_proxy=False, fail=False):
+        def fake_launch(executable, profile_dir, **kwargs):
+            launched.append(pathlib.Path(profile_dir))
+            if fail:
+                raise RuntimeError("the browser exited during startup")
+            return FakeConnection(profile_dir, refuse_proxy)
+        return fake_launch
+
+    def session(launch, params):
+        server = JugglerServer()
+        server.attach(type("R", (), {"emit_message": lambda self, m: None})())
+        monkeypatch.setattr(module.juggler, "launch", launch)
+        try:
+            BrowserTypeDispatcher(server).op_launch(
+                dict({"executablePath": "x", "firefoxUserPrefs": {}}, **params))
+        except (ProtocolException, RuntimeError):
+            pass
+        server.shutdown()
+        return launched[-1]
+
+    profile = session(launching(), {})
+    assert seen_at_close == [True], (
+        "the profile was already gone when the browser was closed")
+    assert not profile.exists(), "the profile outlived the session"
+
+    profile = session(launching(fail=True), {})
+    assert not profile.exists(), "a launch that failed kept its profile"
+
+    seen_at_close.clear()
+    profile = session(launching(refuse_proxy=True),
+                      {"proxy": {"server": "socks5://127.0.0.1:1"}})
+    assert seen_at_close and all(seen_at_close), (
+        "the profile was already gone when the browser was closed")
+    assert not profile.exists(), "a refused proxy kept its profile"
+
+
 def test_a_named_launch_environment_is_the_whole_environment(monkeypatch):
     """⛔ A variable the caller REMOVED must not come back from this process.
 
@@ -992,6 +1061,61 @@ def test_the_launch_handler_hands_the_named_environment_to_the_engine(monkeypatc
     kind.op_launch({"executablePath": "x", "firefoxUserPrefs": {},
                     "env": [{"name": "DISPLAY", "value": ":123"}]})
     try:
-        assert seen[-1] == {"DISPLAY": ":123"}
+        env = dict(seen[-1])
+        # The session's own temporary directory is the server's addition, the
+        # one thing in the environment the caller did not name.
+        tmp = env.pop("TMP")
+        assert env.pop("TEMP") == tmp and env.pop("TMPDIR") == tmp
+        assert env == {"DISPLAY": ":123"}
     finally:
         server.shutdown()
+
+
+def test_the_browser_s_temporary_files_live_and_end_with_the_session(monkeypatch):
+    """⛔ KNOWN-BAD: the browser wrote into the system temporary directory,
+    and Firefox cleans up there when a job finishes. A session is short:
+    measured on Windows, one of 70 s left two copies of the Remote Settings
+    certificate bundle in %TEMP%, 4 MB each, and one machine had 439. The
+    browser gets a directory of its own, the same for the three names the two
+    platforms read, and it goes with the session."""
+    import tempfile
+    from invisible_playwright._juggler.server import (BrowserTypeDispatcher,
+                                                      JugglerServer)
+    from invisible_playwright._juggler import server as module
+
+    server = JugglerServer()
+    server.attach(type("R", (), {"emit_message": lambda self, m: None})())
+    seen: list = []
+
+    class FakeConnection(EventListeners):
+        def __init__(self, tmp):
+            EventListeners.__init__(self)
+            self._tmp = tmp
+
+        def send(self, method, params=None, session=None, timeout=30):
+            return {"browserContextId": "ctx-1", "targetId": "t-1"}
+
+        def close(self):
+            seen.append(("open at close", self._tmp.is_dir()))
+
+    def fake_launch(executable, profile_dir, **kwargs):
+        tmp = pathlib.Path(kwargs["env"]["TMP"])
+        (tmp / "bundle.zip").write_bytes(b"x" * 32)
+        seen.append(("env", kwargs["env"]))
+        return FakeConnection(tmp)
+
+    monkeypatch.setattr(module.juggler, "launch", fake_launch)
+    try:
+        BrowserTypeDispatcher(server).op_launch(
+            {"executablePath": "x", "firefoxUserPrefs": {}})
+        env = seen[0][1]
+        tmp = pathlib.Path(env["TMP"])
+        assert env["TEMP"] == env["TMPDIR"] == str(tmp)
+        assert tmp.parent == pathlib.Path(tempfile.gettempdir()), (
+            "the session's directory belongs inside this process's, where the "
+            "caller's own TMP put it")
+    finally:
+        server.shutdown()
+    assert ("open at close", True) in seen, (
+        "the temporary directory was gone while the browser still ran")
+    assert not tmp.exists(), "the browser's temporary files outlived the session"

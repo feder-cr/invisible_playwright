@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-10-10
+
+### Fixed
+- **A session no longer leaves its temporary profile behind.** On Windows a
+  session longer than a minute left an `invisible_profile_*` directory in
+  `%TEMP%`, holding an empty `saved-telemetry-pings`. The profile was removed
+  before the browser was closed, and, once that order was right, while the
+  `pingsender.exe` the browser starts at exit still held a file in it. The
+  session's directories (the core's `SessionFiles`) are now removed after
+  every process of the session has ended, a launch that fails or a proxy the
+  engine refuses no longer keeps its profile, and a new session sweeps what a
+  killed one left.
+- **The browser's temporary files go with the session.** Firefox wrote into
+  the system temporary directory, and a short session cut off its cleanup: a
+  70 s session left two 4 MB certificate bundles in `%TEMP%`. The browser now
+  gets a temporary directory of its own, inside this process's, removed with
+  the profile.
+- **Characters that need Shift are typed with Shift.** `@`, `!` and capital
+  letters reached the page with `shiftKey` false and no Shift keydown, a
+  combination no keyboard produces; with Shift held by hand, pressing `2` wrote
+  `2`. They are typed with Shift down now, timed by the session's hand
+  (invisible-core 39.35.0).
+- **A pause before every click.** The press came one protocol round trip after
+  the pointer arrived, where a hand waits a moment. The session's hand now
+  pauses at the end of the approach, before the button goes down.
+
 ## [0.31.0] - 2026-10-10
 
 ### Fixed

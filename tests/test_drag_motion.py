@@ -99,20 +99,16 @@ class _Lifecycle:
 
 
 def _actions(seed=42, budget_s=None, viewport=(None, None)):
-    a = Actions.__new__(Actions)
-    a.c = _Conn()
-    a.session = "session"
+    # ⛔ THROUGH THE CONSTRUCTOR. This helper used to assemble an `Actions`
+    # with `__new__` and set its fields by hand, so every field the core added
+    # (`pointer_persona`, read before a press since invisible-core 39.35.0)
+    # broke it with an AttributeError that said nothing about drags. The
+    # constructor draws the motion from `sub_seed(seed, "server:drag")`, the
+    # stream this helper used to build itself.
+    a = Actions(_Conn(), "session", _Lifecycle(), _Injected(*viewport),
+                acts=PageActs(), session_seed=seed, motion_budget_s=budget_s)
     a.keyboard = _Keyboard()
     a.position = (0.0, 0.0)
-    a.motion = None
-    a.acts = PageActs()
-    a.motion_budget_s = budget_s
-    a.inj = _Injected(*viewport)
-    a.lifecycle = _Lifecycle()
-    if seed is not None:
-        from invisible_core.seedmix import sub_seed
-        from invisible_core.juggler._motion import CursorMotion
-        a.motion = CursorMotion(sub_seed(seed, "server:drag"))
     return a
 
 
