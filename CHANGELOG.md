@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+- **A session no longer leaves its temporary profile behind.** On Windows a
+  session longer than a minute left an `invisible_profile_*` directory in
+  `%TEMP%`, holding an empty `saved-telemetry-pings`. The profile was removed
+  before the browser was closed, and, once that order was right, while the
+  `pingsender.exe` the browser starts at exit still held a file in it. The
+  session's directories (the core's `SessionFiles`) are now removed after
+  every process of the session has ended, a launch that fails or a proxy the
+  engine refuses no longer keeps its profile, and a new session sweeps what a
+  killed one left.
+- **The browser's temporary files go with the session.** Firefox wrote into
+  the system temporary directory, and a short session cut off its cleanup: a
+  70 s session left two 4 MB certificate bundles in `%TEMP%`. The browser now
+  gets a temporary directory of its own, inside this process's, removed with
+  the profile.
+
 ## [0.31.0] - 2026-10-10
 
 ### Fixed

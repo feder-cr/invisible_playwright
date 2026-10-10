@@ -30,7 +30,6 @@ import base64
 import contextlib
 import os
 import pathlib
-import shutil
 import tempfile
 import threading
 import time
@@ -61,8 +60,8 @@ from ._marshal import (_as_callable, _button, _called_on, _console_text,
 from invisible_core import SessionLocale, parse_proxy
 
 from invisible_core import write_user_js
-from invisible_core.juggler import (domain_matches, host_of, only_set,
-                                    read_version, remove_profile)
+from invisible_core.juggler import (SessionFiles, domain_matches, host_of,
+                                    only_set, read_version, remove_profile)
 
 
 
@@ -4090,20 +4089,22 @@ class BrowserTypeDispatcher(Dispatcher):
         # Only `GDK_BACKEND=x11` kept it off the real desktop. The driver's
         # semantics are the same as this: a given `env` is the environment the
         # browser gets, not a patch on top of the driver's own.
-        env = _launch_environment(params.get("env"))
         # ⛔ WHO MAKES THE PROFILE TAKES IT AWAY - AND ONLY THAT ONE. The
         # caller's `userDataDir` is theirs and survives the session by
-        # definition; a directory we invented is ours and must not.
+        # definition; a directory we invented is ours and must not. The
+        # browser's temporary directory is always ours. Both are
+        # `SessionFiles`, the core's one account of a session's directories,
+        # whose `remove()` ends the browser's children first (B223, B267).
         #
-        # Measured on 2026-08-28, after one day of development: 136 leftover
-        # `invisible_profile_*` directories, **5,0 GB**. Nothing failed, nothing
-        # warned - a Firefox profile is a few dozen megabytes and the disk just
-        # goes. The project already has the same defect recorded for
-        # Playwright's own throwaway profiles, 7.308 directories accumulated
-        # over seven months, and this reproduced it in hours.
-        ours = params.get("userDataDir") is None
-        profile = params.get("userDataDir") or tempfile.mkdtemp(
-            prefix="invisible_profile_")
+        # ⛔ REGISTERED THE MOMENT THEY EXIST, and after the hooks, not as one:
+        # a launch that fails, or a proxy the engine refuses, returns through a
+        # raise, and until B223 the removal was registered only after both, so
+        # those sessions kept their profile. `after_shutdown` runs once
+        # `conn.close` has waited for the browser to exit.
+        files = SessionFiles(params.get("userDataDir"),
+                             _launch_environment(params.get("env")))
+        self.server.after_shutdown(files.remove)
+        env, profile = files.env, files.profile
         # ⛔ THE TYPING SEED TRAVELS IN THE PREFS AND IS TAKEN OUT AGAIN HERE,
         # before a single byte reaches the profile.
         #
@@ -4160,13 +4161,6 @@ class BrowserTypeDispatcher(Dispatcher):
                 raise ProtocolException(
                     "the engine refused the proxy, so the browser was closed "
                     "rather than left running without one: %s" % exc)
-        if ours:
-            # ⛔ AFTER `conn.close`, and the order is the point: the hooks run
-            # in reverse, so this one runs LAST - the browser is already gone
-            # and no longer holds a lock on the profile. Removing it first
-            # fails on Windows and fails SILENTLY, because the hook runner
-            # swallows one hook's failure so it cannot stop the others.
-            self.server.on_shutdown(lambda: remove_profile(profile))
         version = read_version(executable)
         browser = BrowserDispatcher(
             self.server, self, conn, version, session_seed=session_seed,
@@ -4240,7 +4234,7 @@ class JugglerServer(Server):
         if root is None:
             root = tempfile.mkdtemp(prefix="invisible_upload_")
             self._upload_root = root
-            self.on_shutdown(lambda: shutil.rmtree(root, ignore_errors=True))
+            self.after_shutdown(lambda: remove_profile(root))
         path = os.path.join(tempfile.mkdtemp(dir=root), name)
         with open(path, "wb") as out:
             out.write(base64.b64decode(payload.get("buffer") or ""))
