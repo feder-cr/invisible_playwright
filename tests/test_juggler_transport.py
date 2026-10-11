@@ -188,6 +188,27 @@ def test_create_is_announced_BEFORE_anything_can_name_the_object():
     assert first["guid"] == "", "a top-level object must be parented to Root"
 
 
+def test_a_failed_expect_carries_its_details_to_the_client():
+    """The client turns a failed `expect` into an AssertionError only when
+    the error reply carries `errorDetails`; without them it re-raises a plain
+    protocol error and the assertion's message is lost."""
+    from invisible_playwright._juggler.dispatcher import (ExpectFailed,
+                                                          ProtocolException)
+    from invisible_playwright._juggler.transport import InProcessTransport
+
+    sent: list = []
+    transport = InProcessTransport.__new__(InProcessTransport)
+    transport.emit_message = sent.append
+    details = {"timedOut": True, "received": {"value": {"s": "Go"}}}
+
+    transport.reply_error(7, ExpectFailed("did not hold", details))
+    transport.reply_error(8, ProtocolException("plain"))
+
+    assert sent[0]["errorDetails"] == details
+    assert sent[0]["error"]["error"]["message"] == "did not hold"
+    assert "errorDetails" not in sent[1]
+
+
 # ── with a browser, through the public API ──────────────────────────────────
 
 @pytest.mark.e2e

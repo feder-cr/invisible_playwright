@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.34.1] - 2026-10-12
+
+### Fixed
+- **`expect()` passes and fails with the page, and waits for it.** Every
+  `to_be_*` assertion on an element that existed passed whatever its state
+  (`to_be_hidden()` on a visible button, `to_be_checked()` on an unchecked
+  box), `to_have_count` failed on the right count with an empty message, an
+  element that appeared after the first look failed whatever the timeout, and
+  `to_have_text`, `to_contain_text`, `to_have_title` and the other assertions
+  were refused as not implemented. The assertion is now Playwright's own,
+  polled until the caller's timeout, and a failure reports what the page
+  showed (#329, by RayenMlayeh).
+
 ## [0.34.0] - 2026-10-11
 
 The pin moves to invisible-core 41.35.0, which seals the firefox-41 engine.

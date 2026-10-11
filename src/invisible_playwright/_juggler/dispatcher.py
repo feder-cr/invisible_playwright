@@ -52,6 +52,19 @@ class ProtocolException(Exception):
     """
 
 
+class ExpectFailed(ProtocolException):
+    """An `expect` that did not hold within its timeout.
+
+    The client builds its AssertionError from `details`, which travel as the
+    reply's `errorDetails`, not from the message: `received` is what the page
+    showed, and without it an error is re-raised as a plain protocol error.
+    """
+
+    def __init__(self, message: str, details: Dict[str, Any]) -> None:
+        super().__init__(message)
+        self.details = details
+
+
 class Dispatcher:
     """One protocol object.
 

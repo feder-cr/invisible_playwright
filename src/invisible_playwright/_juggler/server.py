@@ -40,7 +40,7 @@ from invisible_core.juggler import PageActs, popup_number
 from invisible_core.juggler import connection as juggler
 from invisible_core.juggler.actions import Actions
 from invisible_core.juggler.deadline import Deadline
-from .dispatcher import Dispatcher, ProtocolException, Server
+from .dispatcher import Dispatcher, ExpectFailed, ProtocolException, Server
 from invisible_core.juggler.injected import InjectedScript
 from invisible_core.juggler.keyboard import MODIFIER_MASK
 from invisible_core.juggler.lifecycle import Lifecycle
@@ -1221,27 +1221,57 @@ class FrameDispatcher(Dispatcher):
                     % (self._timeout(params), expression[:120]))
             time.sleep(0.05)
 
+    #: Upstream's frame-side expect: every element the selector matches for a
+    #: count or an array, at most one otherwise, judged by the InjectedScript
+    #: the client's assertions are written against.
+    _EXPECT = (
+        "async (injected, sel, options) => {"
+        "  const parsed = sel === null ? null : injected.parseSelector(sel);"
+        "  const elements = parsed ? injected.querySelectorAll(parsed, document)"
+        "                          : [];"
+        "  const isArray = options.expression === 'to.have.count'"
+        "                  || options.expression.endsWith('.array');"
+        "  if (!isArray && elements.length > 1)"
+        "    throw injected.strictModeViolationError(parsed, elements);"
+        "  return await injected.expect(elements[0], options, elements); }")
+
     def op_expect(self, params: Dict) -> Any:
-        """⛔ The polling half of `expect()`. It answers ONE probe; the
-        retrying is the client's, in `_assertions.py`, which is why this must
-        not loop: looping here would multiply the caller's timeout by ours."""
-        expression = params.get("expression") or ""
-        selector = params.get("selector")
-        try:
-            if expression.startswith("to.have.count"):
-                count = self.injected.count(self.frame_id, selector)
-                expected = int((params.get("expectedNumber") or 0))
-                return {"matches": count == expected,
-                        "received": _serialize(count)}
-            if expression.startswith("to.be."):
-                state = expression.split("to.be.", 1)[1]
-                return self._with_element(
-                    {"selector": selector},
-                    lambda f, o: None) and {"matches": True}
-        except ProtocolException:
-            return {"matches": False, "received": _serialize(None)}
-        raise ProtocolException(
-            "expect(%r) is not implemented yet" % expression)
+        """`expect()`, polled HERE until it holds or the caller's timeout ends.
+
+        ⛔ THE CLIENT ASKS ONCE AND READS ONLY HOW THE CALL ENDED. A reply is a
+        pass, whatever it carries, and a failure must be an error whose
+        `errorDetails` say what the page showed (`ExpectFailed`). This used to
+        answer `{"matches": ...}` from a single look: `{"matches": True}` for
+        any `to.be.*` on an element that existed, so `to_be_hidden` held on a
+        visible one, and a reply with `received` beside it tripped the
+        client's one-key assert, so `to_have_count(1)` failed on one element.
+        """
+        is_not = bool(params.get("isNot"))
+        options = {k: v for k, v in params.items()
+                   if k not in ("selector", "timeout")}
+        if "expectedValue" in params:
+            options["expectedValue"] = _deserialize(params["expectedValue"])
+        deadline = Deadline(self._timeout(params))
+        while True:
+            frame_id, selector = self.frame_id, params.get("selector")
+            if selector is not None:
+                frame_id, selector = self.enter_frames(selector)
+            result = self.injected.call(frame_id, self._EXPECT,
+                                        selector, options) or {}
+            if bool(result.get("matches")) != is_not:
+                return None
+            if deadline.passed():
+                break
+            time.sleep(0.1)
+        details: Dict[str, Any] = {"timedOut": True}
+        received = result.get("received")
+        if isinstance(received, dict):
+            details["received"] = {"ariaSnapshot": received.get("ariaSnapshot")}
+            if "value" in received:
+                details["received"]["value"] = _serialize(received["value"])
+        raise ExpectFailed(
+            "expect(%s) did not hold in %.0fs"
+            % (params.get("expression"), self._timeout(params)), details)
 
     def op_aria_snapshot(self, params: Dict) -> Any:
         """The accessibility tree, as the injected script builds it.

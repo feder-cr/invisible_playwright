@@ -288,10 +288,14 @@ class InProcessTransport(Transport):
         becomes "Protocol error" by the time a user sees it."""
         if msg_id is None:
             return
-        self.emit_message({
+        out: Dict[str, Any] = {
             "id": msg_id,
             "error": {"error": _error_payload(failure)},
-        })
+        }
+        details = getattr(failure, "details", None)
+        if details is not None:
+            out["errorDetails"] = details
+        self.emit_message(out)
 
 # ── choosing one ────────────────────────────────────────────────────────────
 #
