@@ -18,6 +18,22 @@ import json
 from typing import Any, Dict, List, Optional
 
 
+def _caller_timeout(params: Dict, default_ms: float = 30000) -> Optional[float]:
+    """The caller's timeout off the wire, in seconds; None is no limit.
+
+    Milliseconds on the wire. `0` is no limit in Playwright, and until 0.34.0
+    it was read as `params.get("timeout") or 30000`, in four places, so a
+    `click(timeout=0)` gave up at 30 s and a `launch(timeout=0)` at 60 (B278,
+    B276). Absent, the default the operation has when nobody says.
+    """
+    wanted = params.get("timeout")
+    if wanted == 0:
+        return None
+    if isinstance(wanted, (int, float)) and wanted > 0:
+        return float(wanted) / 1000.0
+    return default_ms / 1000.0
+
+
 def _as_callable(expression: str, argument: Any) -> str:
     """Wrap an expression so it can always be CALLED with the argument.
 

@@ -29,6 +29,7 @@ from invisible_core.juggler._behaviour import (
     PageActs, TypingPersona, plan_hesitation, plan_typing,
 )
 from invisible_core.juggler import actions as actions_mod
+from invisible_core.juggler import deadline as deadline_mod
 from invisible_core.juggler.actions import Actions
 from invisible_core.juggler.keyboard import Keyboard
 
@@ -155,6 +156,8 @@ class _Lifecycle:
 def clock(monkeypatch):
     c = _Clock()
     monkeypatch.setattr(actions_mod, "time", c)
+    # The action's deadline reads the clock in its own module.
+    monkeypatch.setattr(deadline_mod, "time", c)
     return c
 
 

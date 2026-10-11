@@ -23,6 +23,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   time. One deadline now covers the whole startup, a launch past it raises
   `TimeoutError` instead of claiming a refusal, and `timeout=0` means no
   limit, as in Playwright, where it used to mean 60 seconds.
+- **`timeout=0` means no limit.** An action, a wait or a navigation given
+  `timeout=0` gave up after 30 seconds; as in Playwright, it now waits as long
+  as it takes.
 - **A timeout is a `TimeoutError`.** A click on an element that never became
   actionable, or a `wait_for_function` that never became true, raised a plain
   `Error`, so `except TimeoutError` around them caught nothing. They raise

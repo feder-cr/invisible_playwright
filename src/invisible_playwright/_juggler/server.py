@@ -39,6 +39,7 @@ from typing import Any, Dict, List, Optional
 from invisible_core.juggler import PageActs, popup_number
 from invisible_core.juggler import connection as juggler
 from invisible_core.juggler.actions import Actions
+from invisible_core.juggler.deadline import Deadline
 from .dispatcher import Dispatcher, ProtocolException, Server
 from invisible_core.juggler.injected import InjectedScript
 from invisible_core.juggler.keyboard import MODIFIER_MASK
@@ -50,7 +51,8 @@ from invisible_core.juggler.lifecycle import Lifecycle
 # from HERE, and a move that breaks its callers to tidy a file is not a
 # tidy-up. One definition, two names to reach it. (The profile helpers and the
 # `user.js` writer are the core's since 0.30.0, and their tests are there.)
-from ._marshal import (_as_callable, _button, _called_on, _console_text,
+from ._marshal import (_as_callable, _button, _called_on, _caller_timeout,
+                       _console_text,
                        _deserialize, _element_function, _guid_of,
                        _headers_array, _js_string, _location,
                        _resource_type, _serialize, _with_argument)
@@ -754,7 +756,7 @@ class FrameDispatcher(Dispatcher):
         result = self.lifecycle.goto(
             params["url"], frame_id=self.frame_id,
             until=params.get("waitUntil") or "load",
-            timeout=(params.get("timeout") or 30000) / 1000.0)
+            timeout=self._timeout(params))
         # Navigation events come from the engine, not a snapshot taken when
         # goto's lifecycle wait finished: another navigation may follow it.
         # ⛔ `goto` answers with a Response CHANNEL or null, never with a URL.
@@ -900,8 +902,8 @@ class FrameDispatcher(Dispatcher):
             frame = frame.page.frame_for(inner)
             selector = tail
 
-    def _timeout(self, params: Dict) -> float:
-        return (params.get("timeout") or 30000) / 1000.0
+    def _timeout(self, params: Dict) -> Optional[float]:
+        return _caller_timeout(params)
 
     def _pointer(self, params: Dict) -> Dict:
         """`button`, `modifiers` and `clickCount`, read in ONE place.
@@ -1195,7 +1197,7 @@ class FrameDispatcher(Dispatcher):
         real - a polled expression is repeated page-visible work - so the
         interval stays coarse.
         """
-        deadline = time.monotonic() + self._timeout(params)
+        deadline = Deadline(self._timeout(params))
         expression = _with_argument(params)
         while True:
             value = self.injected.evaluate_in_main(self.frame_id,
@@ -1211,7 +1213,7 @@ class FrameDispatcher(Dispatcher):
                 handle = ElementHandleDispatcher(
                     self.server, self, object_id or "", world="main")
                 return {"handle": handle.channel}
-            if time.monotonic() > deadline:
+            if deadline.passed():
                 # A TimeoutError, which the client receives as Playwright's,
                 # as upstream raises for this wait (until 0.34.0 a plain Error).
                 raise TimeoutError(
@@ -2496,7 +2498,7 @@ class PageDispatcher(Dispatcher):
         # which would otherwise be reopened here in a month.
         navigation = self.lifecycle.wait_for_new_navigation(
             frame_id, previous, params.get("waitUntil") or "load",
-            timeout=(params.get("timeout") or 30000) / 1000.0)
+            timeout=_caller_timeout(params))
         return {"response": self.navigation_response(navigation)}
 
     def op_go_back(self, params: Dict) -> Any:
@@ -4171,12 +4173,7 @@ class BrowserTypeDispatcher(Dispatcher):
         # failed with "the engine refused the proxy" while the caller's 60 s
         # still had time. A startup past the deadline is a `ReplyTimeout`,
         # which is a TimeoutError and reaches the client as Playwright's.
-        wanted = params.get("timeout")
-        ready: Optional[float] = 60.0
-        if wanted == 0:
-            ready = None
-        elif isinstance(wanted, (int, float)) and wanted > 0:
-            ready = float(wanted) / 1000.0
+        ready = _caller_timeout(params, default_ms=60000)
         # ⛔ PARSED BEFORE THE BROWSER STARTS, so a proxy we cannot express
         # refuses the launch instead of leaving a process running without one.
         proxy = None

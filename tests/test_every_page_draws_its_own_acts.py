@@ -31,6 +31,7 @@ from invisible_core.juggler._behaviour import (
     TypingPersona, act_nonce, plan_hesitation, plan_typing,
 )
 from invisible_core.juggler import actions as actions_mod
+from invisible_core.juggler import deadline as deadline_mod
 from invisible_core.juggler.connection import EventListeners
 from invisible_playwright._juggler.server import BrowserDispatcher, Server
 
@@ -77,6 +78,8 @@ def _page(browser, number):
 def clock(monkeypatch):
     c = _Clock()
     monkeypatch.setattr(actions_mod, "time", c)
+    # The action's deadline reads the clock in its own module.
+    monkeypatch.setattr(deadline_mod, "time", c)
     return c
 
 
@@ -85,7 +88,8 @@ def _first_acts(actions, clock):
     click, in that order."""
     # From zero every time, so the same pause reads as the same float.
     clock.t = 0.0
-    actions._reach_field("frame", "field", deadline=1e9)
+    actions._reach_field("frame", "field",
+                         deadline=deadline_mod.Deadline(None))
     pause = clock.t
     return {"pause": pause,
             "typing": actions.keyboard._plan("hello"),
