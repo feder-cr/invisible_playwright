@@ -50,7 +50,8 @@ did so on evidence rather than on the code looking finished:
 - The ability to RE-DERIVE three things that were extracted from the bundle.
   All three artefacts are committed and still valid; what is gone is
   regenerating them. `injected.js` (the selector engines, actionability and
-  `expect` that run in the page), `_juggler/keylayout.py`, and the four rules
+  `expect` that run in the page), `keylayout.py` (both in `invisible_core.juggler`
+  since 0.30.0, with their extractors in the core's `scripts/`), and the four rules
   `prefs_byte_parity.py` compares our `user.js` writer against - now frozen in
   `tests/gates/driver_prefs_rules.json` with the sha of the bundle and of the
   exact window they came from.
@@ -79,7 +80,8 @@ They are history now, kept because they say what the fork was for:
 - **Neutralized `_exposeConsoleApi`** and **removed `console.debug`** from the
   injected code, both because a page could observe them. ⛔ Not lost: those
   changes are in `injected.js`, which is extracted, committed, and still what
-  the server injects. `gen_injected_source.py --check` refuses any bundle that
+  the server injects (from `invisible_core.juggler` since 0.30.0). The core's
+  `scripts/gen_injected_source.py --check` refuses any bundle that
   does not carry the `MODIFIED by invisible_playwright` markers, so an upstream
   bundle can never be mistaken for ours.
 

@@ -22,8 +22,10 @@ import threading
 
 import pytest
 
-from invisible_playwright._juggler import connection, dispatcher
-from invisible_playwright._juggler.connection import Connection, TargetClosedError
+from invisible_core.juggler import connection
+
+from invisible_playwright._juggler import dispatcher
+from invisible_core.juggler.connection import Connection, TargetClosedError
 
 
 def _pipes():

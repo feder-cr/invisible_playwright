@@ -32,7 +32,7 @@ import pytest
 
 from invisible_playwright import InvisiblePlaywright
 from invisible_playwright._juggler import server as server_module
-from invisible_playwright._juggler.actions import Actions, ElementNotActionable
+from invisible_core.juggler.actions import Actions, ElementNotActionable
 
 MAIN = "frame-main"
 
@@ -103,11 +103,12 @@ class _Conn:
                                "p2": {"x": 50.0, "y": 20.0},
                                "p3": {"x": 50.0, "y": 30.0},
                                "p4": {"x": 10.0, "y": 30.0}}]}
-        if method == "Page.pointerLanded":
+        if method == "Page.dispatchMouseEvent" and "landsOn" in (params or {}):
             # This engine has a static page: whatever was sent landed. The
-            # landing that MISSES is modelled in test_a_click_is_delivered_once.
-            return {"landings": [{"type": t, "landed": True, "on": ""}
-                                 for t in (params or {}).get("types", [])]}
+            # landing that MISSES is modelled in the core's
+            # test_a_click_is_delivered_once.
+            return {"landing": {"type": params["type"], "landed": True,
+                                "seen": 1, "on": ""}}
         return {}
 
 
@@ -204,7 +205,7 @@ def test_force_skips_the_hit_target_check_too():
 
 def test_without_force_a_covered_element_still_refuses():
     """The control arm for the one above."""
-    from invisible_playwright._juggler.actions import WrongHitTarget
+    from invisible_core.juggler.actions import WrongHitTarget
 
     actions = _actions(hit="<div id='overlay'> intercepts the pointer")
     with pytest.raises(WrongHitTarget, match="overlay"):

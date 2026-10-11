@@ -30,27 +30,26 @@ import base64
 import contextlib
 import os
 import pathlib
-import shutil
 import tempfile
 import threading
 import time
 import warnings
 from typing import Any, Dict, List, Optional
 
-from .._behaviour import PageActs, popup_number
-from . import connection as juggler
-from .actions import Actions
+from invisible_core.juggler import PageActs, popup_number
+from invisible_core.juggler import connection as juggler
+from invisible_core.juggler.actions import Actions
 from .dispatcher import Dispatcher, ProtocolException, Server
-from .injected import InjectedScript
-from .keyboard import MODIFIER_MASK
-from .lifecycle import Lifecycle
+from invisible_core.juggler.injected import InjectedScript
+from invisible_core.juggler.keyboard import MODIFIER_MASK
+from invisible_core.juggler.lifecycle import Lifecycle
 
 # ⛔ RE-EXPORTED ON PURPOSE, not merely imported. These leaf helpers moved out
 # of this file so that the classes below read as one story instead of being
-# interleaved with functions - but `tests/gates/prefs_byte_parity.py` and the
-# transport tests import `_write_user_js`, `_serialize`, `_host_of` and
-# `_domain_matches` from HERE, and a move that breaks its callers to tidy a
-# file is not a tidy-up. One definition, two names to reach it.
+# interleaved with functions - but the transport tests import `_serialize`
+# from HERE, and a move that breaks its callers to tidy a file is not a
+# tidy-up. One definition, two names to reach it. (The profile helpers and the
+# `user.js` writer are the core's since 0.30.0, and their tests are there.)
 from ._marshal import (_as_callable, _button, _called_on, _console_text,
                        _deserialize, _element_function, _guid_of,
                        _headers_array, _js_string, _location,
@@ -60,8 +59,9 @@ from ._marshal import (_as_callable, _button, _called_on, _console_text,
 # the same duplication that produced the defect, one layer down.
 from invisible_core import SessionLocale, parse_proxy
 
-from ._profile import (_domain_matches, _host_of, _only_set,
-                       _read_version, _remove_profile, _write_user_js)
+from invisible_core import write_user_js
+from invisible_core.juggler import (SessionFiles, domain_matches, host_of,
+                                    only_set, read_version, remove_profile)
 
 
 
@@ -1698,7 +1698,7 @@ class RouteDispatcher(Dispatcher):
                           {"errorCode": params.get("errorCode") or "aborted"})
 
     def op_continue(self, params: Dict) -> Any:
-        payload = _only_set({
+        payload = only_set({
             "url": params.get("url"),
             "method": params.get("method"),
             "headers": _headers_array(params.get("headers"))
@@ -1717,7 +1717,7 @@ class RouteDispatcher(Dispatcher):
         if body is not None and not params.get("isBase64"):
             import base64 as _b64
             body = _b64.b64encode(str(body).encode("utf-8")).decode("ascii")
-        return self._send("Network.fulfillInterceptedRequest", _only_set({
+        return self._send("Network.fulfillInterceptedRequest", only_set({
             "status": params.get("status") or 200,
             "statusText": params.get("statusText") or "",
             "headers": _headers_array(params.get("headers")),
@@ -2553,7 +2553,7 @@ class PageDispatcher(Dispatcher):
 
     # ── viewport, media, capture ────────────────────────────────────────────
     def op_set_viewport_size(self, params: Dict) -> Any:
-        self.send("Page.setViewportSize", _only_set(
+        self.send("Page.setViewportSize", only_set(
             {"viewportSize": params.get("viewportSize")}))
         return None
 
@@ -2630,7 +2630,7 @@ class PageDispatcher(Dispatcher):
             else:
                 clip = {"x": box["x"], "y": box["y"],
                         "width": box["width"], "height": box["height"]}
-        result = self.send("Page.screenshot", _only_set({
+        result = self.send("Page.screenshot", only_set({
             "mimeType": "image/jpeg" if params.get("type") == "jpeg"
                         else "image/png",
             "clip": clip,
@@ -3180,9 +3180,18 @@ class BrowserContextDispatcher(Dispatcher):
                 "(pageNumber), reserved by the client at the call; got %r"
                 % (number,))
         browser = self.browser
+        # ⛔ NO BOUND OF ITS OWN on the engine's reply (issue #321). Playwright's
+        # newPage carries no timeout, so the only bound that means anything is
+        # the caller's: a navigation that opens the page, an MCP tool call. A
+        # constant here was shorter than those, and on a loaded host, the
+        # first page after a slow launch failed at 31 s while the navigation
+        # that asked for it still had time (5 such failures in 773 page calls
+        # of a real audit, each one loading normally when repeated). The
+        # reply still ends in one of two ways: the engine answers, or the pipe
+        # closes and the connection raises TargetClosedError at once.
         with browser._asking(self.context_id) as answered:
             result = self.conn.send("Browser.newPage",
-                                    _address(self.context_id, {}), timeout=30)
+                                    _address(self.context_id, {}), timeout=None)
             answered(result["targetId"], number)
         page = browser._wait_for_page(result["targetId"], timeout=60.0)
         return {"page": page.channel}
@@ -3206,9 +3215,9 @@ class BrowserContextDispatcher(Dispatcher):
         cookies = result.get("cookies") or []
         urls = params.get("urls") or []
         if urls:
-            wanted = [_host_of(u) for u in urls]
+            wanted = [host_of(u) for u in urls]
             cookies = [c for c in cookies
-                       if any(_domain_matches(c.get("domain") or "", h)
+                       if any(domain_matches(c.get("domain") or "", h)
                               for h in wanted)]
         return {"cookies": cookies}
 
@@ -3805,7 +3814,12 @@ class BrowserDispatcher(Dispatcher):
         result = self.conn.send("Browser.createBrowserContext",
                                 {"removeOnDetach": True}, timeout=30)
         context_id = result["browserContextId"]
-        self._apply_context_options(context_id, params)
+        try:
+            self._apply_context_options(context_id, params)
+        except BaseException:
+            self.conn.send("Browser.removeBrowserContext",
+                           {"browserContextId": context_id}, timeout=30)
+            raise
         context = BrowserContextDispatcher(self.server, self, params,
                                            context_id)
         self.contexts.append(context)
@@ -3827,24 +3841,23 @@ class BrowserDispatcher(Dispatcher):
         explicitly asks to express no preference silently keeps whatever the
         profile declared - the one case where the caller was most explicit.
         """
-        # ⛔ `service_workers="block"` REFUSES, because both ways to honour it
-        # are worse than saying no. Playwright's server does it with an init
-        # script that replaces `navigator.serviceWorker.register` with a page
-        # function whose source reads "blocked by Playwright": any page that
-        # calls `toString()` on it, or lists the container's own properties,
-        # reads the automation by name. The engine-wide alternative,
-        # `dom.serviceWorkers.enabled=false`, switches off request
-        # interception with it (see `require_interception`). Ignoring the
-        # option, as this server did until now, tells a caller that service
-        # workers are blocked while a page's own worker keeps answering
-        # requests no route ever sees.
+        # `service_workers="block"` is the ENGINE's switch for this context
+        # (`Browser.setServiceWorkersBlocked`, firefox-37). Playwright's own
+        # server honours it with an init script that replaces
+        # `navigator.serviceWorker.register` by a page function whose source
+        # reads "blocked by Playwright", which any page can read back; the
+        # engine-wide `dom.serviceWorkers.enabled=false` switches off request
+        # interception with it. The engine blocks the worker's script load,
+        # removes the context's saved registrations before replying, and keeps
+        # every page request in front of `route()`.
+        #
+        # ⛔ NO PROBE OF THE ENGINE. The package pins one engine through the
+        # core's seal, and that engine has the command; a build without it is
+        # an engine mismatch, refused at launch, not a case to detect here by
+        # reading the text of an error.
         if params.get("serviceWorkers") == "block":
-            raise ProtocolException(
-                "service_workers=\"block\" is not supported: Playwright blocks "
-                "them with a page script that any page can read back, and "
-                "this engine has no switch for one context. Leave it out: "
-                "route() holds requests with service workers allowed, except "
-                "the ones a page's own service worker answers")
+            self._context_send("Browser.setServiceWorkersBlocked", {
+                "browserContextId": context_id, "blocked": True}, timeout=30)
         for name, command, field in self.ENGINE_OPTIONS:
             value = params.get(name)
             if value in (None, ""):
@@ -4047,8 +4060,13 @@ class BrowserTypeDispatcher(Dispatcher):
                 "would be a temporary directory")
         browser_channel = self.op_launch(dict(params, userDataDir=directory))
         browser = self.server.object(browser_channel["browser"]["guid"])
+        try:
+            context = browser.op_default_context(params)["context"]
+        except BaseException:
+            browser.op_close({})
+            raise
         return {"browser": browser_channel["browser"],
-                "context": browser.op_default_context(params)["context"]}
+                "context": context}
 
     def op_launch(self, params: Dict) -> Any:
         executable = params.get("executablePath")
@@ -4080,20 +4098,22 @@ class BrowserTypeDispatcher(Dispatcher):
         # Only `GDK_BACKEND=x11` kept it off the real desktop. The driver's
         # semantics are the same as this: a given `env` is the environment the
         # browser gets, not a patch on top of the driver's own.
-        env = _launch_environment(params.get("env"))
         # ⛔ WHO MAKES THE PROFILE TAKES IT AWAY - AND ONLY THAT ONE. The
         # caller's `userDataDir` is theirs and survives the session by
-        # definition; a directory we invented is ours and must not.
+        # definition; a directory we invented is ours and must not. The
+        # browser's temporary directory is always ours. Both are
+        # `SessionFiles`, the core's one account of a session's directories,
+        # whose `remove()` ends the browser's children first (B223, B267).
         #
-        # Measured on 2026-08-28, after one day of development: 136 leftover
-        # `invisible_profile_*` directories, **5,0 GB**. Nothing failed, nothing
-        # warned - a Firefox profile is a few dozen megabytes and the disk just
-        # goes. The project already has the same defect recorded for
-        # Playwright's own throwaway profiles, 7.308 directories accumulated
-        # over seven months, and this reproduced it in hours.
-        ours = params.get("userDataDir") is None
-        profile = params.get("userDataDir") or tempfile.mkdtemp(
-            prefix="invisible_profile_")
+        # ⛔ REGISTERED THE MOMENT THEY EXIST, and after the hooks, not as one:
+        # a launch that fails, or a proxy the engine refuses, returns through a
+        # raise, and until B223 the removal was registered only after both, so
+        # those sessions kept their profile. `after_shutdown` runs once
+        # `conn.close` has waited for the browser to exit.
+        files = SessionFiles(params.get("userDataDir"),
+                             _launch_environment(params.get("env")))
+        self.server.after_shutdown(files.remove)
+        env, profile = files.env, files.profile
         # ⛔ THE TYPING SEED TRAVELS IN THE PREFS AND IS TAKEN OUT AGAIN HERE,
         # before a single byte reaches the profile.
         #
@@ -4109,7 +4129,7 @@ class BrowserTypeDispatcher(Dispatcher):
         # answered in Python.
         prefs, session_seed, motion_budget_s = take_session_motion(
             params.get("firefoxUserPrefs") or {})
-        _write_user_js(profile, prefs)
+        write_user_js(profile, prefs)
         # ⛔ THE CALLER'S TIMEOUT, not ours. `launch(timeout=)` is a
         # documented option and this server ignored it, so a caller who
         # shortened it waited the full built-in 60 s anyway - and one who
@@ -4150,14 +4170,7 @@ class BrowserTypeDispatcher(Dispatcher):
                 raise ProtocolException(
                     "the engine refused the proxy, so the browser was closed "
                     "rather than left running without one: %s" % exc)
-        if ours:
-            # ⛔ AFTER `conn.close`, and the order is the point: the hooks run
-            # in reverse, so this one runs LAST - the browser is already gone
-            # and no longer holds a lock on the profile. Removing it first
-            # fails on Windows and fails SILENTLY, because the hook runner
-            # swallows one hook's failure so it cannot stop the others.
-            self.server.on_shutdown(lambda: _remove_profile(profile))
-        version = _read_version(executable)
+        version = read_version(executable)
         browser = BrowserDispatcher(
             self.server, self, conn, version, session_seed=session_seed,
             motion_budget_s=motion_budget_s,
@@ -4230,7 +4243,7 @@ class JugglerServer(Server):
         if root is None:
             root = tempfile.mkdtemp(prefix="invisible_upload_")
             self._upload_root = root
-            self.on_shutdown(lambda: shutil.rmtree(root, ignore_errors=True))
+            self.after_shutdown(lambda: remove_profile(root))
         path = os.path.join(tempfile.mkdtemp(dir=root), name)
         with open(path, "wb") as out:
             out.write(base64.b64decode(payload.get("buffer") or ""))
@@ -4255,7 +4268,6 @@ class JugglerServer(Server):
                          "utils": utils.channel},
             guid="Playwright")
         return {"playwright": playwright.channel}
-
 
 
 

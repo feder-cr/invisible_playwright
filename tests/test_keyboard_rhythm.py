@@ -12,8 +12,8 @@ import statistics
 
 import pytest
 
-from invisible_playwright._behaviour import PageActs, TypingPersona
-from invisible_playwright._juggler.keyboard import Keyboard
+from invisible_core.juggler._behaviour import PageActs, TypingPersona
+from invisible_core.juggler.keyboard import Keyboard
 
 
 class _Conn:
@@ -29,7 +29,7 @@ class _Conn:
 def slept(monkeypatch):
     """Every sleep the keyboard asks for, in SECONDS, without taking any."""
     taken: list = []
-    monkeypatch.setattr("invisible_playwright._juggler.keyboard.time.sleep",
+    monkeypatch.setattr("invisible_core.juggler.keyboard.time.sleep",
                         taken.append)
     return taken
 
@@ -125,7 +125,7 @@ def test_the_rhythm_is_the_seeds_and_not_a_constant():
     def medians(seed):
         taken: list = []
         k = Keyboard(_Conn(), "s", TypingPersona.from_seed(seed), acts=PageActs())
-        import invisible_playwright._juggler.keyboard as mod
+        import invisible_core.juggler.keyboard as mod
         real, mod.time.sleep = mod.time.sleep, taken.append
         try:
             for _ in range(40):

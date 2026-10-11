@@ -6,15 +6,147 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-## [0.27.1] - 2026-10-08
+## [0.33.1] - 2026-10-11
 
 ### Fixed
+- **A new page waits for the browser as long as the caller does.** Opening a
+  page gave the browser a fixed 30 seconds to answer, shorter than the caller's
+  own bound: on a loaded machine, right after a slow launch, the first page of
+  a session (and so the first navigation of an MCP session) failed at 31
+  seconds and worked when repeated (#321). The wait now ends when the browser
+  answers or when it is gone.
 - **A request's `resource_type` says what it is.** Juggler sends a request's
   `cause` as an `nsIContentPolicy` constant name (`TYPE_DOCUMENT`,
   `TYPE_XMLHTTPREQUEST`, `TYPE_FETCH`), and the table it was looked up in was
   keyed by `document`, `xmlhttprequest`, `fetch`, so nothing matched and every
   request reported `other`. The lookup now uses the Playwright driver's own
-  table, `internalCause` first so an EventSource reports `eventsource`.
+  table, `internalCause` first so an EventSource reports `eventsource`
+  (#305, by richardpowellus).
+
+## [0.33.0] - 2026-10-11
+
+### Fixed
+- **The shutdown pings leave by the session's proxy.** At the end of a session
+  longer than a minute, Firefox posts its shutdown telemetry from a separate
+  process. That process took its network settings from the machine, so a
+  session behind a SOCKS5 or HTTP proxy sent those pings from the machine's own
+  address. With the firefox-40 engine (invisible-core 40.35.0) they go through
+  the same proxy as the session, or directly when the session has none, and the
+  session waits for them to finish before it removes its files: closing a long
+  session takes about a second more.
+
+## [0.32.0] - 2026-10-10
+
+### Fixed
+- **A session no longer leaves its temporary profile behind.** On Windows a
+  session longer than a minute left an `invisible_profile_*` directory in
+  `%TEMP%`, holding an empty `saved-telemetry-pings`. The profile was removed
+  before the browser was closed, and, once that order was right, while the
+  `pingsender.exe` the browser starts at exit still held a file in it. The
+  session's directories (the core's `SessionFiles`) are now removed after
+  every process of the session has ended, a launch that fails or a proxy the
+  engine refuses no longer keeps its profile, and a new session sweeps what a
+  killed one left.
+- **The browser's temporary files go with the session.** Firefox wrote into
+  the system temporary directory, and a short session cut off its cleanup: a
+  70 s session left two 4 MB certificate bundles in `%TEMP%`. The browser now
+  gets a temporary directory of its own, inside this process's, removed with
+  the profile.
+- **Characters that need Shift are typed with Shift.** `@`, `!` and capital
+  letters reached the page with `shiftKey` false and no Shift keydown, a
+  combination no keyboard produces; with Shift held by hand, pressing `2` wrote
+  `2`. They are typed with Shift down now, timed by the session's hand
+  (invisible-core 39.35.0).
+- **A pause before every click.** The press came one protocol round trip after
+  the pointer arrived, where a hand waits a moment. The session's hand now
+  pauses at the end of the approach, before the button goes down.
+
+## [0.31.0] - 2026-10-10
+
+### Fixed
+- **A pointer call answers once the page has handled its event.** With the
+  firefox-39 engine, `page.mouse.move`, `down`, `up` and `click`, and every
+  element action, return after the page's listeners have run, so the next
+  call - a script evaluation, a scroll - can no longer reach the page first.
+  It used to answer when the event was handed over: under load a press could be
+  judged after a scroll sent later, and a short drag lost its drop.
+- **A right click no longer waits for an acknowledgement that never came**
+  (part of the same engine change).
+
+## [0.30.0] - 2026-10-09
+
+### Changed
+- **The Juggler client this package drives the browser with now lives in
+  `invisible-core`** (38.34.0, `invisible_core.juggler`), shared with
+  invisible-selenium and invisible-puppeteer instead of copied into each. It
+  is the same client: the same seed still draws the same pointer paths, typing
+  rhythm and persona cookies (the core pins a digest of what the three former
+  copies of the seed mixer answered). `invisible_playwright._juggler` keeps
+  the Playwright server.
+- **A `firefoxUserPrefs` value that is not a bool, an int, a float or a
+  string is refused** with a `TypeError` naming the pref. It used to be
+  written as its text (`None` became the string `"None"`), a pref nobody
+  asked for.
+
+### Removed
+- **The private modules of the client**: `_behaviour`, `_motion`, `_pacing`
+  and, under `_juggler`, `connection`, `protocol`, `lifecycle`, `injected`,
+  `actions`, `keyboard`, `keylayout` and `_profile`. Their public names are
+  in `invisible_core.juggler`.
+
+## [0.29.0] - 2026-10-09
+
+### Changed
+- **The window a page reads is the one Windows Firefox draws.** With
+  `invisible-core` 38.33.0 and the firefox-38 engine. A maximized window now
+  answers `screenX` -8 and an `outerWidth` 16 wider than `screen.availWidth`
+  at 100%, as Windows Firefox does (it sits the invisible resize border off
+  the screen), where it answered 0 and the work area. Its content starts where
+  retail's does at every display scale (`mozInnerScreenY` 85.6 at 125%). A
+  popup answers its own `outerWidth`, `outerHeight`, `screenX` and `screenY`
+  instead of the main window's, and one opened without a position is placed
+  where Windows Firefox places it. The frame is measured on Windows Firefox
+  151 at the four display scales the personas use.
+
+### Removed
+- **The pins `screen.chrome_w`, `screen.chrome_h`, `screen.window_x` and
+  `screen.window_y`.** The window is no longer four numbers: it follows
+  `screen.dpr`, which takes 1, 1.25, 1.5 or 2, and another value is refused.
+
+## [0.28.0] - 2026-10-09
+
+### Changed
+- **`service_workers="block"` works per context inside the engine.** With
+  `invisible-core` 37.33.0 and the firefox-37 engine,
+  `new_context(service_workers="block")` and
+  `launch_persistent_context(..., service_workers="block")` turn service
+  workers off for that context through the engine
+  (`Browser.setServiceWorkersBlocked`, contributed by Richard Powell in
+  firefox_antidetect_patch#15 and #299 here). No page script and no global
+  preference are involved, and `route()` still sees every page request. On a
+  persistent profile, turning the block on removes the service workers that
+  profile had saved. A context whose options fail is removed, and a
+  persistent launch whose context fails closes the browser.
+- **The screen a page reads is in CSS pixels.** A 1920x1080 panel at 125%
+  reports `screen.width` 1536 and `screen.height` 864, as Firefox on that
+  monitor does. Before, it reported the panel's device pixels. The default
+  viewport is derived the same way.
+
+### Fixed
+- **On Linux the virtual display keeps X access control on.** The Xvfb
+  display opened for a headed session without a screen used to run with
+  access control off (`-ac`), so any local process could connect to it and
+  read or drive the browser window. It now gets a private session cookie,
+  handed only to the browser, and removed when the session stops.
+- **An empty request header survives a route.** A header with an empty value
+  went out without a route and was dropped when a route continued the
+  request (firefox-37).
+- **A glide to where the pointer already is sends nothing** instead of
+  raising.
+
+### Added
+- `docs/differences-from-playwright.md`: every place this package
+  deliberately behaves differently from Playwright, and why.
 
 ## [0.27.0] - 2026-10-06
 

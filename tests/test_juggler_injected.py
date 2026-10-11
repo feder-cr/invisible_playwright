@@ -14,7 +14,7 @@ import time
 
 import pytest
 
-from invisible_playwright._juggler import injected as ini
+from invisible_core.juggler import injected as ini
 
 PAGE = b"""<!doctype html><html><head><title>actionable</title></head><body>
 <h1 id=title>hello world</h1>
@@ -46,8 +46,8 @@ def _open(binary, body):
     """Launches, navigates, and returns (connection, lifecycle, injected,
     frame, close)."""
     from invisible_core.launch import build_launch_plan
-    from invisible_playwright._juggler import connection as conn
-    from invisible_playwright._juggler.lifecycle import Lifecycle
+    from invisible_core.juggler import connection as conn
+    from invisible_core.juggler.lifecycle import Lifecycle
 
     profile_dir = tempfile.mkdtemp(prefix="inj_test_")
     plan = build_launch_plan(5, profile_dir=profile_dir, binary_path=binary, timezone="UTC",

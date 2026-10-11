@@ -28,7 +28,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from invisible_playwright._juggler.connection import EventListeners
+from invisible_core.juggler.connection import EventListeners
 
 PAGE = b"""<!doctype html><html><head><title>screencast</title>
 <style>html,body{margin:0;background:#FF00FF;height:100%}</style>

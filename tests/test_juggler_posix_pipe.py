@@ -71,9 +71,9 @@ def served():
 
 @pytest.mark.e2e
 def test_the_posix_pipe_carries_messages_both_ways(firefox_binary, served):
-    from invisible_playwright._juggler import connection as conn
-    from invisible_playwright._juggler.injected import InjectedScript
-    from invisible_playwright._juggler.lifecycle import Lifecycle
+    from invisible_core.juggler import connection as conn
+    from invisible_core.juggler.injected import InjectedScript
+    from invisible_core.juggler.lifecycle import Lifecycle
 
     profile = tempfile.mkdtemp(prefix="posix_pipe_")
     c = conn.launch(str(firefox_binary), profile, headless=True)
@@ -121,7 +121,7 @@ def test_the_spawn_keeps_the_two_hardwired_descriptors():
     """
     import inspect
 
-    from invisible_playwright._juggler import connection as conn
+    from invisible_core.juggler import connection as conn
 
     source = inspect.getsource(conn._spawn_posix)
     assert "pass_fds=(its_read, its_write, 3, 4)" in source, (

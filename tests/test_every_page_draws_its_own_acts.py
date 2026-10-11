@@ -27,11 +27,11 @@ import threading
 
 import pytest
 
-from invisible_playwright._behaviour import (
+from invisible_core.juggler._behaviour import (
     TypingPersona, act_nonce, plan_hesitation, plan_typing,
 )
-from invisible_playwright._juggler import actions as actions_mod
-from invisible_playwright._juggler.connection import EventListeners
+from invisible_core.juggler import actions as actions_mod
+from invisible_core.juggler.connection import EventListeners
 from invisible_playwright._juggler.server import BrowserDispatcher, Server
 
 SEED = 106

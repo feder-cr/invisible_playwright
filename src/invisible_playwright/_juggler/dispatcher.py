@@ -38,7 +38,7 @@ from typing import Any, Callable, Dict, Optional
 from . import perimeter
 # One class for a target that is gone, raised here for a disposed object and
 # by the connection for a closed pipe. Defined there, the lower layer.
-from .connection import TargetClosedError  # noqa: F401 - re-exported on purpose
+from invisible_core.juggler.connection import TargetClosedError  # noqa: F401 - re-exported on purpose
 
 
 
@@ -164,6 +164,8 @@ class Server:
         #: registered for it here: it is only ever a PARENT.
         self.root_guid = ""
         self._on_shutdown: list = []
+        #: What `shutdown` runs after every hook. See `after_shutdown`.
+        self._after_shutdown: list = []
         #: guid -> the live impl-side object for it, or None until a
         #: transport binds it. See `bind_twins`.
         self._twins: Optional[Dict[str, Any]] = None
@@ -268,6 +270,21 @@ class Server:
     def on_shutdown(self, hook: Callable[[], None]) -> None:
         self._on_shutdown.append(hook)
 
+    def after_shutdown(self, step: Callable[[], None]) -> None:
+        """Run ``step`` when the session ends, after every hook, in the order
+        registered.
+
+        ⛔ FOR WHAT THE BROWSER READS, and that is why it is not a hook: the
+        hooks run in reverse, and the browser is the reader of the session's
+        files. The profile is made BEFORE the browser starts and the upload
+        directory after it, so as hooks the profile went while the browser
+        still ran - and the comment beside it said the opposite (B223,
+        measured on Windows: 6,091 profiles left in one %TEMP%). A step here
+        runs once nothing registered as a hook is running any more, whenever
+        it was registered.
+        """
+        self._after_shutdown.append(step)
+
     def shutdown(self) -> None:
         for hook in reversed(self._on_shutdown):
             try:
@@ -278,6 +295,12 @@ class Server:
                 # here is a process nobody will ever kill.
                 pass
         self._on_shutdown.clear()
+        for step in self._after_shutdown:
+            try:
+                step()
+            except Exception:
+                pass
+        self._after_shutdown.clear()
 
     # ── the entry point ─────────────────────────────────────────────────────
     def handle(self, message: Dict) -> Any:

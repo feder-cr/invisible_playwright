@@ -33,9 +33,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from invisible_playwright._behaviour import popup_number
+from invisible_core.juggler._behaviour import popup_number
 from invisible_playwright._juggler import server as srv
-from invisible_playwright._juggler.connection import EventListeners
+from invisible_core.juggler.connection import EventListeners
 from invisible_playwright._juggler.server import (
     BrowserContextDispatcher, BrowserDispatcher, Server,
 )

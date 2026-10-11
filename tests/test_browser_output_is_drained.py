@@ -18,7 +18,7 @@ import time
 
 import pytest
 
-from invisible_playwright._juggler.connection import (
+from invisible_core.juggler.connection import (
     Connection, ProcessOutput, TargetClosedError, _READY)
 
 

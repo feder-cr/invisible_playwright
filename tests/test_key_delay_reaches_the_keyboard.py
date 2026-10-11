@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 
 from invisible_playwright._juggler import server as server_module
-from invisible_playwright._juggler.actions import Actions
+from invisible_core.juggler.actions import Actions
 from invisible_playwright._juggler.server import ElementHandleDispatcher, FrameDispatcher
 
 

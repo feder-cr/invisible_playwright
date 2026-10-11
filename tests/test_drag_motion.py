@@ -30,10 +30,10 @@ from __future__ import annotations
 
 import pytest
 
-from invisible_playwright import _pacing
-from invisible_playwright._behaviour import PageActs
-from invisible_playwright._juggler.actions import Actions
-from invisible_playwright._juggler.keyboard import BUTTON_MASK
+from invisible_core.juggler import _pacing
+from invisible_core.juggler._behaviour import PageActs
+from invisible_core.juggler.actions import Actions
+from invisible_core.juggler.keyboard import BUTTON_MASK
 
 pytestmark = pytest.mark.unit
 
@@ -99,20 +99,16 @@ class _Lifecycle:
 
 
 def _actions(seed=42, budget_s=None, viewport=(None, None)):
-    a = Actions.__new__(Actions)
-    a.c = _Conn()
-    a.session = "session"
+    # ⛔ THROUGH THE CONSTRUCTOR. This helper used to assemble an `Actions`
+    # with `__new__` and set its fields by hand, so every field the core added
+    # (`pointer_persona`, read before a press since invisible-core 39.35.0)
+    # broke it with an AttributeError that said nothing about drags. The
+    # constructor draws the motion from `sub_seed(seed, "server:drag")`, the
+    # stream this helper used to build itself.
+    a = Actions(_Conn(), "session", _Lifecycle(), _Injected(*viewport),
+                acts=PageActs(), session_seed=seed, motion_budget_s=budget_s)
     a.keyboard = _Keyboard()
     a.position = (0.0, 0.0)
-    a.motion = None
-    a.acts = PageActs()
-    a.motion_budget_s = budget_s
-    a.inj = _Injected(*viewport)
-    a.lifecycle = _Lifecycle()
-    if seed is not None:
-        from invisible_playwright._behaviour import _sub_seed
-        from invisible_playwright._motion import CursorMotion
-        a.motion = CursorMotion(_sub_seed(seed, "server:drag"))
     return a
 
 
@@ -185,6 +181,16 @@ def test_the_path_ends_exactly_where_it_was_asked_to(instant):
     a._glide((600.0, 400.0))
     assert _moves(a)[-1] == (600.0, 400.0)
     assert a.position == (600.0, 400.0)
+
+
+def test_a_glide_to_where_the_pointer_already_is_sends_nothing(instant):
+    """Known-bad: a path from a point to itself is the start alone, `path[1:]`
+    is empty, and `path[-1]` raised IndexError - a drag released where it was
+    pressed killed the action. Nothing moves, so nothing is sent."""
+    a = _actions()
+    a.position = (300.0, 200.0)
+    assert a._glide((300.0, 200.0)) == 0
+    assert _moves(a) == []
 
 
 def test_the_travel_carries_the_button_down(instant):

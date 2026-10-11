@@ -1,8 +1,11 @@
 import faulthandler
+import http.server
 import os
 import random
+import socketserver
 import sys
 import tempfile
+import threading
 from pathlib import Path
 
 import pytest
@@ -158,3 +161,83 @@ def firefox_binary():
             "set INVPW_BINARY_PATH=<firefox binary> or run `invisible-playwright fetch`"
         )
     return str(entry)
+
+
+# ---------------------------------------------------------------------------
+# Local HTTP fixture server - service workers need a real http(s) origin
+# (data: and about:blank are opaque-origin, no SW registration possible).
+# It lives here because two modules use it (test_service_worker.py and
+# test_service_worker_controller_e2e.py, which needs its own module for a
+# fresh browser per case): importing a fixture from another test module is
+# what ruff reports as F811.
+# ---------------------------------------------------------------------------
+
+
+class _SWFixtureHandler(http.server.BaseHTTPRequestHandler):
+    """Serves a tiny set of routes for SW lifecycle testing."""
+
+    PAGES = {
+        "/": (200, "text/html", b"""<!doctype html>
+<html><head><title>sw-host</title></head>
+<body>
+<script>
+window.__swState = 'loading';
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js')
+        .then(reg => { window.__swState = 'registered'; })
+        .catch(err => { window.__swState = 'failed:' + err.message; });
+} else {
+    window.__swState = 'unsupported';
+}
+</script>
+</body></html>
+"""),
+        "/sw.js": (200, "application/javascript", b"""
+self.addEventListener('install', e => self.skipWaiting());
+self.addEventListener('activate', e => e.waitUntil(clients.claim()));
+self.addEventListener('fetch', e => {
+    if (e.request.url.endsWith('/from-sw')) {
+        e.respondWith(new Response('hello from SW', {
+            headers: {'content-type': 'text/plain'},
+        }));
+    }
+    // Fall through for everything else - exercises the
+    // interceptAfterServiceWorkerResets path that was broken pre-firefox-6.
+});
+"""),
+        "/from-sw": (200, "text/plain", b"network-fallback"),
+        "/from-network": (200, "text/plain", b"net-only"),
+    }
+
+    def do_GET(self):
+        path = self.path.split("?", 1)[0]
+        if path in self.PAGES:
+            status, ctype, body = self.PAGES[path]
+            self.send_response(status)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            # SW requires HTTPS or localhost - we're on localhost so plain http is fine
+            self.send_header("Service-Worker-Allowed", "/")
+            self.end_headers()
+            self.wfile.write(body)
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def log_message(self, *args, **kwargs):
+        pass  # silence stdout
+
+
+@pytest.fixture(scope="module")
+def fixture_server():
+    """Spin up a localhost HTTP server with SW-friendly headers. Yields
+    the base URL (e.g., 'http://127.0.0.1:54321')."""
+    httpd = socketserver.TCPServer(("127.0.0.1", 0), _SWFixtureHandler)
+    port = httpd.server_address[1]
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{port}"
+    finally:
+        httpd.shutdown()
+        httpd.server_close()

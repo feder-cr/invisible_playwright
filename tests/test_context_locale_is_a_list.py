@@ -20,7 +20,7 @@ import pathlib
 import pytest
 
 from invisible_core import SessionGeo, SessionLocale, decide_session_locale
-from invisible_playwright._juggler.connection import EventListeners
+from invisible_core.juggler.connection import EventListeners
 from invisible_playwright._juggler.server import BrowserDispatcher, Server
 
 _PKG_DIR = pathlib.Path(__file__).resolve().parent.parent / "src" / "invisible_playwright"

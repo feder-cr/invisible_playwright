@@ -29,7 +29,7 @@ from ._engine import resolve_executable
 from ._juggler.server import MOTION_BUDGET_PREF, SESSION_SEED_PREF
 from typing import Any, Dict, Optional
 
-from invisible_core import compose_session_prefs, make_virtual_display
+from invisible_core import compose_session_prefs, context_geometry, make_virtual_display
 from invisible_core.launch import (FontManifestMismatch,
                                    build_launch_env,
                                    cached_font_manifest_path,
@@ -416,13 +416,12 @@ class CommonLaunch:
         return False
 
     def _default_context_kwargs(self) -> Dict[str, Any]:
-        p = self._profile
+        # The screen and viewport in CSS pixels, derived once in the core:
+        # the profile's screen is the PANEL, and until wrapper 0.28.0 the
+        # panel's device pixels went out here as CSS (screen.width 1920 at
+        # DPR 1.25).
         kwargs: Dict[str, Any] = {
-            "viewport":            {"width":  p.screen.width  - p.screen.chrome_w,
-                                     "height": (p.screen.height
-                                                - p.screen.taskbar_px
-                                                - p.screen.chrome_h)},
-            "screen":              {"width": p.screen.width, "height": p.screen.height},
+            **context_geometry(self._profile),
             # ⛔ device_scale_factor and color_scheme are NO LONGER passed.
             # They were a second source for two facts invisible_core already
             # declares (layout.css.devPixelsPerPx and, since 2026-08-24,

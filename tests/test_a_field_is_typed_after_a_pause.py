@@ -25,12 +25,12 @@ import time
 import pytest
 
 import invisible_playwright
-from invisible_playwright._behaviour import (
+from invisible_core.juggler._behaviour import (
     PageActs, TypingPersona, plan_hesitation, plan_typing,
 )
-from invisible_playwright._juggler import actions as actions_mod
-from invisible_playwright._juggler.actions import Actions
-from invisible_playwright._juggler.keyboard import Keyboard
+from invisible_core.juggler import actions as actions_mod
+from invisible_core.juggler.actions import Actions
+from invisible_core.juggler.keyboard import Keyboard
 
 MAIN = "frame-main"
 SEED = 4242
@@ -56,9 +56,13 @@ def test_the_spread_of_a_hesitation_is_a_field_of_the_persona():
 
 def test_adding_the_spread_moved_no_other_field():
     """Drawn LAST from the persona's stream, so a seed keeps the hand it had.
-    The values are the ones 0.25.8 drew for this seed before the field existed."""
+    The values are the ones 0.25.8 drew for this seed before the field existed.
+
+    ⛔ THE FIRST TEN, BY COUNT: this read "all but the last" while the spread
+    was the last field, and the Shift timing appended after it in
+    invisible-core 39.35.0 made "all but the last" a different set."""
     p = TypingPersona.from_seed(SEED)
-    assert dataclasses.astuple(p)[:-1] == pytest.approx((
+    assert dataclasses.astuple(p)[:10] == pytest.approx((
         4242, 117.29778153862051, 0.23549162197369367, 179.8827637123419,
         0.378474916075495, 0.8051275040073749, 1.2122088235761808,
         1.3267310852314942, 0.024756001244626846, 1039.740068421786))

@@ -157,14 +157,16 @@ def wire(monkeypatch):
     """The pointer's conversation with the engine, kept for the failure
     report: a click that went to the wrong place is diagnosed from the quads it
     was aimed at and the landings the engine reported, not from the page."""
-    from invisible_playwright._juggler.connection import Connection
+    from invisible_core.juggler.connection import Connection
 
     seen = []
     send = Connection.send
 
     def record(self, method, params=None, **kwargs):
         answer = send(self, method, params, **kwargs)
-        if method in ("Page.getContentQuads", "Page.pointerLanded") or (
+        # The landings come back with the press and the release themselves
+        # (`landsOn`, firefox-39), so their answers carry them. [B230]
+        if method == "Page.getContentQuads" or (
             method == "Page.dispatchMouseEvent" and params["type"] != "mousemove"
         ):
             seen.append({"method": method, "params": params, "answer": answer})
@@ -506,7 +508,9 @@ def _offset_number_component(mode):
 @pytest.mark.e2e
 @pytest.mark.parametrize("dpr,mode,nested,humanize", [
     (1, "document", False, False),
-    (1.2, "closed", True, True),
+    # 1.2 was here until core 38: the persona scales are 1, 1.25, 1.5 and 2,
+    # the ones the window frame is measured at, and the core refuses any other.
+    (1.5, "closed", True, True),
     (1.25, "open", True, True),
     (1.25, "document", False, True),
     (1.5, "document", True, True),
@@ -518,13 +522,20 @@ def test_pointer_at_large_offset_with_dpr(firefox_binary, nested_origins, wire,
                                           dpr, mode, nested, humanize):
     """A device scale (`screen.dpr`) is not a page zoom: Playwright's
     coordinates stay CSS pixels and nothing here multiplies them. A fractional
-    scale at an x past 1200 is where a rounding in the frame shift would show."""
+    scale at an x past 1200 is where a rounding in the frame shift would show.
+
+    The panel is pinned at 1920 x 1080 CSS pixels for every scale, i.e. a
+    device panel of 1920*dpr: `screen.width` is the panel, and since core
+    37.33.0 a page reads it divided by the scale, as a real Firefox does. With
+    a 1920 panel at 150% the viewport is 1280 wide and the input at x 1240-1433
+    would sit outside it, which is a different test."""
     from invisible_playwright import InvisiblePlaywright
 
     with InvisiblePlaywright(
         seed=20260929, binary_path=firefox_binary, humanize=humanize, headless=True,
         timezone="America/Chicago", locale="en-US",
-        pin={"screen.dpr": dpr, "screen.width": 1920, "screen.height": 1080},
+        pin={"screen.dpr": dpr, "screen.width": round(1920 * dpr),
+             "screen.height": round(1080 * dpr)},
     ) as browser:
         page = _timed(browser.new_context().new_page())
         path = "/dpr-top-" if nested else "/dpr-"

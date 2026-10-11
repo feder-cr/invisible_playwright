@@ -21,7 +21,7 @@ from __future__ import annotations
 import pytest
 
 from invisible_playwright._juggler.server import BrowserDispatcher, Server
-from invisible_playwright._juggler.connection import EventListeners
+from invisible_core.juggler.connection import EventListeners
 
 
 class FakeConnection(EventListeners):

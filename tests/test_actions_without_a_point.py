@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import pytest
 
-from invisible_playwright._juggler.actions import Actions, ElementNotActionable
+from invisible_core.juggler.actions import Actions, ElementNotActionable
 
 MAIN = "frame-main"
 

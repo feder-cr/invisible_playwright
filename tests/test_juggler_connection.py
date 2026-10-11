@@ -1,6 +1,9 @@
 """The Juggler connection in Python: talks to the binary without Node in
 between.
 
+The mirror's own tests, which need no browser, are the core's
+(`tests/test_juggler_protocol_mirror.py`) since 0.30.0, with the client.
+
 ⛔ It is marked `e2e` because it launches a real browser. There is no point
 testing it any other way: what has to be shown is that the PIPE connects
 and that the browser responds, and neither of those two things can be
@@ -12,83 +15,7 @@ import tempfile
 
 import pytest
 
-from invisible_playwright._juggler import connection as conn
-from invisible_playwright._juggler.protocol import COMMANDS, EVENTS
-
-
-# ── without a browser ───────────────────────────────────────────────────────
-
-def test_the_generated_protocol_has_the_five_domains():
-    """If the generator ingests a wrong Protocol.js, the count moves."""
-    domains = {n.split(".")[0] for n in COMMANDS}
-    assert domains == {"Browser", "Page", "Network", "Runtime", "Heap"}
-    # ⛔ THESE TWO NUMBERS WERE 71 AND 34 WHILE THE PINNED ENGINE ALREADY
-    # DECLARED 75 AND 35, and this test was green the whole time: it fixes
-    # the count of the mirror, not the mirror's agreement with the engine, so
-    # a mirror that stops being regenerated stays "right" forever. The four
-    # commands it lacked (`Network.getResponseBody`, the three screencast
-    # ones) and the one event were shipped by the engine and never mirrored.
-    # What ties the mirror to the engine is `gen_juggler_protocol.py --check`
-    # against the pinned binary, run where the binary is - the e2e job.
-    assert len(COMMANDS) == 77, "commands: %d" % len(COMMANDS)
-    assert len(EVENTS) == 35, "events: %d" % len(EVENTS)
-
-
-def test_the_commands_the_client_will_use_are_declared():
-    """The browser enforces the schema as a CLOSED WORLD: an undeclared
-    command does not degrade, it REJECTS. These are the ones on the
-    minimum path."""
-    for name in ("Browser.enable", "Browser.createBrowserContext",
-                 "Browser.newPage", "Page.navigate", "Runtime.evaluate",
-                 # Asked after every click and hover since [B217]: an engine
-                 # without it refuses the question, and the mirror must say so
-                 # before a browser does.
-                 "Page.pointerLanded"):
-        assert name in COMMANDS, name
-
-
-def test_every_type_uses_only_the_eight_known_combinators():
-    """A new combinator in Protocol.js must make the generator REJECT,
-    not slip through unnoticed.
-
-    ⛔ The set below holds NINE names for eight combinators: `Object` is
-    not a `t.` combinator, it is the structural kind the generator emits
-    for a brace literal. The count in the function name is the number of
-    things `PrimitiveTypes.js` declares and we accept, which is what a
-    reader of this test cares about.
-    """
-    known = {"String", "Number", "Boolean", "Any", "Enum",
-             "Nullable", "Optional", "Array", "Object"}
-    seen: set = set()
-    visited = 0
-
-    def walk(t):
-        nonlocal visited
-        if not isinstance(t, dict):
-            return
-        visited += 1
-        seen.add(t.get("k"))
-        if "of" in t:
-            walk(t["of"])
-        for v in (t.get("fields") or {}).values():
-            walk(v)
-
-    for spec in COMMANDS.values():
-        walk(spec.get("params"))
-        walk(spec.get("returns"))
-    for spec in EVENTS.values():
-        walk(spec)
-    # ⛔ THE COVERAGE ASSERTION COMES FIRST, and it exists because this
-    # test nearly went blind in silence. The walk recurses through the keys
-    # `of` and `fields`; when those two were renamed from `di` and `campi`,
-    # `walk` stopped descending and `seen` collapsed to the handful of
-    # top-level kinds - while the assertion below still PASSED, because a
-    # smaller set is still a subset. A gate that checks less and says the
-    # same thing is worse than one that fails.
-    assert visited > 400, (
-        "the walk only visited %d type nodes: it is not descending any "
-        "more, so the assertion below proves almost nothing" % visited)
-    assert seen <= known, "unexpected combinators: %s" % (seen - known)
+from invisible_core.juggler import connection as conn
 
 
 # ── with a browser ──────────────────────────────────────────────────────────
