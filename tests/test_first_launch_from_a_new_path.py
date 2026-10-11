@@ -21,9 +21,20 @@ started the browser directly. That is why it failed exactly once per machine,
 and why every experiment on the CONTENT of the cache directory came back clean:
 the state was keyed by the path and lived in the registry.
 
-This test puts the engine back in the state a stranger's machine is in, by
-removing the registry values for the binary under test, and launches once. It
-is the reproduction, made permanent. Against an engine before firefox-27 it
+This test puts the engine in the state a stranger's machine is in, by running
+it from a path it has never run from, and launches once. It is the
+reproduction, made permanent.
+
+⛔ A PATH OF ITS OWN, NOT THE BINARY UNDER TEST WITH ITS VALUES DELETED. The
+launcher state is per executable path, and the e2e runs four workers that all
+launch that same path. Measured 2026-10-11 on firefox-41 under `-n 4`: this test
+failed once with no Launcher timestamp, and 5 times in 8 with two other
+processes launching the same path. A second launch that finds a Launcher
+timestamp without a Browser one reads it as a crashed launcher and turns the
+launcher off for the path (`Browser` = 0), so the state this test deleted was
+being rewritten by its neighbours. All 36 of those neighbouring launches
+succeeded: Firefox runs without the launcher. The copy below is hard links
+where the volume allows it, so it costs no disk. Against an engine before firefox-27 it
 fails; from firefox-27 on, the launcher forwards the handles named in the
 environment and the launch succeeds with the launcher process still enabled.
 
@@ -34,6 +45,7 @@ on the next launch anyway.
 from __future__ import annotations
 
 import os
+import shutil
 import sys
 
 import pytest
@@ -75,7 +87,27 @@ def _timestamps(exe: str) -> dict:
     return out
 
 
-def test_the_first_launch_from_a_new_path_works(firefox_binary):
+def _link_or_copy(src: str, dst: str) -> str:
+    try:
+        os.link(src, dst)
+    except OSError:
+        shutil.copy2(src, dst)
+    return dst
+
+
+@pytest.fixture
+def new_path(firefox_binary, tmp_path):
+    """The engine under test at a path no Firefox has run from, and the launcher
+    values for that path removed afterwards so runs do not pile them up."""
+    tree = tmp_path / "engine"
+    shutil.copytree(os.path.dirname(os.path.normpath(firefox_binary)), tree,
+                    copy_function=_link_or_copy)
+    exe = os.path.normpath(str(tree / os.path.basename(firefox_binary)))
+    yield exe
+    _forget_this_path(exe)
+
+
+def test_the_first_launch_from_a_new_path_works(new_path):
     """⛔ Both halves matter. The launch must succeed, AND the launcher process
     must have run and created the browser: a launcher timestamp followed by a
     later browser timestamp. A success with the launcher disabled would be the
@@ -83,8 +115,8 @@ def test_the_first_launch_from_a_new_path_works(firefox_binary):
     """
     from invisible_playwright import InvisiblePlaywright
 
-    exe = os.path.normpath(firefox_binary)
-    _forget_this_path(exe)
+    exe = new_path
+    assert not any(_timestamps(exe).values()), "this path has run before"
 
     with InvisiblePlaywright(binary_path=exe, headless=True, seed=1) as browser:
         page = browser.new_context().new_page()
