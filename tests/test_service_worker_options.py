@@ -22,6 +22,9 @@ class _Connection(EventListeners):
         self.failure = failure
         self.closed = False
 
+    def startup_send(self, method, params=None):
+        return self.send(method, params, timeout=None)
+
     def send(self, method, params=None, session=None, timeout=30):
         self.sent.append((method, params))
         if method == _COMMAND and self.failure:

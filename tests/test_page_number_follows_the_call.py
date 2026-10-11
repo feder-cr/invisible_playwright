@@ -201,6 +201,9 @@ class _Engine(EventListeners):
         self.release = [threading.Event() for _ in range(8)]
         self._calls = itertools.count()
 
+    def startup_send(self, method, params=None):
+        return self.send(method, params, timeout=None)
+
     def send(self, method, params=None, session=None, timeout=30):
         if method == "Browser.createBrowserContext":
             return {"browserContextId": "C1"}

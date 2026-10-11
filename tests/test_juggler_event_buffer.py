@@ -31,6 +31,9 @@ class FakeConnection(EventListeners):
         super().__init__()
         self.sent = []
 
+    def startup_send(self, method, params=None):
+        return self.send(method, params, timeout=None)
+
     def send(self, method, params=None, session=None, timeout=30):
         self.sent.append((method, params, session))
         return {}

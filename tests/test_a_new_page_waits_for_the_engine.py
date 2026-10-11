@@ -33,6 +33,9 @@ class _SlowEngine(EventListeners):
         self.browser = None
         self.bounds = []
 
+    def startup_send(self, method, params=None):
+        return self.send(method, params, timeout=None)
+
     def send(self, method, params=None, session=None, timeout=30.0):
         if method != "Browser.newPage":
             return {}

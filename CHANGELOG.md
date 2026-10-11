@@ -15,6 +15,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   manifest it does not carry) left the hidden display running: an Xvfb process
   on Linux, a desktop handle on Windows. A retry loop around the launch
   collected one per attempt (#326, by RayenMlayeh).
+- **A launch gets the whole timeout the caller gave it.** `launch(timeout=)`
+  bounded only the wait for the browser to start; the proxy command and the
+  last startup step after it had 10 and 30 seconds of their own. On a loaded
+  machine the proxy command could go unanswered for 10 seconds and the launch
+  failed with "the engine refused the proxy" while its 60 seconds still had
+  time. One deadline now covers the whole startup, a launch past it raises
+  `TimeoutError` instead of claiming a refusal, and `timeout=0` means no
+  limit, as in Playwright, where it used to mean 60 seconds.
+- **A timeout is a `TimeoutError`.** A click on an element that never became
+  actionable, or a `wait_for_function` that never became true, raised a plain
+  `Error`, so `except TimeoutError` around them caught nothing. They raise
+  `TimeoutError` now, as in Playwright.
+- **No fixed bound on calls Playwright gives none.** Creating a context and
+  applying its options, cookies, permissions, geolocation, closing a page or a
+  context, and page commands such as `set_viewport_size` or `bring_to_front`
+  each had 10 or 30 seconds of their own. They wait for the browser's answer,
+  and still end at once if the browser is gone; `screenshot` takes its own
+  `timeout`.
 
 ## [0.33.1] - 2026-10-11
 

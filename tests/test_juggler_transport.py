@@ -18,7 +18,7 @@ import threading
 import pytest
 
 from invisible_playwright._juggler import transport as factory
-from invisible_core.juggler.connection import EventListeners
+from invisible_core.juggler.connection import EventListeners, ProtocolError
 
 PAGE = b"""<!doctype html><html><head><title>seam</title></head><body>
 <button id=b onclick="this.dataset.n=(+(this.dataset.n||0)+1)">press</button>
@@ -892,6 +892,9 @@ def test_a_profile_WE_made_is_removed_and_the_caller_s_is_not():
         def __init__(self):
             EventListeners.__init__(self)
 
+        def startup_send(self, method, params=None):
+            return self.send(method, params, timeout=None)
+
         def send(self, method, params=None, session=None, timeout=30):
             return {"browserContextId": "ctx-1", "targetId": "t-1"}
 
@@ -956,9 +959,10 @@ def test_the_profile_is_removed_after_the_browser_has_closed(monkeypatch):
             self._profile = pathlib.Path(profile_dir)
             self._refuse_proxy = refuse_proxy
 
+        def startup_send(self, method, params=None):
+            return self.send(method, params, timeout=None)
+
         def send(self, method, params=None, session=None, timeout=30):
-            if method == "Browser.setBrowserProxy" and self._refuse_proxy:
-                raise RuntimeError("refused")
             return {"browserContextId": "ctx-1", "targetId": "t-1"}
 
         def close(self):
@@ -969,7 +973,13 @@ def test_the_profile_is_removed_after_the_browser_has_closed(monkeypatch):
             launched.append(pathlib.Path(profile_dir))
             if fail:
                 raise RuntimeError("the browser exited during startup")
-            return FakeConnection(profile_dir, refuse_proxy)
+            conn = FakeConnection(profile_dir, refuse_proxy)
+            if refuse_proxy and kwargs.get("proxy") is not None:
+                # What the core's launch does with a refused proxy: it closes
+                # the browser it started, then raises.
+                conn.close()
+                raise ProtocolError("the engine refused the proxy")
+            return conn
         return fake_launch
 
     def session(launch, params):
@@ -1046,6 +1056,9 @@ def test_the_launch_handler_hands_the_named_environment_to_the_engine(monkeypatc
         def __init__(self):
             EventListeners.__init__(self)
 
+        def startup_send(self, method, params=None):
+            return self.send(method, params, timeout=None)
+
         def send(self, method, params=None, session=None, timeout=30):
             return {"browserContextId": "ctx-1", "targetId": "t-1"}
 
@@ -1091,6 +1104,9 @@ def test_the_browser_s_temporary_files_live_and_end_with_the_session(monkeypatch
         def __init__(self, tmp):
             EventListeners.__init__(self)
             self._tmp = tmp
+
+        def startup_send(self, method, params=None):
+            return self.send(method, params, timeout=None)
 
         def send(self, method, params=None, session=None, timeout=30):
             return {"browserContextId": "ctx-1", "targetId": "t-1"}

@@ -38,6 +38,9 @@ SEED = 106
 
 
 class _Connection(EventListeners):
+    def startup_send(self, method, params=None):
+        return self.send(method, params, timeout=None)
+
     def send(self, method, params=None, session=None, timeout=30):
         return {}
 

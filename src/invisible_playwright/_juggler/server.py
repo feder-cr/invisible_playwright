@@ -1212,7 +1212,9 @@ class FrameDispatcher(Dispatcher):
                     self.server, self, object_id or "", world="main")
                 return {"handle": handle.channel}
             if time.monotonic() > deadline:
-                raise ProtocolException(
+                # A TimeoutError, which the client receives as Playwright's,
+                # as upstream raises for this wait (until 0.34.0 a plain Error).
+                raise TimeoutError(
                     "the expression never became truthy in %.0fs: %s"
                     % (self._timeout(params), expression[:120]))
             time.sleep(0.05)
@@ -2388,15 +2390,23 @@ class PageDispatcher(Dispatcher):
         route = RouteDispatcher(self.server, request)
         owner.emit("route", {"route": route.channel, "page": self.channel})
 
-    def send(self, command: str, params: Dict) -> Any:
+    def send(self, command: str, params: Dict,
+             timeout: Optional[float] = None) -> Any:
         """A Juggler command on THIS page's session.
 
         ⛔ The session is not optional and it is not a detail: without it the
         command lands on whichever page the browser feels like, and with two
         pages open the events of one are indistinguishable from the other.
+
+        ⛔ `timeout` IS THE CALLER'S, or none. Until 0.34.0 every command here
+        had 30 s of its own, which is shorter than a `screenshot(timeout=)`
+        the caller lengthened and is a bound Playwright does not have at all
+        on the rest (viewport, media, bring_to_front, screencast, dialogs).
+        Without one the reply still ends: the engine answers, or the pipe
+        closes and the connection raises TargetClosedError at once.
         """
-        return self.conn.send(command, params,
-                                              session=self.session, timeout=30)
+        return self.conn.send(command, params, session=self.session,
+                              timeout=timeout)
 
     async def send_async(self, command: str, params: Dict) -> Any:
         """`send`, off the loop and awaitable.
@@ -2636,7 +2646,7 @@ class PageDispatcher(Dispatcher):
             "clip": clip,
             "quality": params.get("quality"),
             "omitDeviceScaleFactor": False,
-        })) or {}
+        }), timeout=self.frame._timeout(params)) or {}
         # ⛔ BASE64 IN, BASE64 OUT. The client decodes it; decoding here and
         # handing back bytes puts a str() of a bytes object in the answer.
         return {"binary": result.get("data")}
@@ -2647,7 +2657,7 @@ class PageDispatcher(Dispatcher):
         once used as a "bare command" to measure transport latency and reported
         26,8 ms of browser work as if it were ours. It is the right command
         here, and the wrong one to benchmark with."""
-        self.conn.send("Heap.collectGarbage", {}, timeout=30)
+        self.conn.send("Heap.collectGarbage", {}, timeout=None)
         return None
 
     def op_add_script_tag(self, params: Dict) -> Any:
@@ -2756,7 +2766,7 @@ class PageDispatcher(Dispatcher):
             self.conn.send(
                 "Page.setInterceptFileChooserDialog",
                 {"enabled": bool(params.get("enabled"))},
-                session=self.session, timeout=10)
+                session=self.session, timeout=None)
         return None
 
     def op_run_before_unload(self, params: Dict) -> Any:
@@ -2924,7 +2934,7 @@ class PageDispatcher(Dispatcher):
         try:
             self.conn.send(
                 "Page.close", {"runBeforeUnload": False},
-                session=self.session, timeout=10)
+                session=self.session, timeout=None)
         except Exception:
             pass
         # ⛔ The session, the context's list and the browser's target map are
@@ -3198,8 +3208,11 @@ class BrowserContextDispatcher(Dispatcher):
 
     # ── cookies, permissions, geolocation ───────────────────────────────────
     def _browser_send(self, command: str, params: Dict) -> Any:
+        """A `Browser.*` command about this context, for calls Playwright
+        gives no timeout (cookies, permissions, geolocation, init scripts,
+        routes): without a bound of its own, as `op_new_context` says."""
         return self.conn.send(command, _address(self.context_id, params),
-                              timeout=30)
+                              timeout=None)
 
     def op_add_cookies(self, params: Dict) -> Any:
         """⛔ `expires` IS SECONDS AND -1 MEANS SESSION, not zero and not
@@ -3290,7 +3303,7 @@ class BrowserContextDispatcher(Dispatcher):
         try:
             self.conn.send("Browser.removeBrowserContext",
                                    {"browserContextId": self.context_id},
-                                   timeout=10)
+                                   timeout=None)
         except Exception:
             pass
         # ⛔ THE PAGES ARE TOLD FIRST, and this was missing entirely.
@@ -3426,8 +3439,10 @@ class BrowserDispatcher(Dispatcher):
         # recording earlier can only shorten the window in which `session_for`
         # is waiting for something that has already arrived.
         conn.add_listener(self._route_browser_event)
-        conn.send("Browser.enable", {"attachToDefaultContext": True},
-                  timeout=30)
+        # The last step of starting the browser, under what is left of the
+        # caller's `launch(timeout=)` (`Connection.startup_send`), not a
+        # bound of its own: until 0.34.0 it had 30 s whatever the caller said.
+        conn.startup_send("Browser.enable", {"attachToDefaultContext": True})
         super().__init__(server, browser_type,
                          {"version": version, "name": "firefox",
                           "browserName": "firefox"})
@@ -3811,14 +3826,20 @@ class BrowserDispatcher(Dispatcher):
     )
 
     def op_new_context(self, params: Dict) -> Any:
+        # ⛔ NO BOUND OF ITS OWN, on this or on any option below, for the
+        # reason `op_new_page` gives (#321): Playwright's newContext carries no
+        # timeout, and the first context of a session is created in the same
+        # seconds after the launch when a loaded host answers slowest. Every
+        # reply still ends: the engine answers, or the pipe closes and the
+        # connection raises TargetClosedError at once.
         result = self.conn.send("Browser.createBrowserContext",
-                                {"removeOnDetach": True}, timeout=30)
+                                {"removeOnDetach": True}, timeout=None)
         context_id = result["browserContextId"]
         try:
             self._apply_context_options(context_id, params)
         except BaseException:
             self.conn.send("Browser.removeBrowserContext",
-                           {"browserContextId": context_id}, timeout=30)
+                           {"browserContextId": context_id}, timeout=None)
             raise
         context = BrowserContextDispatcher(self.server, self, params,
                                            context_id)
@@ -3857,7 +3878,7 @@ class BrowserDispatcher(Dispatcher):
         # reading the text of an error.
         if params.get("serviceWorkers") == "block":
             self._context_send("Browser.setServiceWorkersBlocked", {
-                "browserContextId": context_id, "blocked": True}, timeout=30)
+                "browserContextId": context_id, "blocked": True})
         for name, command, field in self.ENGINE_OPTIONS:
             value = params.get(name)
             if value in (None, ""):
@@ -3882,8 +3903,7 @@ class BrowserDispatcher(Dispatcher):
                 # from the egress, and this side does not know the proxy.
                 value = SessionLocale.of(value).accept_languages
             self._context_send(command,
-                           {"browserContextId": context_id, field: value},
-                           timeout=10)
+                           {"browserContextId": context_id, field: value})
         # ⛔ The rest of the option set, each one a lever that was arriving
         # and going nowhere. They are grouped here rather than spread through
         # the dispatcher because they share one property: the client sends them
@@ -3900,35 +3920,34 @@ class BrowserDispatcher(Dispatcher):
                 raise ProtocolException(
                     "new_context(proxy=...) cannot be applied: %s" % exc)
             self._context_send("Browser.setContextProxy",
-                           dict(proxy, browserContextId=context_id),
-                           timeout=10)
+                           dict(proxy, browserContextId=context_id))
         headers = params.get("extraHTTPHeaders")
         if headers:
             self._context_send("Browser.setExtraHTTPHeaders",
                            {"browserContextId": context_id,
-                            "headers": headers}, timeout=10)
+                            "headers": headers})
         if params.get("offline"):
             self._context_send("Browser.setOnlineOverride",
                            {"browserContextId": context_id,
-                            "override": "offline"}, timeout=10)
+                            "override": "offline"})
         geolocation = params.get("geolocation")
         if geolocation:
             self._context_send("Browser.setGeolocationOverride",
                            {"browserContextId": context_id,
-                            "geolocation": geolocation}, timeout=10)
+                            "geolocation": geolocation})
         credentials = params.get("httpCredentials")
         if credentials:
             self._context_send("Browser.setHTTPCredentials",
                            {"browserContextId": context_id,
-                            "credentials": credentials}, timeout=10)
+                            "credentials": credentials})
         if params.get("ignoreHTTPSErrors"):
             self._context_send("Browser.setIgnoreHTTPSErrors",
                            {"browserContextId": context_id,
-                            "ignoreHTTPSErrors": True}, timeout=10)
+                            "ignoreHTTPSErrors": True})
         if params.get("bypassCSP"):
             self._context_send("Browser.setBypassCSP",
                            {"browserContextId": context_id,
-                            "bypassCSP": True}, timeout=10)
+                            "bypassCSP": True})
         # ⛔ Inverted on purpose: Playwright says `javaScriptEnabled=False`,
         # Juggler says `javaScriptDisabled=True`. Passing one straight into the
         # other would turn scripting OFF for every default context, which is
@@ -3936,11 +3955,11 @@ class BrowserDispatcher(Dispatcher):
         if params.get("javaScriptEnabled") is False:
             self._context_send("Browser.setJavaScriptDisabled",
                            {"browserContextId": context_id,
-                            "javaScriptDisabled": True}, timeout=10)
+                            "javaScriptDisabled": True})
         if params.get("hasTouch"):
             self._context_send("Browser.setTouchOverride",
                            {"browserContextId": context_id,
-                            "hasTouch": True}, timeout=10)
+                            "hasTouch": True})
         permissions = params.get("permissions")
         if permissions:
             # ⛔ `"*"` is the wildcard Juggler tests for by name
@@ -3950,7 +3969,7 @@ class BrowserDispatcher(Dispatcher):
             # accident that works until somebody tightens that condition.
             self._context_send("Browser.grantPermissions",
                            {"browserContextId": context_id, "origin": "*",
-                            "permissions": permissions}, timeout=10)
+                            "permissions": permissions})
         viewport = params.get("viewport")
         if viewport:
             # ⛔ `screen` is a SEPARATE option from `viewport` and rides in
@@ -3969,15 +3988,19 @@ class BrowserDispatcher(Dispatcher):
                 wanted["isMobile"] = True
             self._context_send("Browser.setDefaultViewport",
                            {"browserContextId": context_id,
-                            "viewport": wanted}, timeout=10)
+                            "viewport": wanted})
 
-    def _context_send(self, command: str, params: Dict, timeout: float = 10) -> Any:
+    def _context_send(self, command: str, params: Dict) -> Any:
         """A `Browser.*` command about one context. The literal dicts above
         carry `browserContextId` with the id, or with None for the default
-        context; `_address` turns None into the absence Juggler reads."""
+        context; `_address` turns None into the absence Juggler reads.
+
+        Without a bound of its own, as `op_new_context` says: until 0.34.0 each
+        option had 10 s, shorter than anything the caller of newContext
+        waits."""
         return self.conn.send(command,
                               _address(params.get("browserContextId"), params),
-                              timeout=timeout)
+                              timeout=None)
 
     def op_default_context(self, params: Dict) -> Any:
         """The context whose state IS the profile's: userContextId 0, the one
@@ -4136,10 +4159,23 @@ class BrowserTypeDispatcher(Dispatcher):
         # LENGTHENED it, on a slow machine or a cold disk, was cut off at 60
         # regardless. Milliseconds on the wire, seconds here; `0` means "no
         # limit" in Playwright, which is the one value that must not become a
-        # zero-second deadline.
+        # zero-second deadline: it is no deadline (until 0.34.0 it became the
+        # built-in 60 s).
+        #
+        # ⛔ AND IT BOUNDS THE WHOLE STARTUP, readiness, proxy and
+        # `Browser.enable` alike: the core's `launch` keeps the deadline and
+        # `Connection.startup_send` spends what is left of it. Until 0.34.0
+        # only the readiness wait had it, and the two commands after it had
+        # 10 s and 30 s of their own: on the firefox-41 gate, Linux under
+        # load, the proxy command went unanswered for 10 s and the launch
+        # failed with "the engine refused the proxy" while the caller's 60 s
+        # still had time. A startup past the deadline is a `ReplyTimeout`,
+        # which is a TimeoutError and reaches the client as Playwright's.
         wanted = params.get("timeout")
-        ready = 60.0
-        if isinstance(wanted, (int, float)) and wanted > 0:
+        ready: Optional[float] = 60.0
+        if wanted == 0:
+            ready = None
+        elif isinstance(wanted, (int, float)) and wanted > 0:
             ready = float(wanted) / 1000.0
         # ⛔ PARSED BEFORE THE BROWSER STARTS, so a proxy we cannot express
         # refuses the launch instead of leaving a process running without one.
@@ -4150,32 +4186,31 @@ class BrowserTypeDispatcher(Dispatcher):
             except ValueError as exc:
                 raise ProtocolException("launch(proxy=...) cannot be applied: "
                                         "%s" % exc)
+        # ⛔ THE PROXY IS SET BY THE CORE'S `launch`, before any page exists,
+        # and a proxy the engine refuses closes the browser there: the driver
+        # once accepted `proxy=` and dropped it, and a page went out on the
+        # host address while the session's timezone, locale and WebRTC
+        # candidate had been resolved THROUGH the proxy (2026-08-30). Until
+        # 0.34.0 this method sent the command itself, as Selenium's and
+        # Puppeteer's launch did, each with the same fixed 10 s.
         conn = juggler.launch(executable, profile,
                               headless=bool(params.get("headless", True)),
                               env=env, argv_extra=params.get("args") or [],
-                              ready_timeout=ready)
+                              ready_timeout=ready, proxy=proxy)
         self.server.on_shutdown(conn.close)
-        # ⛔ AND SENT BEFORE ANY PAGE EXISTS. The driver used to do this and
-        # nothing here replaced it, so `proxy=` was accepted and dropped for
-        # every scheme the engine prefs do not carry - measured 2026-08-30, a
-        # page resolved its own DNS and went out on the host address while the
-        # session's timezone, locale and WebRTC candidate had all been resolved
-        # THROUGH the proxy. Announcing one country and connecting from another
-        # is worse than having no proxy at all.
-        if proxy is not None:
-            try:
-                conn.send("Browser.setBrowserProxy", proxy, timeout=10)
-            except BaseException as exc:
-                conn.close()
-                raise ProtocolException(
-                    "the engine refused the proxy, so the browser was closed "
-                    "rather than left running without one: %s" % exc)
-        version = read_version(executable)
-        browser = BrowserDispatcher(
-            self.server, self, conn, version, session_seed=session_seed,
-            motion_budget_s=motion_budget_s,
-            service_workers_enabled=prefs.get(
-                "dom.serviceWorkers.enabled") is not False)
+        # ⛔ A LAUNCH THAT FAILS FROM HERE ON CLOSES THE BROWSER IT STARTED.
+        # A browser that is running and was never handed to the caller is one
+        # nobody will close before the server shuts down.
+        try:
+            version = read_version(executable)
+            browser = BrowserDispatcher(
+                self.server, self, conn, version, session_seed=session_seed,
+                motion_budget_s=motion_budget_s,
+                service_workers_enabled=prefs.get(
+                    "dom.serviceWorkers.enabled") is not False)
+        except BaseException:
+            conn.close()
+            raise
         return {"browser": browser.channel}
 
 
