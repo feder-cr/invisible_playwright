@@ -3180,9 +3180,18 @@ class BrowserContextDispatcher(Dispatcher):
                 "(pageNumber), reserved by the client at the call; got %r"
                 % (number,))
         browser = self.browser
+        # ⛔ NO BOUND OF ITS OWN on the engine's reply (issue #321). Playwright's
+        # newPage carries no timeout, so the only bound that means anything is
+        # the caller's: a navigation that opens the page, an MCP tool call. A
+        # constant here was shorter than those, and on a loaded host, the
+        # first page after a slow launch failed at 31 s while the navigation
+        # that asked for it still had time (5 such failures in 773 page calls
+        # of a real audit, each one loading normally when repeated). The
+        # reply still ends in one of two ways: the engine answers, or the pipe
+        # closes and the connection raises TargetClosedError at once.
         with browser._asking(self.context_id) as answered:
             result = self.conn.send("Browser.newPage",
-                                    _address(self.context_id, {}), timeout=30)
+                                    _address(self.context_id, {}), timeout=None)
             answered(result["targetId"], number)
         page = browser._wait_for_page(result["targetId"], timeout=60.0)
         return {"page": page.channel}

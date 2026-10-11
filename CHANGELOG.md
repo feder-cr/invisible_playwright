@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.33.1] - 2026-10-11
+
+### Fixed
+- **A new page waits for the browser as long as the caller does.** Opening a
+  page gave the browser a fixed 30 seconds to answer, shorter than the caller's
+  own bound: on a loaded machine, right after a slow launch, the first page of
+  a session (and so the first navigation of an MCP session) failed at 31
+  seconds and worked when repeated (#321). The wait now ends when the browser
+  answers or when it is gone.
+
 ## [0.33.0] - 2026-10-11
 
 ### Fixed
