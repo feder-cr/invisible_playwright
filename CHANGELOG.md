@@ -8,7 +8,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [0.34.0] - 2026-10-11
 
+The pin moves to invisible-core 41.35.0, which seals the firefox-41 engine.
+
 ### Fixed
+- **`bypass_csp=True` lifts the page's Content-Security-Policy.** The option
+  reached the browser and changed nothing it enforced: inline scripts, `eval`
+  and `add_script_tag` stayed blocked (#295). With firefox-41 the page's header
+  and `<meta>` policies are not applied when the option is on, and are applied
+  exactly as before when it is off.
+- **A screencast keeps the rate it was asked for.** Below 4 frames a second it
+  delivered about twice what was requested: asking for 2 gave 4. It now gives
+  about 2.
+- **On Linux a window covered by another one is not reported as hidden**, the
+  same as on Windows. Pages in a visible session covered by a second session's
+  window read `document.visibilityState === "hidden"` and had their timers and
+  animation frames throttled.
 - **A launch that fails before the browser starts stops the hidden display.**
   With `headless=True`, a launch that failed while composing the prefs, the
   proxy or the environment (a proxy scheme the engine cannot express, a font
