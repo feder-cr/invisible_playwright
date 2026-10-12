@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.35.0] - 2026-10-12
+
+The pin moves to invisible-core 41.36.0.
+
+### Fixed
+- **A page that replaces itself right after it loads no longer breaks the
+  next call.** On a page that calls `location.replace` from its `<head>` or
+  just after `load` (a JavaScript challenge, a consent redirect), a read made
+  right after `goto` failed with the engine's raw "Failed to find execution
+  context", and `goto(..., wait_until="networkidle")` timed out; on a loaded
+  machine `domcontentloaded` did too. Both now answer on the page that took
+  its place.
+- **`page.frames` lists the frames the page has.** After a navigation that
+  moved the page to another browser process it kept the old document's
+  iframes and listed the main frame again, one more each time.
+- **Reads wait for the element, as in Playwright.** `inner_text`,
+  `text_content`, `inner_html`, `input_value`, `get_attribute`, `is_enabled`,
+  `is_checked` and the other selector reads failed at once with "no element
+  matches" instead of waiting up to their `timeout`; `is_visible` and
+  `is_hidden` raised on a missing element instead of answering `False` and
+  `True`.
+- **`expect(locator)` works.** Every `to_be_*` and `to_have_count` failed with
+  an empty AssertionError whatever the page held; they now wait for the
+  condition within their timeout, `not_to_*` included. `to_be_empty`,
+  `to_be_focused` and `to_be_in_viewport` say they are not implemented
+  instead of passing.
+
 ## [0.34.0] - 2026-10-11
 
 The pin moves to invisible-core 41.35.0, which seals the firefox-41 engine.
