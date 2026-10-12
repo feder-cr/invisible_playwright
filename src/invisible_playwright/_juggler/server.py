@@ -891,8 +891,13 @@ class FrameDispatcher(Dispatcher):
         Everything else in this file stays in utility on purpose. This one
         method leaves, because the caller asked for it.
         """
+        # ⛔ `repeatable` comes only from the fork's `evaluate_read`, a read
+        # its caller declares free of effects: made again on the page that
+        # replaced the one it went to. Everything else is the caller's code,
+        # sent once ([B285]).
         return {"value": _serialize(self.injected.evaluate_in_main(
-            self.frame_id, _with_argument(params)))}
+            self.frame_id, _with_argument(params),
+            repeatable=params.get("repeatable") is True))}
 
     # ── acting ──────────────────────────────────────────────────────────────
     # ⛔ frame-crossing selectors

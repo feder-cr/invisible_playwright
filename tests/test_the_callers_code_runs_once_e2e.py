@@ -86,6 +86,20 @@ def test_eval_on_selector_all_interrupted_by_its_navigation_runs_once(page, site
     assert page.evaluate("localStorage.runs") == "1"
 
 
+def test_a_read_declared_free_of_effects_answers_from_the_page_that_replaced_it(page, site):
+    """`evaluate_read` is the fork's door for a library's fixed read (the
+    MCP's snapshot): interrupted by a navigation, it is made again on the new
+    page, where `evaluate` raises. The first run here starts the navigation and
+    waits forever; on /next the same expression answers."""
+    page.goto(site)
+    title = page.evaluate_read(
+        "(async () => { if (location.pathname !== '/next') {"
+        " setTimeout(() => { location.href = '/next'; }, 100);"
+        " await new Promise(() => {}); }"
+        " return document.title; })()")
+    assert title == "next"
+
+
 def test_wait_for_function_goes_on_through_a_navigation(page, site):
     page.goto(site)
     page.evaluate("setTimeout(() => { location.href = '/next'; }, 300)")

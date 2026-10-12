@@ -352,6 +352,22 @@ class Frame(ChannelOwner):
             )
         )
 
+    async def evaluate_read(self, expression: str, arg: Serializable = None) -> Any:
+        """FORK: `evaluate` for a read without effects, which the caller
+        declares: made again on the page that replaced the one it went to,
+        where `evaluate` raises ([B285])."""
+        return parse_result(
+            await self._channel.send(
+                "evaluateExpression",
+                None,
+                dict(
+                    expression=expression,
+                    arg=serialize_argument(arg),
+                    repeatable=True,
+                ),
+            )
+        )
+
     async def evaluate_handle(
         self, expression: str, arg: Serializable = None
     ) -> JSHandle:

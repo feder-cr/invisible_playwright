@@ -471,6 +471,9 @@ class Page(ChannelOwner):
     async def evaluate(self, expression: str, arg: Serializable = None) -> Any:
         return await self._main_frame.evaluate(expression, arg)
 
+    async def evaluate_read(self, expression: str, arg: Serializable = None) -> Any:
+        return await self._main_frame.evaluate_read(expression, arg)
+
     async def evaluate_handle(
         self, expression: str, arg: Serializable = None
     ) -> JSHandle:

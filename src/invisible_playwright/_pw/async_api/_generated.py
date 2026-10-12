@@ -9292,6 +9292,38 @@ class Page(AsyncContextManager):
             )
         )
 
+    async def evaluate_read(
+        self, expression: str, arg: typing.Optional[typing.Any] = None
+    ) -> typing.Any:
+        """Page.evaluate_read
+
+        Not in Playwright: an invisible-playwright addition. `page.evaluate()`
+        for a READ that has no effect on the page, which the caller declares:
+        when the page navigates under it, it is made again on the page that
+        replaced it and answers from there, where `page.evaluate()` raises
+        "Execution context was destroyed, most likely because of a navigation"
+        and never sends the code again. Never pass code with an effect: it may
+        run in both documents.
+
+        Parameters
+        ----------
+        expression : str
+            JavaScript expression to be evaluated in the browser context, as for
+            `page.evaluate()`.
+        arg : Union[Any, None]
+            Optional argument to pass to `expression`.
+
+        Returns
+        -------
+        Any
+        """
+
+        return mapping.from_maybe_impl(
+            await self._impl_obj.evaluate_read(
+                expression=expression, arg=mapping.to_impl(arg)
+            )
+        )
+
     async def evaluate_handle(
         self, expression: str, arg: typing.Optional[typing.Any] = None
     ) -> "JSHandle":

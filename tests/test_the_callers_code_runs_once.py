@@ -25,8 +25,10 @@ class _Injected:
         self.answers = list(answers)
         self.calls = []
 
-    def evaluate_in_main(self, frame_id, expression, *, by_value=True, timeout=30.0):
+    def evaluate_in_main(self, frame_id, expression, *, by_value=True, timeout=30.0,
+                         repeatable=False):
         self.calls.append(("evaluate_in_main", by_value))
+        self.repeatable = repeatable
         answer = self.answers.pop(0)
         if isinstance(answer, BaseException):
             raise answer
@@ -103,6 +105,19 @@ def test_the_fork_s_locator_asks_the_server_s_read_and_not_eval_on_selector_all(
     locator._selector = "#p"
     assert asyncio.run(getattr(locator, method)()) == ["x"]
     assert asked == [("#p", what)]
+
+
+@pytest.mark.parametrize("sent, repeatable", [({}, False),
+                                               ({"repeatable": True}, True),
+                                               ({"repeatable": "yes"}, False)])
+def test_only_evaluate_read_makes_the_page_world_code_again(sent, repeatable):
+    """`page.evaluate` sends the caller's code once; the fork's
+    `evaluate_read` alone says `repeatable`, and only a real True counts."""
+    injected = _Injected([2])
+    params = {"expression": "1 + 1", "isFunction": False}
+    params.update(sent)
+    _frame(injected).op_evaluate(params)
+    assert injected.repeatable is repeatable
 
 
 def test_read_all_refuses_what_is_not_one_of_its_two_reads():
