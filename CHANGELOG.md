@@ -17,7 +17,11 @@ The pin moves to invisible-core 41.38.0.
   was sent again into the page that replaced it, so a script with an effect
   ran twice (since 0.35.0). It now raises "Execution context was destroyed,
   most likely because of a navigation", as Playwright does, and is never sent
-  again. `wait_for_function` keeps polling on the new page.
+  again. `wait_for_function` keeps polling on the new page. The library's own
+  reads are not the caller's code and still answer with the page that replaced
+  the one they went to: `count`, `inner_text`, `text_content`, and now
+  `all_inner_texts` and `all_text_contents` too, which no longer travel as an
+  `eval_on_selector_all`.
 
 ## [0.35.1] - 2026-10-12
 
