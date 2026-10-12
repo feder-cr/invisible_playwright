@@ -120,14 +120,25 @@ def test_a_read_right_after_goto_answers(page, site, path):
         # before its parser reached <body> (measured under -n 4 on Windows):
         # 0 is a true answer there, as in Playwright, an error is not.
         assert page.locator("body").count() in (0, 1)
+        # The library's reads of every match go the way `count` does: made
+        # again on the page that replaced the one they went to ([B282]), not
+        # through the door that sends the caller's code once ([B285]). The
+        # MCP's `read_text` is `all_inner_texts`.
+        texts = ([], ["first"], ["head"], ["landed"])
+        assert page.locator("#p").all_inner_texts() in texts
+        assert page.locator("#p").all_text_contents() in texts
         assert page.inner_text("#p", timeout=10_000) in ("first", "head",
                                                          "landed")
-        # The caller's code comes after a read that waited, on the page that
-        # stayed. Sent while the page was still moving it would raise
-        # Playwright's navigation error rather than be sent again, which ran
-        # a script twice until core 41.38.0 ([B285],
-        # `tests/test_the_callers_code_runs_once_e2e.py`).
-        assert page.evaluate("1 + 1") == 2
+        # The caller's code is NOT a read: it is sent once ([B285]). On a page
+        # still moving - `/x50` replaces itself after the read above - it
+        # answers, or raises Playwright's own navigation error, as upstream
+        # does; sending it again ran a script twice until core 41.38.0
+        # (`tests/test_the_callers_code_runs_once_e2e.py`).
+        from invisible_playwright.sync_api import Error
+        try:
+            assert page.evaluate("1 + 1") == 2
+        except Error as e:
+            assert "Execution context was destroyed" in str(e), e
 
 
 @pytest.mark.parametrize("path", ["/r0", "/r50", "/x0", "/x50"])

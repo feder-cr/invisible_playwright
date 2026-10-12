@@ -496,6 +496,12 @@ class Frame(ChannelOwner):
             )
         )
 
+    async def _read_all(self, selector: str, what: str) -> List[str]:
+        """FORK: the server's `readAll`, for `Locator.all_inner_texts` and
+        `all_text_contents` ([B285])."""
+        return await self._channel.send(
+            "readAll", None, dict(selector=selector, what=what))
+
     async def content(self) -> str:
         return await self._channel.send("content", None)
 

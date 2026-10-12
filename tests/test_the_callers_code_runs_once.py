@@ -36,6 +36,10 @@ class _Injected:
         self.calls.append(("call", kwargs))
         return [1, 2]
 
+    def read_all(self, frame_id, selector, what, *args, **kwargs):
+        self.calls.append(("read_all", what))
+        return ["a", "b"]
+
 
 def _frame(injected):
     frame = server.FrameDispatcher.__new__(server.FrameDispatcher)
@@ -61,3 +65,46 @@ def test_eval_on_selector_all_sends_the_callers_function_once():
     _frame(injected).op_eval_on_selector_all(
         {"selector": "li", "expression": "els => els.length", "isFunction": True})
     assert injected.calls == [("call", {"repeatable": False})]
+
+
+def test_the_librarys_read_of_every_match_is_the_cores_repeatable_read():
+    """`all_inner_texts` is not the caller's code: it is answered by the core's
+    `read_all`, which the page moving on under it does not end ([B282])."""
+    injected = _Injected([])
+    answer = _frame(injected).op_read_all({"selector": "p", "what": "innerText"})
+    assert answer == {"value": ["a", "b"]}
+    assert injected.calls == [("read_all", "innerText")]
+
+
+@pytest.mark.parametrize("method, what", [("all_inner_texts", "innerText"),
+                                          ("all_text_contents", "textContent")])
+def test_the_fork_s_locator_asks_the_server_s_read_and_not_eval_on_selector_all(
+        method, what):
+    """Upstream's client sends these through `evalOnSelectorAll` with a fixed
+    function, which the server cannot tell from the caller's `$$eval` and
+    sends once; the fork asks for the read by name."""
+    import asyncio
+
+    from invisible_playwright._pw._impl._locator import Locator
+
+    asked = []
+
+    class _Frame:
+        async def _read_all(self, selector, kind):
+            asked.append((selector, kind))
+            return ["x"]
+
+        async def eval_on_selector_all(self, *a, **k):
+            asked.append("eval_on_selector_all")
+            return ["x"]
+
+    locator = Locator.__new__(Locator)
+    locator._frame = _Frame()
+    locator._selector = "#p"
+    assert asyncio.run(getattr(locator, method)()) == ["x"]
+    assert asked == [("#p", what)]
+
+
+def test_read_all_refuses_what_is_not_one_of_its_two_reads():
+    with pytest.raises(server.ProtocolException, match="innerText or textContent"):
+        _frame(_Injected([])).op_read_all({"selector": "p", "what": "innerHTML"})

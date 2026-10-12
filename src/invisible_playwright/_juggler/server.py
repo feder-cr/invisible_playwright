@@ -693,6 +693,7 @@ class FrameDispatcher(Dispatcher):
         "setContent": "op_set_content",
         "evalOnSelector": "op_eval_on_selector",
         "evalOnSelectorAll": "op_eval_on_selector_all",
+        "readAll": "op_read_all",
         "selectOption": "op_select_option",
         "setInputFiles": "op_set_input_files",
         "tap": "op_tap",
@@ -1542,6 +1543,21 @@ class FrameDispatcher(Dispatcher):
                 frame_id, _element_function(params), {"objectId": object_id}))}
         finally:
             self.injected.dispose(frame_id, object_id)
+
+    def op_read_all(self, params: Dict) -> Any:
+        """`locator.all_inner_texts()` and `all_text_contents()`: a read of
+        every match, in one command of values, made again on the page that
+        replaced the one it went to ([B282]). The fork's client asks for them
+        here and not through `evalOnSelectorAll`, which carries the caller's
+        code and sends it once ([B285]); upstream's client sends a fixed
+        function through that door, and nothing on this side can tell it from
+        a caller's."""
+        what = params.get("what")
+        if what not in ("innerText", "textContent"):
+            raise ProtocolException(
+                "readAll reads innerText or textContent, not %r" % what)
+        frame_id, selector = self.enter_frames(params["selector"])
+        return {"value": self.injected.read_all(frame_id, selector, what)}
 
     def op_eval_on_selector_all(self, params: Dict) -> Any:
         """`page.eval_on_selector_all`: the caller's function, sent ONCE. A

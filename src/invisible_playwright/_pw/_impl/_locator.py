@@ -719,19 +719,19 @@ class Locator:
             **params,
         )
 
+    # ⛔ FORK: a read of the server, not `eval_on_selector_all` with a fixed
+    # function. That door carries the caller's code and sends it once
+    # ([B285]); these two are the library's own reads, made again on the page
+    # that replaced the one they went to ([B282]).
     async def all_inner_texts(
         self,
     ) -> List[str]:
-        return await self._frame.eval_on_selector_all(
-            self._selector, "ee => ee.map(e => e.innerText)"
-        )
+        return await self._frame._read_all(self._selector, "innerText")
 
     async def all_text_contents(
         self,
     ) -> List[str]:
-        return await self._frame.eval_on_selector_all(
-            self._selector, "ee => ee.map(e => e.textContent || '')"
-        )
+        return await self._frame._read_all(self._selector, "textContent")
 
     async def wait_for(
         self,
