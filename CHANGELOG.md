@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.35.2] - 2026-10-12
+
+The pin moves to invisible-core 41.38.0.
+
+### Fixed
+- **The caller's code runs once when its page navigates while it waits.** A
+  script passed to `page.evaluate`, `evaluate_handle` or
+  `eval_on_selector_all` that was waiting on a promise when its page navigated
+  was sent again into the page that replaced it, so a script with an effect
+  ran twice (since 0.35.0). It now raises "Execution context was destroyed,
+  most likely because of a navigation", as Playwright does, and is never sent
+  again. `wait_for_function` keeps polling on the new page.
+
 ## [0.35.1] - 2026-10-12
 
 The pin moves to invisible-core 41.37.0.

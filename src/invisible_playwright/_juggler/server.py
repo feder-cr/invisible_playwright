@@ -42,7 +42,7 @@ from invisible_core.juggler.actions import Actions
 from invisible_core.juggler.deadline import Deadline
 from .dispatcher import (Dispatcher, ExpectNotMet, ProtocolException,
                          Server)
-from invisible_core.juggler.injected import InjectedScript
+from invisible_core.juggler.injected import ContextDestroyed, InjectedScript
 from invisible_core.juggler.keyboard import MODIFIER_MASK
 from invisible_core.juggler.lifecycle import Lifecycle
 
@@ -1237,8 +1237,15 @@ class FrameDispatcher(Dispatcher):
         deadline = Deadline(self._timeout(params))
         expression = _with_argument(params)
         while True:
-            value = self.injected.evaluate_in_main(self.frame_id,
-                                                        expression)
+            # ⛔ A NAVIGATION DOES NOT END THE POLL. The predicate is sent once
+            # per turn (the page's world is never sent the caller's code twice,
+            # [B285]), and a world that went under it means the next turn asks
+            # the new document, as Playwright's polling survives a navigation.
+            try:
+                value = self.injected.evaluate_in_main(self.frame_id,
+                                                       expression)
+            except ContextDestroyed:
+                value = None
             if value:
                 # ⛔ A HANDLE, NEVER None. `_frame.py` wraps this reply in
                 # `from_channel(...)`, so answering None is not "no handle" -
@@ -1537,13 +1544,16 @@ class FrameDispatcher(Dispatcher):
             self.injected.dispose(frame_id, object_id)
 
     def op_eval_on_selector_all(self, params: Dict) -> Any:
+        """`page.eval_on_selector_all`: the caller's function, sent ONCE. A
+        frame that navigates under it is `ContextDestroyed`, as Playwright
+        raises; sending it again ran it twice ([B285])."""
         frame_id, selector = self.enter_frames(params["selector"])
         value = self.injected.call(
             frame_id,
             "(injected, sel) => { const els = injected.querySelectorAll("
             "  injected.parseSelector(sel), document); %s }"
             % _called_on(params, "els"),
-            selector)
+            selector, repeatable=False)
         return {"value": _serialize(value)}
 
     def op_evaluate_handle(self, params: Dict) -> Any:

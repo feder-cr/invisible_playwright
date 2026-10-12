@@ -122,6 +122,11 @@ def test_a_read_right_after_goto_answers(page, site, path):
         assert page.locator("body").count() in (0, 1)
         assert page.inner_text("#p", timeout=10_000) in ("first", "head",
                                                          "landed")
+        # The caller's code comes after a read that waited, on the page that
+        # stayed. Sent while the page was still moving it would raise
+        # Playwright's navigation error rather than be sent again, which ran
+        # a script twice until core 41.38.0 ([B285],
+        # `tests/test_the_callers_code_runs_once_e2e.py`).
         assert page.evaluate("1 + 1") == 2
 
 
