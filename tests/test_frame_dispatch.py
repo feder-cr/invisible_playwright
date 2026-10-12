@@ -5,6 +5,7 @@ from unittest.mock import Mock
 import pytest
 
 from invisible_playwright._juggler.dispatcher import Dispatcher, ProtocolException
+from invisible_core.juggler.connection import EventListeners
 from invisible_core.juggler.lifecycle import Lifecycle
 from invisible_playwright._juggler.server import (
     FrameDispatcher,
@@ -23,7 +24,9 @@ def page():
     context = Dispatcher(server, None)
     page = object.__new__(PageDispatcher)
     page.context = context
-    page.lifecycle = Lifecycle(SimpleNamespace(add_listener=lambda listener: None), "session")
+    # The connection's own registry, as every stand-in for it inherits
+    # (`EventListeners`): it carries the event count the lifecycle reads.
+    page.lifecycle = Lifecycle(EventListeners(), "session")
     page.injected = Mock()
     page.actions = Mock()
     page._frames = {}

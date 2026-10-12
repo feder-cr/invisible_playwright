@@ -19,6 +19,14 @@ from the `<head>` and was waited for `load`, a case where no second process
 is involved. These pages navigate AFTER `load`, same-site and cross-site
 (127.0.0.1 to localhost, which Fission puts in another process), and each
 case is repeated, because a race that is missed once in five is still a race.
+
+The rounds run back to back, so a `goto` can be sent while the previous page's
+own `location.replace` is in flight, and Firefox lets that one win: ours is
+never heard of again, no commit and no abort. Until 41.36.0 that `goto` waited
+for its timeout (2 and 3 rounds in 80, measured 2026-10-12); now the first
+document committed after the command decides, and when it is not ours `goto`
+raises at once with upstream Playwright's "is interrupted by another
+navigation to". `_goto` accepts that answer, fast, and nothing else.
 """
 from __future__ import annotations
 
@@ -31,6 +39,20 @@ import pytest
 pytestmark = pytest.mark.e2e
 
 ROUNDS = 5
+
+
+def _goto(page, url, **kwargs):
+    """`page.goto`, which may answer that the previous page's own redirect won
+    (module docstring). Either answer comes in seconds."""
+    from invisible_playwright.sync_api import Error
+
+    started = time.monotonic()
+    try:
+        page.goto(url, **kwargs)
+    except Error as e:
+        assert "is interrupted by another navigation to" in str(e), e
+        assert "/landed" in str(e).split("another navigation to")[1], e
+    assert time.monotonic() - started < 10, url
 
 
 def _replace_after_load(ms: int, cross_site: bool) -> bytes:
@@ -90,11 +112,14 @@ def page(firefox_binary):
                                   "/x0", "/x50", "/x300"])
 def test_a_read_right_after_goto_answers(page, site, path):
     for i in range(ROUNDS):
-        page.goto("%s%s?i=%d" % (site, path, i), wait_until="domcontentloaded",
-                  timeout=15_000)
+        _goto(page, "%s%s?i=%d" % (site, path, i), wait_until="domcontentloaded",
+              timeout=15_000)
         # Each read is made at once, while the page may still be moving: none
-        # of them may surface the engine's refusal of a vanished world.
-        assert page.locator("body").count() == 1
+        # of them may surface the engine's refusal of a vanished world. A count
+        # is of the page as it is NOW, and that can be the replacing document
+        # before its parser reached <body> (measured under -n 4 on Windows):
+        # 0 is a true answer there, as in Playwright, an error is not.
+        assert page.locator("body").count() in (0, 1)
         assert page.inner_text("#p", timeout=10_000) in ("first", "head",
                                                          "landed")
         assert page.evaluate("1 + 1") == 2
@@ -103,10 +128,8 @@ def test_a_read_right_after_goto_answers(page, site, path):
 @pytest.mark.parametrize("path", ["/r0", "/r50", "/x0", "/x50"])
 def test_networkidle_is_reached_on_the_page_that_replaced_ours(page, site, path):
     for i in range(ROUNDS):
-        started = time.monotonic()
-        page.goto("%s%s?n=%d" % (site, path, i), wait_until="networkidle",
-                  timeout=15_000)
-        assert time.monotonic() - started < 10
+        _goto(page, "%s%s?n=%d" % (site, path, i), wait_until="networkidle",
+              timeout=15_000)
         assert page.url.endswith("/landed"), page.url
 
 

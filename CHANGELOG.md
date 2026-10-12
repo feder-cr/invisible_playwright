@@ -18,6 +18,12 @@ The pin moves to invisible-core 41.36.0.
   context", and `goto(..., wait_until="networkidle")` timed out; on a loaded
   machine `domcontentloaded` did too. Both now answer on the page that took
   its place.
+- **A `goto` the browser abandons answers at once.** Sent while the previous
+  page's own redirect was in flight, a `goto` could lose to it: Firefox loads
+  the redirect and drops ours without a word, and the call waited for its
+  whole timeout. It now raises at once with Playwright's own `Navigation to
+  "X" is interrupted by another navigation to "Y"`, as upstream Playwright
+  does on Firefox, and the page is on `Y`.
 - **`page.frames` lists the frames the page has.** After a navigation that
   moved the page to another browser process it kept the old document's
   iframes and listed the main frame again, one more each time.
