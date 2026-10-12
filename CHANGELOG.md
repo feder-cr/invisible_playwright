@@ -10,6 +10,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 The pin moves to invisible-core 41.38.0.
 
+### Added
+- **`page.evaluate_read(expression, arg=None)`**, not in Playwright: `evaluate`
+  for a read that has no effect on the page, which the caller declares. When
+  the page navigates under it, it is made again on the page that replaced it
+  and answers from there, where `evaluate` raises. Never pass it code with an
+  effect: it may run in both documents.
+
 ### Fixed
 - **The caller's code runs once when its page navigates while it waits.** A
   script passed to `page.evaluate`, `evaluate_handle` or
