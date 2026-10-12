@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.35.1] - 2026-10-12
+
+The pin moves to invisible-core 41.37.0.
+
+### Fixed
+- **A browser that dies ends every wait at once.** A wait for an event - a
+  page's load state, its main frame, a navigation - had nothing to wake it when
+  the browser closed or crashed, so it ran to its timeout, and with no timeout
+  (`timeout=0`) it never ended. It now raises at once that the target closed.
+
 ## [0.35.0] - 2026-10-12
 
 The pin moves to invisible-core 41.36.0.
