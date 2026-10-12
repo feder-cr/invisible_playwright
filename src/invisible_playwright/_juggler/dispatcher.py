@@ -52,6 +52,18 @@ class ProtocolException(Exception):
     """
 
 
+class ExpectNotMet(ProtocolException):
+    """An `expect()` whose condition did not hold within its timeout.
+
+    `details` travels as the reply's `errorDetails`, which is what the client
+    reads (`_frame.py` `_expect`) to build its AssertionError: `received` is
+    the last value seen, serialized, and `timedOut` says the wait ran out."""
+
+    def __init__(self, message: str, details: Dict) -> None:
+        super().__init__(message)
+        self.details = details
+
+
 class Dispatcher:
     """One protocol object.
 

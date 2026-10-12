@@ -288,10 +288,14 @@ class InProcessTransport(Transport):
         becomes "Protocol error" by the time a user sees it."""
         if msg_id is None:
             return
-        self.emit_message({
-            "id": msg_id,
-            "error": {"error": _error_payload(failure)},
-        })
+        out: Dict[str, Any] = {"id": msg_id,
+                               "error": {"error": _error_payload(failure)}}
+        # An error that carries details for the client (`ExpectNotMet`) sends
+        # them where `Connection.dispatch` reads them.
+        details = getattr(failure, "details", None)
+        if details is not None:
+            out["errorDetails"] = details
+        self.emit_message(out)
 
 # ── choosing one ────────────────────────────────────────────────────────────
 #
