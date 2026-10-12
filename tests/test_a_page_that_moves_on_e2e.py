@@ -1,6 +1,6 @@
 """Pages that replace themselves right after they load, on a real engine.
 
-⛔ THE KNOWN-BAD INPUT, from invisible_dots (Google, JavaScript challenges) and
+⛔ THE KNOWN-BAD INPUT, from invisible_dots (pages behind JavaScript challenges) and
 reproduced here on 2026-10-12 against firefox-41 and 0.34.0:
 
 - a read right after `goto(..., "domcontentloaded")` on a page that calls
