@@ -26,7 +26,18 @@ never heard of again, no commit and no abort. Until 41.36.0 that `goto` waited
 for its timeout (2 and 3 rounds in 80, measured 2026-10-12); now the first
 document committed after the command decides, and when it is not ours `goto`
 raises at once with upstream Playwright's "is interrupted by another
-navigation to". `_goto` accepts that answer, fast, and nothing else.
+navigation to".
+
+And the page's `location.replace` can come while OUR goto is on its way, and
+stop it: from firefox-46 the engine reports that stop ([B302]; it dropped every
+abort of the main frame until then), so goto raises NS_BINDING_ABORTED and the
+page goes to /landed. Upstream Playwright on its Firefox answers these rounds
+the same way, measured four at once (`C:/tmp/b230/moves_load_upstream.sh`,
+2026-10-14): 41 rows of 48 all landed, the rest one "interrupted" and eight
+NS_BINDING_ABORTED, every one with the page then on /landed; firefox-46 under
+the same load, 39 of 48, ten "interrupted" and four NS_BINDING_ABORTED, the
+page on /landed every time and never on our address. `_goto` accepts those
+three answers, fast, and nothing else.
 """
 from __future__ import annotations
 
@@ -50,8 +61,12 @@ def _goto(page, url, **kwargs):
     try:
         page.goto(url, **kwargs)
     except Error as e:
-        assert "is interrupted by another navigation to" in str(e), e
-        assert "/landed" in str(e).split("another navigation to")[1], e
+        if "NS_BINDING_ABORTED" in str(e):
+            # The page's own replace stopped ours: it is where it sent itself.
+            page.wait_for_url("**/landed", timeout=10_000)
+        else:
+            assert "is interrupted by another navigation to" in str(e), e
+            assert "/landed" in str(e).split("another navigation to")[1], e
     assert time.monotonic() - started < 10, url
 
 

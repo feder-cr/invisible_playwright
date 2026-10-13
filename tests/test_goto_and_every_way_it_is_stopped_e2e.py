@@ -21,6 +21,14 @@ and `second_goto_probe.py upstream`, measured 2026-10-14):
 - a second goto from the caller: the first is "interrupted by another
   navigation", the second lands.
 
+One answer is ours and not upstream's word for word: `history.back()`. Our
+build keeps the back-forward cache on, as retail Firefox does, and upstream's
+turns it off; going back restores the previous page from the cache, the page
+being left enters it, and the engine cannot tell that stop from a process
+swap's, so the goto learns of it from the restored page's commit and raises
+"is interrupted by another navigation" to it, at once. Same outcome, other
+words; both are accepted for `back`, and only for it.
+
 Each kind runs with the goto's page on the same site (one process) and on
 another (`localhost` against `127.0.0.1`, a Fission process swap, the case the
 dropped abort was written for), twice, back to back. The page being left acts
@@ -137,7 +145,10 @@ def test_a_goto_stopped_on_its_way_raises_or_lands_and_never_lies(firefox_binary
                 took = time.monotonic() - began
                 where = (kind, site, i, error, took)
                 if answer == "stopped":
-                    assert error is not None and "NS_BINDING_ABORTED" in error, where
+                    assert error is not None, where
+                    assert ("NS_BINDING_ABORTED" in error
+                            or (kind == "back"
+                                and "is interrupted by another navigation" in error)), where
                     assert took < HELD_S, where
                     expected = same + end
                     if end in ("/old", "/start"):
