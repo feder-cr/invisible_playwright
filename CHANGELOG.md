@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.35.5] - 2026-10-13
+
+The pin moves to invisible-core 43.39.0, which seals the firefox-43 engine.
+
+### Fixed
+- **A page's frames stay in `page.frames` after a few navigations in one
+  tab.** The engine reported the iframes of the page being loaded as
+  detached while it loaded them, once the back-forward cache let an older
+  page of the tab go: `page.frames` missed them and a `frame_locator` into
+  them waited until its timeout. Measured with five pages in a row: none of
+  the three frames of the fifth before, all three now.
+- **On Linux, AAC is answered as on Windows.** `canPlayType` and
+  `MediaSource.isTypeSupported` of `audio/mp4`, `audio/aac`, `audio/x-m4a`
+  and `video/mp4; codecs="mp4a.40.2"` answered "maybe" at first and then
+  nothing from about 300 ms on, on a host without its own AAC decoder, while
+  H.264 stayed "probably": no Windows Firefox answers that. They now answer
+  what Windows does, "maybe", "maybe", "maybe" and "probably", with
+  MediaSource true, false, false, true. A Linux host without an AAC decoder
+  still cannot play the audio.
+
 ## [0.35.4] - 2026-10-13
 
 The pin moves to invisible-core 42.39.0, which seals the firefox-42 engine.
