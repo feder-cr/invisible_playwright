@@ -17,6 +17,10 @@ The pin moves to invisible-core 44.39.0, which seals the firefox-44 engine.
   stop landed during a capture, the browser answered nothing more. Measured
   with one browser on the hidden desktop: frozen within the first ten stops
   on the engines before firefox-44.
+- **Text with a character the US layout has no key for is typed**:
+  `page.type("#i", "café")`, `locator.type(...)` and `keyboard.type(...)`
+  raised "'é' has no key on the US layout". The keys that exist are
+  pressed and the character is inserted in its place, as Playwright does.
 - **On Linux, the line endings a page reads are Windows'**: a `Blob` or a
   `File` made with `endings: "native"` turns `\n` into `\r\n`, and the text
   of a selection across two blocks is joined by `\r\n`, as on Windows.
