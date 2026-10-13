@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.35.7] - 2026-10-13
+
+The pin moves to invisible-core 45.39.0, which seals the firefox-45 engine.
+
+### Fixed
+- **A key or a mouse move is born before the page sees it**, as on a real
+  machine, where the system takes a few milliseconds between the hardware and
+  the page's handler. The engine stamped every input event at the instant it
+  reached the page, so `event.timeStamp` equalled `performance.now()` there,
+  and a script that keeps only the events with `timeStamp < performance.now()`
+  dropped most of our keys (`page.type`, `keyboard`, `mouse`). Each event is now born a few milliseconds earlier,
+  drawn per event from the session (a median of 6 to 11 ms, fixed by the
+  seed): measured in the handler, 4 to 22 ms.
+- **The first `navigator.mediaDevices.enumerateDevices()` of a session takes
+  the same time on Windows and on Linux**, a time the seed fixes between 240
+  and 640 ms. It took the host's audio stack time, 15 to 40 ms on Linux and
+  about 300 ms on Windows, so a script that sends its payload before the list
+  arrives saw a device field on one build and not on the other. With fake
+  devices the browser no longer asks the host for its speakers; the list a
+  page sees is unchanged.
+
 ## [0.35.6] - 2026-10-13
 
 The pin moves to invisible-core 44.39.0, which seals the firefox-44 engine.
