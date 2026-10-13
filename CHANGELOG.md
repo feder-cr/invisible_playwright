@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.35.6] - 2026-10-13
+
+The pin moves to invisible-core 44.39.0, which seals the firefox-44 engine.
+
+### Fixed
+- **Stopping a screencast no longer freezes the browser on Windows.** The
+  engine stopped its window capture on the thread that owns the window, while
+  the capture was waiting for that thread to draw the window for it; when a
+  stop landed during a capture, the browser answered nothing more. Measured
+  with one browser on the hidden desktop: frozen within the first ten stops
+  on the engines before firefox-44.
+- **On Linux, the line endings a page reads are Windows'**: a `Blob` or a
+  `File` made with `endings: "native"` turns `\n` into `\r\n`, and the text
+  of a selection across two blocks is joined by `\r\n`, as on Windows.
+- **`speechSynthesis.getVoices()` is Windows' list**: David, Mark, Zira and
+  the two Desktop voices, in that order, and none of them is the default.
+  David was the default and Zira came before Mark.
+
 ## [0.35.5] - 2026-10-13
 
 The pin moves to invisible-core 43.39.0, which seals the firefox-43 engine.
