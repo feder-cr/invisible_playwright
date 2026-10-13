@@ -27,10 +27,11 @@ regression.
 from __future__ import annotations
 
 import http.server
-import socketserver
 import threading
 
 import pytest
+
+from _servers import LocalServer
 
 pytestmark = pytest.mark.e2e
 
@@ -118,7 +119,7 @@ class _Served:
             def log_message(self, *a):
                 pass
 
-        self._srv = socketserver.TCPServer(("127.0.0.1", 0), H)
+        self._srv = LocalServer(("127.0.0.1", 0), H)
         threading.Thread(target=self._srv.serve_forever, daemon=True).start()
         self.url = "http://127.0.0.1:%d/" % self._srv.server_address[1]
         return self

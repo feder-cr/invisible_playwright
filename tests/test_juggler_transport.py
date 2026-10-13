@@ -12,13 +12,14 @@ from __future__ import annotations
 import http.server
 import os
 import pathlib
-import socketserver
 import threading
 
 import pytest
 
 from invisible_playwright._juggler import transport as factory
 from invisible_core.juggler.connection import EventListeners, ProtocolError
+
+from _servers import LocalServer
 
 PAGE = b"""<!doctype html><html><head><title>seam</title></head><body>
 <button id=b onclick="this.dataset.n=(+(this.dataset.n||0)+1)">press</button>
@@ -201,7 +202,7 @@ def test_the_public_API_drives_a_page_WITHOUT_node(firefox_binary):
     different object underneath - which is the entire claim of the detachment.
     """
     os.environ[factory.CHOICE_ENV] = factory.JUGGLER
-    srv = socketserver.TCPServer(("127.0.0.1", 0), _serve(PAGE))
+    srv = LocalServer(("127.0.0.1", 0), _serve(PAGE))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     url = "http://127.0.0.1:%d/" % srv.server_address[1]
     from invisible_playwright import InvisiblePlaywright
@@ -233,7 +234,7 @@ def test_the_public_API_reads_MANY_elements_without_node(firefox_binary):
     not of this test, and it is written down where the handles are made.
     """
     os.environ[factory.CHOICE_ENV] = factory.JUGGLER
-    srv = socketserver.TCPServer(("127.0.0.1", 0), _serve(PAGE))
+    srv = LocalServer(("127.0.0.1", 0), _serve(PAGE))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     url = "http://127.0.0.1:%d/" % srv.server_address[1]
     from invisible_playwright import InvisiblePlaywright
@@ -265,7 +266,7 @@ def test_the_public_API_WAITS_for_an_element_that_arrives_late(firefox_binary):
     would hand back a handle it has just released - and a released handle does
     not raise, it answers wrong. The element below arrives after 800 ms."""
     os.environ[factory.CHOICE_ENV] = factory.JUGGLER
-    srv = socketserver.TCPServer(("127.0.0.1", 0), _serve(PAGE))
+    srv = LocalServer(("127.0.0.1", 0), _serve(PAGE))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     url = "http://127.0.0.1:%d/" % srv.server_address[1]
     from invisible_playwright import InvisiblePlaywright
@@ -304,7 +305,7 @@ def test_going_BACK_then_FORWARD_leaves_the_page_readable(firefox_binary):
     alike.
     """
     os.environ[factory.CHOICE_ENV] = factory.JUGGLER
-    srv = socketserver.TCPServer(("127.0.0.1", 0), _serve(PAGE))
+    srv = LocalServer(("127.0.0.1", 0), _serve(PAGE))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     url = "http://127.0.0.1:%d/" % srv.server_address[1]
     from invisible_playwright import InvisiblePlaywright
@@ -351,7 +352,7 @@ def test_going_back_over_a_page_the_script_left_without_a_gesture(firefox_binary
     previous entry, gesture or not.
     """
     os.environ[factory.CHOICE_ENV] = factory.JUGGLER
-    srv = socketserver.TCPServer(("127.0.0.1", 0), _serve(PAGE))
+    srv = LocalServer(("127.0.0.1", 0), _serve(PAGE))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     url = "http://127.0.0.1:%d/" % srv.server_address[1]
     from invisible_playwright import InvisiblePlaywright
@@ -404,7 +405,7 @@ def test_set_content_runs_in_the_MAIN_world_without_node(firefox_binary):
 def test_the_public_API_selects_and_checks_without_node(firefox_binary):
     """`select_option` and `check`, through the generated API."""
     os.environ[factory.CHOICE_ENV] = factory.JUGGLER
-    srv = socketserver.TCPServer(("127.0.0.1", 0), _serve(PAGE))
+    srv = LocalServer(("127.0.0.1", 0), _serve(PAGE))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     url = "http://127.0.0.1:%d/" % srv.server_address[1]
     from invisible_playwright import InvisiblePlaywright
@@ -454,7 +455,7 @@ def test_locators_reach_INSIDE_a_closed_shadow_root(firefox_binary):
     the half that matters more - that the page gained nothing.
     """
     os.environ[factory.CHOICE_ENV] = factory.JUGGLER
-    srv = socketserver.TCPServer(("127.0.0.1", 0), _serve(SHADOW))
+    srv = LocalServer(("127.0.0.1", 0), _serve(SHADOW))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     url = "http://127.0.0.1:%d/" % srv.server_address[1]
     from invisible_playwright import InvisiblePlaywright
@@ -482,7 +483,7 @@ def test_the_PAGE_still_sees_nothing_of_a_closed_root(firefox_binary):
     So the assertion is not "automation works" but "the page is unchanged".
     """
     os.environ[factory.CHOICE_ENV] = factory.JUGGLER
-    srv = socketserver.TCPServer(("127.0.0.1", 0), _serve(SHADOW))
+    srv = LocalServer(("127.0.0.1", 0), _serve(SHADOW))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     url = "http://127.0.0.1:%d/" % srv.server_address[1]
     from invisible_playwright import InvisiblePlaywright
@@ -520,7 +521,7 @@ def test_content_SERIALISES_shadow_roots_including_closed_ones(firefox_binary):
     closed one, which is where a depth-one walk would look right and be wrong.
     """
     os.environ[factory.CHOICE_ENV] = factory.JUGGLER
-    srv = socketserver.TCPServer(("127.0.0.1", 0), _serve(SHADOW))
+    srv = LocalServer(("127.0.0.1", 0), _serve(SHADOW))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     url = "http://127.0.0.1:%d/" % srv.server_address[1]
     from invisible_playwright import InvisiblePlaywright
@@ -572,7 +573,7 @@ def test_console_messages_reach_the_page_listener(firefox_binary):
     handler simply never runs, and the user concludes their page prints
     nothing."""
     os.environ[factory.CHOICE_ENV] = factory.JUGGLER
-    srv = socketserver.TCPServer(("127.0.0.1", 0), _serve(NOISY))
+    srv = LocalServer(("127.0.0.1", 0), _serve(NOISY))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     url = "http://127.0.0.1:%d/" % srv.server_address[1]
     from invisible_playwright import InvisiblePlaywright
@@ -602,7 +603,7 @@ def test_an_uncaught_error_reaches_the_pageerror_listener(firefox_binary):
     """A page that throws must reach `page.on("pageerror")`, with the message
     intact - that is the only way a caller learns the site broke."""
     os.environ[factory.CHOICE_ENV] = factory.JUGGLER
-    srv = socketserver.TCPServer(("127.0.0.1", 0), _serve(NOISY))
+    srv = LocalServer(("127.0.0.1", 0), _serve(NOISY))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     url = "http://127.0.0.1:%d/" % srv.server_address[1]
     from invisible_playwright import InvisiblePlaywright
@@ -635,7 +636,7 @@ def test_a_dialog_can_be_ANSWERED_and_not_answering_hangs_the_page(
     asserts. The second half then checks the explicit path.
     """
     os.environ[factory.CHOICE_ENV] = factory.JUGGLER
-    srv = socketserver.TCPServer(("127.0.0.1", 0), _serve(NOISY))
+    srv = LocalServer(("127.0.0.1", 0), _serve(NOISY))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     url = "http://127.0.0.1:%d/" % srv.server_address[1]
     from invisible_playwright import InvisiblePlaywright
@@ -669,7 +670,7 @@ def test_an_unanswered_dialog_is_dismissed_by_the_client(firefox_binary):
     reached the client, this would hang - so a green here proves the event
     arrives even when nobody visibly consumes it."""
     os.environ[factory.CHOICE_ENV] = factory.JUGGLER
-    srv = socketserver.TCPServer(("127.0.0.1", 0), _serve(NOISY))
+    srv = LocalServer(("127.0.0.1", 0), _serve(NOISY))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     url = "http://127.0.0.1:%d/" % srv.server_address[1]
     from invisible_playwright import InvisiblePlaywright
@@ -704,7 +705,7 @@ def test_clearing_cookies_with_a_FILTER_is_refused_not_widened():
 @pytest.mark.e2e
 def test_cookies_round_trip_through_the_public_API(firefox_binary):
     os.environ[factory.CHOICE_ENV] = factory.JUGGLER
-    srv = socketserver.TCPServer(("127.0.0.1", 0), _serve(PAGE))
+    srv = LocalServer(("127.0.0.1", 0), _serve(PAGE))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     url = "http://127.0.0.1:%d/" % srv.server_address[1]
     from invisible_playwright import InvisiblePlaywright
@@ -732,7 +733,7 @@ def test_a_screenshot_comes_back_as_real_png_bytes(firefox_binary):
     the only assertion that separates a real image from a plausible one is the
     PNG signature."""
     os.environ[factory.CHOICE_ENV] = factory.JUGGLER
-    srv = socketserver.TCPServer(("127.0.0.1", 0), _serve(PAGE))
+    srv = LocalServer(("127.0.0.1", 0), _serve(PAGE))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     url = "http://127.0.0.1:%d/" % srv.server_address[1]
     from invisible_playwright import InvisiblePlaywright
@@ -753,7 +754,7 @@ def test_a_screenshot_comes_back_as_real_png_bytes(firefox_binary):
 @pytest.mark.e2e
 def test_the_viewport_can_be_resized(firefox_binary):
     os.environ[factory.CHOICE_ENV] = factory.JUGGLER
-    srv = socketserver.TCPServer(("127.0.0.1", 0), _serve(PAGE))
+    srv = LocalServer(("127.0.0.1", 0), _serve(PAGE))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     url = "http://127.0.0.1:%d/" % srv.server_address[1]
     from invisible_playwright import InvisiblePlaywright

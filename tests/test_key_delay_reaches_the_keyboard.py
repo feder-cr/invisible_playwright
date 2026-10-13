@@ -24,6 +24,8 @@ from invisible_playwright._juggler import server as server_module
 from invisible_core.juggler.actions import Actions
 from invisible_playwright._juggler.server import ElementHandleDispatcher, FrameDispatcher
 
+from _servers import LocalServer
+
 
 class _Recorder:
     """Records what an operation hands the action layer, by keyword."""
@@ -171,7 +173,7 @@ def page_url():
         def log_message(self, *a):
             pass
 
-    srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+    srv = LocalServer(("127.0.0.1", 0), H)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     yield "http://127.0.0.1:%d/" % srv.server_port
     srv.shutdown()

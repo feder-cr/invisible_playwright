@@ -22,12 +22,13 @@ carried a `position` and ours did not.
 from __future__ import annotations
 
 import http.server
-import socketserver
 import threading
 
 import pytest
 
 from invisible_playwright import InvisiblePlaywright
+
+from _servers import LocalServer
 
 #: A big target, so a centre click and an offset click are far apart in pixels
 #: and the assertion cannot pass by rounding.
@@ -62,7 +63,7 @@ def served():
         def log_message(self, *a):
             pass
 
-    with socketserver.TCPServer(("127.0.0.1", 0), H) as srv:
+    with LocalServer(("127.0.0.1", 0), H) as srv:
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         try:
             yield "http://127.0.0.1:%d/" % srv.server_address[1]

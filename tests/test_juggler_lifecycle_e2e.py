@@ -15,11 +15,12 @@ import pytest
 
 from invisible_core.juggler.lifecycle import Lifecycle
 
+from _servers import LocalServer
+
 
 @pytest.mark.e2e
 def test_the_four_states_are_reached_on_a_real_page(firefox_binary):
     import http.server
-    import socketserver
 
     from invisible_core.launch import build_launch_plan
     from invisible_core.juggler import connection as conn
@@ -44,7 +45,7 @@ def test_the_four_states_are_reached_on_a_real_page(firefox_binary):
     plan = build_launch_plan(11, profile_dir=profile_dir, binary_path=firefox_binary, timezone="UTC",
                               locale="en-US")
 
-    with socketserver.TCPServer(("127.0.0.1", 0), H) as srv:
+    with LocalServer(("127.0.0.1", 0), H) as srv:
         port = srv.server_address[1]
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         c = conn.launch(firefox_binary, profile_dir, headless=True,

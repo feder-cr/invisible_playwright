@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.35.3] - 2026-10-13
+
+The pin moves to invisible-core 41.39.0.
+
+### Fixed
+- **`go_back()` and `go_forward()` to a same-document entry (a hash, a
+  `pushState`) answer `None` at once**, as Playwright's. They waited for a
+  navigation id that a same-document navigation never has, and raised
+  `TimeoutError` at the timeout (measured on 0.35.2: 8 s for
+  `go_back(timeout=8000)`).
+- A protocol command inside an action waits for what is left of the action's
+  timeout and no longer has a 10 s bound of its own (invisible-core 41.39.0),
+  so an action on a loaded host does not fail before its timeout; a key or a
+  pointer event waits for the engine's answer, which the engine bounds itself.
+
 ## [0.35.2] - 2026-10-12
 
 The pin moves to invisible-core 41.38.0.

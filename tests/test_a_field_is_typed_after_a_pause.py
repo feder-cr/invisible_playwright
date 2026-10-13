@@ -33,6 +33,8 @@ from invisible_core.juggler import deadline as deadline_mod
 from invisible_core.juggler.actions import Actions
 from invisible_core.juggler.keyboard import Keyboard
 
+from _servers import LocalServer
+
 MAIN = "frame-main"
 SEED = 4242
 
@@ -311,7 +313,7 @@ def store_url():
         def log_message(self, *a):
             pass
 
-    srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+    srv = LocalServer(("127.0.0.1", 0), H)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     yield "http://127.0.0.1:%d/?answer=%d" % (srv.server_port, ANSWER_MS)
     srv.shutdown()

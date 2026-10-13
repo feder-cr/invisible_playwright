@@ -32,13 +32,14 @@ from __future__ import annotations
 
 import http.server
 import os
-import socketserver
 import sys
 import tempfile
 import threading
 import time
 
 import pytest
+
+from _servers import LocalServer
 
 pytestmark = pytest.mark.skipif(
     sys.platform == "win32",
@@ -61,7 +62,7 @@ def served():
         def log_message(self, *a):
             pass
 
-    with socketserver.TCPServer(("127.0.0.1", 0), H) as srv:
+    with LocalServer(("127.0.0.1", 0), H) as srv:
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         try:
             yield "http://127.0.0.1:%d/" % srv.server_address[1]

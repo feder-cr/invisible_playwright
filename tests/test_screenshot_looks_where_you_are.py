@@ -37,6 +37,8 @@ import zlib
 
 import pytest
 
+from _servers import LocalServer
+
 # White down to 1000, one RED band 1000..1200, black to 4000, and a GREEN
 # column at x=1400 so the same trick works sideways. Reading the colour at a
 # known place in the image says which part of the document it came from.
@@ -66,7 +68,7 @@ def _serve():
     s.bind(("127.0.0.1", 0))
     port = s.getsockname()[1]
     s.close()
-    srv = http.server.HTTPServer(("127.0.0.1", port), H)
+    srv = LocalServer(("127.0.0.1", port), H)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     return srv, "http://127.0.0.1:%d/" % port
 

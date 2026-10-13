@@ -21,7 +21,6 @@ Known-bad inputs, each run before this file was trusted:
 from __future__ import annotations
 
 import http.server
-import socketserver
 import threading
 import time
 from types import SimpleNamespace
@@ -29,6 +28,8 @@ from types import SimpleNamespace
 import pytest
 
 from invisible_core.juggler.connection import EventListeners
+
+from _servers import LocalServer
 
 PAGE = b"""<!doctype html><html><head><title>screencast</title>
 <style>html,body{margin:0;background:#FF00FF;height:100%}</style>
@@ -170,7 +171,7 @@ def test_a_screencast_frame_is_a_jpeg_of_the_whole_window(firefox_binary):
     blob nobody decoded is still non-empty bytes; the JPEG magic is what
     separates a picture from a plausible one.
     """
-    srv = socketserver.TCPServer(("127.0.0.1", 0), _serve(PAGE))
+    srv = LocalServer(("127.0.0.1", 0), _serve(PAGE))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     url = "http://127.0.0.1:%d/" % srv.server_address[1]
     from invisible_playwright import InvisiblePlaywright
@@ -325,7 +326,7 @@ def test_asking_for_a_higher_rate_actually_delivers_more_frames(firefox_binary):
     the assertion that a lever quietly disconnected would fail first, because
     then the slow arm runs at the machine's maximum too. It is asserted now.
     """
-    srv = socketserver.TCPServer(("127.0.0.1", 0), _serve(PAGE))
+    srv = LocalServer(("127.0.0.1", 0), _serve(PAGE))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     url = "http://127.0.0.1:%d/" % srv.server_address[1]
     from invisible_playwright import InvisiblePlaywright

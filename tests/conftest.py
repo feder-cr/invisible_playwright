@@ -2,13 +2,14 @@ import faulthandler
 import http.server
 import os
 import random
-import socketserver
 import sys
 import tempfile
 import threading
 from pathlib import Path
 
 import pytest
+
+from _servers import LocalServer
 
 # ── The watchdog that says WHERE it is stuck, while it is still stuck ─────────
 #
@@ -232,7 +233,7 @@ self.addEventListener('fetch', e => {
 def fixture_server():
     """Spin up a localhost HTTP server with SW-friendly headers. Yields
     the base URL (e.g., 'http://127.0.0.1:54321')."""
-    httpd = socketserver.TCPServer(("127.0.0.1", 0), _SWFixtureHandler)
+    httpd = LocalServer(("127.0.0.1", 0), _SWFixtureHandler)
     port = httpd.server_address[1]
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()

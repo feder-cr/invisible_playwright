@@ -15,7 +15,6 @@ two packages had a copy of these tests each; one place now covers both modes.
 from __future__ import annotations
 
 import http.server
-import socketserver
 import sys
 import tempfile
 import threading
@@ -25,6 +24,8 @@ import pytest
 
 from invisible_core.juggler._behaviour import PageActs
 from invisible_core.juggler.actions import Actions, ElementNotActionable
+
+from _servers import LocalServer
 
 #: Who draws the pointer approach in `_open`; set per test by the fixture below.
 _ENGINE_APPROACH = False
@@ -105,7 +106,7 @@ def _open(binary, body):
     profile_dir = tempfile.mkdtemp(prefix="act_test_")
     plan = build_launch_plan(9, profile_dir=profile_dir, binary_path=binary, timezone="UTC",
                               locale="en-US")
-    srv = socketserver.TCPServer(("127.0.0.1", 0), _serve(body))
+    srv = LocalServer(("127.0.0.1", 0), _serve(body))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     c = conn.launch(binary, profile_dir, headless=True, env=plan.env)
     sessions: dict = {}

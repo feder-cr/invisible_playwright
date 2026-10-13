@@ -35,6 +35,8 @@ import pytest
 from invisible_core.juggler._behaviour import PageActs
 from invisible_core.juggler.actions import Actions
 
+from _servers import LocalServer
+
 PAGE = b"""<!doctype html>
 <html><head><title>handle actions</title></head><body>
   <input id="testo" type="text">
@@ -106,7 +108,7 @@ def _actions():
     # The point is computed from the quad; here it is always usable, so the loop
     # reaches `run` on the first turn and the test is about what it did to get
     # there rather than about geometry.
-    a._center_point = lambda f, element, position=None: (10.0, 10.0)
+    a._center_point = lambda f, element, position=None, deadline=None: (10.0, 10.0)
     a._in_viewport = lambda point: True
     return a, inj
 
@@ -196,7 +198,7 @@ def _serve():
     s.bind(("127.0.0.1", 0))
     port = s.getsockname()[1]
     s.close()
-    srv = http.server.HTTPServer(("127.0.0.1", port), H)
+    srv = LocalServer(("127.0.0.1", port), H)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     return srv, "http://127.0.0.1:%d/" % port
 

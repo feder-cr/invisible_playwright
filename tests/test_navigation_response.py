@@ -36,9 +36,12 @@ from __future__ import annotations
 import http.server
 import socket
 import threading
+import time
 from types import SimpleNamespace
 
 import pytest
+
+from invisible_core.juggler.lifecycle import NavigationMark
 
 
 # -- the unit half: the server, fed the events a navigation produces ---------
@@ -276,7 +279,7 @@ def test_reload_and_goBack_answer_with_the_channel_of_the_new_navigation():
     page = _bare_page()
     _navigate(page, "NAV-NEW")
     page.lifecycle = SimpleNamespace(
-        frame=lambda fid: SimpleNamespace(navigation="NAV-OLD"),
+        mark=lambda fid: NavigationMark("NAV-OLD", 0),
         wait_for_new_navigation=lambda *a, **kw: "NAV-NEW")
     page.send = lambda method, params=None: {"success": True}
 
@@ -291,7 +294,7 @@ def test_goBack_at_the_start_of_history_is_still_None():
     and it must not start waiting for a navigation that will never happen."""
     page = _bare_page()
     page.lifecycle = SimpleNamespace(
-        frame=lambda fid: SimpleNamespace(navigation="NAV-OLD"),
+        mark=lambda fid: NavigationMark("NAV-OLD", 0),
         wait_for_new_navigation=lambda *a, **kw: pytest.fail(
             "it waited for a navigation the browser refused to start"))
     page.send = lambda method, params=None: {"success": False}
@@ -312,6 +315,7 @@ def test_wait_for_new_navigation_HANDS_BACK_the_id_it_waited_for():
     conn.dispatch_event("Page.frameAttached", {"frameId": "F1"}, "S1")
     conn.dispatch_event("Page.navigationStarted",
                         {"frameId": "F1", "navigationId": "OLD"}, "S1")
+    since = lifecycle.mark("F1")
 
     def navigate_later():
         conn.dispatch_event("Page.navigationStarted",
@@ -323,7 +327,7 @@ def test_wait_for_new_navigation_HANDS_BACK_the_id_it_waited_for():
                             {"frameId": "F1", "name": "load"}, "S1")
 
     threading.Timer(0.05, navigate_later).start()
-    assert lifecycle.wait_for_new_navigation("F1", "OLD", "load",
+    assert lifecycle.wait_for_new_navigation("F1", since, "load",
                                              timeout=10) == "NEW"
 
 
@@ -421,24 +425,25 @@ def test_navigation_answers_with_a_real_response(firefox_binary):
             assert missing.status == 404, missing.status
             assert missing.ok is False
 
-            # ⛔ NO `go_back` ARM HERE, AND THE REASON IS NOT THIS CHANGE.
-            # [B185] is open: the shipped engine answers `Page.goBack` with
-            # `{success: true}` and then does nothing - no navigation event, no
-            # state change - and the Node driver fails identically on the same
-            # binary, so it is the engine and not the server. Asserting it here
-            # would buy a 30-second timeout on every run and an accusation
-            # pointed at the wrong layer.
-            # `test_juggler_transport.py` already pins that defect with a
-            # STRICT xfail, so the day it is fixed somebody comes back here.
-            # The server half of goBack - that it answers with the channel of
-            # the navigation the wait found - is asserted as a unit above,
-            # which is where it can be asserted without the engine.
-
             # The None THAT IS CORRECT. A same-document navigation creates no
             # document, so Playwright answers null - fixing [B200] must not
             # turn this into an invented object.
             page.goto(url, wait_until="load", timeout=30_000)
             assert page.goto(url + "#deeper", timeout=30_000) is None, (
                 "a same-document navigation must answer None")
+
+            # ⛔ AND HISTORY TO A SAME-DOCUMENT ENTRY ANSWERS None AT ONCE
+            # ([B290]). This arm was left out on the word of [B185], which said
+            # the engine answered `Page.goBack` and then did nothing; [B185]
+            # was closed on 2026-09-17 (the engine does go back) and the
+            # comment stayed, so nobody asked what `go_back` did to a hash
+            # entry: it waited for a navigation id that a same-document
+            # navigation never has, and raised at the timeout. Measured on
+            # 0.35.2: 8.0 s and a TimeoutError for `go_back(timeout=8000)`.
+            for go, where in ((page.go_back, url), (page.go_forward, url + "#deeper")):
+                began = time.monotonic()
+                assert go(timeout=8_000) is None
+                assert time.monotonic() - began < 2.0, "it waited out the timeout"
+                assert page.url == where, page.url
     finally:
         srv.shutdown()

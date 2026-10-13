@@ -14,13 +14,14 @@ from __future__ import annotations
 
 import http.server
 import socket
-import socketserver
 import struct
 import threading
 
 import pytest
 
 from invisible_playwright import InvisiblePlaywright
+
+from _servers import LocalServer
 
 _USER = "ferd_socks_user"
 _PASS = "ferd_socks_pw_42"
@@ -147,7 +148,7 @@ class _LocalHTTP:
             def log_message(self, *a):
                 pass
 
-        self._srv = socketserver.TCPServer(("127.0.0.1", 0), H)
+        self._srv = LocalServer(("127.0.0.1", 0), H)
         self.port = self._srv.server_address[1]
         threading.Thread(target=self._srv.serve_forever, daemon=True).start()
 

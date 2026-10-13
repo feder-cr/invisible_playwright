@@ -7,7 +7,6 @@ from __future__ import annotations
 import http.server
 import importlib.util
 import pathlib
-import socketserver
 import tempfile
 import threading
 import time
@@ -15,6 +14,8 @@ import time
 import pytest
 
 from invisible_core.juggler import injected as ini
+
+from _servers import LocalServer
 
 PAGE = b"""<!doctype html><html><head><title>actionable</title></head><body>
 <h1 id=title>hello world</h1>
@@ -52,7 +53,7 @@ def _open(binary, body):
     profile_dir = tempfile.mkdtemp(prefix="inj_test_")
     plan = build_launch_plan(5, profile_dir=profile_dir, binary_path=binary, timezone="UTC",
                              locale="en-US")
-    srv = socketserver.TCPServer(("127.0.0.1", 0), _serve(body))
+    srv = LocalServer(("127.0.0.1", 0), _serve(body))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     c = conn.launch(binary, profile_dir, headless=True, env=plan.env)
     sessions: dict = {}

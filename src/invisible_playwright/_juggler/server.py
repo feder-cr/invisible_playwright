@@ -2620,12 +2620,14 @@ class PageDispatcher(Dispatcher):
         the recorded trace exists to stop.
         """
         frame_id = self.frame.frame_id
-        # ⛔ READ THE CURRENT NAVIGATION FIRST. History gives back no
-        # navigationId, so the only thing to anchor the wait on is that this
-        # one has changed - and reading it after the command would sometimes
-        # read the new one.
-        frame = self.lifecycle.frame(frame_id)
-        previous = frame.navigation if frame is not None else None
+        # ⛔ THE MARK IS TAKEN FIRST. History gives back no navigationId, so
+        # the only thing to anchor the wait on is that the frame has moved -
+        # and reading it after the command would sometimes read the new one.
+        # The mark holds the same-document count too: going to a hash or
+        # `pushState` entry starts no navigation, and until 0.35.2 `go_back`
+        # to one waited out its timeout and raised where Playwright answers
+        # null at once ([B290]).
+        since = self.lifecycle.mark(frame_id)
         result = self.send(command, {"frameId": frame_id}
                            if command != "Page.reload" else {}) or {}
         if command != "Page.reload" and not result.get("success"):
@@ -2640,7 +2642,7 @@ class PageDispatcher(Dispatcher):
         # `reload` answer with a Response like `goto` does: the same [B200],
         # which would otherwise be reopened here in a month.
         navigation = self.lifecycle.wait_for_new_navigation(
-            frame_id, previous, params.get("waitUntil") or "load",
+            frame_id, since, params.get("waitUntil") or "load",
             timeout=_caller_timeout(params))
         return {"response": self.navigation_response(navigation)}
 

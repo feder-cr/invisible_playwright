@@ -25,12 +25,13 @@ making the product worse.
 from __future__ import annotations
 
 import http.server
-import socketserver
 import threading
 
 import pytest
 
 from invisible_playwright import InvisiblePlaywright
+
+from _servers import LocalServer
 
 PAGE = b"""<!DOCTYPE html><html><body>
 <input id="f" type="file">
@@ -63,7 +64,7 @@ class _Handler(http.server.BaseHTTPRequestHandler):
 @pytest.fixture
 def local_page():
     """A real page from 127.0.0.1: `data:` URLs carry their own CSP."""
-    with socketserver.TCPServer(("127.0.0.1", 0), _Handler) as srv:
+    with LocalServer(("127.0.0.1", 0), _Handler) as srv:
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         try:
             yield "http://127.0.0.1:%d" % srv.server_address[1]

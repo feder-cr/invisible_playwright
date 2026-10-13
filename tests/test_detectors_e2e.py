@@ -27,6 +27,8 @@ libraries and uses their FULL API surface:
 
 Everything is hermetic: the libraries are vendored (tests/vendor/) and served
 from a localhost HTTP server - no external CDN call. For CreepJS, every non-local
+
+from _servers import LocalServer
 request is aborted, so its optional crowd-comparison POST never runs and the
 verdict is computed purely locally. Runs identically on a dev box and a GH runner.
 
@@ -36,7 +38,6 @@ realness gate.
 from __future__ import annotations
 
 import http.server
-import socketserver
 import threading
 from pathlib import Path
 
@@ -135,7 +136,7 @@ class _DetectorSite:
             def log_message(self, *a):
                 pass
 
-        self._srv = socketserver.TCPServer(("127.0.0.1", 0), H)
+        self._srv = LocalServer(("127.0.0.1", 0), H)
         self.port = self._srv.server_address[1]
         threading.Thread(target=self._srv.serve_forever, daemon=True).start()
 
