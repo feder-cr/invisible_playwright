@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.35.4] - 2026-10-13
+
+The pin moves to invisible-core 42.39.0, which seals the firefox-42 engine.
+
+### Fixed
+- **A page that replaces itself no longer loses its main world.** Now and
+  then, after a page that navigated or reloaded itself, the new document's
+  main world was never announced, and a read in the page's world waited 30
+  seconds and failed: the engine's channel answered the new page's first
+  requests with the answers an earlier page had been given.
+- **A session keeps the focus when another one starts beside it.** With two
+  sessions on one desktop, the first lost the focus when the second opened its
+  window: its page got `blur`, `document.hasFocus()` turned false and a focused
+  field stopped taking keys. Measured on Windows, two sessions on one hidden
+  desktop: 4 first sessions in 6 lost it before, 0 in 6 now.
+- **The real mouse no longer turns a click into a drag.** In a visible
+  session, the person's cursor moving over the window during a click could
+  start a native drag on a link, and the click failed with an error from
+  `dispatchDragEvent`.
+- **`evaluate` of a function that rejects with something that is not an
+  `Error`** (a plain object, an `Event`) raises, as in Playwright; it answered
+  `None`.
+
 ## [0.35.3] - 2026-10-13
 
 The pin moves to invisible-core 41.39.0.
