@@ -25,5 +25,11 @@ class LocalServer(socketserver.ThreadingTCPServer):
     # picked rather than 0.
     allow_reuse_address = True
 
+    def server_bind(self):
+        """`server_name` and `server_port`, which `http.server.HTTPServer`
+        gives and tests read, without its `getfqdn`."""
+        socketserver.ThreadingTCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
+
 
 __all__ = ["LocalServer"]
