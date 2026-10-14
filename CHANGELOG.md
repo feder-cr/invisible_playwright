@@ -6,6 +6,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.35.8] - 2026-10-14
+
+The pin moves to invisible-core 46.39.0, which seals the firefox-46 engine.
+
+### Fixed
+- **A goto the page stops on its way no longer answers OK on the old page, nor
+  waits out its timeout.** `document.open()` and `window.stop()` in the page
+  being left stop the navigation on its way, and the engine dropped every such
+  stop of the main frame (a workaround meant for the spurious one a Fission
+  process swap fires): `goto` answered OK while the page was still the
+  previous one, or waited for its timeout. It now raises `NS_BINDING_ABORTED`
+  at once, as Playwright does on Firefox. Every way a page or the caller can
+  stop or replace a goto (document.open, window.stop, location.replace and
+  assign, a form submit, an iframe navigating the top, history.back,
+  pushState, a meta refresh, a second goto) is tested against upstream
+  Playwright's answers, in one process and across a process swap.
+- **`goto` refuses a success the engine made up**: when the commit attributed
+  to its navigation is not where that navigation's request went (redirects
+  included), it raises "Navigation to ... was reported committed on ..., which
+  is not where it went" instead of answering OK.
+- **A goto that the caller's next goto stops** says "is interrupted by another
+  navigation to" the new address, as upstream; it said `NS_BINDING_ABORTED`.
+- **`goto(until="load")` counts only its own document's `load`**: the states
+  were cleared when a navigation started, not when it committed.
+- **A goto that waited out its timeout no longer says "the current navigation
+  is nav-N, not our nav-N"**: it says that our navigation started and neither
+  committed nor was aborted.
+- **The wheel is born before the page sees it**, as keys and mouse moves are
+  since 0.35.7: `event.timeStamp` was the instant the wheel reached the page,
+  0 to 2 ms below `performance.now()` in the handler where a real wheel is 6
+  to 14, and half of the wheel events failed the filter a tracker applies.
+
 ## [0.35.7] - 2026-10-13
 
 The pin moves to invisible-core 45.39.0, which seals the firefox-45 engine.
