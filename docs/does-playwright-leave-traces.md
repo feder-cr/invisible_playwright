@@ -81,6 +81,18 @@ All three are page-visible because they live in the document or the global scope
 them is the control channel. Fixing them is a matter of not writing them into the page in
 the first place, which is a design decision, not a runtime patch.
 
+There is a fourth, and it is the one you control rather than one the browser decides:
+**an init script of your own that throws reaches the page.** A script added with
+`page.add_init_script()` runs in the page's own realm, so a callback it registers - an
+event listener, a timer, a promise - throws into that realm like any other page code.
+An uncaught one reaches the page's `window.onerror` with `"eval code"` as its source,
+which is a string a document that never calls `eval` has no other way to produce. The
+browser's own injection does not do this: measured on a page that installs `onerror`,
+a capturing `error` listener and `unhandledrejection` before anything else, then reads
+every surface this package spoofs, nothing surfaces across repeated loads, reloads and
+an iframe. So keep your own init scripts inside `try { } catch { }`, especially the
+callbacks they leave behind, and prefer feature checks over assuming a property exists.
+
 ## Chromium injects cdc_ into the document; Firefox through Juggler does not
 
 Chromium-based tooling writes `cdc_`-prefixed properties into the page; Firefox driven
