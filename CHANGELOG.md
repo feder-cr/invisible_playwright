@@ -8,9 +8,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [0.35.8] - 2026-10-14
 
-The pin moves to invisible-core 46.39.0, which seals the firefox-46 engine.
+The pin moves to invisible-core 47.39.0, which seals the firefox-47 engine.
 
 ### Fixed
+- **A page can no longer tell that the engine carries the automation protocol
+  (#336).** Every engine until firefox-47 registered the protocol as a chrome
+  package named `juggler`, and a page tells a registered package from an absent
+  one with one line, `new Worker("chrome://juggler/...")`: it returns on our
+  engine and throws `SecurityError` on Firefox. Captcha vendors started probing
+  it in October 2026, which is why a challenge solved by hand was still refused.
+  firefox-47 loads the protocol from `resource://gre/modules/juggler/`, a
+  namespace every Firefox has and inside which a page cannot tell which files
+  exist; the engine now registers exactly the chrome packages and resource
+  substitutions Firefox 151 does, and its release is refused if it registers
+  any name that Firefox does not.
 - **A goto the page stops on its way no longer answers OK on the old page, nor
   waits out its timeout.** `document.open()` and `window.stop()` in the page
   being left stop the navigation on its way, and the engine dropped every such
