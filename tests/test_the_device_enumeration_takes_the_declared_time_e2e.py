@@ -21,8 +21,17 @@ pytestmark = pytest.mark.e2e
 
 _SEED = 42
 
-#: What the page's own round trip to the parent adds to the declared time.
-ROUND_TRIP_MS = 110
+#: The smallest time the host's audio stack added to an enumeration before
+#: firefox-45 (287-351 ms on our Windows build, the docstring above). The
+#: margin over the declared time is half of it: wide enough for a loaded
+#: runner, narrow enough that the defect it guards cannot hide in it.
+#:
+#: These bounds used to be absolute - the first within declared + 110 ms, the
+#: second under 50 ms - and a CI run with four browsers crossed each of them
+#: once in the release of 0.35.10 (656 against 543 + 110, then exactly 50),
+#: both green again on the same SHA ([B312]). A bound that the load of the
+#: machine can cross is a bound on the machine, not on the engine.
+HOST_STACK_MS = 287
 
 MEASURE = """async () => {
   const out = [];
@@ -64,6 +73,13 @@ def test_the_first_enumeration_takes_the_declared_time(firefox_binary):
     from invisible_core._fpforge import generate_profile
     declared = generate_profile(_SEED).hardware.media_enumeration_ms
     assert kinds == "audioinput,videoinput"
-    assert declared <= first <= declared + ROUND_TRIP_MS, (first, declared)
-    # Kept, as Firefox keeps it.
-    assert second < 50, second
+    # The declared time is waited: load can only add to it.
+    assert first >= declared, (first, declared)
+    # Kept, as Firefox keeps it: a list asked again would wait the declared
+    # time again.
+    assert second < declared / 2, (second, declared)
+    # And nothing on top of it. The second call is the same round trip to the
+    # parent without the wait, so the difference is the declared time plus
+    # whatever the host added; the load both calls share cancels out instead of
+    # adding up.
+    assert first - second < declared + HOST_STACK_MS / 2, (first, second, declared)
