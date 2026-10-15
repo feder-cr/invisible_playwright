@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.35.10] - 2026-10-15
+
+The pin moves to invisible-core 47.41.0, on the same firefox-47 engine.
+
+### Added
+- **The engine can live on a read-only disk.** `INVISIBLE_PLAYWRIGHT_ENGINE_DIR`
+  puts the sealed engine trees somewhere of their own, written only by a
+  download; `INVISIBLE_PLAYWRIGHT_CACHE_DIR` keeps the machine's writable state
+  (the GeoIP database, the font manifest). Unset, nothing moves. A launch on an
+  engine already fetched by the same core writes nothing into the store.
+
+### Changed
+- **`timezone="auto"` that cannot be resolved now fails the launch without a
+  proxy too.** It used to fall back to the host's timezone in silence when the
+  exit could not be discovered or the GeoIP database could not be obtained,
+  which on a server kept in UTC gives a timezone that contradicts its own IP.
+  The error names the cause; pass an explicit IANA zone to launch offline.
+
 ## [0.35.9] - 2026-10-15
 
 The pin moves to invisible-core 47.40.0, on the same firefox-47 engine.

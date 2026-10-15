@@ -39,7 +39,7 @@ import sys
 
 from . import __version__
 from invisible_core import BINARY_VERSION, FIREFOX_UPSTREAM_VERSION
-from invisible_core.download import cache_root, ensure_binary  # noqa: F401
+from invisible_core.download import cache_root, engine_root, ensure_binary  # noqa: F401
 
 from ._pin import (
     declared_core_pin as _declared_core_pin,
@@ -111,8 +111,10 @@ def _cmd_version(_args: argparse.Namespace) -> int:
     print(f"engine               {s.tag}  Firefox {s.upstream_version}  build {s.build_id}")
     print(f"seal                 {s.digest[:12]}  [{s.origin}]")
     # Where the engine lives, because `clear-cache` is gone and "how do I get
-    # the disk space back" needs an answer that is not a subcommand.
-    print(f"cache                {cache_root()}")
+    # the disk space back" needs an answer that is not a subcommand. Two
+    # roots: the engines (engine_root) and this machine's state (cache_root).
+    print(f"engines              {engine_root()}")
+    print(f"state                {cache_root()}")
     return 0
 
 

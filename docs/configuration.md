@@ -71,7 +71,8 @@ row is for a specific situation.
 
 | Variable | When you need it |
 |---|---|
-| `INVISIBLE_PLAYWRIGHT_CACHE_DIR` | Put the cached engine somewhere else - another drive, a shared location, a path your CI already caches |
+| `INVISIBLE_PLAYWRIGHT_CACHE_DIR` | Put the cache somewhere else - another drive, a shared location, a path your CI already caches. It holds the engine and this machine's state (the GeoIP database, the font manifest) |
+| `INVISIBLE_PLAYWRIGHT_ENGINE_DIR` | Keep the engine apart from the state, for example on a read-only disk built once per release: `invisible-playwright fetch` with it set fills it, and a launch only reads it. The cache directory must still be writable |
 | `INVPW_BINARY_PATH` | Point at a binary you already have, and skip the download |
 | `STEALTHFOX_GITHUB_TOKEN` | A rate-limited or corporate network that refuses anonymous GitHub downloads |
 | `INVISIBLE_PLAYWRIGHT_SKEW=allow` | Run a Playwright version outside the tested range anyway |

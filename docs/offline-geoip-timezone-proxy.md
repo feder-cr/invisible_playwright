@@ -129,16 +129,14 @@ enough that there is no reason to open that window.
 
 ## What happens when the lookup fails
 
-When resolution fails, the fallback depends on whether a proxy is in play, and the two
-cases have opposite risks. Behind a proxy the wrapper fails early at launch rather than
-ship a mismatch; without a proxy it falls back to the host timezone and the session
-continues. The interesting part of any resolution step is what it does when it cannot
-resolve, so both cases are set out below.
+When resolution fails, the launch fails, with a proxy or without one. The interesting part
+of any resolution step is what it does when it cannot resolve, so both cases are set out
+below.
 
 | Situation | On a failed resolution | Why |
 |---|---|---|
 | Proxy set | Fails early at launch | A foreign exit paired with the host timezone is a mismatch worth stopping for |
-| No proxy | Falls back to the host timezone, continues | The host address is what the session presents, so the host timezone is correct |
+| No proxy | Fails early at launch | The host's timezone can disagree with the host's own address, which is why it is resolved at all |
 
 **With a proxy**, a failed resolution fails early. The reason is precise: if resolution
 fell back to the host's own timezone while the traffic exits through a foreign proxy, the
@@ -147,14 +145,16 @@ to prevent, and it would do so silently. A foreign exit paired with the host tim
 `timezone_mismatch` waiting to be scored, so the wrapper refuses rather than ship it. You
 find out at launch, not from a block three requests later.
 
-**Without a proxy**, there is no exit to disagree with. The session presents the host's own
-address, so the host's own timezone is the correct answer, and a transient failure to read
-it should never take the launch down. In that case resolution falls back to the host
-timezone and the session proceeds.
+**Without a proxy**, the session presents the host's own address, and the timezone is still
+resolved from that address rather than read from the host. The reason is the case this
+section used to wave through: a server kept in UTC whose public address is in another
+country. Until invisible-core 47.41.0 a failed resolution here fell back to the host
+timezone and the session went on, which handed exactly that server a timezone contradicting
+its own IP, with nothing said. Now it fails at launch and names the cause. To launch with
+no network at all, pass an explicit IANA zone, which asks the network nothing.
 
-So the fallback is not a single policy applied everywhere. It is chosen so that the only
-time resolution is allowed to fail loudly is the only time a quiet fallback would have been
-a fingerprint bug. This matters most when you
+So the rule is a single one: a resolution that cannot be honoured is an error, never a
+quiet guess. This matters most when you
 [rotate proxies across sessions](how-to-rotate-proxies-playwright.md) or run
 [a different exit per browser context](playwright-proxy-per-context.md), because each new
 exit is a fresh resolution, and each one either agrees with its browser or refuses to start.
@@ -220,9 +220,10 @@ explicit IANA identifier only when you want to override that.
 once, over the proxy, and maps it against a local database. There is no per-launch call to a
 geolocation service.
 
-**Will my session break if the timezone lookup fails?** Behind a proxy it fails early, on
-purpose, because a foreign exit with the host timezone is a mismatch worth stopping for.
-Without a proxy it falls back to the host timezone and the session continues.
+**Will my session break if the timezone lookup fails?** Yes, on purpose, with a proxy or
+without one: a timezone that contradicts the exit is a mismatch worth stopping for, and the
+host's own timezone can contradict the host's own address. Pass an explicit IANA zone to
+launch without the lookup.
 
 **How does the offline database stay current?** Each launch makes one cheap, unmetered check
 against a permalink to the newest build and downloads only when the cache is behind. There is

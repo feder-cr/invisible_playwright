@@ -102,8 +102,8 @@ How this project does it, because the details are the part that bites:
   request per launch announcing that a new session started.
 - The **same** lookup feeds the locale and the WebRTC public address, so those three
   cannot drift apart. They come from one answer, not three.
-- **On failure with a proxy configured, it fails the launch** instead of falling back
-  to the host timezone. That fallback is the exact mismatch you set out to avoid, and a
+- **On failure it fails the launch**, with a proxy or without one, instead of falling
+  back to the host timezone. That fallback is the exact mismatch you set out to avoid, and a
   silent fallback to it is worse than an error.
 
 That last one is a small decision that took a while to get right. A fallback that
