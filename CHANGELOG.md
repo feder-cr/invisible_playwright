@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.35.9] - 2026-10-15
+
+The pin moves to invisible-core 47.40.0, on the same firefox-47 engine.
+
+### Fixed
+- **Closing a browser no longer closes the pipe of another browser in the
+  same process.** The driver closes a browser's pipe from `Browser.close` and
+  again when the session shuts down, and each call closed the pipe's
+  descriptor numbers. A released number goes to the next pipe the process
+  opens, so when one process drove several sessions the second call closed
+  another browser's pipe: its launch died with `EISDIR`, or it stopped
+  answering. The connection now releases each end once and never touches
+  the number again.
+
 ## [0.35.8] - 2026-10-14
 
 The pin moves to invisible-core 47.39.0, which seals the firefox-47 engine.
