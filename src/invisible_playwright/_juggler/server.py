@@ -1904,7 +1904,17 @@ class RouteDispatcher(Dispatcher):
         # session they came back "Handler for does not implement method", the
         # held request was never released and the page hung on its first
         # request. Every route that ever reached a handler failed this way.
-        result = self.request.page.send(command, params)
+        #
+        # ⛔ AND A REQUEST THAT IS ALREADY GONE IS NOT THE CALLER'S ERROR. The
+        # next navigation aborts the last document's subresources (its
+        # favicon, every time) while their routes sit with the handler; the
+        # engine then answers NS_BINDING_ABORTED. Raised, it surfaced out of
+        # the caller's NEXT goto or evaluate, 4-12 times in 60 routed gotos.
+        # Playwright's Firefox server sends all three answers `sendMayFail`.
+        try:
+            result = self.request.page.send(command, params)
+        except (juggler.ProtocolError, juggler.TargetClosedError):
+            result = None
         self.dispose()
         return result
 
