@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+- **Opening and closing pages quickly no longer breaks `new_page()`.** A page's
+  close and the delivery of its events ran on two threads with nothing between
+  them, so an event of a page being closed could create a response under a
+  request the client had already dropped, and the client raised
+  `'dict' object has no attribute '_object'`, from `new_page()` or from a
+  `response` listener: 3 to 5 failed cycles out of 150 in every run of four.
+  A page's events now go through one gate under its close's lock, and do
+  nothing once it is closed: 0 out of 600.
+
 ## [0.35.10] - 2026-10-15
 
 The pin moves to invisible-core 47.41.0, on the same firefox-47 engine.
