@@ -1939,7 +1939,9 @@ class PageDispatcher(Dispatcher):
         # (`op_close`, the reader's detach, an adoption finishing early, a
         # context closing underfoot) and check-then-set without it emits
         # `close` twice when the two interleave between the test and the set.
-        self._close_lock = threading.Lock()
+        # Re-entrant: it is also the gate of this page's events (`_deliver`),
+        # and an event whose handling ends the page closes it from inside.
+        self._close_lock = threading.RLock()
         self._announced_closed = False
         # The id Juggler gave the running screencast, or None. One per page,
         # because the engine holds one capture sink per window.
@@ -2106,7 +2108,7 @@ class PageDispatcher(Dispatcher):
             for i, (method, params) in enumerate(held):
                 if last[id(params)] == i and method.startswith("Network."):
                     try:
-                        self._on_juggler_event(method, params)
+                        self._deliver(method, params)
                     except Exception:
                         pass
         self._hear_lifecycle()
@@ -2192,7 +2194,30 @@ class PageDispatcher(Dispatcher):
                     if len(self._held) < self.HELD_CAP:
                         self._held.append((method, params))
                     return
-        self._on_juggler_event(method, params)
+        self._deliver(method, params)
+
+    def _deliver(self, method: str, params: Dict) -> None:
+        """Hand one event of this page's session to its handler: the ONE way in,
+        for the live events and for the ones held at birth.
+
+        ⛔ UNDER THE CLOSE'S OWN LOCK, AND NOTHING ONCE THE PAGE IS CLOSED. The
+        close (`announce_closed`) runs on the caller's thread or on the
+        engine's detach, the events on the reader thread, and the two were not
+        serialized: the reader could be inside this page's handler, or enter
+        it, after the client had been sent `close` and `__dispose__`. A
+        `Network.responseReceived` then created a Response under a request the
+        client had dropped with its page, and the context's `response` event
+        named an object the client never built, so the client threw
+        `'dict' object has no attribute '_object'` (3 runs out of 4 of 150
+        open-and-close cycles, measured 2026-10-15). Taken here, an event being
+        handled finishes before the close is announced, and an event after it
+        reaches nothing: for the client the page and everything under it are
+        gone.
+        """
+        with self._close_lock:
+            if self._announced_closed:
+                return
+            self._on_juggler_event(method, params)
 
     def _detach_listeners(self) -> None:
         """Unsubscribe this page and everything it owns.

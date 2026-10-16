@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.36.0] - 2026-10-16
+
+The pin moves to invisible-core 48.41.0, on the firefox-48 engine. 0.35.11 was
+never published: its fix is listed here.
+
 ### Added
 - **The branding a page reads is a profile field.** `pin={"branding": ...}`
   takes `"official"` (the default, the retail Firefox's files), `"unofficial"`,
@@ -26,6 +31,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   profile came back with another GPU, screen and fonts. The first launch now
   records its seed in the profile and later ones reuse it; an explicit `seed`
   that differs from the recorded one is refused.
+- **Opening and closing pages quickly no longer breaks `new_page()`.** A page's
+  close and the delivery of its events ran on two threads with nothing between
+  them, so an event of a page being closed could create a response under a
+  request the client had already dropped, and the client raised
+  `'dict' object has no attribute '_object'`, from `new_page()` or from a
+  `response` listener: 3 to 5 failed cycles out of 150 in every run of four.
+  A page's events now go through one gate under its close's lock, and do
+  nothing once it is closed: 0 out of 600.
 
 ## [0.35.10] - 2026-10-15
 
