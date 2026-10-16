@@ -1,7 +1,6 @@
 """Sync Playwright launcher for invisible_playwright."""
 from __future__ import annotations
 
-import secrets
 import time
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
@@ -11,7 +10,7 @@ from invisible_playwright._pw.sync_api import Browser, BrowserContext, Playwrigh
 from . import _session
 from ._cursor import resolve_cursor_engine
 from invisible_core._fpforge import Profile, generate_profile
-from invisible_core import SessionLocale, persona_cookies, prepare_session_geo
+from invisible_core import SessionLocale, persona_cookies, prepare_session_geo, record_session_seed, resolve_session_seed
 from ._engine import assert_wire_version, resolve_executable
 from invisible_core import configure_proxy as _configure_proxy_shared
 from ._reaper import SessionToken, guard_for
@@ -187,7 +186,9 @@ class InvisiblePlaywright(_session.CommonLaunch):
         # interpreted as negative on the C++ side, where the noise hooks
         # bail out on ``seed <= 0`` - which produces bit-identical audio
         # / canvas fingerprints across half the sessions.
-        self.seed: int = int(seed) if seed is not None else secrets.randbits(31)
+        # One place decides the seed, and a profile directory remembers it
+        # (invisible_core.resolve_session_seed, B314).
+        self.seed: int = resolve_session_seed(seed, profile_dir)
         self._pin = pin
         self._headless = headless
         self._proxy = proxy
@@ -349,6 +350,8 @@ class InvisiblePlaywright(_session.CommonLaunch):
                 # was REMOVED once the origin was found, so that only one place
                 # knows the fact.
                 self._profile_dir.mkdir(parents=True, exist_ok=True)
+                # The profile is this machine from now on (B314).
+                record_session_seed(self._profile_dir, self.seed)
                 self._persistent_context = self._pw.firefox.launch_persistent_context(
                     user_data_dir=str(self._profile_dir),
                     executable_path=str(executable),
