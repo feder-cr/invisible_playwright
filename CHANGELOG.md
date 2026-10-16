@@ -18,17 +18,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   defines is the native one, and every other name is the page's:
   `window.__NEXT_DATA__`, a node's `__vue__` and the page's functions
   answer as before.
-  What changes, and it is declared rather than accidental: a name the
-  standard defines wins even where the page redefined it on the object
-  itself (`String(x)` of an instance whose class defines `toString` gives
-  `[object Object]`, and a setter the page put on one input's `value` does
-  not run; `.wrappedJSObject` gives the page's own view); an object your
-  code creates and hands to the page belongs to another realm
-  (`Array.isArray` holds, the page's `instanceof Array` does not); and a
-  bare assignment to an undeclared name creates a global of your world, not
-  of the page (`window.x = 1` still reaches the page). Your code's own
-  `eval` is not governed by the page's Content-Security-Policy, which
-  governs the page's (`window.eval`) as before. Needs firefox-49.
+  On what the page created (its classes, their instances, its plain objects)
+  the page's definitions win, `toString` and `valueOf` included, and an
+  object your code hands to the page keeps its identity and looks to the
+  page like its own (`instanceof Array` holds, its `constructor` is the
+  page's). What changes, and it is declared rather than accidental: a name
+  the standard defines for one of the browser's own objects wins even where
+  the page redefined it on that object itself (a setter the page put on one
+  input's `value` does not run; `.wrappedJSObject` gives the page's own
+  view); a bare assignment to an undeclared name creates a global of your
+  world, not of the page (`window.x = 1` still reaches the page); and your
+  code's own `eval` is not governed by the page's Content-Security-Policy,
+  which governs the page's (`window.eval`) as before. Needs firefox-49.
 
 ### Fixed
 - **`eval_on_selector`, `eval_on_selector_all`, `locator.evaluate` and

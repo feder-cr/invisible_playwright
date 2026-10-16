@@ -106,9 +106,29 @@ def test_the_callers_code_on_an_element_sees_what_the_page_put_on_it(page):
 
 
 @pytest.mark.e2e
-def test_a_standard_name_is_the_native_one_even_where_the_page_redefined_it(page):
-    """The change the rule declares: `toString` is a name the standard defines,
-    so the native one answers even for a page class that defines its own. The
-    page's own view stays one `.wrappedJSObject` away."""
-    assert page.evaluate("() => String(pt)") == "[object Object]"
-    assert page.evaluate("() => String(pt.wrappedJSObject)") == "P3"
+def test_the_rule_goes_level_by_level_of_the_pages_chain(page):
+    """A standard name is the native one on the browser's own objects, even
+    where the page replaced it on the object itself; on what the page created
+    (a class, its instances) the page's definition wins, as it does in the
+    page: `String(pt)` is the class's `toString`."""
+    # the page's own code: a replacement on `document` itself
+    page.add_script_tag(content="""
+        const realQs = Document.prototype.querySelector;
+        document.querySelector = new Proxy(realQs, {apply(t, self, args) {
+            window.__calls++; return Reflect.apply(t, self, args); }});""")
+    assert page.evaluate("() => document.querySelector('#x').id") == "x"
+    assert _calls(page) == 0
+    assert page.evaluate("() => String(pt)") == "P3"
+
+
+@pytest.mark.e2e
+def test_what_the_caller_hands_the_page_has_the_pages_own_prototypes(page):
+    """An object the caller's code hands the page keeps its identity and its
+    own properties, but its standard prototypes are the page's own: through a
+    plain transparent wrapper the page saw an object of another realm, and a
+    callback's constructor compiled code in the caller's world."""
+    page.add_script_tag(content="""
+        window.probe = (a, f) => [a instanceof Array, a.map === Array.prototype.map,
+                                  f.constructor === Function,
+                                  f.constructor('return globalThis')() === window];""")
+    assert page.evaluate("() => probe([1, 2], () => 1)") == [True, True, True, True]
