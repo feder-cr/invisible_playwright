@@ -6,7 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+- **Your code runs in a world of its own, where a page that replaced a
+  standard API cannot count your calls.** `evaluate`, `evaluate_handle`,
+  `wait_for_function`, `eval_on_selector(_all)`, `locator.evaluate`,
+  `handle.evaluate` and `set_content` ran in the page's own realm, so a
+  call to `document.querySelector` went through whatever the page had
+  put in its place: a Cloudflare challenge wraps it, and one lookup of
+  its token field from an evaluate got the clearance refused. They now
+  run in a world with the page's principal where a name the standard
+  defines is the native one, and every other name is the page's:
+  `window.__NEXT_DATA__`, a node's `__vue__` and the page's functions
+  answer as before.
+  What changes, and it is declared rather than accidental: a name the
+  standard defines wins even where the page redefined it on the object
+  itself (`String(x)` of an instance whose class defines `toString` gives
+  `[object Object]`, and a setter the page put on one input's `value` does
+  not run; `.wrappedJSObject` gives the page's own view); an object your
+  code creates and hands to the page belongs to another realm
+  (`Array.isArray` holds, the page's `instanceof Array` does not); and a
+  bare assignment to an undeclared name creates a global of your world, not
+  of the page (`window.x = 1` still reaches the page). Needs firefox-49.
+
 ### Fixed
+- **`eval_on_selector`, `eval_on_selector_all`, `locator.evaluate` and
+  `handle.evaluate` see what the page put on an element.** They ran
+  behind the automation's own view, where `el.__vue__` and the methods
+  of a custom element's class do not exist.
 - **The browser's favicon request no longer reaches the client.** A
   `page.route("**/*")` handler saw `GET /favicon.ico` now and then, as did the
   `request`, `response` and `requestfinished` listeners, and a

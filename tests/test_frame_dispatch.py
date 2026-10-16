@@ -247,7 +247,10 @@ def test_every_element_callback_receives_the_caller_s_argument(page, method, rec
 
     page.frame.enter_frames = Mock(return_value=("widget", "#target"))
     page.injected.query_selector.return_value = "node"
-    page.injected.call.return_value = 6
+    page.injected.query_selector_all.return_value = ["node"]
+    page.injected.caller_context.return_value = "caller-ctx"
+    page.injected.node_to_caller.return_value = "copy"
+    page.injected.call_raw.return_value = {"value": 6}
     params = {"selector": "compound", "expression": "(x, a) => a",
               "arg": {"value": {"o": [{"k": "n", "v": {"n": 2}}]}, "handles": []}}
     if method == "handle.evaluate":
@@ -255,7 +258,10 @@ def test_every_element_callback_receives_the_caller_s_argument(page, method, rec
                                 "node").call("evaluateExpression", params)
     else:
         page.frame.call(method, params)
-    script = page.injected.call.call_args.args[1]
+    # the caller's code, in the caller's world, on the node carried there [B322]
+    context, script, args = page.injected.call_raw.call_args.args[:3]
+    assert context == "caller-ctx"
+    assert {"objectId": "copy"} in args
     assert ("r(%s, {\"n\": 2})" % receiver) in script, script
 
 

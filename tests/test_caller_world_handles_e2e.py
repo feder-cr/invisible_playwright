@@ -1,4 +1,4 @@
-"""Handles of values the CALLER'S code produced in the page's own world.
+"""Handles of values the CALLER'S code produced in its world.
 
 Two defects of 0.36.0, one family. [B323]: `wait_for_function("() =>
 document.querySelector('#x')")` - the most common wait there is - never ended
@@ -6,10 +6,11 @@ although the element existed, because the predicate ran by value and Python
 judged the serialized result, where a node is nothing truthy. The judgement is
 now invisible-core's `js_truthy`, from one run of the predicate. [B324]: every
 handle `evaluate_handle` returned was unusable - `text_content`, `evaluate` and
-`json_value` all failed with "Cannot find object" - because a main-world
-objectId was made into a utility-world handle. A node is now adopted into the
-utility world, and any other value's handle runs its operations in the main
-world (`FrameDispatcher._handle_from_main`).
+`json_value` all failed with "Cannot find object" - because an objectId of the
+caller's code was made into a utility-world handle. A node is now adopted into
+the utility world, and any other value's handle runs its operations in the
+caller's world (`FrameDispatcher._handle_from_caller`), which since firefox-49
+is a world of its own and no longer the page's realm ([B322]).
 """
 from __future__ import annotations
 

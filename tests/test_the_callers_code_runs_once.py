@@ -25,17 +25,17 @@ class _Injected:
         self.answers = list(answers)
         self.calls = []
 
-    def evaluate_in_main(self, frame_id, expression, *, by_value=True, timeout=30.0,
-                         repeatable=False):
-        self.calls.append(("evaluate_in_main", by_value))
+    def evaluate_in_caller(self, frame_id, expression, *, by_value=True, timeout=30.0,
+                           repeatable=False):
+        self.calls.append(("evaluate_in_caller", by_value))
         self.repeatable = repeatable
         answer = self.answers.pop(0)
         if isinstance(answer, BaseException):
             raise answer
         return answer
 
-    def poll_in_main(self, frame_id, expression, *, timeout=30.0):
-        self.calls.append(("poll_in_main", None))
+    def poll_in_caller(self, frame_id, expression, *, timeout=30.0):
+        self.calls.append(("poll_in_caller", None))
         answer = self.answers.pop(0)
         if isinstance(answer, BaseException):
             raise answer
@@ -48,6 +48,27 @@ class _Injected:
     def read_all(self, frame_id, selector, what, *args, **kwargs):
         self.calls.append(("read_all", what))
         return ["a", "b"]
+
+    def query_selector_all(self, frame_id, selector):
+        self.calls.append(("query_selector_all", selector))
+        return ["u1", "u2"]
+
+    def caller_context(self, frame_id):
+        return "caller-ctx"
+
+    def node_to_caller(self, frame_id, element):
+        self.calls.append(("node_to_caller", element))
+        return "c-" + element
+
+    def call_raw(self, context, declaration, args, *, by_value=False, timeout=30.0):
+        self.calls.append(("call_raw", (context, [a.get("objectId") for a in args])))
+        return {"value": 2}
+
+    def release(self, context, object_id):
+        self.calls.append(("release", object_id))
+
+    def dispose(self, frame_id, object_id):
+        self.calls.append(("dispose", object_id))
 
 
 def _frame(injected):
@@ -62,21 +83,31 @@ def test_a_poll_goes_on_through_a_world_that_went(monkeypatch):
     monkeypatch.setattr(server, "ElementHandleDispatcher",
                         lambda *a, **k: SimpleNamespace(channel="handle"))
     # A turn whose world went, then a falsy turn, then a truthy one. Each turn
-    # sends the caller's code ONCE (`poll_in_main`, [B323]): the truthy value
+    # sends the caller's code ONCE (`poll_in_caller`, [B323]): the truthy value
     # is already the handle, and nothing runs the predicate again to get one.
     injected = _Injected([ContextDestroyed("Execution context was destroyed"),
                           None, {"objectId": "oid", "type": "object"}])
     answer = _frame(injected).op_wait_for_function(
         {"expression": "() => window.ready", "isFunction": True, "timeout": 5000})
     assert answer == {"handle": "handle"}
-    assert [c for c, _ in injected.calls] == ["poll_in_main"] * 3
+    assert [c for c, _ in injected.calls] == ["poll_in_caller"] * 3
 
 
-def test_eval_on_selector_all_sends_the_callers_function_once():
+def test_eval_on_selector_all_sends_the_callers_function_once_in_its_world():
+    """The elements are this package's read; the caller's function runs ONCE
+    ([B285]), in the caller's world, on the same nodes carried there ([B322]),
+    and the copies and the reads are released after it."""
     injected = _Injected([])
-    _frame(injected).op_eval_on_selector_all(
+    answer = _frame(injected).op_eval_on_selector_all(
         {"selector": "li", "expression": "els => els.length", "isFunction": True})
-    assert injected.calls == [("call", {"repeatable": False})]
+    assert answer == {"value": {"n": 2}}
+    assert injected.calls == [
+        ("query_selector_all", "li"),
+        ("node_to_caller", "u1"), ("node_to_caller", "u2"),
+        ("call_raw", ("caller-ctx", [None, "c-u1", "c-u2"])),
+        ("release", "c-u1"), ("release", "c-u2"),
+        ("dispose", "u1"), ("dispose", "u2"),
+    ]
 
 
 def test_the_librarys_read_of_every_match_is_the_cores_repeatable_read():

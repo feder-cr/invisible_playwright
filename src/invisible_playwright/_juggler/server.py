@@ -349,15 +349,15 @@ class ElementHandleDispatcher(Dispatcher):
                  remote: Optional[Dict] = None) -> None:
         self.frame = frame
         self.object_id = object_id
-        # A main-world PRIMITIVE has no objectId: its value is the engine's
+        # A caller-world PRIMITIVE has no objectId: its value is the engine's
         # RemoteObject, kept here so `json_value` can answer it [B324].
         self.remote = remote or {}
         # ⛔ WHICH WORLD THE objectId BELONGS TO, and every operation below
         # runs there. Almost every handle is born in the utility world, where
         # the rest of this server lives. A value the CALLER'S code produced in
-        # the page's own world is made into a handle by
-        # `FrameDispatcher._handle_from_main`: a node is adopted into utility,
-        # anything else stays "main". An objectId is not portable between
+        # its own world is made into a handle by
+        # `FrameDispatcher._handle_from_caller`: a node is adopted into
+        # utility, anything else stays "caller". An objectId is not portable between
         # worlds, and until 0.36.0 only `json_value` read this field: every
         # other operation on an `evaluate_handle` or `wait_for_function` result
         # asked the utility world about an objectId it had never seen and
@@ -391,20 +391,20 @@ class ElementHandleDispatcher(Dispatcher):
     def page(self) -> "PageDispatcher":
         return self.frame.page
 
-    def _in_main(self, declaration: str, *args: Dict, by_value: bool) -> Dict:
-        """`declaration` called in the main world, where this handle lives,
-        with `null` where the utility world passes the injected script: the
-        same declarations serve both worlds, so there is one of each."""
+    def _in_caller(self, declaration: str, *args: Dict, by_value: bool) -> Dict:
+        """`declaration` called in the caller's world, where this handle
+        lives, with `null` where the utility world passes the injected script:
+        the same declarations serve both worlds, so there is one of each."""
         return self.injected.call_raw(
-            self.injected.main_context(self.frame.frame_id), declaration,
+            self.injected.caller_context(self.frame.frame_id), declaration,
             [{"value": None}, {"objectId": self.object_id}] + list(args),
             by_value=by_value)
 
     def op_dispose(self, params: Dict) -> Any:
-        if self.world == "main":
+        if self.world == "caller":
             if self.object_id:
                 self.injected.release(
-                    self.injected.main_context(self.frame.frame_id), self.object_id)
+                    self.injected.caller_context(self.frame.frame_id), self.object_id)
             self.dispose()
             return None
         try:
@@ -460,12 +460,11 @@ class ElementHandleDispatcher(Dispatcher):
         It was found by diffing the protocol against the Node driver: the
         driver's `click` carried a `position` and ours did not.
         """
-        if self.world == "main":
-            return {"value": _serialize(self._in_main(
-                _element_function(params), by_value=True).get("value"))}
-        return {"value": _serialize(self.injected.call(
-            self.frame.frame_id, _element_function(params),
-            {"objectId": self.object_id}))}
+        if self.world == "caller":
+            return {"value": _serialize(_remote_value(self._in_caller(
+                _element_function(params), by_value=True)))}
+        return {"value": _serialize(self.frame._call_on_elements(
+            self.frame.frame_id, [self.object_id], _element_function(params)))}
 
     def op_text_content(self, params: Dict) -> Any:
         return {"value": self.injected.text_content(
@@ -488,10 +487,10 @@ class ElementHandleDispatcher(Dispatcher):
             self.frame.frame_id, self.object_id, params["name"])}
 
     def op_get_property(self, params: Dict) -> Any:
-        if self.world == "main":
-            remote = self._in_main("(injected, o, n) => o[n]",
+        if self.world == "caller":
+            remote = self._in_caller("(injected, o, n) => o[n]",
                                    {"value": params["name"]}, by_value=False)
-            return {"handle": self.frame._handle_from_main(remote).channel}
+            return {"handle": self.frame._handle_from_caller(remote).channel}
         object_id = self.injected.call(
             self.frame.frame_id,
             "(injected, o, n) => o[n]",
@@ -504,12 +503,12 @@ class ElementHandleDispatcher(Dispatcher):
         large object this is the most expensive call in the file, which is why
         `json_value` exists and should be preferred when the values are
         serialisable."""
-        if self.world == "main":
-            names = self._in_main(
+        if self.world == "caller":
+            names = self._in_caller(
                 "(injected, o) => o === Object(o) ? Object.keys(o) : []",
                 by_value=True).get("value") or []
             return {"properties": [
-                {"name": name, "value": self.frame._handle_from_main(self._in_main(
+                {"name": name, "value": self.frame._handle_from_caller(self._in_caller(
                     "(injected, o, n) => o[n]", {"value": name},
                     by_value=False)).channel}
                 for name in names]}
@@ -537,11 +536,11 @@ class ElementHandleDispatcher(Dispatcher):
         caller can act on - it is an evaluation failure on a handle they were
         just given.
         """
-        if self.world == "main":
+        if self.world == "caller":
             if not self.object_id:
                 return {"value": _serialize(_remote_value(self.remote))}
             return {"value": _serialize(self.injected.json_value_in(
-                self.frame.frame_id, "main", self.object_id))}
+                self.frame.frame_id, "caller", self.object_id))}
         return {"value": _serialize(self.injected.call(
             self.frame.frame_id, "(injected, o) => o",
             {"objectId": self.object_id}))}
@@ -928,27 +927,34 @@ class FrameDispatcher(Dispatcher):
         return self._read(params, "state", "editable")
 
     def op_evaluate(self, params: Dict) -> Any:
-        """⛔ THE PAGE'S OWN WORLD, not the utility one, and the distinction
-        is the semantics of the API rather than a preference.
+        """⛔ THE CALLER'S WORLD, not the utility one, and the distinction is
+        the semantics of the API rather than a preference.
 
-        `page.evaluate()` is the user asking to run code AS THE PAGE: it must
-        see the page's globals, the page's prototypes, and whatever the site
-        has monkey-patched. The utility world sees the same DOM through an
-        Xray, so those are exactly what it does NOT see.
+        `page.evaluate()` is the user's code, and it must see what the page
+        added: its globals, its functions, the expandos a framework puts on
+        nodes. The utility world sees the same DOM through a plain Xray, so
+        those are exactly what it does NOT see. The caller's world (invisible-
+        core's `evaluate_in_caller`, [B322]) sees them, and resolves every
+        name the standard defines to the native definition: a site that
+        wrapped `querySelector` to count its callers does not see this code's
+        calls. Until firefox-49 this ran in the page's own realm, and a
+        Cloudflare challenge refused the clearance of a session whose evaluate
+        had looked up its token field.
 
         The first draft ran it in utility and it was caught by the opposite
         assertion to the one you would expect: a test checking that the PAGE
         cannot see a closed shadow root found that it could - because the code
         asking was not running as the page at all.
 
-        Everything else in this file stays in utility on purpose. This one
-        method leaves, because the caller asked for it.
+        Everything else in this file stays in utility on purpose. The
+        caller's code leaves it, because the caller asked for the page's
+        additions.
         """
         # ⛔ `repeatable` comes only from the fork's `evaluate_read`, a read
         # its caller declares free of effects: made again on the page that
         # replaced the one it went to. Everything else is the caller's code,
         # sent once ([B285]).
-        return {"value": _serialize(self.injected.evaluate_in_main(
+        return {"value": _serialize(self.injected.evaluate_in_caller(
             self.frame_id, _with_argument(params),
             repeatable=params.get("repeatable") is True))}
 
@@ -1215,14 +1221,15 @@ class FrameDispatcher(Dispatcher):
         return None
 
     def op_set_content(self, params: Dict) -> Any:
-        """⛔ Goes through `document.open/write/close` in the MAIN world.
+        """⛔ Goes through `document.open/write/close` in the CALLER'S world.
 
         The utility world has an EXTENDED principal, and Gecko requires
         `document.open()` to run under a principal EQUAL to the document's, so
         from there it answers `The operation is insecure` every single time -
-        the same defect the fork already fixed inside the driver.
+        the same defect the fork already fixed inside the driver. The caller's
+        world has the page's principal.
         """
-        self.injected.evaluate_in_main(
+        self.injected.evaluate_in_caller(
             self.frame_id,
             "(() => { document.open(); document.write(%s); document.close(); })()"
             % _js_string(params["html"]), by_value=True)
@@ -1271,35 +1278,68 @@ class FrameDispatcher(Dispatcher):
             self.server, self.page.frame_for(frame_id), object_id)
         return {"element": handle.channel}
 
-    def _handle_from_main(self, remote: Dict) -> "ElementHandleDispatcher":
-        """A handle for a value the CALLER'S code produced in the main world.
+    def _call_on_elements(self, frame_id: str, elements: List[str],
+                          declaration: str) -> Any:
+        """The caller's `declaration(injected, ...elements)` in the caller's
+        world, on elements this server holds in the utility world. THE ONE
+        PLACE element-scoped caller code runs [B322].
+
+        `handle.evaluate`, `eval_on_selector` and `eval_on_selector_all` run
+        the caller's code as much as `evaluate` does, so they run where it
+        runs. Until firefox-49 they ran in the utility world, behind a plain
+        Xray, where what the page added to a node (`el.__vue__`, the methods
+        of a custom element's class) does not exist, while Playwright runs
+        them as the page. The elements cross with `Page.adoptNode` (the same
+        node, in the other world) and the copies are released after the call.
+        The caller's code is sent once ([B285]); finding the elements is this
+        package's read, made before it. `injected` is null there: the caller's
+        code never sees this package's script."""
+        context = self.injected.caller_context(frame_id)
+        adopted: List[str] = []
+        try:
+            for element in elements:
+                copy = self.injected.node_to_caller(frame_id, element)
+                if not copy:
+                    raise ProtocolException("Element is not attached to the DOM")
+                adopted.append(copy)
+            return _remote_value(self.injected.call_raw(
+                context, declaration,
+                [{"value": None}] + [{"objectId": a} for a in adopted],
+                by_value=True))
+        finally:
+            for copy in adopted:
+                self.injected.release(context, copy)
+
+    def _handle_from_caller(self, remote: Dict) -> "ElementHandleDispatcher":
+        """A handle for a value the CALLER'S code produced in its world.
         THE ONE PLACE such a handle is made [B324].
 
         A node is adopted into the utility world, where every element read and
         action of this server runs - the same node, as `add_script_tag` and
-        `fileChooserOpened` hand theirs back - and its main-world objectId is
-        released. Any other object, and a primitive, stays in the main world,
-        and its handle's operations run there. Until 0.36.0 `evaluate_handle`
-        made every result a utility handle, and `wait_for_function` a main one
-        that only `json_value` honoured."""
+        `fileChooserOpened` hand theirs back - and its caller-world objectId is
+        released. Any other object, and a primitive, stays in the caller's
+        world, and its handle's operations run there. Until 0.36.0
+        `evaluate_handle` made every result a utility handle, and
+        `wait_for_function` one of the page's world that only `json_value`
+        honoured."""
         object_id = remote.get("objectId")
         if object_id and remote.get("subtype") == "node":
             adopted = self.injected.adopt(self.frame_id, object_id)
             if not adopted:
                 raise ProtocolException(
                     "the node the expression returned could not be handed back")
-            self.injected.release(self.injected.main_context(self.frame_id), object_id)
+            self.injected.release(self.injected.caller_context(self.frame_id), object_id)
             return ElementHandleDispatcher(self.server, self, adopted)
         return ElementHandleDispatcher(self.server, self, object_id or "",
-                                       world="main", remote=remote)
+                                       world="caller", remote=remote)
 
     def op_wait_for_function(self, params: Dict) -> Any:
         """Poll the CALLER'S expression until it is truthy.
 
-        ⛔ IN THE PAGE'S OWN WORLD, and it used to poll in the utility one.
+        ⛔ IN THE CALLER'S WORLD, and it used to poll in the utility one.
         `wait_for_function` has exactly the semantics of `evaluate`: it is the
-        caller asking to run THEIR code as the page. From behind the Xray a
-        page global does not exist, so an expression like
+        caller asking to run THEIR code against the page. From behind a plain
+        Xray a page global does not exist, so an expression like
         `() => !!window.Fingerprint` is false forever and the call dies on its
         own timeout naming an expression that was true in the page all along.
 
@@ -1308,29 +1348,28 @@ class FrameDispatcher(Dispatcher):
         Nothing else in the suite waits on a page global, which is why 181 of
         186 were green and the gap looked like a detector problem.
 
-        ⛔ AND IT IS THE SECOND METHOD THAT LEAVES THE XRAY, on purpose and
-        for the same reason as `op_evaluate`: everything else in this server
-        stays in utility so a site cannot count our reads, and these two leave
-        because the caller asked for the page's own world by name. The cost is
-        real - a polled expression is repeated page-visible work - so the
-        interval stays coarse.
+        ⛔ AND IT LEAVES THE UTILITY WORLD for the same reason as
+        `op_evaluate`, into the same caller's world, where the standard APIs
+        the predicate calls are the native ones ([B322]). What the predicate
+        reads of the page's own additions is still the page's, so the interval
+        stays coarse.
         """
         deadline = Deadline(self._timeout(params))
         expression = _with_argument(params)
         while True:
             # ⛔ A NAVIGATION DOES NOT END THE POLL. The predicate is sent once
-            # per turn (the page's world is never sent the caller's code twice,
+            # per turn (the caller's code is never sent twice,
             # [B285]), and a world that went under it means the next turn asks
             # the new document, as Playwright's polling survives a navigation.
             # ⛔ TRUTHY AS JAVASCRIPT JUDGES IT, from ONE run by reference
-            # (`poll_in_main`, [B323]). This used to run the predicate by value
+            # (`poll_in_caller`, [B323]). This used to run the predicate by value
             # and let Python judge the serialized result, so a predicate that
             # returns a node - `() => document.querySelector('#x')`, the most
             # common wait there is - never ended: a node serializes to nothing
             # truthy. A truthy value now IS the handle, and the caller's code
             # no longer runs a second time to get one.
             try:
-                remote = self.injected.poll_in_main(self.frame_id, expression)
+                remote = self.injected.poll_in_caller(self.frame_id, expression)
             except ContextDestroyed:
                 remote = None
             if remote is not None:
@@ -1339,7 +1378,7 @@ class FrameDispatcher(Dispatcher):
                 # it is `AttributeError: 'NoneType' object has no attribute
                 # '_object'` raised inside the client on a call that had just
                 # succeeded. It stayed hidden while the poll timed out first.
-                return {"handle": self._handle_from_main(remote).channel}
+                return {"handle": self._handle_from_caller(remote).channel}
             if deadline.passed():
                 # A TimeoutError, which the client receives as Playwright's,
                 # as upstream raises for this wait (until 0.34.0 a plain Error).
@@ -1567,11 +1606,11 @@ class FrameDispatcher(Dispatcher):
                 "  (document.head || document.documentElement).appendChild(el);"
                 "  return el; })()" % (build, _js_string(content)))
 
-        object_id = self.injected.evaluate_in_main(
+        object_id = self.injected.evaluate_in_caller(
             self.frame_id, body, by_value=False)
-        # ⛔ THE TAG IS BORN IN THE MAIN WORLD AND THE HANDLE LIVES IN UTILITY.
-        # Every ElementHandle call goes through the utility world, where a
-        # main-world objectId answers `Cannot find object with id`. Adopted,
+        # ⛔ THE TAG IS BORN IN THE CALLER'S WORLD AND THE HANDLE LIVES IN
+        # UTILITY. Every ElementHandle call goes through the utility world,
+        # where a caller-world objectId answers `Cannot find object with id`. Adopted,
         # as `fileChooserOpened` adopts its input, it is the same node.
         adopted = self.injected.adopt(self.frame_id, object_id)
         if not adopted:
@@ -1621,8 +1660,8 @@ class FrameDispatcher(Dispatcher):
             raise ProtocolException(
                 "failed to find element matching selector %r" % selector)
         try:
-            return {"value": _serialize(self.injected.call(
-                frame_id, _element_function(params), {"objectId": object_id}))}
+            return {"value": _serialize(self._call_on_elements(
+                frame_id, [object_id], _element_function(params)))}
         finally:
             self.injected.dispose(frame_id, object_id)
 
@@ -1646,18 +1685,19 @@ class FrameDispatcher(Dispatcher):
         frame that navigates under it is `ContextDestroyed`, as Playwright
         raises; sending it again ran it twice ([B285])."""
         frame_id, selector = self.enter_frames(params["selector"])
-        value = self.injected.call(
-            frame_id,
-            "(injected, sel) => { const els = injected.querySelectorAll("
-            "  injected.parseSelector(sel), document); %s }"
-            % _called_on(params, "els"),
-            selector, repeatable=False)
-        return {"value": _serialize(value)}
+        ids = self.injected.query_selector_all(frame_id, selector)
+        try:
+            return {"value": _serialize(self._call_on_elements(
+                frame_id, ids,
+                "(injected, ...els) => { %s }" % _called_on(params, "els")))}
+        finally:
+            for object_id in ids:
+                self.injected.dispose(frame_id, object_id)
 
     def op_evaluate_handle(self, params: Dict) -> Any:
-        remote = self.injected.evaluate_in_main_remote(
+        remote = self.injected.evaluate_in_caller_remote(
             self.frame_id, _with_argument(params))
-        return {"handle": self._handle_from_main(remote).channel}
+        return {"handle": self._handle_from_caller(remote).channel}
 
 
 # ⛔ `DialogDispatcher` LIVED HERE AND IS GONE, fused into `_pw._impl._dialog`
@@ -2965,8 +3005,9 @@ class PageDispatcher(Dispatcher):
     def _storage(self, params: Dict, code: str, *args) -> Any:
         """localStorage or sessionStorage, in the PAGE's own world.
 
-        ⛔ THE MAIN WORLD, and this one is not a style choice: web storage is
-        keyed by ORIGIN and the utility world sandbox has an ExpandedPrincipal.
+        ⛔ THE CALLER'S WORLD, and this one is not a style choice: web storage
+        is keyed by ORIGIN and the utility world sandbox has an ExpandedPrincipal,
+        while the caller's world has the page's principal.
         Reading it from there does not raise - it answers a DIFFERENT store,
         empty, and the caller concludes the site saved nothing.
 
@@ -2979,7 +3020,7 @@ class PageDispatcher(Dispatcher):
             raise ProtocolException(
                 "unknown storage kind %r: the two are localStorage and "
                 "sessionStorage" % kind)
-        return self.injected.evaluate_in_main(
+        return self.injected.evaluate_in_caller(
             self.frame.frame_id, code % ((kind,) + args))
 
     def op_storage_items(self, params: Dict) -> Any:
@@ -3055,7 +3096,7 @@ class PageDispatcher(Dispatcher):
         `beforeunload` dialog. Answering it is the CALLER's job through the
         dialog event, so this must not close the page itself - doing that
         would dismiss the very dialog the option exists to raise."""
-        self.injected.evaluate_in_main(self.frame.frame_id, "window.close()")
+        self.injected.evaluate_in_caller(self.frame.frame_id, "window.close()")
         return None
 
     def op_touchscreen_tap(self, params: Dict) -> Any:

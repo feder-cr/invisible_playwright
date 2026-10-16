@@ -18,10 +18,11 @@ just a wrong answer that a caller builds its next decision on. The three
 letters only have to appear inside a longer word, so MARGIN, LARGE and CHARGE
 are all affected.
 
-⛔ AND THE FIRST TEST HERE IS NOT ABOUT THE DEFECT. `op_evaluate` runs in the
-MAIN world, as the page, which is the one place in this file that deliberately
-leaves the utility world. That makes the emitted script something a site can
-look at, so a change to its SHAPE is a stealth change even when it is a
+⛔ AND THE FIRST TEST HERE IS NOT ABOUT THE DEFECT. `op_evaluate` runs the
+caller's code, the one thing this server deliberately runs outside the utility
+world, and a site can still look at it: a function the caller hands to the
+page shows its source to the page's toString. That makes the emitted script
+something a site can look at, so a change to its SHAPE is a stealth change even when it is a
 correctness fix. The script is pinned byte for byte against what shipped
 before: for an expression that never spelled the placeholder, this fix must
 produce exactly the same characters, and that is what the first test proves.

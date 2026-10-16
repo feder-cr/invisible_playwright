@@ -75,15 +75,16 @@ def _invocation(expression: str, argument: Any, *receivers: str) -> str:
     """The statements that evaluate the caller's expression and, when it is a
     function, call it with `receivers` first and the argument last.
 
-    <M> THE ONLY PLACE THAT SPELLS THE CALL. The main-world wrapper above and
+    <M> THE ONLY PLACE THAT SPELLS THE CALL. The caller's-world wrapper above and
     the three element-scoped ones (`handle.evaluate`, `eval_on_selector`,
     `eval_on_selector_all`) used to write it out each on its own, and that is
     how the argument reached `handle.evaluate` and was dropped by the other
     two: a callback reading its second parameter got `undefined` there.
 
-    The main-world output is pinned byte for byte by
-    `test_the_argument_does_not_rewrite_the_expression.py`, because that one
-    runs as the page.
+    That wrapper's output is pinned byte for byte by
+    `test_the_argument_does_not_rewrite_the_expression.py`, because the page
+    can read it: a function the caller hands to the page shows its source to
+    the page's toString.
     """
     return ("const r = (%s);  return typeof r === 'function' ? r(%s) : r;"
             % (expression,
@@ -100,7 +101,8 @@ def _called_on(params: Dict, receiver: str) -> str:
 
 def _element_function(params: Dict) -> str:
     """The declaration `handle.evaluate` and `eval_on_selector` both send: one
-    element, then the argument. Both run in the utility world."""
+    element, then the argument. Both run in the caller's world
+    (`FrameDispatcher._call_on_elements`)."""
     return "(injected, el) => { %s }" % _called_on(params, "el")
 
 
