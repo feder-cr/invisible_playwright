@@ -218,3 +218,53 @@ def test_a_page_that_fetches_in_a_loop_stays_bounded(firefox_binary, monkeypatch
     assert client_requests <= 50, "the client kept %d requests" % client_requests
     assert collected and "collected" in collected, collected
     assert newest is not None and newest.status == 200
+
+
+@pytest.mark.unit
+def test_a_captured_stack_holds_no_frames():
+    """⛔ The stack a task carries is data, not frames. A `FrameInfo` holds its
+    frame and a finished frame keeps its locals, so the 1.61.1 capture pinned
+    whatever the caller had in scope - the raw protocol message, bodies and
+    all - for as long as the task was reachable (playwright-python#3147)."""
+    import json
+
+    from invisible_playwright._pw._impl._connection import _capture_stack_trace
+
+    def caller():
+        payload = "x" * 100000  # noqa: F841 - what a pinned frame would keep
+        return _capture_stack_trace()
+
+    captured = caller()
+    json.dumps(captured)  # plain data all the way down: a frame is not JSON
+    assert set(captured) == {"frames", "apiName", "title"}
+
+
+@pytest.mark.e2e
+def test_routed_requests_leave_no_frames_behind(firefox_binary, echo_server):
+    """⛔ Measured 2026-10-16: ~22 `FrameInfo` per routed request, each holding
+    its frame, on the client side of the in-process transport. Counted here
+    after the requests are done, with the cap high enough that nothing is
+    collected, so only the stack capture can make the number move."""
+    import gc
+    import inspect
+
+    from invisible_playwright._pw.sync_api import sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.firefox.launch(headless=True, executable_path=firefox_binary)
+        context = browser.new_context()
+        context.route("**/*", lambda route: route.fallback())
+        page = context.new_page()
+        page.goto(echo_server + "/")
+        page.evaluate("""async () => {
+            for (let i = 0; i < 200; i++)
+                await fetch('/api?n=' + i, {method: 'POST', body: 'x'.repeat(2000)});
+        }""")
+        gc.collect()
+        frame_infos = sum(1 for o in gc.get_objects() if isinstance(o, inspect.FrameInfo))
+        context.close()
+        browser.close()
+
+    assert frame_infos < 50, (
+        "200 routed requests left %d FrameInfo objects alive; each holds a "
+        "frame and its locals" % frame_infos)

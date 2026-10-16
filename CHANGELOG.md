@@ -7,6 +7,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [Unreleased]
 
 ### Fixed
+- **A finished task is no longer kept alive by a future it raced.** On Python
+  3.14 `asyncio.wait` records the waiting task in every future's awaited-by set
+  and removes it only from the futures that complete (CPython gh-152569). Every
+  protocol message races the transport's `on_error_future`, which does not
+  complete while the connection is healthy, so every task that ever sent a
+  message stayed reachable, with its frame and locals, until the browser closed:
+  178,299 finished tasks after ten minutes of a page fetching in a loop. Every
+  `asyncio.wait` in the vendored client now goes through `wait_released`, which
+  takes the task back out afterwards.
+- **A captured stack holds no frames** (backport of microsoft/playwright-python#3147).
+  `Route._race_with_page_close` stored `inspect.stack(0)` on a task for every
+  routed request; each `FrameInfo` kept its frame and the frame's locals, raw
+  protocol bodies among them.
 - **Requests and Responses no longer live as long as their page.** Nothing
   disposed them, so a page that fetched in a loop kept every one in the server's
   guid registry and in the client's mirror of it, with headers and post bodies,

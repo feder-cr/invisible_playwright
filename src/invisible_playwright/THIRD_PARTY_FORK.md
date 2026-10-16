@@ -85,6 +85,31 @@ They are history now, kept because they say what the fork was for:
   does not carry the `MODIFIED by invisible_playwright` markers, so an upstream
   bundle can never be mistaken for ours.
 
+## Backported from later Playwright releases
+
+- **Stack capture keeps no frames** (microsoft/playwright-python#3147, 2026-07-23,
+  in 1.64), backported 2026-10-16. 1.61.1 stored `inspect.stack(0)` on a task as
+  `__pw_stack__`, and `Route._race_with_page_close` computed one for every routed
+  request as a `getattr` default whether or not it was used. Each `FrameInfo` holds
+  its frame, and a finished frame keeps its locals, among them the raw protocol
+  message with base64 post and response bodies, for as long as anything reaches
+  the done task. Under a route on a page fetching in a loop, the shared MCP
+  browser held ~22 frames per request, about 90 KB each request, and grew without
+  bound. `_capture_stack_trace()` walks the frames once into plain dicts. Applied
+  verbatim; the four files carry the upstream diff with only the package path
+  changed.
+
+## Fork-only fixes to the vendored client
+
+- **`wait_released` replaces `asyncio.wait`** in `_connection.py`, `_network.py`,
+  `_page.py`, `_browser_type.py` and `async_api/_context_manager.py` (2026-10-16).
+  Python 3.14's `asyncio.wait` leaves the waiting task in the awaited-by set of
+  every future that did not complete (CPython gh-152569), and each of these
+  races a future that outlives the call - `on_error_future` for every protocol
+  message. The helper is in `_helper.py` under a `MODIFIED by invisible_playwright`
+  marker. Upstream Playwright has the same calls; drop this once CPython fixes
+  `asyncio.wait` in every supported release.
+
 ## Why `_pw/` is in git
 
 Without it the package **installs but does not import**: `launcher.py` imports

@@ -14,7 +14,6 @@
 
 import asyncio
 import base64
-import inspect
 import json
 import json as json_utils
 import mimetypes
@@ -47,12 +46,14 @@ from invisible_playwright._pw._impl._api_structures import (
 )
 from invisible_playwright._pw._impl._connection import (
     ChannelOwner,
+    _capture_stack_trace,
     from_channel,
     from_nullable_channel,
 )
 from invisible_playwright._pw._impl._errors import Error
 from invisible_playwright._pw._impl._event_context_manager import EventContextManagerImpl
 from invisible_playwright._pw._impl._helper import (
+    wait_released,
     URLMatch,
     WebSocketRouteHandlerCallback,
     async_readfile,
@@ -552,10 +553,11 @@ class Route(ChannelOwner):
         setattr(
             fut,
             "__pw_stack__",
-            getattr(asyncio.current_task(self._loop), "__pw_stack__", inspect.stack(0)),
+            getattr(asyncio.current_task(self._loop), "__pw_stack__", None)
+            or _capture_stack_trace(),
         )
         target_closed_future = self.request._target_closed_future()
-        await asyncio.wait(
+        await wait_released(
             [fut, target_closed_future],
             return_when=asyncio.FIRST_COMPLETED,
         )
@@ -907,7 +909,7 @@ class Response(ChannelOwner):
             raise Error("Target closed")
 
         on_finished_task = asyncio.create_task(on_finished())
-        await asyncio.wait(
+        await wait_released(
             cast(
                 List[Union[asyncio.Task, asyncio.Future]],
                 [self._finished_future, on_finished_task],

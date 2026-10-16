@@ -30,6 +30,7 @@ from invisible_playwright._pw._impl._browser_context import BrowserContext
 from invisible_playwright._pw._impl._connection import ChannelOwner, Connection, from_channel
 from invisible_playwright._pw._impl._errors import Error
 from invisible_playwright._pw._impl._helper import (
+    wait_released,
     PLAYWRIGHT_MAX_DEADLINE,
     ColorScheme,
     Contrast,
@@ -275,7 +276,7 @@ class BrowserType(ChannelOwner):
             timeout if timeout is not None else PLAYWRIGHT_MAX_DEADLINE,
             Error("Connection timed out"),
         )
-        done, pending = await asyncio.wait(
+        done, pending = await wait_released(
             {transport.on_error_future, playwright_future, timeout_future},
             return_when=asyncio.FIRST_COMPLETED,
         )
