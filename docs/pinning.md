@@ -116,7 +116,7 @@ profile disagree with the browser, on about 12% of seeds.
 | `hardware.concurrency` | int | `16` | [`navigator.hardwareConcurrency`](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/hardwareConcurrency). |
 | `hardware.storage_quota_mb` | int | `10_000` | `navigator.storage.estimate().quota / 1024**2`. |
 | `hardware.max_touch_points` | int | `0` | `navigator.maxTouchPoints`. `0` is what a desktop without a touchscreen reports, which is what the personas claim; it was a constant compiled into the binary until 2026-08-08, correct but not inspectable and not overridable. |
-| `hardware.voices` | str | *(five en-US voices)* | The speechSynthesis voice list, as the engine parses it: `name\|lang\|default\|localService`, comma separated. Always the English (United States) set today, whatever locale the session resolved to - a real Windows machine running in Italian reports Italian voices, so an it-IT session declaring only American ones contradicts itself. The per-locale tables have to be measured on a real install of each locale, not invented; this field is the level at which that becomes possible. |
+| `hardware.voices` | str | *(the session language's voices)* | The speechSynthesis voice list, as the engine parses it: `name\|lang\|default\|localService`, comma separated. Unpinned, it follows the session's first language: English gives the English (United States) set, Italian the set of a Windows with English UI and Italian added, as measured on one; a language without a measured set keeps the English one, because a table has to be measured on a real install, not invented. A pin wins over the table. |
 | `hardware.fake_media_devices` | bool | `True` | One fake audio input and one fake video input on every host, so `enumerateDevices` does not report the machine's real hardware. Measured in a secure context (about:blank is not one, and measuring there made the two hosts look like they agreed because both returned nothing): Linux enumerated 0 real devices and Windows 2. |
 | `hardware.media_enumeration_ms` | int | `412` | How long the first `navigator.mediaDevices.enumerateDevices()` of a session takes, in ms. With `fake_media_devices` the engine no longer asks the host's audio stack for its speakers, whose time it was (15-40 ms on Linux, about 300 on Windows), and answers after this long on every host; later calls are fast, as in Firefox. Drawn from the seed between 240 and 640, the range retail Windows Firefox took on one machine in two states. Ignored with real devices. Needs firefox-45. |
 | `hardware.storage_enabled` | bool | `True` | Whether cookies, localStorage, sessionStorage and indexedDB all work. One field for four booleans because Gecko exposes them through two levers, not four. They used to be true because nobody touched `network.cookie.cookieBehavior` or `dom.storage.enabled`, i.e. because the upstream defaults happened to be right. |
@@ -185,9 +185,10 @@ would be the signal. They are pinnable for A/B work, not for realism.
 | Key | Type | Example | Notes |
 |-----|------|---------|-------|
 | `dark_theme` | bool | `False` | [`prefers-color-scheme: dark`](https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-color-scheme). Real traffic is ~85% light, 15% dark. |
+| `branding` | str | `"official"`, `"unofficial"`, `"C:/brand/files"` | The branding a page can read at `chrome://branding/content/` and `resource://usercontext-content/branding/`: the about dialog's stylesheet, the wordmarks' boxes, the logos' sizes. `"official"` (the default) is the retail Firefox's files, `"unofficial"` those of a build without the trademark, and an absolute path is a directory of your own holding exactly the same 16 file names as regular files; anything else raises when the profile is built. The engine serves the declared files and keeps no copy of its own. Needs firefox-48. |
 
-`dark_theme` is the ONLY top-level key. Anything else raises `ValueError: pin key
-'...' is not valid`.
+`dark_theme` and `branding` are the ONLY top-level keys. Anything else raises
+`ValueError: pin key '...' is not valid`.
 
 **`fonts` is not one of them, and no longer exists as an axis.** This table used
 to list a per-profile font allowlist ("the sampler usually picks 14-24 system
