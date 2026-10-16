@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+- **Requests and Responses no longer live as long as their page.** Nothing
+  disposed them, so a page that fetched in a loop kept every one in the server's
+  guid registry and in the client's mirror of it, with headers and post bodies,
+  and every answered Route then scanned that whole registry to find its
+  (absent) children. The server now does what the driver does: past 10,000
+  live objects of one type (100,000 for handles) the oldest tenth is disposed
+  with reason `gc`, which the client already turns into "The object has been
+  collected to prevent unbounded heap growth." A request still in flight and an
+  unanswered Route are never collected. Disposal reads a children index instead
+  of the whole registry, and re-parenting (a page adopting its main frame)
+  moves the index with it. Measured on a page fetching twenty times a second
+  with request bodies captured: the server process grew about 90 MB a minute
+  with its loop at 95% CPU before, and stays bounded after.
+
 ## [0.36.2] - 2026-10-17
 
 The pin moves to invisible-core 48.43.0, still on the firefox-48 engine.

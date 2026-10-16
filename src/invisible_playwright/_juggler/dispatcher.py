@@ -92,6 +92,21 @@ class Dispatcher:
         # ⛔ Announced BEFORE anyone can name it. See the module docstring.
         server.announce(self)
 
+    @property
+    def parent(self) -> Optional["Dispatcher"]:
+        return self._parent
+
+    @parent.setter
+    def parent(self, value: Optional["Dispatcher"]) -> None:
+        """⛔ RE-PARENTING MOVES THE CHILDREN INDEX TOO. A page's main frame is
+        registered under the context and adopted by the page once the page
+        exists; a plain attribute left the frame indexed under the context, so
+        closing the page disposed everything but its frame."""
+        old = getattr(self, "_parent", None)
+        self._parent = value
+        if old is not value and getattr(self, "guid", None) is not None:
+            self.server.reparent(self, old)
+
     # ── what the protocol needs ─────────────────────────────────────────────
     @property
     def channel(self) -> Dict[str, str]:
@@ -127,10 +142,18 @@ class Dispatcher:
         params = {"reason": reason} if reason else {}
         self.server.send_up({"guid": self.guid, "method": "__dispose__",
                              "params": params})
+        children = self.server.descendants_of(self)
         self.server.unregister(self)
-        for child in self.server.descendants_of(self):
+        for child in children:
             child.disposed = True
             self.server.unregister(child)
+
+    @property
+    def collectable(self) -> bool:
+        """Whether the registry's cap may dispose this object to make room.
+
+        True unless a subclass knows better. See `Server.GC_LIMITS`."""
+        return True
 
     # ── routing ─────────────────────────────────────────────────────────────
     def call(self, method: str, params: Dict) -> Any:
@@ -156,6 +179,11 @@ class Server:
 
     def __init__(self) -> None:
         self._objects: Dict[str, Dispatcher] = {}
+        #: parent guid -> {child guid: child}, so a dispose touches its own
+        #: subtree and nothing else. See `descendants_of`.
+        self._children: Dict[str, Dict[str, Dispatcher]] = {}
+        #: TYPE -> {guid: object}, oldest first. See `GC_LIMITS`.
+        self._buckets: Dict[str, Dict[str, Dispatcher]] = {}
         #: The guids this server has disposed, newest last.
         #:
         #: ⛔ REMEMBERED, BECAUSE FORGETTING THEM LOSES THE DIFFERENCE BETWEEN
@@ -230,9 +258,60 @@ class Server:
             counter = self._counters.setdefault(type_name, itertools.count(1))
             return "%s@%d" % (type_name.lower(), next(counter))
 
+    #: How many live objects of one TYPE are kept before the oldest tenth is
+    #: disposed with reason "gc". These are the driver's own numbers
+    #: (`maxDispatchersForBucket` in playwright-core's dispatcher.ts), and the
+    #: client already understands the result: `_connection.py` marks an object
+    #: disposed with "gc" as collected and refuses later calls on it with "The
+    #: object has been collected to prevent unbounded heap growth."
+    #:
+    #: ⛔ WITHOUT IT A REQUEST LIVES AS LONG AS ITS PAGE. Nothing disposes a
+    #: Request or a Response - Playwright does not either, and relies on this
+    #: cap - so a page that fetches in a loop kept every one, on both sides of
+    #: the in-process transport, with its headers and post body. Measured
+    #: 2026-10-16 in the shared MCP browser: one worker grew 3.5 GB in its
+    #: first hour under a Bill Pay session, most of it swapped out, with every
+    #: browser caller on the host slowed by the thrashing.
+    GC_LIMITS: Dict[str, int] = {"JSHandle": 100000, "ElementHandle": 100000}
+    GC_DEFAULT_LIMIT = 10000
+
     def register(self, obj: Dispatcher) -> None:
+        victims: list = []
         with self._lock:
             self._objects[obj.guid] = obj
+            self._children.setdefault(self._parent_guid(obj), {})[obj.guid] = obj
+            bucket = self._buckets.setdefault(obj.TYPE, {})
+            bucket[obj.guid] = obj
+            limit = self.GC_LIMITS.get(obj.TYPE, self.GC_DEFAULT_LIMIT)
+            if len(bucket) > limit:
+                # The oldest tenth, skipping what may not be collected yet: a
+                # request still in flight is named by events still to come.
+                want = max(1, limit // 10)
+                for candidate in bucket.values():
+                    if candidate is not obj and candidate.collectable:
+                        victims.append(candidate)
+                        if len(victims) >= want:
+                            break
+        # Outside the lock: dispose takes it again, and sends.
+        for victim in victims:
+            victim.dispose("gc")
+
+    def _parent_guid(self, obj: Dispatcher) -> str:
+        return obj.parent.guid if obj.parent is not None else self.root_guid
+
+    def reparent(self, obj: Dispatcher, old: Optional[Dispatcher]) -> None:
+        """Move `obj` in the children index from `old` to its current parent.
+        Called by the `Dispatcher.parent` setter, never directly."""
+        old_guid = old.guid if old is not None else self.root_guid
+        with self._lock:
+            if obj.guid not in self._objects:
+                return
+            siblings = self._children.get(old_guid)
+            if siblings is not None:
+                siblings.pop(obj.guid, None)
+                if not siblings:
+                    del self._children[old_guid]
+            self._children.setdefault(self._parent_guid(obj), {})[obj.guid] = obj
 
     #: How many disposed guids are remembered. Large enough for any burst of
     #: in-flight calls, small enough to be free.
@@ -241,6 +320,14 @@ class Server:
     def unregister(self, obj: Dispatcher) -> None:
         with self._lock:
             self._objects.pop(obj.guid, None)
+            siblings = self._children.get(self._parent_guid(obj))
+            if siblings is not None:
+                siblings.pop(obj.guid, None)
+                if not siblings:
+                    del self._children[self._parent_guid(obj)]
+            bucket = self._buckets.get(obj.TYPE)
+            if bucket is not None:
+                bucket.pop(obj.guid, None)
             self._disposed[obj.guid] = None
             while len(self._disposed) > self.DISPOSED_MEMORY:
                 self._disposed.pop(next(iter(self._disposed)))
@@ -248,24 +335,25 @@ class Server:
     def descendants_of(self, obj: Dispatcher) -> list:
         """Everything registered whose parent chain reaches `obj`.
 
-        ⛔ WALKED RATHER THAN INDEXED, on purpose. A children list on every
-        dispatcher is a second place that knows the tree, and the tree already
-        lives in `parent`; keeping the two in step is precisely the kind of
-        duplication that lets one of them go stale. The walk is over the live
-        registry, which this cascade is what keeps small.
+        ⛔ INDEXED, NOT WALKED. This used to scan the whole registry and climb
+        every object's parent chain, on the reasoning that the cascade keeps
+        the registry small. It does not: Requests and Responses are never
+        disposed one by one, and every answered Route is disposed, so with
+        request bodies captured each request paid a walk over every request
+        the page had ever made. Measured 2026-10-16, a page fetching twenty
+        times a second held the server's loop at 95% CPU inside this method,
+        and a single `browser_network` call did not return in five minutes.
+        `_children` is kept by `register` and `unregister` alone, under the
+        same lock as `_objects`, so the two cannot disagree.
         """
+        out: list = []
         with self._lock:
-            everything = list(self._objects.values())
-        out = []
-        for candidate in everything:
-            walker = candidate.parent
-            seen = set()
-            while walker is not None and id(walker) not in seen:
-                if walker is obj:
-                    out.append(candidate)
-                    break
-                seen.add(id(walker))
-                walker = walker.parent
+            pending = [obj.guid]
+            while pending:
+                children = self._children.get(pending.pop())
+                if children:
+                    out.extend(children.values())
+                    pending.extend(children.keys())
         return out
 
     def announce(self, obj: Dispatcher) -> None:
