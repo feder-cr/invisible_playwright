@@ -13,6 +13,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   after serialization, where a node is nothing truthy. It is now judged as
   JavaScript judges it, from one run of the predicate, and the element is the
   handle the wait returns.
+- **A handle from `evaluate_handle` can be used.** Its `text_content`,
+  `evaluate` and `json_value` all failed with "Cannot find object": the value
+  was made in the page's own world and the handle looked for it in the
+  automation's. A node is now carried into the automation's world, as the
+  handles of `add_script_tag` already were, and any other value's handle
+  runs its operations where the value lives. The same goes for the handle
+  `wait_for_function` returns.
 
 ## [0.36.0] - 2026-10-16
 

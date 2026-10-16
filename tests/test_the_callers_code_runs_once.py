@@ -34,6 +34,13 @@ class _Injected:
             raise answer
         return answer
 
+    def poll_in_main(self, frame_id, expression, *, timeout=30.0):
+        self.calls.append(("poll_in_main", None))
+        answer = self.answers.pop(0)
+        if isinstance(answer, BaseException):
+            raise answer
+        return answer
+
     def call(self, frame_id, declaration, *arguments, **kwargs):
         self.calls.append(("call", kwargs))
         return [1, 2]
@@ -54,12 +61,15 @@ def _frame(injected):
 def test_a_poll_goes_on_through_a_world_that_went(monkeypatch):
     monkeypatch.setattr(server, "ElementHandleDispatcher",
                         lambda *a, **k: SimpleNamespace(channel="handle"))
+    # A turn whose world went, then a falsy turn, then a truthy one. Each turn
+    # sends the caller's code ONCE (`poll_in_main`, [B323]): the truthy value
+    # is already the handle, and nothing runs the predicate again to get one.
     injected = _Injected([ContextDestroyed("Execution context was destroyed"),
-                          True, "oid"])
+                          None, {"objectId": "oid", "type": "object"}])
     answer = _frame(injected).op_wait_for_function(
         {"expression": "() => window.ready", "isFunction": True, "timeout": 5000})
     assert answer == {"handle": "handle"}
-    assert [c for c, _ in injected.calls] == ["evaluate_in_main"] * 3
+    assert [c for c, _ in injected.calls] == ["poll_in_main"] * 3
 
 
 def test_eval_on_selector_all_sends_the_callers_function_once():

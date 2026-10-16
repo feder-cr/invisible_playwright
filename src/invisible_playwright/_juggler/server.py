@@ -298,6 +298,19 @@ def _upload_paths(server: "JugglerServer", params: Dict) -> list:
             for payload in params.get("payloads") or []]
 
 
+#: The four numbers JSON cannot carry, as the engine names them in a
+#: RemoteObject's `unserializableValue` (`juggler/content/Runtime.js`).
+_UNSERIALIZABLE = {"NaN": float("nan"), "-0": -0.0,
+                   "Infinity": float("inf"), "-Infinity": float("-inf")}
+
+
+def _remote_value(remote: Dict) -> Any:
+    """The value of a RemoteObject that carries no objectId: a primitive."""
+    if "unserializableValue" in remote:
+        return _UNSERIALIZABLE[remote["unserializableValue"]]
+    return remote.get("value")
+
+
 class ElementHandleDispatcher(Dispatcher):
     TYPE = "ElementHandle"
     METHODS = {
@@ -332,16 +345,23 @@ class ElementHandleDispatcher(Dispatcher):
     }
 
     def __init__(self, server, frame: "FrameDispatcher", object_id: str,
-                 preview: str = "", *, world: str = "utility") -> None:
+                 preview: str = "", *, world: str = "utility",
+                 remote: Optional[Dict] = None) -> None:
         self.frame = frame
         self.object_id = object_id
-        # ⛔ WHICH WORLD THE objectId BELONGS TO. Almost every handle here is
-        # born in the utility world, where the rest of this server lives. One
-        # is not: `waitForFunction` runs the CALLER'S expression in the page's
-        # own world, so its result exists only there - and an objectId is not
-        # portable between worlds. A handle that lies about its world does not
-        # fail loudly: Juggler answers that the object does not exist, on a
-        # call the user thinks succeeded.
+        # A main-world PRIMITIVE has no objectId: its value is the engine's
+        # RemoteObject, kept here so `json_value` can answer it [B324].
+        self.remote = remote or {}
+        # ⛔ WHICH WORLD THE objectId BELONGS TO, and every operation below
+        # runs there. Almost every handle is born in the utility world, where
+        # the rest of this server lives. A value the CALLER'S code produced in
+        # the page's own world is made into a handle by
+        # `FrameDispatcher._handle_from_main`: a node is adopted into utility,
+        # anything else stays "main". An objectId is not portable between
+        # worlds, and until 0.36.0 only `json_value` read this field: every
+        # other operation on an `evaluate_handle` or `wait_for_function` result
+        # asked the utility world about an objectId it had never seen and
+        # failed with "Cannot find object" [B324].
         self.world = world
         # ⛔ THE PARENT IS THE FRAME, NOT THE PAGE, and the parent is not
         # bookkeeping: `_element_handle.py` does `self._frame = cast("Frame",
@@ -371,7 +391,22 @@ class ElementHandleDispatcher(Dispatcher):
     def page(self) -> "PageDispatcher":
         return self.frame.page
 
+    def _in_main(self, declaration: str, *args: Dict, by_value: bool) -> Dict:
+        """`declaration` called in the main world, where this handle lives,
+        with `null` where the utility world passes the injected script: the
+        same declarations serve both worlds, so there is one of each."""
+        return self.injected.call_raw(
+            self.injected.main_context(self.frame.frame_id), declaration,
+            [{"value": None}, {"objectId": self.object_id}] + list(args),
+            by_value=by_value)
+
     def op_dispose(self, params: Dict) -> Any:
+        if self.world == "main":
+            if self.object_id:
+                self.injected.release(
+                    self.injected.main_context(self.frame.frame_id), self.object_id)
+            self.dispose()
+            return None
         try:
             self.injected.dispose(self.frame.frame_id, self.object_id)
         except Exception:
@@ -425,6 +460,9 @@ class ElementHandleDispatcher(Dispatcher):
         It was found by diffing the protocol against the Node driver: the
         driver's `click` carried a `position` and ours did not.
         """
+        if self.world == "main":
+            return {"value": _serialize(self._in_main(
+                _element_function(params), by_value=True).get("value"))}
         return {"value": _serialize(self.injected.call(
             self.frame.frame_id, _element_function(params),
             {"objectId": self.object_id}))}
@@ -450,6 +488,10 @@ class ElementHandleDispatcher(Dispatcher):
             self.frame.frame_id, self.object_id, params["name"])}
 
     def op_get_property(self, params: Dict) -> Any:
+        if self.world == "main":
+            remote = self._in_main("(injected, o, n) => o[n]",
+                                   {"value": params["name"]}, by_value=False)
+            return {"handle": self.frame._handle_from_main(remote).channel}
         object_id = self.injected.call(
             self.frame.frame_id,
             "(injected, o, n) => o[n]",
@@ -462,6 +504,15 @@ class ElementHandleDispatcher(Dispatcher):
         large object this is the most expensive call in the file, which is why
         `json_value` exists and should be preferred when the values are
         serialisable."""
+        if self.world == "main":
+            names = self._in_main(
+                "(injected, o) => o === Object(o) ? Object.keys(o) : []",
+                by_value=True).get("value") or []
+            return {"properties": [
+                {"name": name, "value": self.frame._handle_from_main(self._in_main(
+                    "(injected, o, n) => o[n]", {"value": name},
+                    by_value=False)).channel}
+                for name in names]}
         names = self.injected.call(
             self.frame.frame_id,
             "(injected, o) => o === Object(o) ? Object.keys(o) : []",
@@ -486,7 +537,9 @@ class ElementHandleDispatcher(Dispatcher):
         caller can act on - it is an evaluation failure on a handle they were
         just given.
         """
-        if getattr(self, "world", "utility") == "main":
+        if self.world == "main":
+            if not self.object_id:
+                return {"value": _serialize(_remote_value(self.remote))}
             return {"value": _serialize(self.injected.json_value_in(
                 self.frame.frame_id, "main", self.object_id))}
         return {"value": _serialize(self.injected.call(
@@ -1218,6 +1271,28 @@ class FrameDispatcher(Dispatcher):
             self.server, self.page.frame_for(frame_id), object_id)
         return {"element": handle.channel}
 
+    def _handle_from_main(self, remote: Dict) -> "ElementHandleDispatcher":
+        """A handle for a value the CALLER'S code produced in the main world.
+        THE ONE PLACE such a handle is made [B324].
+
+        A node is adopted into the utility world, where every element read and
+        action of this server runs - the same node, as `add_script_tag` and
+        `fileChooserOpened` hand theirs back - and its main-world objectId is
+        released. Any other object, and a primitive, stays in the main world,
+        and its handle's operations run there. Until 0.36.0 `evaluate_handle`
+        made every result a utility handle, and `wait_for_function` a main one
+        that only `json_value` honoured."""
+        object_id = remote.get("objectId")
+        if object_id and remote.get("subtype") == "node":
+            adopted = self.injected.adopt(self.frame_id, object_id)
+            if not adopted:
+                raise ProtocolException(
+                    "the node the expression returned could not be handed back")
+            self.injected.release(self.injected.main_context(self.frame_id), object_id)
+            return ElementHandleDispatcher(self.server, self, adopted)
+        return ElementHandleDispatcher(self.server, self, object_id or "",
+                                       world="main", remote=remote)
+
     def op_wait_for_function(self, params: Dict) -> Any:
         """Poll the CALLER'S expression until it is truthy.
 
@@ -1264,9 +1339,7 @@ class FrameDispatcher(Dispatcher):
                 # it is `AttributeError: 'NoneType' object has no attribute
                 # '_object'` raised inside the client on a call that had just
                 # succeeded. It stayed hidden while the poll timed out first.
-                handle = ElementHandleDispatcher(
-                    self.server, self, remote.get("objectId") or "", world="main")
-                return {"handle": handle.channel}
+                return {"handle": self._handle_from_main(remote).channel}
             if deadline.passed():
                 # A TimeoutError, which the client receives as Playwright's,
                 # as upstream raises for this wait (until 0.34.0 a plain Error).
@@ -1582,10 +1655,9 @@ class FrameDispatcher(Dispatcher):
         return {"value": _serialize(value)}
 
     def op_evaluate_handle(self, params: Dict) -> Any:
-        object_id = self.injected.evaluate_in_main(
-            self.frame_id, _with_argument(params), by_value=False)
-        handle = ElementHandleDispatcher(self.server, self, object_id)
-        return {"handle": handle.channel}
+        remote = self.injected.evaluate_in_main_remote(
+            self.frame_id, _with_argument(params))
+        return {"handle": self._handle_from_main(remote).channel}
 
 
 # ⛔ `DialogDispatcher` LIVED HERE AND IS GONE, fused into `_pw._impl._dialog`
