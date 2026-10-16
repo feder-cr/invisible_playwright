@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+- **`wait_for_function` ends when the predicate returns an element.**
+  `wait_for_function("() => document.querySelector('#x')")` timed out although
+  the element existed: the predicate ran by value and the result was judged
+  after serialization, where a node is nothing truthy. It is now judged as
+  JavaScript judges it, from one run of the predicate, and the element is the
+  handle the wait returns.
+
 ## [0.36.0] - 2026-10-16
 
 The pin moves to invisible-core 48.41.0, on the firefox-48 engine. 0.35.11 was

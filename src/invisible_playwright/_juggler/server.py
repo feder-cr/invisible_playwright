@@ -1247,21 +1247,25 @@ class FrameDispatcher(Dispatcher):
             # per turn (the page's world is never sent the caller's code twice,
             # [B285]), and a world that went under it means the next turn asks
             # the new document, as Playwright's polling survives a navigation.
+            # ⛔ TRUTHY AS JAVASCRIPT JUDGES IT, from ONE run by reference
+            # (`poll_in_main`, [B323]). This used to run the predicate by value
+            # and let Python judge the serialized result, so a predicate that
+            # returns a node - `() => document.querySelector('#x')`, the most
+            # common wait there is - never ended: a node serializes to nothing
+            # truthy. A truthy value now IS the handle, and the caller's code
+            # no longer runs a second time to get one.
             try:
-                value = self.injected.evaluate_in_main(self.frame_id,
-                                                       expression)
+                remote = self.injected.poll_in_main(self.frame_id, expression)
             except ContextDestroyed:
-                value = None
-            if value:
+                remote = None
+            if remote is not None:
                 # ⛔ A HANDLE, NEVER None. `_frame.py` wraps this reply in
                 # `from_channel(...)`, so answering None is not "no handle" -
                 # it is `AttributeError: 'NoneType' object has no attribute
                 # '_object'` raised inside the client on a call that had just
                 # succeeded. It stayed hidden while the poll timed out first.
-                object_id = self.injected.evaluate_in_main(
-                    self.frame_id, expression, by_value=False)
                 handle = ElementHandleDispatcher(
-                    self.server, self, object_id or "", world="main")
+                    self.server, self, remote.get("objectId") or "", world="main")
                 return {"handle": handle.channel}
             if deadline.passed():
                 # A TimeoutError, which the client receives as Playwright's,
