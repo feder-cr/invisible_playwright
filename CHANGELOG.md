@@ -9,9 +9,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 - **The branding a page reads is a profile field.** `pin={"branding": ...}`
   takes `"official"` (the default, the retail Firefox's files), `"unofficial"`,
-  or the absolute path of a directory of your own with the same 16 files. The
-  engine serves the declared files at `chrome://branding/content/` and
-  `resource://usercontext-content/branding/` instead of its own. Needs firefox-48.
+  or the absolute path of a zip archive of your own with the same 16 files at
+  its root. The engine serves the declared files at `chrome://branding/content/`
+  and `resource://usercontext-content/branding/` instead of its own, from inside
+  the archive as Firefox serves its own branding. Needs firefox-48.
 
 ### Changed
 - **The speechSynthesis voices follow the session's language.** An it-IT session
