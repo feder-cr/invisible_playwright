@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import asyncio
-import secrets
 import time
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
@@ -13,7 +12,7 @@ from invisible_playwright._pw._impl._browser_context import page_number_reserved
 from . import _session
 from ._cursor import resolve_cursor_engine
 from invisible_core._fpforge import Profile, generate_profile
-from invisible_core import SessionLocale, persona_cookies, prepare_session_geo
+from invisible_core import SessionLocale, persona_cookies, prepare_session_geo, record_session_seed, resolve_session_seed
 from ._engine import assert_wire_version, resolve_executable
 from invisible_core import configure_proxy as _configure_proxy_shared
 from ._reaper import SessionToken, guard_for
@@ -40,7 +39,9 @@ class InvisiblePlaywright(_session.CommonLaunch):
         show_cursor: Optional[bool] = None,
     ) -> None:
         # See sync launcher: `zoom.stealth.fpp.hw_seed` is int32_t - clamp.
-        self.seed: int = int(seed) if seed is not None else secrets.randbits(31)
+        # One place decides the seed, and a profile directory remembers it
+        # (invisible_core.resolve_session_seed, B314).
+        self.seed: int = resolve_session_seed(seed, profile_dir)
         self._pin = pin
         self._headless = headless
         self._proxy = proxy
@@ -142,6 +143,8 @@ class InvisiblePlaywright(_session.CommonLaunch):
             if self._profile_dir is not None:
                 # See sync launcher for the persistent-context rationale.
                 self._profile_dir.mkdir(parents=True, exist_ok=True)
+                # The profile is this machine from now on (B314).
+                record_session_seed(self._profile_dir, self.seed)
                 # firefox-5 ships the C++ overrideTimezone IDL method (C7
                 # closure), so locale + timezone_id now propagate cleanly
                 # to the persistent context without hanging the launch.
