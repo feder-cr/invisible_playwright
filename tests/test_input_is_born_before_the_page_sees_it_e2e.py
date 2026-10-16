@@ -28,6 +28,7 @@ for (const t of ['keydown', 'keyup', 'mousemove', 'wheel']) document.addEventLis
 </script>"""
 
 
+@pytest.mark.wall_clock
 def test_every_key_and_move_is_born_before_its_handler_runs(firefox_binary):
     from invisible_playwright import InvisiblePlaywright
 

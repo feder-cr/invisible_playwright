@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.36.2] - 2026-10-16
+
+The pin moves to invisible-core 48.43.0, still on the firefox-48 engine.
+
+### Fixed
+- **`response.security_details()` hands on the certificate the engine sent.**
+  It answered `None` for every response, HTTPS included, which a script reads
+  as "not over TLS". The response now keeps what the engine reported; an
+  engine that reports nothing (firefox-48 and earlier) still answers `None`.
+- **The e2e tests that measure time run alone.** Eight of them assert an
+  upper bound on a wall-clock duration, and beside four browsers the device
+  enumeration one went red on a rerun-clean SHA three times. They carry the
+  new `wall_clock` marker, and the core's e2e run gives them the machine alone
+  after the parallel tests.
+
 ## [0.36.1] - 2026-10-16
 
 The pin moves to invisible-core 48.42.0, on the same firefox-48 engine.

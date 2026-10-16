@@ -158,6 +158,7 @@ def server():
     srv.shutdown()
 
 
+@pytest.mark.wall_clock
 @pytest.mark.parametrize("kind", list(ACT))
 def test_a_goto_stopped_on_its_way_raises_or_lands_and_never_lies(firefox_binary, server, kind):
     from invisible_playwright import InvisiblePlaywright
@@ -205,6 +206,7 @@ def test_a_goto_stopped_on_its_way_raises_or_lands_and_never_lies(firefox_binary
                     assert page.url != left, (where, page.url)
 
 
+@pytest.mark.wall_clock
 def test_a_second_goto_interrupts_the_first_and_lands(firefox_binary, server):
     from invisible_playwright.async_api import InvisiblePlaywright
 

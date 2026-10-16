@@ -410,6 +410,7 @@ def _serve():
     return srv, "http://127.0.0.1:%d/" % port
 
 
+@pytest.mark.wall_clock
 @pytest.mark.e2e
 def test_navigation_answers_with_a_real_response(firefox_binary):
     """One browser, every navigating method, and each answer is READ.

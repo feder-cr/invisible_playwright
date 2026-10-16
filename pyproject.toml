@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "invisible_playwright"
-version = "0.36.1"
+version = "0.36.2"
 description = "Playwright wrapper for a patched Firefox with deterministic stealth profile."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -69,7 +69,7 @@ dependencies = [
     # metadata; nothing in src/ hardcodes a second copy (tests/test_core_pin.py
     # fails if one appears). What stays invisible to install-time machinery is the
     # --no-deps / lockfile residue, and _pin.py is the only layer that sees it.
-    "invisible_core==48.42.0",
+    "invisible_core==48.43.0",
     # ⛔ playwright is NO LONGER a dependency: since the full fork, the Python
     # client lives in src/invisible_playwright/_pw/ and the Node driver in
     # src/invisible_playwright/_driver/. Reintroducing it would not visibly
@@ -138,13 +138,15 @@ markers = [
     #   invisible_core's addopts said `not slow` while never declaring `slow`,
     #   so the exclusion matched nothing and the word meant nothing.
     #
-    # The blocks are byte-identical on purpose, and
+    # The lists are identical on purpose, and
     # invisible_core/tests/test_marker_vocabulary.py fails when they drift.
+    # (It compares the parsed lists, so this comment may differ per repo.)
     "unit: pure logic - no I/O, no network, no subprocess, no browser",
     "integration: several modules together, in process - no network, no browser",
     "e2e: needs something outside this process - the network, the real patched binary, or a display",
     "slow: builds a wheel or an sdist - opt-in only",
     "linux_only: requires Linux",
+    "wall_clock: its verdict reads a wall-clock duration - the e2e run gives it the machine alone, after the parallel tests",
 ]
 # Both exclusions in ONE addopts: declaring the key twice is a TOML error, not
 # a merge, and pytest then sees neither value.

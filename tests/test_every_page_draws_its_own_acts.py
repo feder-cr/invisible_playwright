@@ -212,6 +212,7 @@ def _distance(seen, plan):
     return sum(abs(x - common) for x in d)
 
 
+@pytest.mark.wall_clock
 @pytest.mark.e2e
 def test_two_tabs_of_one_session_are_typed_with_two_rhythms(firefox_binary, page_url):
     """Each tab's first fill matches ITS plan, not the other tab's. Before,

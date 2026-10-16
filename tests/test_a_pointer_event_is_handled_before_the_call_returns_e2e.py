@@ -62,6 +62,7 @@ def test_each_pointer_call_answers_after_the_page_handled_its_event(firefox_bina
                 "not wait for the page" % (step, took * 1000))
 
 
+@pytest.mark.wall_clock
 @pytest.mark.e2e
 def test_a_click_that_opens_a_dialog_still_answers(firefox_binary):
     """The wait ends when the event's handler opens a dialog: the handler runs

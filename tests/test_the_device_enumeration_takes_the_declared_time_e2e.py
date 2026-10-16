@@ -17,20 +17,30 @@ import threading
 
 import pytest
 
-pytestmark = pytest.mark.e2e
+# `wall_clock`: the e2e run gives this file the machine alone, after the
+# parallel tests. Why it needs that is on HOST_STACK_MS.
+pytestmark = [pytest.mark.e2e, pytest.mark.wall_clock]
 
 _SEED = 42
 
 #: The smallest time the host's audio stack added to an enumeration before
 #: firefox-45 (287-351 ms on our Windows build, the docstring above). The
-#: margin over the declared time is half of it: wide enough for a loaded
-#: runner, narrow enough that the defect it guards cannot hide in it.
+#: margin over the declared time is half of it: wide enough for a runner's own
+#: noise, narrow enough that the defect it guards cannot hide in it.
 #:
 #: These bounds used to be absolute - the first within declared + 110 ms, the
 #: second under 50 ms - and a CI run with four browsers crossed each of them
 #: once in the release of 0.35.10 (656 against 543 + 110, then exactly 50),
 #: both green again on the same SHA ([B312]). A bound that the load of the
 #: machine can cross is a bound on the machine, not on the engine.
+#:
+#: ⛔ AND THE RELATIVE BOUND THAT REPLACED THEM CROSSED TOO, because its premise
+#: was false: that the load both calls share cancels out of their difference.
+#: It does not. The declared wait is dispatched on the parent process's main
+#: thread, which four browsers make late, and only the FIRST call waits it; the
+#: second pays the round trip alone. Measured on a CI run of PR #355: 807 ms of
+#: difference against 686, green again on the same SHA. No margin holds beside
+#: four browsers, so the test no longer runs beside them.
 HOST_STACK_MS = 287
 
 MEASURE = """async () => {
@@ -80,6 +90,6 @@ def test_the_first_enumeration_takes_the_declared_time(firefox_binary):
     assert second < declared / 2, (second, declared)
     # And nothing on top of it. The second call is the same round trip to the
     # parent without the wait, so the difference is the declared time plus
-    # whatever the host added; the load both calls share cancels out instead of
-    # adding up.
+    # whatever the host added. It is NOT free of the machine's load (see
+    # HOST_STACK_MS): this holds because the run gives the test the machine.
     assert first - second < declared + HOST_STACK_MS / 2, (first, second, declared)

@@ -179,6 +179,7 @@ def page_url():
     srv.shutdown()
 
 
+@pytest.mark.wall_clock
 @pytest.mark.e2e
 def test_the_page_sees_the_delay_the_caller_asked_for(firefox_binary, page_url):
     """With the hand switched off the keys go out a few ms apart, so a gap of
