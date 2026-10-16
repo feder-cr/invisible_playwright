@@ -54,10 +54,18 @@ def _serve():
 
 
 def _what_the_page_could_do(page):
+    """What the PAGE's own code could do under its policy.
+
+    ⛔ THE PAGE'S `eval`, `window.eval`, NOT THE CALLER'S. Since firefox-49 the
+    caller's code runs in a world of its own ([B322]), and its own `eval` is
+    that world's, which the page's policy does not govern (see the last
+    assertion of the test). `window.eval` is the page's function, so calling it
+    asks the page's policy, as an `eval` in the page's own script would."""
     page.add_script_tag(content="window.added = 7")
     return {
         "inline": page.evaluate("() => window.inline === 1"),
-        "eval": page.evaluate("() => { try { return eval('2 + 2'); } catch (e) { return e.name; } }"),
+        "eval": page.evaluate(
+            "() => { try { return window.eval('2 + 2'); } catch (e) { return e.name; } }"),
         "added": page.evaluate("() => window.added === 7"),
     }
 
@@ -79,6 +87,9 @@ def test_bypass_csp_lifts_the_page_policy_and_its_absence_keeps_it(firefox_binar
                     page.goto(base + path, wait_until="load")
                     assert _what_the_page_could_do(page) == blocked, (
                         "%s: without bypass_csp the page's policy must hold" % path)
+                    # the caller's own eval is its world's, which the page's
+                    # policy does not govern ([B322])
+                    assert page.evaluate("() => eval('2 + 2')") == 4
                     ctx.close()
                 ctx = browser.new_context(bypass_csp=True)
                 page = ctx.new_page()

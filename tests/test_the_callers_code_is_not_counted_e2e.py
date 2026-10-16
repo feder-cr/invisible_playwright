@@ -33,6 +33,7 @@ window.__APP = {ready: true};
 function pageFn(x) { return x * 2; }
 class Point { constructor(x) { this.x = x; } toString() { return 'P' + this.x; } }
 window.pt = new Point(3);
+const pageConst = 'c';
 window.pageRead = (n) => window[n];
 </script></head><body>
 <form><input name="cf-turnstile-response" value="tok"></form><div id="x">here</div>
@@ -82,7 +83,12 @@ def test_what_the_page_added_is_the_pages(page):
     assert page.evaluate("() => window.__APP.ready") is True
     assert page.evaluate("() => pageFn(21)") == 42
     assert page.evaluate("() => document.getElementById('x').__vue__.msg") == "hi"
+    # a top-level class or const of a page script is a binding of the page's
+    # global scope, not a property of its window: a bare name finds it, as in
+    # the page, and `window.pageConst` does not
     assert page.evaluate("() => pt instanceof Point") is True
+    assert page.evaluate("() => pageConst") == "c"
+    assert page.evaluate("() => window.pageConst === undefined") is True
     page.evaluate("() => { window.written = 5; }")
     assert page.evaluate("() => pageRead('written')") == 5
 
