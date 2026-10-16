@@ -26,7 +26,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   code creates and hands to the page belongs to another realm
   (`Array.isArray` holds, the page's `instanceof Array` does not); and a
   bare assignment to an undeclared name creates a global of your world, not
-  of the page (`window.x = 1` still reaches the page). Needs firefox-49.
+  of the page (`window.x = 1` still reaches the page). Your code's own
+  `eval` is not governed by the page's Content-Security-Policy, which
+  governs the page's (`window.eval`) as before. Needs firefox-49.
 
 ### Fixed
 - **`eval_on_selector`, `eval_on_selector_all`, `locator.evaluate` and
