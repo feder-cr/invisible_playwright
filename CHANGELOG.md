@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.35.11] - 2026-10-16
+
+The pin stays at invisible-core 47.41.0, on the same firefox-47 engine.
+
 ### Fixed
 - **Opening and closing pages quickly no longer breaks `new_page()`.** A page's
   close and the delivery of its events ran on two threads with nothing between
