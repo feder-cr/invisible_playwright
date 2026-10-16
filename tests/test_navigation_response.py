@@ -331,6 +331,36 @@ def test_wait_for_new_navigation_HANDS_BACK_the_id_it_waited_for():
                                              timeout=10) == "NEW"
 
 
+def _respond(page, **extra):
+    """One request and its response, the response carrying ``extra``."""
+    page._on_juggler_event("Network.requestWillBeSent", {
+        "requestId": "R1", "url": "https://127.0.0.1/", "method": "GET",
+        "frameId": "F1", "isIntercepted": False, "headers": []})
+    page._on_juggler_event("Network.responseReceived", dict(
+        {"requestId": "R1", "status": 200, "statusText": "OK", "headers": []},
+        **extra))
+    return page._requests["R1"].response
+
+
+def test_a_response_hands_on_the_certificate_the_engine_sent():
+    """The same shape as the goto answer above: a value nobody read. Until
+    this, `response.security_details()` answered None for every response,
+    HTTPS included, which a script reads as "not over TLS" (B303 E15). Known
+    bad: the previous `return {"value": None}` turns this red."""
+    details = {"protocol": "TLS 1.3", "subjectName": "probe.local",
+               "issuer": "probe-ca", "validFrom": 1760000000,
+               "validTo": 1762592000}
+    response = _respond(_bare_page(), securityDetails=details)
+    assert response.op_security_details({}) == {"value": details}
+
+
+@pytest.mark.parametrize("sent", [{}, {"securityDetails": None}])
+def test_a_response_with_no_certificate_answers_None(sent):
+    """Plain HTTP, and every engine through firefox-48, which sends null."""
+    response = _respond(_bare_page(), **sent)
+    assert response.op_security_details({}) == {"value": None}
+
+
 # -- the e2e half: a real browser, and `.status` read off the answer ---------
 
 PAGE = (b"<!doctype html><html><head><title>local</title></head>"

@@ -1755,6 +1755,9 @@ class ResponseDispatcher(Dispatcher):
         self.protocol_version = params.get("protocolVersion") or ""
         self.remote = {"ipAddress": params.get("remoteIPAddress") or "",
                        "port": params.get("remotePort") or 0}
+        # The certificate the engine read off the channel, or None for a
+        # response that did not come over TLS.
+        self.security_details = params.get("securityDetails") or None
         # ⛔ The parent is the REQUEST, which is where the driver puts it.
         # Unlike the ElementHandle case this one is not load-bearing today -
         # `_network.py` reads its request from the INITIALIZER, not from the
@@ -1847,7 +1850,13 @@ class ResponseDispatcher(Dispatcher):
         return {"value": self.protocol_version or "unknown"}
 
     def op_security_details(self, params: Dict) -> Any:
-        return {"value": None}
+        """⛔ THIS ANSWERED None FOR EVERY RESPONSE, HTTPS INCLUDED, which a
+        script reads as "not over TLS": a value, not a refusal. The engine sent
+        `securityDetails: null` from 2026-08-24 through firefox-48, and this
+        answer was written against that. The engine after firefox-48 reports
+        the certificate as upstream does; this hands on whatever the engine
+        sent, so an engine that still sends null answers None, as before."""
+        return {"value": self.security_details}
 
     def op_server_addr(self, params: Dict) -> Any:
         return {"value": self.remote if self.remote["ipAddress"] else None}
