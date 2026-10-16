@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.36.1] - 2026-10-16
+
+The pin moves to invisible-core 48.42.0, on the same firefox-48 engine.
+
 ### Fixed
 - **`wait_for_function` ends when the predicate returns an element.**
   `wait_for_function("() => document.querySelector('#x')")` timed out although
@@ -20,6 +24,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   handles of `add_script_tag` already were, and any other value's handle
   runs its operations where the value lives. The same goes for the handle
   `wait_for_function` returns.
+- **A GeoIP database being downloaded is never read half-written.** Two
+  sessions starting together on a cold cache could have one open the database
+  while the other was still writing it, and fail with "Is this a valid MaxMind
+  DB file?". The core now extracts it outside the cache, checks it with the
+  real reader and moves it into place in one step (invisible-core 48.42.0).
 
 ## [0.36.0] - 2026-10-16
 
