@@ -37,6 +37,13 @@ import urllib.error
 # Conventional-commit prefixes that never belong in user-facing release notes.
 _SKIP = re.compile(r"^(docs|chore|ci|test|style|build)(\(|:)", re.I)
 
+#: Where the install commands live. ⛔ NOT RESTATED HERE: the body used to carry
+#: its own `pip install invisible-playwright`, a second copy of the README's
+#: install block that nothing kept in step with it. A command written in two
+#: places is two commands the day one of them changes; the release points at the
+#: one the README keeps.
+INSTALL_DOC = "https://github.com/feder-cr/invisible_playwright#install"
+
 
 def _api(url: str, token: str | None) -> dict:
     headers = {"Accept": "application/vnd.github+json",
@@ -105,9 +112,7 @@ def build_body(tag: str, current_sha: str, bullets: list[str],
         "Builds: Linux x86_64, Linux arm64, Windows x86_64.",
         "",
         "Most people won't grab these by hand. The wrapper fetches the right one for "
-        "your platform on first run:",
-        "",
-        "    pip install invisible-playwright",
+        "your platform on first run; how to install it is in " + INSTALL_DOC + ".",
         "",
         "If you do download manually, `checksums.txt` has the SHA256s.",
     ]
