@@ -30,6 +30,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   world, not of the page (`window.x = 1` still reaches the page); and your
   code's own `eval` is not governed by the page's Content-Security-Policy,
   which governs the page's (`window.eval`) as before. Needs firefox-49.
+- **`request.post_data` holds the body with no route as well.** Until
+  firefox-48 the engine read a request's body only while a route was set, so
+  every POST of a page with no route answered `None`, like a form sent empty.
+  It now reads every body up to 10 MB, as Playwright's does, and the upload
+  reaches the site whole. Needs firefox-49.
+- **`response.security_details()` names the certificate, and
+  `response.from_service_worker` says when a service worker answered.**
+  The engine reported neither (`None` and `False` for every response); it now
+  reports both as Playwright's does. Needs firefox-49.
 
 ### Fixed
 - **`eval_on_selector`, `eval_on_selector_all`, `locator.evaluate` and

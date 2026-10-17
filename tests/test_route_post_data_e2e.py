@@ -5,8 +5,9 @@ every POST, including a page `fetch()` with a JSON body, both inside a context
 route handler and on the `request` event fired for the same request. The
 engine's `NetworkObserver.js` sent `postData: undefined` for every request
 (feder-cr/invisible_core#90), so a route guard could check a POST's URL and
-never its body. The engine now reads the body while interception is on for
-the page or its context.
+never its body. From 2026-10-03 the engine read the body while interception
+was on for the page or its context; from firefox-49 it reads it always, as
+Playwright's does, so `request.post_data` holds without a route too.
 """
 from __future__ import annotations
 
@@ -99,11 +100,14 @@ def test_a_routed_post_carries_its_body(firefox_binary, where):
 
 
 @pytest.mark.e2e
-def test_without_a_route_the_engine_does_not_copy_the_body(firefox_binary):
-    """The other half of the contract: the engine reads a POST body only
-    while interception is on, so a session with no route keeps the saving the
-    2026-08-24 engine change was made for, and the body still reaches the
-    server whole."""
+def test_without_a_route_the_request_still_carries_its_body(firefox_binary):
+    """The other half of the contract, which changed with firefox-49: with no
+    route at all the request event still carries the POST body, as
+    Playwright's does, and reading it leaves the upload whole.
+
+    Until firefox-48 the engine read a body only while interception was on, so
+    this asserted `None`; that answered like a form sent empty, and nothing
+    said so. The owner chose upstream's behaviour on 2026-10-16."""
     from invisible_playwright import InvisiblePlaywright
 
     srv, url, received = _serve()
@@ -121,5 +125,5 @@ def test_without_a_route_the_engine_does_not_copy_the_body(firefox_binary):
     finally:
         srv.shutdown()
     sent = json.dumps(BODY, separators=(",", ":"), ensure_ascii=False)
-    assert on_event == [None], on_event
+    assert on_event == [sent], on_event
     assert received == [sent.encode()], received
