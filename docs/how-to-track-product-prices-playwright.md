@@ -165,7 +165,8 @@ scheduler calls it. A minimal container runs the job and exits:
 
 ```dockerfile
 FROM python:3.12-slim
-RUN pip install invisible-playwright
+COPY --from=ghcr.io/astral-sh/uv:0.12.10 /uv /uvx /bin/
+RUN uv pip install --system invisible-playwright
 COPY monitor.py .
 CMD ["python", "monitor.py"]
 ```

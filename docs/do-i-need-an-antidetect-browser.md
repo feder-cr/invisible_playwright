@@ -141,7 +141,7 @@ Playwright method works unchanged because there is no wrapped subset to learn.
 Install is the ordinary way, and the engine downloads itself on first use:
 
 ```bash
-pip install invisible-playwright
+uv add invisible-playwright
 ```
 
 That is the engine layer, in full, scriptable. What it does not print is a

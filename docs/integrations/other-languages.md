@@ -29,11 +29,13 @@ Verified 2026-07-27 by reading each binding's own launch options.
 
 ## Step one: get the two values
 
+Run the commands below in a uv project; [the README's install steps](https://github.com/feder-cr/invisible_playwright#install) create one.
+
 The binary has a CLI:
 
 ```bash
-pip install invisible-playwright
-invisible-playwright fetch     # downloads and caches it once, prints the absolute path
+uv add invisible-playwright
+uv run invisible-playwright fetch     # downloads and caches it once, prints the absolute path
 ```
 
 The preferences do not, and that is a real gap instead of an omission from this
@@ -41,7 +43,7 @@ page: there is no `prefs` subcommand today, so you generate them with a one-line
 and keep the JSON.
 
 ```bash
-python -c "import json;from invisible_playwright import get_default_stealth_prefs;print(json.dumps(get_default_stealth_prefs(seed=1, humanize=True)))" > prefs.json
+uv run python -c "import json;from invisible_playwright import get_default_stealth_prefs;print(json.dumps(get_default_stealth_prefs(seed=1, humanize=True)))" > prefs.json
 ```
 
 Regenerate it when you upgrade the package, since the pref set moves with the engine.

@@ -1,8 +1,10 @@
 """The install path a stranger takes, driven end to end.
 
-A fresh venv, `pip install invisible-playwright` FROM THE INDEX, the engine
-downloaded from the live GitHub release, and a real browser launched against a
-real URL. Slow and network-bound, so marked `e2e` and excluded by default:
+The README's install block for this system, run as written: uv from its own
+installer, a project `uv init` made, `uv add invisible-playwright` FROM THE
+INDEX, the engine downloaded from the live GitHub release, and then a real
+browser launched against a real URL. Slow and network-bound, so marked `e2e`
+and excluded by default:
 
     pytest tests/test_release_e2e.py -m e2e -o addopts="" -v
 
@@ -32,12 +34,11 @@ something was already cached.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-
-import sys
 
 import pytest
 
@@ -126,19 +127,65 @@ def _venv_python(venv_dir):
     return Path(venv_dir) / bindir / name
 
 
-def _make_venv(target, *, upgrade_pip: bool = True):
-    target = Path(target)
-    _run([sys.executable, "-m", "venv", target], timeout=300)
-    py = _venv_python(target)
-    assert py.exists(), "no venv python at {}".format(py)
-    if upgrade_pip:
-        _run([py, "-m", "pip", "install", "--upgrade", "pip", "--quiet"], timeout=300)
-    return py
+# ── the README's install block, LOCAL ON PURPOSE for the reason above ────────
+# The way in is uv (the owner, 2026-09-06; "uv everywhere", 2026-10-17), and the
+# README carries it as one complete block per system. This file RUNS that block,
+# read from the README, so the install it tests is the one a person copies and
+# cannot drift from it: until 2026-10-17 it ran `pip install` while the README
+# had been told to say uv.
+README = Path(__file__).resolve().parents[1] / "README.md"
+DIST = "invisible-playwright"
+_INSTALLER = {"nt": "astral.sh/uv/install.ps1", "posix": "astral.sh/uv/install.sh"}
+
+
+def readme_install_block() -> list:
+    """The lines of the README's install block for this system: the code block
+    that runs uv's own installer for it."""
+    marker = _INSTALLER[os.name]
+    text = README.read_text(encoding="utf-8")
+    for body in re.findall(r"```[^\n]*\n(.*?)```", text, re.S):
+        if marker in body:
+            return [line for line in body.splitlines() if line.strip()]
+    raise AssertionError(f"README.md has no install block for this system: no "
+                         f"code block runs {marker}")
+
+
+def _home_bin(home: Path) -> Path:
+    return home / ".local" / "bin"
+
+
+def run_readme_block(lines, *, cwd: Path, home: Path, env: dict):
+    """Run the block the way its reader does - PowerShell on Windows, bash on
+    Linux - stopping at the first line that fails.
+
+    `home` stands in for the reader's home, so uv's installer lands in a
+    directory this run owns and the block's own PATH line finds it there; on
+    Windows `UV_NO_MODIFY_PATH` keeps it out of the registry. The lines are the
+    README's, unchanged: what is set here is the environment around them."""
+    env = dict(env)
+    env["UV_INSTALL_DIR"] = str(_home_bin(home))
+    # A cached index answer would hide a forgotten publish, which is what
+    # `--no-cache-dir` did for the pip version of this file.
+    env["UV_NO_CACHE"] = "1"
+    if os.name == "nt":
+        env["USERPROFILE"] = str(home)
+        env["UV_NO_MODIFY_PATH"] = "1"
+        # A native command's failure does not stop a PowerShell script, so each
+        # line is followed by the check a reader's eyes would make.
+        script = cwd / "install.ps1"
+        script.write_text("".join(f"{line}\nif ($LASTEXITCODE) {{ exit $LASTEXITCODE }}\n"
+                                  for line in lines), encoding="utf-8")
+        cmd = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script]
+    else:
+        env["HOME"] = str(home)
+        script = cwd / "install.sh"
+        script.write_text("set -eo pipefail\n" + "\n".join(lines) + "\n", encoding="utf-8")
+        cmd = ["bash", script]
+    return _run(cmd, cwd=cwd, env=env, timeout=1800)
 
 
 run_checked = _run
 venv_python = _venv_python
-make_venv = _make_venv
 
 
 # NOT imported at module level. This file is collected in an environment that
@@ -185,7 +232,6 @@ REV = os.environ.get("INVPW_E2E_REV", "main")
 # comment, which is exactly the behaviour it is for.)
 _run = run_checked
 _venv_python = venv_python
-_make_venv = make_venv
 
 
 @pytest.fixture(scope="module")
@@ -198,14 +244,29 @@ def workspace() -> Path:
 
 
 @pytest.fixture(scope="module")
-def clean_venv(workspace: Path) -> Path:
-    """A fresh venv, pip upgraded. Returns its python executable path.
+def clean_venv(workspace: Path, isolated_cache_env: dict) -> Path:
+    """The venv the README's install block makes, from the index. Returns its
+    python executable path.
 
-    Inside `workspace` rather than a temp dir of its own: the engine tarball
-    and a private cache dir live there too, and re-downloading 110 MB per test
-    is what the shared workspace exists to avoid.
+    The block runs once for the module, in `workspace`, with the private cache
+    the tests below share: its last line fetches the engine, so they find it
+    there. `INVPW_E2E_SOURCE=git` swaps the block's `uv add` for the
+    unpublished commit - a pre-release check, not the default, and it is the
+    one line this file changes.
     """
-    return _make_venv(workspace / "venv")
+    lines = readme_install_block()
+    if os.environ.get("INVPW_E2E_SOURCE", "index") == "git":
+        add = [i for i, line in enumerate(lines) if line.split()[:3] == ["uv", "add", DIST]]
+        assert len(add) == 1, lines
+        lines[add[0]] = f'uv add "{DIST} @ git+{REPO_URL}@{REV}"'
+    home = workspace / "home"
+    home.mkdir(exist_ok=True)
+    run_readme_block(lines, cwd=workspace, home=home, env=isolated_cache_env)
+    cd = [line.split(maxsplit=1)[1] for line in lines if line.split()[:1] == ["cd"]]
+    assert len(cd) == 1, f"the block has to enter its project once: {lines}"
+    py = _venv_python(workspace / cd[0] / ".venv")
+    assert py.exists(), f"the README's block made no venv at {py}"
+    return py
 
 
 @pytest.fixture(scope="module")
@@ -224,8 +285,8 @@ def isolated_cache_env(workspace: Path) -> dict:
 
 
 @pytest.mark.e2e
-def test_clean_install_the_way_a_user_does_it(clean_venv: Path):
-    """`pip install invisible-playwright`, from the index, into an empty venv.
+def test_clean_install_the_way_a_user_does_it(clean_venv: Path, workspace: Path):
+    """The README's install block, from the index, into a project uv made.
 
     THIS USED TO INSTALL FROM A GIT URL, and that stopped being anybody's
     install path on 2026-07-26 when the three packages went to PyPI. A test
@@ -255,14 +316,8 @@ def test_clean_install_the_way_a_user_does_it(clean_venv: Path):
     not here because this whole suite runs on an EDITABLE install of the
     working tree, where every file exists on disk by definition.
     """
-    source = os.environ.get("INVPW_E2E_SOURCE", "index")
-    if source == "git":
-        target = f"git+{REPO_URL}@{REV}"
-    else:
-        target = "invisible-playwright"
-    _run([str(clean_venv), "-m", "pip", "install", "--no-cache-dir", target],
-         timeout=900)
-
+    # The install already happened, in the fixture, as the README's lines.
+    #
     # NOT followed by a manual `pip install playwright==<pin>`. It used to be,
     # and that line was hiding the thing this test exists to find: if the
     # declared range resolves to a client the shipped Juggler cannot speak,
@@ -284,11 +339,22 @@ def test_clean_install_the_way_a_user_does_it(clean_venv: Path):
     )
     assert "OK invisible_playwright" in out.stdout, out.stdout
 
-    # pip's own consistency check. It is only meaningful because the core is
-    # declared as an exact version rather than a direct URL: a direct reference
-    # carries no version, so there is nothing here to compare and this reports
-    # clean on a broken environment.
-    _run([str(clean_venv), "-m", "pip", "check"], timeout=120)
+    # The installer's own consistency check (a venv uv made has no pip). It is
+    # only meaningful because the core is declared as an exact version rather
+    # than a direct URL: a direct reference carries no version, so there is
+    # nothing here to compare and this reports clean on a broken environment.
+    uv = _home_bin(workspace / "home") / ("uv.exe" if os.name == "nt" else "uv")
+    _run([str(uv), "pip", "check", "--python", str(clean_venv)], timeout=120)
+
+    # The block's project floor is the package's: a README asking `uv init`
+    # for a Python older than `requires-python` makes `uv add` fail on every
+    # machine whose default interpreter is that old (measured 2026-10-17: a
+    # project on 3.10 cannot add this package).
+    import tomllib
+    floor = tomllib.loads((README.parent / "pyproject.toml").read_text(
+        encoding="utf-8"))["project"]["requires-python"]
+    init = [line for line in readme_install_block() if line.split()[:2] == ["uv", "init"]]
+    assert len(init) == 1 and f'--python "{floor}"' in init[0], (init, floor)
 
 
 @pytest.mark.e2e

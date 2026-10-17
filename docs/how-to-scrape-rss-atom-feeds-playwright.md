@@ -259,7 +259,7 @@ port and that you confirm the exit inside the browser rather than assuming it. A
 minimal install for the container it runs in:
 
 ```bash
-pip install invisible-playwright
+uv add invisible-playwright
 ```
 
 The engine downloads and caches itself on first use, so the first run in a fresh

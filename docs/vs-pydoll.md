@@ -146,7 +146,7 @@ with InvisiblePlaywright(seed=42, proxy=proxy) as browser:
 ```
 
 ```bash
-pip install invisible-playwright
+uv add invisible-playwright
 ```
 
 If your project is committed to Chrome and to an async Python API of its own, and

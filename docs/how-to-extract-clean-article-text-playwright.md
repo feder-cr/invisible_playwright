@@ -93,7 +93,7 @@ the main content block and discard the rest. The `readability-lxml` package is
 a direct port of the well-known algorithm and takes an HTML string:
 
 ```bash
-pip install readability-lxml lxml
+uv add readability-lxml lxml
 ```
 
 ```python

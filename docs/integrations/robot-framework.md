@@ -31,10 +31,10 @@ The engine and the identity come from the Python package, which suits Robot Fram
 since it is Python underneath anyway.
 
 ```bash
-pip install robotframework-browser invisible-playwright
-rfbrowser init
-invisible-playwright fetch    # downloads if needed, prints the path as its last line
-python -c "import json;from invisible_playwright import get_default_stealth_prefs;print(json.dumps(get_default_stealth_prefs(seed=1, humanize=True)))" > prefs.json
+uv add robotframework-browser invisible-playwright
+uv run rfbrowser init
+uv run invisible-playwright fetch    # downloads if needed, prints the path as its last line
+uv run python -c "import json;from invisible_playwright import get_default_stealth_prefs;print(json.dumps(get_default_stealth_prefs(seed=1, humanize=True)))" > prefs.json
 ```
 
 Regenerate `prefs.json` when you upgrade the package. Keep the seed written next to

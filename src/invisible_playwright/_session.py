@@ -92,7 +92,7 @@ try:
         tz_env,
     )
 except ImportError as _exc:  # pragma: no cover - exercised by the old-core probe
-    from ._pin import declared_core_pin as _declared_core_pin
+    from ._pin import declared_core_pin as _declared_core_pin, reinstall_command
 
     try:
         _want = _declared_core_pin() or "a newer version"
@@ -101,7 +101,7 @@ except ImportError as _exc:  # pragma: no cover - exercised by the old-core prob
     raise ImportError(
         f"invisible-playwright needs invisible-core {_want}: the installed one "
         f"does not provide the timezone conversion this version imports "
-        f"({_exc}). Upgrade with `pip install -U invisible-playwright`, which "
+        f"({_exc}). Reinstall it with `{reinstall_command()}`, which "
         f"pulls the core it was built against."
     ) from _exc
 

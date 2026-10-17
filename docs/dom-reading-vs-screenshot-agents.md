@@ -112,7 +112,7 @@ The launch is the same two lines for both agents. The seed makes the identity
 reproducible, so a failing run can be replayed rather than guessed at.
 
 ```bash
-pip install invisible-playwright
+uv add invisible-playwright
 ```
 
 A DOM-reading agent reads structure and acts on a selector:

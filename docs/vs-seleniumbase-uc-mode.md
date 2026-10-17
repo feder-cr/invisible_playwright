@@ -105,7 +105,7 @@ Switching from plain Playwright is the same two-line change it always is, and th
 object is a real Playwright `Browser` with every method intact:
 
 ```bash
-pip install invisible-playwright
+uv add invisible-playwright
 ```
 
 ```python

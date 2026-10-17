@@ -23,8 +23,8 @@ is the fastest way to tell the three apart.
 
 ## Cause 1: the browsers were never downloaded
 
-The library and the binaries are decoupled on purpose, so `pip install playwright` or
-`npm install playwright` alone leaves you with a client and no browser to drive:
+The library and the binaries are decoupled on purpose, so installing the `playwright`
+package from PyPI or npm alone leaves you with a client and no browser to drive:
 
 ```bash
 playwright install          # every browser Playwright supports
@@ -144,7 +144,7 @@ changing anything, since the fix for each is different and none of them is guess
 a specific cache path and did not find a runnable one there. The message names the exact
 path it checked.
 
-**Does `npm install playwright` or `pip install playwright` include the browsers?**
+**Does installing the `playwright` package from npm or PyPI include the browsers?**
 No. The package is the client library; `playwright install` is a separate, required step
 that downloads the actual browser binaries.
 

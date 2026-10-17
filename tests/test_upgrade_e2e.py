@@ -1,8 +1,13 @@
 """What happens to somebody who ALREADY has this installed.
 
-Every install test next door starts from an empty venv, which is the path a new
+Every install test next door starts from nothing, which is the path a new
 user takes exactly once. Every existing user takes a different one - `pip
 install -U`, or an environment that has drifted - and none of it was covered.
+
+Pip ON PURPOSE, while the install test next door follows the README's uv
+block: until 2026-10-17 the README said `pip install`, so the people who
+already have this package are in pip-made venvs, and theirs is the upgrade
+being tested.
 
 That matters more here than in most packages, because of the shape of the
 coupling: the wrapper declares an EXACT `invisible-core==X.Y.Z`, so an upgrade

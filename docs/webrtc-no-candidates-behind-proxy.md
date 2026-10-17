@@ -191,7 +191,7 @@ authentication](playwright-socks5-proxy-authentication.md).
 A minimal install to run the snippet:
 
 ```bash
-pip install invisible-playwright
+uv add invisible-playwright
 ```
 
 ## Conclusion

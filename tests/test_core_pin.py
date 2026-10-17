@@ -43,7 +43,10 @@ SRC = ROOT / "src" / "invisible_playwright"
 PYPROJECT = ROOT / "pyproject.toml"
 SHIM = (SRC / "_pin.py").read_text(encoding="utf-8")
 
-REMEDY = "pip install --force-reinstall invisible-playwright"
+# The floor's one remedy, as the tool that installed this package spells it
+# (`_pin.reinstall_command`). The children below run this interpreter, so they
+# read the same INSTALLER record and print the same line.
+REMEDY = _pin.reinstall_command()
 
 
 def child_env(**overrides) -> dict:

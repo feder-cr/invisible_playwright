@@ -69,11 +69,12 @@ Chromium-specific plumbing you have to translate.
 
 ```dockerfile
 FROM python:3.11-slim
+COPY --from=ghcr.io/astral-sh/uv:0.12.10 /uv /uvx /bin/
 
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN uv pip install --system --no-cache -r requirements.txt
 
 # Bake the patched engine into the image at build time, not at container
 # start. This is a one-time ~238 MB download (~544 MB unpacked), sha256-verified
@@ -92,7 +93,7 @@ invisible-playwright
 
 That builds and runs. It also, by itself, still describes a machine with no GPU, a
 tiny font set and no audio device, for the reason above: none of those come from
-`pip install`, they come from the base image. The next two sections are what actually
+the package install, they come from the base image. The next two sections are what actually
 changes that.
 
 ## The part a Dockerfile cannot fix by itself

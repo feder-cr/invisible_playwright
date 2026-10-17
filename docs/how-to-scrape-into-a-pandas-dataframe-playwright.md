@@ -53,7 +53,7 @@ already in it. Wrap that string in `io.StringIO` (pandas asks for a file-like ob
 literal HTML) and pass it in.
 
 ```bash
-pip install invisible-playwright pandas lxml
+uv add invisible-playwright pandas lxml
 ```
 
 ```python

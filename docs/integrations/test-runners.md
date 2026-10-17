@@ -26,10 +26,12 @@ build's own defaults on every launch, which is a different product from
 Get the two values first, the same way for all four:
 
 ```bash
-pip install invisible-playwright
-invisible-playwright fetch
-python -c "import json;from invisible_playwright import get_default_stealth_prefs;print(json.dumps(get_default_stealth_prefs(seed=1, humanize=True)))" > prefs.json
+uv add invisible-playwright
+uv run invisible-playwright fetch
+uv run python -c "import json;from invisible_playwright import get_default_stealth_prefs;print(json.dumps(get_default_stealth_prefs(seed=1, humanize=True)))" > prefs.json
 ```
+
+Run them in a uv project; [the README's install steps](https://github.com/feder-cr/invisible_playwright#install) create one.
 
 ## Cypress
 

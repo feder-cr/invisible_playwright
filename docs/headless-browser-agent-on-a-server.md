@@ -113,8 +113,9 @@ time, so point it at a persisted path:
 
 ```dockerfile
 FROM python:3.12-slim
+COPY --from=ghcr.io/astral-sh/uv:0.12.10 /uv /uvx /bin/
 
-RUN pip install invisible-playwright
+RUN uv pip install --system invisible-playwright
 
 # keep the cached engine on a mounted volume so it downloads once
 ENV INVISIBLE_PLAYWRIGHT_CACHE_DIR=/engines

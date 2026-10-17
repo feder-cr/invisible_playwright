@@ -42,7 +42,7 @@ body:
     id: install_cmd
     attributes:
       label: How you installed
-      placeholder: pip install invisible_playwright
+      placeholder: uv add invisible-playwright
     validations:
       required: true
 

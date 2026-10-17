@@ -119,7 +119,8 @@ step so the download never lands on a request path:
 
 ```dockerfile
 FROM python:3.12-slim
-RUN pip install invisible-playwright
+COPY --from=ghcr.io/astral-sh/uv:0.12.10 /uv /uvx /bin/
+RUN uv pip install --system invisible-playwright
 # Unpack the engine at BUILD time, not per request.
 RUN python -m invisible_playwright fetch
 # ... your worker entrypoint ...

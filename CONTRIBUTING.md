@@ -4,8 +4,7 @@ Thanks for your interest in improving this project. Contributions are welcome vi
 
 ## Quick links
 
-- **Bug?** Open a [bug report](https://github.com/feder-cr/invisible_playwright/issues/new?template=bug_report.yml).
-- **Idea?** Open a [feature request](https://github.com/feder-cr/invisible_playwright/issues/new?template=feature_request.yml).
+- **Bug or idea?** Open an [issue](https://github.com/feder-cr/invisible_playwright/issues/new/choose).
 - **Security issue?** Do **not** open a public issue - see [SECURITY.md](SECURITY.md).
 - **The C++ patches** live in the companion repo [feder-cr/firefox_antidetect_patch](https://github.com/feder-cr/firefox_antidetect_patch) (branch `stealth/151`). Bugs in fingerprint spoofing usually belong there.
 
@@ -13,10 +12,11 @@ Thanks for your interest in improving this project. Contributions are welcome vi
 
 This repository ships the **Python wrapper** (`invisible_playwright`) around a pre-built patched Firefox. In scope:
 
-- The `InvisiblePlaywright` sync/async API and launcher
-- The fingerprint sampler (`_fpforge`)
-- Binary download/caching, CLI, proxy plumbing
+- The `InvisiblePlaywright` sync and async API, and its Playwright compatibility layer
+- The CLI (`invisible-playwright fetch`, `invisible-playwright version`)
 - Tests, docs, examples, packaging
+
+The fingerprint, the engine download and the browser protocol client are shared by every wrapper and live in [invisible_core](https://github.com/feder-cr/invisible_core).
 
 Out of scope (belongs in `firefox_antidetect_patch`):
 
@@ -26,19 +26,19 @@ Out of scope (belongs in `firefox_antidetect_patch`):
 
 ## Development setup
 
-To *use* the package you do not need any of this: `pip install invisible-playwright`.
-The steps below are for working on the code.
+To *use* the package you do not need any of this: see [Install](README.md#install) in the README.
+The steps below are for working on the code, with [uv](https://docs.astral.sh/uv/).
 
 ```bash
 git clone https://github.com/feder-cr/invisible_playwright.git
 cd invisible_playwright
-python -m venv .venv
+uv venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -e ".[dev]"
-python -m invisible_playwright fetch   # download the patched Firefox binary
+uv pip install -e ".[dev]"
+invisible-playwright fetch   # download the patched Firefox binary
 ```
 
-Requires Python 3.11+ and one of: Windows x86_64, Linux x86_64.
+One of: Windows x86_64, Linux x86_64 / arm64.
 
 ## Running tests
 
@@ -72,7 +72,7 @@ Before opening, please:
 
 Include:
 
-- OS and version, Python version, `invisible_playwright` version (`invisible_playwright version`)
+- OS and version, Python version, the output of `invisible-playwright version`
 - A minimal reproduction
 - Expected vs actual behavior
 - Relevant logs / stack traces

@@ -116,7 +116,7 @@ Switching from stock Playwright is the launch line; every method after it is sta
 Playwright. Install it first:
 
 ```bash
-pip install invisible-playwright
+uv add invisible-playwright
 ```
 
 Then gather ICE candidates through the proxy and assert the positive form. The `seed`

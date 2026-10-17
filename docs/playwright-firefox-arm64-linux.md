@@ -43,9 +43,11 @@ Most current Debian and Ubuntu base images are published as multi-architecture m
 
 ```dockerfile
 FROM --platform=linux/arm64 debian:bookworm-slim
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 python3-pip ca-certificates
-RUN pip install invisible-playwright
+COPY --from=ghcr.io/astral-sh/uv:0.12.10 /uv /uvx /bin/
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
+RUN uv venv --python ">=3.11" /opt/venv
+ENV VIRTUAL_ENV=/opt/venv PATH="/opt/venv/bin:$PATH"
+RUN uv pip install --no-cache invisible-playwright
 ```
 
 The `--platform` flag pins the build explicitly rather than relying on the Docker daemon's default, which matters if you build on one machine and deploy to another. For a real GPU, font set, or screen presented to the browser instead of a bare container's defaults, see [How to run Playwright in Docker without getting detected](how-to-run-playwright-docker-undetected.md); it applies the same way on arm64, only the base image and engine differ by architecture.

@@ -108,7 +108,7 @@ anecdotal. Fix the seed, capture, and assert two things at once: the screenshot
 is a sane size and it is a real image, not a wall of noise.
 
 ```bash
-pip install invisible-playwright
+uv add invisible-playwright
 ```
 
 ```python

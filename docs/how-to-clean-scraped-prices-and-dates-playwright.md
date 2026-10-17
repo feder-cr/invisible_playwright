@@ -95,7 +95,7 @@ Strip everything that is not part of the number, then parse the digits and separ
 with the page's locale rather than guessing. Babel does the locale-aware step:
 
 ```bash
-pip install babel
+uv add babel
 ```
 
 ```python
@@ -127,7 +127,7 @@ Relative and localized dates need the page's language to read the words and the 
 timezone to anchor the arithmetic. `dateparser` takes both:
 
 ```bash
-pip install dateparser
+uv add dateparser
 ```
 
 ```python

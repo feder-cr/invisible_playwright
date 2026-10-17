@@ -98,11 +98,17 @@ def assert_playwright_range() -> None:
 
     if t(seal.playwright_min) <= t(have) <= t(seal.playwright_max):
         return
+    # Spelled by the tool that installed this package (`invisible_core.installer`):
+    # a written `pip install` is a command the venv the README makes does not have.
+    from invisible_core.installer import install
+    from invisible_core.pin import format_command
+
+    fix = format_command(install("invisible-playwright", f"playwright=={seal.playwright_max}"))
     msg = (f"playwright {have} is outside the range this engine was tested with "
            f"({seal.playwright_min} .. {seal.playwright_max}, from the seal for {seal.tag}).\n"
            f"The Juggler protocol schema is closed-world: an untested client can kill every "
            f"session at context creation.\n"
-           f'Run: pip install "playwright=={seal.playwright_max}"   '
+           f"Run: {fix}   "
            f"(or set INVISIBLE_PLAYWRIGHT_SKEW=allow to proceed anyway)")
     if os.environ.get("INVISIBLE_PLAYWRIGHT_SKEW") == "allow":
         warnings.warn(msg, RuntimeWarning, stacklevel=2)

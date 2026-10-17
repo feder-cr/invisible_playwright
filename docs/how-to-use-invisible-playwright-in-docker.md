@@ -10,8 +10,8 @@ nav_order: 7
 # How to use invisible_playwright in Docker
 
 To run `invisible_playwright` in Docker, start from a maintained Playwright
-base image for the OS-level shared libraries, `pip install
-invisible-playwright`, fetch the patched Firefox engine at build time, and
+base image for the OS-level shared libraries, install
+`invisible-playwright` with uv, fetch the patched Firefox engine at build time, and
 run the container with `--shm-size=1gb`. The fingerprint itself needs
 nothing container-specific: the same seed produces the same machine on a
 desktop or inside a container.
@@ -39,6 +39,7 @@ packages that may not match your distro:
 
 ```dockerfile
 FROM mcr.microsoft.com/playwright/python:v1.47.0-jammy
+COPY --from=ghcr.io/astral-sh/uv:0.12.10 /uv /uvx /bin/
 
 WORKDIR /app
 ```
@@ -50,17 +51,21 @@ libraries, not the browsers it ships alongside them.
 
 ## Installing invisible-playwright
 
-Installing `invisible-playwright` in a container is the same two-step
-install as on a desktop: `pip install invisible-playwright` for the
-package, then a separate `fetch` step to download the patched engine. See
-[installation](installation.md) for why the two steps are kept separate:
+Installing `invisible-playwright` in a container takes the same two steps
+as on a desktop: install the package with uv, then a separate `fetch` step
+to download the patched engine. See [installation](installation.md) for why
+the two steps are kept separate:
 
 ```dockerfile
-RUN pip install --no-cache-dir invisible-playwright
+RUN uv venv --python ">=3.11" /opt/venv
+ENV VIRTUAL_ENV=/opt/venv PATH="/opt/venv/bin:$PATH"
+RUN uv pip install --no-cache invisible-playwright
 ```
 
-Nothing container-specific here yet. The wheel is small; the part that
-needs a build-time decision is the next step.
+The venv is not decoration: the Python in this base image is 3.10, older
+than the 3.11 the package needs, so uv brings an interpreter that can run it.
+The wheel is small; the part that needs a build-time decision is the next
+step.
 
 ## Fetching the patched engine at build time
 

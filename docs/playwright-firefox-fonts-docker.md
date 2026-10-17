@@ -34,6 +34,7 @@ Debian and Ubuntu-based images, which most Playwright containers are, ship almos
 
 ```dockerfile
 FROM python:3.11-slim
+COPY --from=ghcr.io/astral-sh/uv:0.12.10 /uv /uvx /bin/
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-noto \
@@ -46,7 +47,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN uv pip install --system --no-cache -r requirements.txt
 
 RUN python -m invisible_playwright fetch
 

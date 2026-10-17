@@ -43,7 +43,7 @@ That directness is the whole reason the fixture pair works cleanly:
 Install what you need first:
 
 ```bash
-pip install invisible-playwright pytest pytest-asyncio
+uv add invisible-playwright pytest pytest-asyncio
 ```
 
 And turn on pytest-asyncio's auto mode so you do not decorate every test by hand. In

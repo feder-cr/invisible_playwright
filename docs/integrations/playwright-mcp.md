@@ -32,9 +32,11 @@ Written against `microsoft/playwright-mcp` as of 2026-07-27.
 ## The short version
 
 ```bash
-pip install invisible-playwright
-python -c "from invisible_playwright import ensure_binary; print(ensure_binary())"
+uv add invisible-playwright
+uv run python -c "from invisible_playwright import ensure_binary; print(ensure_binary())"
 ```
+
+Run them in a uv project; [the README's install steps](https://github.com/feder-cr/invisible_playwright#install) create one.
 
 The second command downloads the patched Firefox on first run, caches it, and prints
 the path. Give that path to the MCP server:

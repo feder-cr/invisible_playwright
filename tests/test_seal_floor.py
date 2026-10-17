@@ -106,8 +106,9 @@ def stub_core(tmp_path: Path, *, with_seal: bool, version: str | None = None,
     # only; newer ones carry `pin.py` plus a two-line `sys.modules` alias at
     # `_pin.py`. Copying `pin.py` unconditionally made this whole file fail
     # against a published core that predated it - eight tests, and the stub was
-    # never built.
-    for name in ("pin.py", "_pin.py"):
+    # never built. `installer.py` likewise, from 49.45.0, where `pin.py`
+    # imports it at load: without it the stub dies on its first line.
+    for name in ("pin.py", "_pin.py", "installer.py"):
         if (CORE_PKG / name).exists():
             shutil.copy2(CORE_PKG / name, pkg / name)
     assert (pkg / "_pin.py").exists(), (
@@ -185,7 +186,7 @@ def test_import_fails_loudly_when_the_core_has_no_seal(tmp_path):
     err = " ".join(r.stderr.split())
     assert "ImportError" in r.stderr, r.stderr
     assert "invisible_core.seal" in err, err
-    assert "pip install" in err, err
+    assert _pin.reinstall_command() in err, err
 
 
 def test_a_core_whose_seal_json_is_gone_gets_the_message_not_a_traceback(tmp_path):
@@ -207,7 +208,7 @@ def test_a_core_whose_seal_json_is_gone_gets_the_message_not_a_traceback(tmp_pat
     err = " ".join(r.stderr.split())
     assert "ImportError" in err, err
     assert "seal.json" in err, err
-    assert "pip install --force-reinstall invisible-playwright" in err, err
+    assert _pin.reinstall_command() in err, err
     assert not re.search(r"invisible-core==\d", err), err
 
 

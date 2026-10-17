@@ -51,7 +51,7 @@ The launch is stock Playwright. If you have driven Playwright before, the only c
 the two lines that open the browser:
 
 ```bash
-pip install invisible-playwright
+uv add invisible-playwright
 ```
 
 ```python

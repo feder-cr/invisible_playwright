@@ -132,7 +132,7 @@ Do not assume, read it. The launch is a two-line change from stock Playwright, a
 every method after it is standard Playwright. Install it first:
 
 ```bash
-pip install invisible-playwright
+uv add invisible-playwright
 ```
 
 Then ask an IP-echo endpoint, from inside the proxied browser, which address it saw,

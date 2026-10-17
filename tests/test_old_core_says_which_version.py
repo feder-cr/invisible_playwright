@@ -56,7 +56,11 @@ def test_an_older_core_names_the_version_it_needs(tmp_path):
     root = _core_without(("tz_env", "IANA_TO_POSIX_TZ"), tmp_path / "old")
     code = ("import invisible_playwright\n"
             "print('IMPORTED')\n")
-    env = dict(os.environ, PYTHONPATH=str(root), INVISIBLE_CORE_AUTOFIX="off")
+    # The old core first, then THIS checkout's sources: with the core copy alone
+    # the child imports whichever wrapper is installed, which from a worktree is
+    # somebody else's tree, and the assertions read its messages, not these.
+    env = dict(os.environ, INVISIBLE_CORE_AUTOFIX="off",
+               PYTHONPATH=os.pathsep.join([str(root), str(_REPO / "src")]))
     proc = subprocess.run([sys.executable, "-c", code], capture_output=True,
                           text=True, env=env, cwd=str(_REPO), timeout=180)
 
@@ -73,7 +77,9 @@ def test_an_older_core_names_the_version_it_needs(tmp_path):
     assert final.index("needs invisible-core") < final.index("cannot import name"), (
         "the symbol error comes before the version requirement, so the first "
         "thing the reader sees is still the thing they cannot act on")
-    assert "pip install" in final, (
+    from invisible_playwright._pin import reinstall_command
+
+    assert reinstall_command() in final, (
         "a failure at import time with no remedy is a support ticket")
 
 

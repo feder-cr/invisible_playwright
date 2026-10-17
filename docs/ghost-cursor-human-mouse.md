@@ -97,7 +97,7 @@ a Playwright page directly. Because invisible_playwright hands you a genuine
 Playwright `Page`, the port attaches to it with no adapter:
 
 ```bash
-pip install invisible-playwright python-ghost-cursor
+uv add invisible-playwright python-ghost-cursor
 ```
 
 ```python

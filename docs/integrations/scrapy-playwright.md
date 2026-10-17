@@ -22,7 +22,7 @@ is the reference; this one explains which route to pick and what each one costs.
 ## Install
 
 ```bash
-pip install "scrapy-playwright>=0.0.48" invisible-playwright
+uv add "scrapy-playwright>=0.0.48" invisible-playwright
 ```
 
 The patched Firefox is downloaded on first launch and cached. You do not need

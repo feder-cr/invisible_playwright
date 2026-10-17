@@ -55,8 +55,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - uses: astral-sh/setup-uv@v6
       - name: Install
-        run: pip install invisible-playwright
+        run: uv pip install --system invisible-playwright
       - name: Run
         run: python scrape.py
 ```

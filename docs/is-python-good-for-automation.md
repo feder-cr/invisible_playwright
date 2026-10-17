@@ -42,7 +42,7 @@ I/O-bound, so this rarely matters in practice, but it is not universally true.
 
 **Distribution to non-technical end users.** A Python automation script needs
 a Python environment, or a packaging step (PyInstaller and similar), to reach
-someone who is not going to run `pip install`. If the deliverable is a
+someone who is not going to run a package installer. If the deliverable is a
 double-clickable app for someone else's machine, this is real friction that a
 compiled or web-based alternative does not have.
 

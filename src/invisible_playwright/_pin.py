@@ -19,11 +19,12 @@ is the whole floor, and its except branches classify the failure:
     installed at all, or it is older than this check and ships no
     invisible_core.pin (or no invisible_core.pin.enforce_core_pin). Those
     cannot be told apart from here and do not need to be: one remedy fixes all
-    of them, `pip install --force-reinstall invisible-playwright`, which makes
-    pip resolve the core version from our own Requires-Dist. No version literal
-    in the message, so nothing here can drift out of step with pyproject.
+    of them, a force-reinstall of invisible-playwright (`reinstall_command`, spelled
+    by the tool that installed it), which makes the installer resolve the core
+    version from our own Requires-Dist. No version literal in the message, so
+    nothing here can drift out of step with pyproject.
   * ImportError naming any other module - the core is installed and one of ITS
-    dependencies is missing. That is what `pip install --no-deps` leaves behind,
+    dependencies is missing. That is what an install with `--no-deps` leaves behind,
     and reporting it as "invisible-core is not installed" sends the user to the
     wrong package.
   * anything else - the core is on disk and its import raised something that is
@@ -50,6 +51,31 @@ from __future__ import annotations
 import sys as _sys
 
 DIST_NAME = "invisible-playwright"
+
+
+def reinstall_command() -> str:
+    """The command that reinstalls this distribution, as the tool that
+    installed it spells it: the one remedy this floor hands over.
+
+    `invisible_core.installer` is where every other install command comes from,
+    and it cannot be asked here: the floor speaks exactly when the core does not
+    import. So this reads the same INSTALLER record with the standard library
+    and takes the same two branches, for this one command. Until 2026-10-17 it was
+    `pip install --force-reinstall` for everybody, and the venv the README makes
+    (`uv init` + `uv add`) has no pip in it.
+    """
+    from importlib.metadata import PackageNotFoundError, distribution
+
+    try:
+        record = distribution(DIST_NAME).read_text("INSTALLER")
+    except PackageNotFoundError:
+        record = None
+    if (record or "").strip().lower() == "uv":
+        cmd = ["uv", "pip", "install", "--python", _sys.executable,
+               "--force-reinstall", DIST_NAME]
+    else:
+        cmd = [_sys.executable, "-m", "pip", "install", "--force-reinstall", DIST_NAME]
+    return " ".join(f'"{t}"' if " " in t else t for t in cmd)
 
 # Captured BEFORE the core is imported, and it is the whole soundness argument
 # for the in-process repair: if nothing has imported invisible_core by the time
@@ -105,16 +131,16 @@ except ImportError as _e:
             f"invisible-core is installed but cannot be imported: no module named "
             f"{_missing!r}.\n"
             f"That is one of its own dependencies, so it was installed without "
-            f"dependency resolution (pip install --no-deps, or a lockfile that "
-            f"lists the packages separately).\n"
-            f"Run: pip install --force-reinstall {DIST_NAME}"
+            f"dependency resolution (an install with --no-deps, or a lockfile "
+            f"that lists the packages separately).\n"
+            f"Run: {reinstall_command()}"
         ) from _e
     raise ImportError(
         "invisible-core is missing, or too old for this invisible-playwright: it "
         "does not carry the release-pin check (invisible_core.pin), so the engine "
         "it downloads cannot be matched against the configuration this package "
         "ships.\n"
-        f"Run: pip install --force-reinstall {DIST_NAME}"
+        f"Run: {reinstall_command()}"
     ) from _e
 except Exception as _e:
     raise ImportError(
@@ -124,7 +150,7 @@ except Exception as _e:
         f"unreadable invisible_core/seal.json is the usual cause, and it is read "
         f"while invisible_core is still importing, so nothing inside the core can "
         f"report it.\n"
-        f"Run: pip install --force-reinstall {DIST_NAME}"
+        f"Run: {reinstall_command()}"
     ) from _e
 
 

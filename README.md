@@ -31,14 +31,31 @@ Anti-bots ask two questions, and reCAPTCHA, hCaptcha and Cloudflare Turnstile sc
 
 ## Install
 
-```bash
-pip install invisible-playwright
-python -m invisible_playwright fetch      # one-time download, sha256-verified: 240 MB (Windows) / 262 MB (Linux x86_64) / 253 MB (Linux arm64), about 550 MB unpacked
+Windows, in PowerShell:
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+$env:Path = "$env:USERPROFILE\.local\bin;$env:Path"
+uv init --python ">=3.11" my-project
+cd my-project
+uv add invisible-playwright
+uv run invisible-playwright fetch      # one-time download, sha256-verified: 240 MB, about 550 MB unpacked
 ```
 
-Requires **Python 3.11 or newer**.
+Linux:
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source $HOME/.local/bin/env
+uv init --python ">=3.11" my-project
+cd my-project
+uv add invisible-playwright
+uv run invisible-playwright fetch      # one-time download, sha256-verified: 262 MB (x86_64) / 253 MB (arm64), about 550 MB unpacked
+```
 
 Supported platforms: **Windows x86_64**, **Linux x86_64 / arm64**.
+
+Then save one of the examples below as `main.py` in `my-project` and run it with `uv run main.py`.
 
 ---
 

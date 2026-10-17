@@ -15,12 +15,16 @@
 #   * installing a blessed `playwright==<pin>` afterwards REPAIRS the venv. If
 #     the declared range resolves to a client the shipped Juggler cannot speak,
 #     that manual line turns the job green while every fresh install is broken.
-#     What a user gets is what pip resolves from the declaration, and that is
-#     what has to be under test.
+#     What a user gets is what the installer resolves from the declaration,
+#     and that is what has to be under test.
 #
-# So this workflow installs nothing from the checkout except the test files. It
-# takes `pip install invisible-playwright` from the index, in an empty venv, and
-# runs it the way somebody's first script would.
+# So this workflow installs nothing from the checkout except the test files.
+# test_release_e2e.py runs the README's install block for the runner's system
+# as written - uv from its own installer, `uv init`, `uv add
+# invisible-playwright` from the index, `fetch` - and then drives the browser
+# from the project it made, the way somebody's first script would.
+# test_upgrade_e2e.py stays on pip on purpose: it is the path of the people who
+# installed before the README said uv, and they are still there.
 #
 # WHY IT MUST NOT BE MADE TOLERANT.
 # There is a real window in which this cannot pass: between publishing the core

@@ -1,6 +1,6 @@
 ---
 title: "Installation"
-description: "Install the wrapper from PyPI, then fetch the patched Firefox binary separately - a one-time, sha256-verified download. Supported on Windows, Linux and macOS."
+description: "Install the wrapper with uv, then fetch the patched Firefox binary separately - a one-time, sha256-verified download. Supported on Windows and Linux."
 parent: "Documentation"
 nav_order: 1
 ---
@@ -8,31 +8,27 @@ nav_order: 1
 
 # Installation
 
-Install invisible-playwright in two steps: `pip install invisible-playwright` for
-the Python wrapper, then `python -m invisible_playwright fetch` to download the
+Install invisible-playwright in two steps: `uv add invisible-playwright` for
+the Python wrapper, then `uv run invisible-playwright fetch` to download the
 patched Firefox binary it drives. The steps are separate on purpose - the Python
 package is small, the browser is not.
 
 ```bash
-pip install invisible-playwright
-python -m invisible_playwright fetch      # one-time ~238 MB download (~544 MB unpacked), sha256-verified
+uv add invisible-playwright
+uv run invisible-playwright fetch      # one-time ~238 MB download (~544 MB unpacked), sha256-verified
 ```
 
-`pip install` gets you the wrapper and its API. `fetch` downloads the patched Firefox
+If you do not have a uv project yet, [the README's install steps](https://github.com/feder-cr/invisible_playwright#install) create one.
+
+`uv add` gets you the wrapper and its API. `fetch` downloads the patched Firefox
 binary itself, verifies it against a sha256 shipped inside `invisible-core`, and caches
 it. You only pay that cost once per engine version - later runs use the cached copy
 without a network call.
 
 ## Supported platforms
 
-**Windows x86_64**, **Linux x86_64 / arm64**, **macOS arm64 / x86_64**.
-
-On macOS the app is ad-hoc signed, not notarized. If Gatekeeper complains the first
-time it runs, clear the quarantine flag once:
-
-```bash
-xattr -dr com.apple.quarantine /path/to/cached/Firefox.app
-```
+**Windows x86_64**, **Linux x86_64 / arm64**. There is no macOS engine: its
+build ended on 2026-08-26.
 
 `invisible-playwright version` prints the cache location, and
 `invisible-playwright fetch` prints the exact binary path as its last line.
@@ -66,7 +62,7 @@ the [CLI reference](cli-reference.md).
 
 ## Short answers to the questions that lead here
 
-**Do I need to install Firefox myself?** No. `python -m invisible_playwright fetch`
+**Do I need to install Firefox myself?** No. `uv run invisible-playwright fetch`
 downloads the patched binary for you, verifies it, and caches it - there is nothing
 to install separately.
 
@@ -83,9 +79,7 @@ Point `INVPW_BINARY_PATH` at a binary you already have to skip the download
 entirely. [Configuration](configuration.md) lists the other environment variables,
 including the ones for corporate networks and CI.
 
-**Which platforms are supported?** Windows x86_64, Linux x86_64/arm64, and macOS
-arm64/x86_64. macOS needs the quarantine flag cleared once if Gatekeeper complains
-on first launch.
+**Which platforms are supported?** Windows x86_64 and Linux x86_64/arm64.
 
 **See also:** [Configuration](configuration.md) for proxy, timezone and environment
 variables, [CLI reference](cli-reference.md) for what `fetch` and `version` do in

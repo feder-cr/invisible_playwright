@@ -20,7 +20,7 @@ check the signature before blaming the engine.
 ## What you need
 
 ```bash
-pip install crawlee[playwright] invisible-playwright
+uv add crawlee[playwright] invisible-playwright
 ```
 
 The patched Firefox binary is downloaded on first launch and cached, so the first

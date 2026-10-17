@@ -93,7 +93,7 @@ a browser and read back what the server saw. A public HTTP/2 fingerprint endpoin
 the frames it received as JSON.
 
 ```bash
-pip install "httpx[http2]"
+uv add "httpx[http2]"
 ```
 
 ```python
