@@ -41,6 +41,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from invisible_core.juggler.favicon import FaviconRequests
 from invisible_core.juggler.lifecycle import NavigationMark
 
 
@@ -68,6 +69,7 @@ def _bare_page():
     page._requests = {}
     page._request_log = []
     page._navigation_requests = {}
+    page._favicons = FaviconRequests()
     page.messages = up
     page.context = SimpleNamespace(emit=lambda *a, **k: None, intercepting=False)
     page.frame = SimpleNamespace(frame_id="F1")
@@ -359,6 +361,83 @@ def test_a_response_with_no_certificate_answers_None(sent):
     """Plain HTTP, and every engine through firefox-48, which sends null."""
     response = _respond(_bare_page(), **sent)
     assert response.op_security_details({}) == {"value": None}
+
+
+def _favicon_page(intercepting):
+    """A bare page that records what reaches the client and what is sent."""
+    page = _bare_page()
+    told, sent = [], []
+    conn = SimpleNamespace(post=lambda method, params=None, session=None:
+                           sent.append((method, params, session)))
+    page.context = SimpleNamespace(
+        emit=lambda event, params: told.append(event), intercepting=intercepting,
+        browser=SimpleNamespace(conn=conn))
+    page.session = "S1"
+    page.intercepting = False
+
+    def send(*a, **k):
+        # These events are handled on the reader thread, where a `send`
+        # waits for a reply only that thread could read.
+        pytest.fail("a held request was released with send, from the reader thread")
+
+    page.send = send
+    return page, told, sent
+
+
+def _favicon_chain(page, *, intercepted):
+    """The browser's favicon request, redirected once, in the engine's order."""
+    for rid, url, came_from in (("FAV", "http://127.0.0.1/favicon.ico", None),
+                                ("FAV-redirect1", "http://127.0.0.1/icon.png", "FAV")):
+        params = {"requestId": rid, "url": url, "method": "GET", "frameId": "F1",
+                  "isIntercepted": intercepted, "headers": []}
+        if came_from:
+            params["redirectedFrom"] = came_from
+        page._on_juggler_event("Network.requestWillBeSent", params)
+        page._on_juggler_event("Network.responseReceived", {
+            "requestId": rid, "status": 302 if came_from is None else 200,
+            "statusText": "", "headers": []})
+        page._on_juggler_event("Network.requestFinished", {"requestId": rid})
+
+
+def test_the_favicon_reaches_the_client_with_no_event():
+    """B321: Playwright shows a client none of the favicon's events. Known bad:
+    without the favicon branch the client was told request, response and
+    requestFinished for both hops."""
+    page, told, _ = _favicon_page(intercepting=False)
+    _favicon_chain(page, intercepted=False)
+    assert told == []
+    assert page._requests == {} and page._request_log == []
+
+
+def test_a_held_favicon_goes_to_the_network_and_to_no_route():
+    """Upstream aborts it; a real Firefox asks the site for it, so it is let
+    through, unseen, instead (`invisible_core.juggler.favicon`)."""
+    page, told, sent = _favicon_page(intercepting=True)
+    _favicon_chain(page, intercepted=True)
+    assert "route" not in told and told == []
+    assert sent == [("Network.resumeInterceptedRequest", {"requestId": "FAV"}, "S1"),
+                    ("Network.resumeInterceptedRequest", {"requestId": "FAV-redirect1"}, "S1")]
+
+
+def test_a_request_held_after_interception_went_off_is_released_without_blocking():
+    """The other caller of the release: the engine held a request, and by its
+    event neither the page nor the context intercepts any more. It used to
+    `send` the release from the reader thread, the deadlock the favicon found."""
+    page, told, sent = _favicon_page(intercepting=False)
+    page._on_juggler_event("Network.requestWillBeSent", {
+        "requestId": "R", "url": "http://127.0.0.1/data.json", "method": "GET",
+        "frameId": "F1", "isIntercepted": True, "headers": []})
+    assert sent == [("Network.resumeInterceptedRequest", {"requestId": "R"}, "S1")]
+    assert told == ["request"]
+
+
+def test_a_page_request_beside_the_favicon_is_still_reported():
+    page, told, _ = _favicon_page(intercepting=False)
+    _favicon_chain(page, intercepted=False)
+    page._on_juggler_event("Network.requestWillBeSent", {
+        "requestId": "R", "url": "http://127.0.0.1/data.json", "method": "GET",
+        "frameId": "F1", "isIntercepted": False, "headers": []})
+    assert told == ["request"]
 
 
 # -- the e2e half: a real browser, and `.status` read off the answer ---------

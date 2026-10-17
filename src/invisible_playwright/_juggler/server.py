@@ -40,6 +40,7 @@ from invisible_core.juggler import PageActs, popup_number
 from invisible_core.juggler import connection as juggler
 from invisible_core.juggler.actions import Actions
 from invisible_core.juggler.deadline import Deadline
+from invisible_core.juggler.favicon import FaviconRequests
 from .dispatcher import (Dispatcher, ExpectNotMet, ProtocolException,
                          Server)
 from invisible_core.juggler.injected import ContextDestroyed, InjectedScript
@@ -2057,6 +2058,10 @@ class PageDispatcher(Dispatcher):
         self._held_lock = threading.Lock()
         self.lifecycle = Lifecycle(conn, session)
         self.injected = InjectedScript(conn, session)
+        # This page's own memory of which requests are the favicon: the
+        # lifecycle keeps its own, because the events held at birth reach
+        # this page after the lifecycle has finished with them (`favicon.py`).
+        self._favicons = FaviconRequests()
         conn.add_listener(self._route_juggler_event)
         try:
             self._build(server, context, session, conn, opener)
@@ -2414,6 +2419,13 @@ class PageDispatcher(Dispatcher):
                 # reaches `load` leaves a wait on it hanging forever.
                 self.frame_for(params["frameId"]).emit(
                     "loadstate", {"add": state})
+        elif method.startswith("Network.") and self._favicons.see(method, params):
+            # The browser's own favicon request, as Playwright treats it
+            # (`invisible_core.juggler.favicon`): no event reaches the client
+            # and no route handler sees it. Held by a route, it goes on to the
+            # network instead of being aborted, as from any Firefox.
+            if method == "Network.requestWillBeSent" and params.get("isIntercepted"):
+                self._let_through(params.get("requestId"))
         elif method == "Network.requestWillBeSent":
             request = RequestDispatcher(self.server, self, params)
             self._requests[params.get("requestId")] = request
@@ -2632,18 +2644,31 @@ class PageDispatcher(Dispatcher):
         elif self.context.intercepting:
             owner = self.context
         else:
-            # ⛔ The engine may have released it already: turning the PAGE's
-            # interception off resumes every request it holds, so this answer
-            # can find nothing and say "Cannot find request". Turning the
-            # CONTEXT's off releases nothing, which is the case this is for.
-            try:
-                self.send("Network.resumeInterceptedRequest",
-                          {"requestId": request.request_id})
-            except (juggler.ProtocolError, juggler.TargetClosedError):
-                pass
+            self._let_through(request.request_id)
             return
         route = RouteDispatcher(self.server, request)
         owner.emit("route", {"route": route.channel, "page": self.channel})
+
+    def _let_through(self, request_id: str) -> None:
+        """Release a held request to the network, unchanged.
+
+        Two requests come here: one held while the context's interception was
+        switched off (turning the CONTEXT's off releases nothing), and the
+        favicon, which no handler may see.
+
+        ⛔ POSTED, NOT SENT. This runs inside the handler of the request's own
+        event, on the reader thread, and `send` waits for a reply only that
+        thread can read: a deadlock (`Connection.post`). Measured 2026-10-17
+        the moment the favicon came here: the page's next `evaluate` waited
+        30 s for an answer behind it. The context branch had the same `send`
+        from the same thread, unnoticed only because that path is rare. An
+        error reply is dropped with the rest, which is what this wants: the
+        engine may have released the request already (turning the PAGE's
+        interception off resumes every request it holds) and say "Cannot find
+        request".
+        """
+        self.conn.post("Network.resumeInterceptedRequest",
+                       {"requestId": request_id}, session=self.session)
 
     def send(self, command: str, params: Dict,
              timeout: Optional[float] = None) -> Any:

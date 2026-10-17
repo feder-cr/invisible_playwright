@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+- **The browser's favicon request no longer reaches the client.** A
+  `page.route("**/*")` handler saw `GET /favicon.ico` now and then, as did the
+  `request`, `response` and `requestfinished` listeners, and a
+  `route.fallback(post_data=...)` rewrote it too. As in Playwright, the favicon,
+  and a request it redirects to, now sends no event, reaches no route handler
+  and is not a request `networkidle` waits on. Unlike Playwright it is not
+  aborted under a route: it goes to the site, as from any Firefox.
+- **A request held after interception was switched off no longer stalls the
+  session.** Its release was sent from the thread that delivers the engine's
+  events and waited for a reply only that thread could read; the next command
+  of the page then waited forever.
+
 ## [0.36.2] - 2026-10-17
 
 The pin moves to invisible-core 48.43.0, still on the firefox-48 engine.
