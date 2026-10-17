@@ -166,7 +166,7 @@ def test_e9_linux_build_prefs_omits_windows_sandbox_key(monkeypatch):
     from invisible_playwright import _session as _l
     monkeypatch.setattr(_l, "make_virtual_display", lambda: _FakeDisplay())
 
-    ip = InvisiblePlaywright(seed=42, headless=True)
+    ip = InvisiblePlaywright(timezone="America/New_York", seed=42, headless=True)
     ip._resolve_headless()
     assert ip._virtual_display is not None, "the stub display was not wired up"
     prefs = ip._build_prefs()
@@ -202,7 +202,7 @@ def test_e9b_windows_build_prefs_follows_the_desktop_that_was_created(monkeypatc
     from invisible_playwright import _session as _l
     monkeypatch.setattr(_l, "make_virtual_display", lambda: _FakeDesktop())
 
-    hidden = InvisiblePlaywright(seed=42, headless=True)
+    hidden = InvisiblePlaywright(timezone="America/New_York", seed=42, headless=True)
     hidden._resolve_headless()
     assert hidden._virtual_display is not None, "the desktop was not wired up"
     prefs = hidden._build_prefs()
@@ -210,7 +210,7 @@ def test_e9b_windows_build_prefs_follows_the_desktop_that_was_created(monkeypatc
     assert prefs["security.sandbox.content.level"] == 4
     assert "zoom.stealth.cloak_windows" not in prefs
 
-    headed = InvisiblePlaywright(seed=42, headless=False)
+    headed = InvisiblePlaywright(timezone="America/New_York", seed=42, headless=False)
     headed._resolve_headless()
     assert headed._virtual_display is None
     prefs = headed._build_prefs()
