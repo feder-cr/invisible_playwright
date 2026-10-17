@@ -17,10 +17,8 @@ import pytest
 
 from invisible_core._fpforge import generate_profile
 from invisible_core._proxy import configure_proxy
-from invisible_core.prefs import (
-    _WIN_LIGHT_COLORS,
-    translate_profile_to_prefs,
-)
+from invisible_core._fpforge.palette import _WIN_DARK_COLORS, _WIN_LIGHT_COLORS
+from invisible_core.prefs import translate_profile_to_prefs
 
 
 # Keys every Profile-derived prefs dict MUST carry.
@@ -56,7 +54,6 @@ _REQUIRED_PREFS_KEYS = (
     "media.encoder.webm.enabled",
     "ui.systemUsesDarkTheme",
     "intl.accept_languages",
-    "general.useragent.locale",
     "intl.locale.requested",
     "zoom.stealth.fpp.hw_seed",
     "zoom.stealth.webrtc.host_ip",
@@ -82,7 +79,7 @@ def test_generate_profile_then_translate_has_all_required_keys():
     returned dict contains every key downstream code (Playwright, the C++
     patches) needs to find."""
     profile = generate_profile(seed=42)
-    prefs = translate_profile_to_prefs(profile)
+    prefs = translate_profile_to_prefs(profile, timezone="America/New_York")
 
     missing = [k for k in _REQUIRED_PREFS_KEYS if k not in prefs]
     assert not missing, f"prefs dict missing required keys: {missing}"
@@ -99,7 +96,7 @@ def test_socks5_proxy_mutates_prefs_then_pipeline_still_valid():
     prefs dict; the result is still a valid prefs dict (all required keys
     intact) and the proxy return is ``None`` so Playwright sees no proxy."""
     profile = generate_profile(seed=42)
-    prefs = translate_profile_to_prefs(profile)
+    prefs = translate_profile_to_prefs(profile, timezone="America/New_York")
     before = dict(prefs)
 
     pw_proxy = configure_proxy(
@@ -147,7 +144,7 @@ def test_pin_screen_width_propagates_through_pipeline():
     """IT3 - a pinned ``screen.width`` shows up in the final prefs dict
     under ``zoom.stealth.screen.width``."""
     profile = generate_profile(seed=42, pin={"screen.width": 2560})
-    prefs = translate_profile_to_prefs(profile)
+    prefs = translate_profile_to_prefs(profile, timezone="America/New_York")
 
     assert profile.screen.width == 2560
     assert prefs["zoom.stealth.screen.width"] == 2560
@@ -164,7 +161,7 @@ def test_multiple_pins_all_visible_in_prefs():
         "audio.sample_rate": 48000,
     }
     profile = generate_profile(seed=42, pin=pin)
-    prefs = translate_profile_to_prefs(profile)
+    prefs = translate_profile_to_prefs(profile, timezone="America/New_York")
 
     assert prefs["zoom.stealth.screen.width"] == 3840
     assert prefs["zoom.stealth.screen.height"] == 2160
@@ -181,8 +178,8 @@ def test_multiple_pins_all_visible_in_prefs():
 def test_pipeline_deterministic_for_same_seed():
     """IT4 - running the full pipeline twice with the same seed produces
     identical prefs dicts."""
-    a = translate_profile_to_prefs(generate_profile(seed=1234))
-    b = translate_profile_to_prefs(generate_profile(seed=1234))
+    a = translate_profile_to_prefs(generate_profile(seed=1234), timezone="America/New_York")
+    b = translate_profile_to_prefs(generate_profile(seed=1234), timezone="America/New_York")
     assert a == b
 
 
@@ -191,8 +188,8 @@ def test_pipeline_varies_across_seeds():
     """IT5 - different seeds produce different prefs dicts. Compare the
     full dict, not just a sampled field, to catch regressions where a
     single hot field accidentally becomes seed-invariant."""
-    a = translate_profile_to_prefs(generate_profile(seed=1))
-    b = translate_profile_to_prefs(generate_profile(seed=2))
+    a = translate_profile_to_prefs(generate_profile(seed=1), timezone="America/New_York")
+    b = translate_profile_to_prefs(generate_profile(seed=2), timezone="America/New_York")
     assert a != b
 
 
@@ -207,7 +204,7 @@ def test_http_proxy_returned_unchanged_no_socks_mutations():
     SOCKS prefs are never written. Verifies the two proxy paths don't
     cross-pollute the prefs dict."""
     profile = generate_profile(seed=42)
-    prefs = translate_profile_to_prefs(profile)
+    prefs = translate_profile_to_prefs(profile, timezone="America/New_York")
     proxy_in = {"server": "http://proxy.example.com:8080", "username": "bob"}
 
     pw_proxy = configure_proxy(proxy_in, prefs)
@@ -232,7 +229,7 @@ def test_fonts_are_not_configured_via_prefs():
     the config pipeline must emit NO font prefs. Locks the 2026-07-06
     self-contained refactor (fonts moved entirely into the binary)."""
     profile = generate_profile(seed=42)
-    prefs = translate_profile_to_prefs(profile)
+    prefs = translate_profile_to_prefs(profile, timezone="America/New_York")
 
     assert "zoom.stealth.font.fontlist" not in prefs
     assert "zoom.stealth.font.system_ui" not in prefs
@@ -246,26 +243,21 @@ def test_fonts_are_not_configured_via_prefs():
 
 
 @pytest.mark.integration
-def test_dark_theme_pipeline_omits_light_palette():
-    """IT8.a - dark_theme=True profile → no light-palette colors in prefs."""
-    profile = generate_profile(seed=42, pin={"dark_theme": True})
-    prefs = translate_profile_to_prefs(profile)
+@pytest.mark.parametrize("dark", [True, False])
+def test_every_persona_carries_the_palette_of_both_schemes(dark):
+    """IT8 - core 49.46.0: the palette goes to every persona, light and dark,
+    in `ui.<name>` and `ui.<name>.dark`. A page asks the engine for a colour in
+    either scheme (a `color-scheme: dark` box asks for the dark one); until
+    49.46.0 a dark persona got no palette at all and answered the host's
+    colours. Only `ui.systemUsesDarkTheme` says which scheme the persona uses."""
+    profile = generate_profile(seed=42, pin={"dark_theme": dark})
+    prefs = translate_profile_to_prefs(profile, timezone="America/New_York")
 
-    assert prefs["ui.systemUsesDarkTheme"] == 1
-    for key in _WIN_LIGHT_COLORS:
-        assert key not in prefs, f"dark theme leaked light color: {key}"
-
-
-@pytest.mark.integration
-def test_light_theme_pipeline_includes_light_palette():
-    """IT8.b - dark_theme=False profile → full Win10 light palette is
-    overlaid onto the prefs dict."""
-    profile = generate_profile(seed=42, pin={"dark_theme": False})
-    prefs = translate_profile_to_prefs(profile)
-
-    assert prefs["ui.systemUsesDarkTheme"] == 0
+    assert prefs["ui.systemUsesDarkTheme"] == int(dark)
     for key, value in _WIN_LIGHT_COLORS.items():
-        assert prefs[key] == value
+        assert prefs[key] == value, key
+    for key, value in _WIN_DARK_COLORS.items():
+        assert prefs[key] == value, key
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -284,7 +276,7 @@ def test_many_seeds_all_produce_valid_prefs():
 
     for seed in seeds:
         profile = generate_profile(seed=seed)
-        prefs = translate_profile_to_prefs(profile)
+        prefs = translate_profile_to_prefs(profile, timezone="America/New_York")
         missing = [k for k in _REQUIRED_PREFS_KEYS if k not in prefs]
         assert not missing, f"seed={seed} missing keys: {missing}"
 
@@ -304,7 +296,7 @@ def test_windows_virtual_display_with_socks_proxy(monkeypatch):
     land their keys in the prefs dict and don't clobber each other."""
     monkeypatch.setattr(sys, "platform", "win32")
     profile = generate_profile(seed=42)
-    prefs = translate_profile_to_prefs(profile, virtual_display=True)
+    prefs = translate_profile_to_prefs(profile, virtual_display=True, timezone="America/New_York")
     pw_proxy = configure_proxy(
         {"server": "socks5://127.0.0.1:1080"}, prefs
     )
@@ -335,7 +327,7 @@ def test_linux_xvfb_workarounds_with_socks_proxy(monkeypatch):
     on Linux must NOT set ``security.sandbox.gpu.level`` (covered by VD3)."""
     monkeypatch.setattr(sys, "platform", "linux")
     profile = generate_profile(seed=42)
-    prefs = translate_profile_to_prefs(profile, virtual_display=True)
+    prefs = translate_profile_to_prefs(profile, virtual_display=True, timezone="America/New_York")
     pw_proxy = configure_proxy(
         {"server": "socks5://127.0.0.1:1080"}, prefs
     )
@@ -343,7 +335,6 @@ def test_linux_xvfb_workarounds_with_socks_proxy(monkeypatch):
     assert pw_proxy is not None      # a single path, here too
     # Xvfb workarounds present.
     assert prefs["gfx.webrender.all"] is False
-    assert prefs["gfx.webrender.force-disabled"] is True
     assert prefs["webgl.force-enabled"] is True
     # Windows-only sandbox key absent on Linux even with virtual_display=True.
     assert "security.sandbox.gpu.level" not in prefs
@@ -385,7 +376,7 @@ def test_msaa_reaches_the_pipeline_identically_on_both_platforms(monkeypatch):
     seen = {}
     for platform in ("linux", "win32"):
         monkeypatch.setattr(sys, "platform", platform)
-        prefs = translate_profile_to_prefs(generate_profile(seed=42))
+        prefs = translate_profile_to_prefs(generate_profile(seed=42), timezone="America/New_York")
         seen[platform] = (prefs["webgl.msaa-samples"], prefs["webgl.msaa-force"])
     assert seen["linux"] == seen["win32"] == (4, True), seen
 

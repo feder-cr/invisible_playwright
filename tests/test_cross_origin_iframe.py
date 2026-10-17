@@ -74,7 +74,7 @@ def test_baseline_keeps_fission_autostart_off():
 def test_translated_profile_propagates_isolation_strategy():
     """The fix must survive translate_profile_to_prefs, not just live in _BASELINE."""
     p = generate_profile(seed=42)
-    prefs = translate_profile_to_prefs(p)
+    prefs = translate_profile_to_prefs(p, timezone="America/New_York")
     assert prefs["fission.webContentIsolationStrategy"] == 0
 
 
@@ -84,11 +84,11 @@ def test_extra_prefs_override_can_break_isolation_only_explicitly():
     The wrapper does not silently flip it back on.
     """
     p = generate_profile(seed=42)
-    prefs_default = translate_profile_to_prefs(p)
+    prefs_default = translate_profile_to_prefs(p, timezone="America/New_York")
     assert prefs_default["fission.webContentIsolationStrategy"] == 0
 
     prefs_ab = translate_profile_to_prefs(
-        p, extra_prefs={"fission.webContentIsolationStrategy": 1}
+        p, timezone="America/New_York", extra_prefs={"fission.webContentIsolationStrategy": 1}
     )
     assert prefs_ab["fission.webContentIsolationStrategy"] == 1
 

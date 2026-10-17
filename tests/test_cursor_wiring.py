@@ -192,7 +192,7 @@ def test_python_engine_turns_the_browser_side_expansion_off(stub_motion):
     path, every waypoint we send would be expanded into a whole path of its
     own: a hundred-fold event storm, and a shape neither generator intended.
     """
-    ip = InvisiblePlaywright(seed=42, humanize=True)
+    ip = InvisiblePlaywright(timezone="America/New_York", seed=42, humanize=True)
     assert ip._cursor_engine == _cursor.ENGINE_PYTHON
     prefs = ip._build_prefs()
     assert prefs["stealthfox.humanize"] is False
@@ -201,7 +201,7 @@ def test_python_engine_turns_the_browser_side_expansion_off(stub_motion):
 
 @pytest.mark.unit
 def test_humanize_false_disables_everything(stub_motion):
-    ip = InvisiblePlaywright(seed=42, humanize=False)
+    ip = InvisiblePlaywright(timezone="America/New_York", seed=42, humanize=False)
     assert ip._cursor_engine == _cursor.ENGINE_OFF
     prefs = ip._build_prefs()
     assert prefs["stealthfox.humanize"] is False
@@ -210,7 +210,7 @@ def test_humanize_false_disables_everything(stub_motion):
 
 @pytest.mark.unit
 def test_humanize_float_still_means_a_cap_in_seconds(stub_motion):
-    ip = InvisiblePlaywright(seed=42, humanize=2.5)
+    ip = InvisiblePlaywright(timezone="America/New_York", seed=42, humanize=2.5)
     assert ip._cursor_engine == _cursor.ENGINE_PYTHON
     # Was `ip._humanize_max_seconds()`, a wrapper with no caller in src/. The
     # live arming path reads the cap straight off this function.
@@ -222,7 +222,7 @@ def test_escape_hatch_restores_the_previous_behaviour(stub_motion, monkeypatch):
     """The way back: INVPW_CURSOR_ENGINE=binary is byte-identical to the old
     wiring - pref on, cap forwarded, and nothing armed on our side."""
     monkeypatch.setenv(_cursor.ENGINE_ENV, "binary")
-    ip = InvisiblePlaywright(seed=42, humanize=3.0)
+    ip = InvisiblePlaywright(timezone="America/New_York", seed=42, humanize=3.0)
     assert ip._cursor_engine == _cursor.ENGINE_BINARY
     prefs = ip._build_prefs()
     assert prefs["stealthfox.humanize"] is True
@@ -232,7 +232,7 @@ def test_escape_hatch_restores_the_previous_behaviour(stub_motion, monkeypatch):
 @pytest.mark.unit
 def test_escape_hatch_off_disables_motion_without_touching_the_constructor(stub_motion, monkeypatch):
     monkeypatch.setenv(_cursor.ENGINE_ENV, "off")
-    ip = InvisiblePlaywright(seed=42, humanize=True)
+    ip = InvisiblePlaywright(timezone="America/New_York", seed=42, humanize=True)
     assert ip._cursor_engine == _cursor.ENGINE_OFF
     assert ip._build_prefs()["stealthfox.humanize"] is False
 
@@ -246,9 +246,9 @@ def test_the_show_cursor_kwarg_reaches_the_prefs(stub_motion):
     attribute we stored: `_show_cursor` being True proves only that `__init__`
     ran.
     """
-    on = InvisiblePlaywright(seed=42, show_cursor=True)._build_prefs()
-    off = InvisiblePlaywright(seed=42, show_cursor=False)._build_prefs()
-    silent = InvisiblePlaywright(seed=42)._build_prefs()
+    on = InvisiblePlaywright(timezone="America/New_York", seed=42, show_cursor=True)._build_prefs()
+    off = InvisiblePlaywright(timezone="America/New_York", seed=42, show_cursor=False)._build_prefs()
+    silent = InvisiblePlaywright(timezone="America/New_York", seed=42)._build_prefs()
     assert on["stealthfox.showcursor"] is True
     assert off["stealthfox.showcursor"] is False
     # ⛔ SAYING NOTHING IS NOT SAYING FALSE. The overlay ships ON since
@@ -262,7 +262,7 @@ def test_the_show_cursor_kwarg_reaches_the_prefs(stub_motion):
 def test_the_dot_and_the_motion_are_two_switches(stub_motion):
     """Watching a TELEPORTING cursor is a legitimate thing to want, and it is
     the combination a derivation would quietly forbid."""
-    prefs = InvisiblePlaywright(seed=42, humanize=False,
+    prefs = InvisiblePlaywright(timezone="America/New_York", seed=42, humanize=False,
                                 show_cursor=True)._build_prefs()
     assert prefs["stealthfox.humanize"] is False
     assert prefs["stealthfox.showcursor"] is True
@@ -273,7 +273,7 @@ def test_missing_generator_falls_back_to_the_browser(no_motion):
     """A session must always be able to move. With no generator installed we
     hand the job back to the browser rather than shipping a teleporting
     cursor."""
-    ip = InvisiblePlaywright(seed=42, humanize=True)
+    ip = InvisiblePlaywright(timezone="America/New_York", seed=42, humanize=True)
     assert ip._cursor_engine == _cursor.ENGINE_BINARY
     assert ip._build_prefs()["stealthfox.humanize"] is True
 
@@ -283,8 +283,8 @@ def test_sync_and_async_agree_on_the_prefs(stub_motion):
     """Both launchers must derive the prefs from the same helper - a divergence
     here is a silent double expansion in exactly one of the two APIs."""
     for humanize in (True, False, 2.0):
-        sync = InvisiblePlaywright(seed=42, humanize=humanize)
-        asy = AsyncInvisiblePlaywright(seed=42, humanize=humanize)
+        sync = InvisiblePlaywright(timezone="America/New_York", seed=42, humanize=humanize)
+        asy = AsyncInvisiblePlaywright(timezone="America/New_York", seed=42, humanize=humanize)
         assert sync._cursor_engine == asy._cursor_engine
         assert _humanize_subset(sync) == _humanize_subset(asy)
 
@@ -350,7 +350,7 @@ def test_the_launcher_hands_over_its_own_seed(stub_motion, monkeypatch):
         return True
 
     monkeypatch.setattr("invisible_playwright._session._enable_cursor_engine", spy)
-    ip = InvisiblePlaywright(seed=777, humanize=2.0)
+    ip = InvisiblePlaywright(timezone="America/New_York", seed=777, humanize=2.0)
     ip._arm_cursor_engine(_FakeBrowser())
     assert seen == {"seed": 777, "max_seconds": 2.0}
     assert ip.seed == 777
@@ -365,7 +365,7 @@ def test_binary_engine_arms_nothing(stub_motion, monkeypatch):
         lambda *a, **k: called.append(a),
     )
     monkeypatch.setenv(_cursor.ENGINE_ENV, "binary")
-    InvisiblePlaywright(seed=1, humanize=True)._arm_cursor_engine(_FakeBrowser())
+    InvisiblePlaywright(timezone="America/New_York", seed=1, humanize=True)._arm_cursor_engine(_FakeBrowser())
     assert called == []
 
 
@@ -1295,7 +1295,7 @@ def test_the_core_we_resolve_against_decides_the_cursor_default():
     from invisible_core.prefs import DEFAULT_SHOW_CURSOR
 
     assert isinstance(DEFAULT_SHOW_CURSOR, bool)
-    ip = InvisiblePlaywright(seed=42)
+    ip = InvisiblePlaywright(timezone="America/New_York", seed=42)
     assert ip._build_prefs()["stealthfox.showcursor"] is DEFAULT_SHOW_CURSOR, (
         "the wrapper's silent default disagrees with the core's declaration; "
         "one of the two has grown a second opinion")

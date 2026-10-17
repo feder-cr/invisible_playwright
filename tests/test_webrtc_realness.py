@@ -226,7 +226,7 @@ from invisible_core.prefs import translate_profile_to_prefs  # noqa: E402
 
 @pytest.mark.unit
 def test_shipped_webrtc_baseline_is_the_validated_config():
-    prefs = translate_profile_to_prefs(generate_profile(seed=42))
+    prefs = translate_profile_to_prefs(generate_profile(seed=42), timezone="America/New_York")
     # host candidate must be mDNS .local like vanilla Firefox (manually
     # validated on BrowserLeaks/CreepJS through a residential proxy) - not a
     # raw LAN IP.

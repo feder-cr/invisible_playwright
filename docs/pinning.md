@@ -108,6 +108,7 @@ profile disagree with the browser, on about 12% of seeds.
 | `screen.height` | int | `1440` |
 | `screen.dpr` | float | `1.0`, `1.25`, `1.5`, `2.0` |
 | `screen.color_depth` | int | `24` | `screen.colorDepth` and `screen.pixelDepth`. Declared rather than read off the panel: the engine only returned a fixed 24 when resistFingerprinting was on, which we do not turn on because it is itself a tell, so before this it reported the real display - 30 on a wide-gamut monitor, and a persona claiming an office laptop with a 30-bit panel is a contradiction a page can read. |
+| `screen.refresh_hz` | int | `60`, `144` | The monitor's refresh rate, which is the cadence of `requestAnimationFrame`: a page reads it from the gap between two frame timestamps. Without it the engine follows the host's display, so one persona answered about 120 on one machine and 58 on another. Not sampled: 60 is what an office laptop or monitor runs at, and a 144 Hz persona is one pin away. |
 
 ### `hardware.*`
 
@@ -167,7 +168,8 @@ would be the signal. They are pinnable for A/B work, not for realism.
 
 | Key | Type | Example | Notes |
 |-----|------|---------|-------|
-| `font.ui_family` | str | `"Segoe UI"` | Family behind `font: menu`, `font: caption`, and the `-moz-` widget fonts. |
+| `font.ui_family` | str | `"Segoe UI"` | Family behind `font: menu` and `font: caption`. The form-control fonts take `font.dialog_family`. |
+| `font.dialog_family` | str | `"MS Shell Dlg 2"` | The family of the form-control fonts, `-moz-button`, `-moz-field` and `-moz-list`, which is not the shell font: Windows Firefox builds them from the message font under the name "MS Shell Dlg 2", and a page reads it with one `getComputedStyle(input).fontFamily`. |
 | `font.ui_size` | str | `"12"` | **A string, not an int.** Gecko reads this pref through `Preferences::GetFloat`, which parses the value from its text form; an int is not rejected, it is ignored, and the UI silently falls back to 16px. |
 | `font.monospace_size` | int | `13` | Default monospace size. Firefox ships 13 on Windows and 12 in its Unix block, and the gap is directly readable as the width of the `monospace` generic at the default size. |
 | `font.alpha_ladder` | tuple of int | `(0, 18, 35, ..., 255)` | The distinct alpha levels a Windows rasteriser leaves on an antialiased glyph edge, ascending, first `0` and last `255` so a fully transparent or fully opaque pixel never moves. Canvas readback snaps onto these. An empty tuple disables the snap, which is what you want when measuring what the unsnapped edge looks like. |
@@ -179,6 +181,32 @@ would be the signal. They are pinnable for A/B work, not for realism.
 | `font.cleartype_rendering_mode` | int | `5` | DirectWrite rendering mode. |
 | `font.freetype_gamma` | int | `220` | The FreeType equivalent of `cleartype_gamma`, x100. Declared so the Linux build rasterises with Windows' curve instead of Skia's linear default. |
 | `font.freetype_contrast` | int | `100` | The FreeType equivalent of `cleartype_contrast`, x100. |
+
+### `desktop.*`
+
+The Windows desktop settings a page can read, declared instead of asked of the
+machine. Each one is a value whose engine default either reads the host or
+differs between Windows and Linux, so without it the same persona answered
+with the machine it ran on. The defaults are a Windows 11 desktop at its
+defaults, and they are not sampled.
+
+| Key | Type | Default | Notes |
+|-----|------|---------|-------|
+| `desktop.text_scale` | int | `100` | Windows' "Text size" slider, in percent. It multiplies the device pixel ratio, so `100` is the value that leaves `screen.dpr` the one number for it. |
+| `desktop.overlay_scrollbars` | bool | `True` | Windows 11's "Automatically hide scroll bars": scrollbars draw over the content, so a scrolling box loses no width (`offsetWidth - clientWidth` is 0). Off, they take `desktop.scrollbar_size`. |
+| `desktop.scrollbar_style` | int | `5` | How scrollbars are drawn: 5 Windows 11, 4 Windows 10, 2 GTK. |
+| `desktop.scrollbar_size` | int | `17` | The width a scrollbar takes when it is not an overlay, at 96 dpi. |
+| `desktop.drag_threshold` | int | `3` | How far the pointer moves before `dragstart`. |
+| `desktop.scroll_to_click` | bool | `False` | A click in a scrollbar's track jumps there instead of paging. |
+| `desktop.document_colors` | int | `0` | When the page's colours give way to the system's: `0`, the Windows default, only under a high-contrast theme. |
+| `desktop.select_styling` | bool | `True` | A page may style a `<select>`'s popup, as on Windows. |
+| `desktop.word_select_eats_space` | bool | `True` | A double click selects the word and the space after it, as on Windows; a page reads it with `getSelection()` after a real double click. |
+| `desktop.srgb_output` | bool | `True` | Tagged images are converted to sRGB instead of the host monitor's colour profile, which a small canvas reads back. |
+| `desktop.os_client_certs` | bool | `False` | Whether the operating system's personal certificates answer a server that asks for one. Off: the persona has none. |
+| `desktop.theme_accent` | bool | `False` | Whether the page-visible `AccentColor` follows the desktop theme's accent; on Windows it does not. |
+| `desktop.hour_cycle` | int | `0` | The clock format, `0` meaning the locale decides, as on Windows; otherwise the host's 12/24-hour setting changes every `toLocaleTimeString()`. |
+| `desktop.select_on_focus` | bool | `True` | Tabbing into a pre-filled field selects all of it, as on Windows. |
+| `desktop.palette` | str | *(the Windows palette)* | The system colours, light and dark, as `ui.<name>\|<light>\|<dark>` records, one per line, the dark part empty where the scheme does not move it. Every persona carries both schemes; `dark_theme` says which one it uses. |
 
 ### Top-level
 

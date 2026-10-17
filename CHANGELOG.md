@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.38.0] - 2026-10-17
+
+The pin moves to invisible-core 49.46.0. The desktop settings a page can read -
+scrollbars, text scale, drag threshold, double-click selection, the system
+colours in both schemes, the refresh rate, the form-control font and more -
+are declared by the persona instead of read from the machine it runs on, and
+each of them can be pinned ([pinning](docs/pinning.md)).
+
+### Changed
+- **The way in is uv.** The README installs with one complete block per
+  system: uv from its own installer, `uv init --python ">=3.11" my-project`,
+  `uv add invisible-playwright`, `uv run invisible-playwright fetch`.
+  CONTRIBUTING, the guides and the issue template teach the same, and CI
+  refuses an install instruction that is not uv
+  (`python -m invisible_core.way_in`, core 49.45.0).
+- **A remedy this package prints is the command for your environment.** In a
+  venv uv made, which has no pip, a broken install was told to run
+  `pip install --force-reinstall invisible-playwright`; it is now told the uv
+  command, and an environment pip made is still told pip, through its own
+  interpreter.
+
+### Fixed
+- The Docker guide's base image has a Python older than this package needs,
+  and the arm64 guide's Debian image an externally managed one, so neither
+  install line could work: uv now brings the interpreter. The installation
+  guide no longer lists macOS, which has had no engine since 2026-08-26.
+
 ## [0.37.0] - 2026-10-17
 
 The pin moves to invisible-core 49.44.0, on the firefox-49 engine.

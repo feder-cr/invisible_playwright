@@ -49,7 +49,7 @@ def test_ci_font_gate_generics_match_the_core():
     from invisible_core._fpforge import generate_profile
     from invisible_core.prefs import translate_profile_to_prefs
 
-    prefs = translate_profile_to_prefs(generate_profile(970411))
+    prefs = translate_profile_to_prefs(generate_profile(970411), timezone="America/New_York")
     from_core = prefs["zoom.stealth.fonts.generics"]
     from_gate = _generics_decl_from_gate()
 
@@ -74,7 +74,7 @@ def test_the_generics_declaration_does_not_depend_on_the_seed():
     from invisible_core.prefs import translate_profile_to_prefs
 
     values = {
-        translate_profile_to_prefs(generate_profile(s))["zoom.stealth.fonts.generics"]
+        translate_profile_to_prefs(generate_profile(s), timezone="America/New_York")["zoom.stealth.fonts.generics"]
         for s in (1, 42, 970411, 20260811, 999999)
     }
     assert len(values) == 1, (

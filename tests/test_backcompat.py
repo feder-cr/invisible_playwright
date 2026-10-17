@@ -74,8 +74,8 @@ def test_shim_output_matches_core_output():
     # `forced_gpu_class` is still imported above, because the import SHAPE is
     # what this file exists to protect; it is a query now rather than a knob.
     assert fgc_pw(42) == ic.forced_gpu_class(42)
-    a = tp_pw(gp_pw(42))
-    b = ic.translate_profile_to_prefs(ic.generate_profile(42))
+    a = tp_pw(gp_pw(42), timezone="America/New_York")
+    b = ic.translate_profile_to_prefs(ic.generate_profile(42), timezone="America/New_York")
     assert a == b
 
 

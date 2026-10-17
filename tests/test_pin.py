@@ -7,7 +7,7 @@ from invisible_core.prefs import translate_profile_to_prefs
 
 def test_pin_screen_width_propagates_to_prefs():
     p = generate_profile(seed=42, pin={"screen.width": 2560, "screen.height": 1440})
-    prefs = translate_profile_to_prefs(p)
+    prefs = translate_profile_to_prefs(p, timezone="America/New_York")
     assert prefs["zoom.stealth.screen.width"] == 2560
     assert prefs["zoom.stealth.screen.height"] == 1440
 
@@ -27,7 +27,7 @@ def test_pin_gpu_renderer_reaches_the_browser():
     target = _gpu_pool()[-1]
     p = generate_profile(seed=42, pin={"gpu.renderer": target["renderer"]})
     assert p.gpu.renderer == target["renderer"]
-    prefs = translate_profile_to_prefs(p)
+    prefs = translate_profile_to_prefs(p, timezone="America/New_York")
     assert prefs["zoom.stealth.webgl.renderer"] == target["renderer"]
     assert prefs["zoom.stealth.webgl.vendor"] == target["vendor"]
 
