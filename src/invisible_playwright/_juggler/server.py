@@ -42,7 +42,8 @@ from invisible_core.juggler.actions import Actions
 from invisible_core.juggler.deadline import Deadline
 from .dispatcher import (Dispatcher, ExpectNotMet, ProtocolException,
                          Server)
-from invisible_core.juggler.injected import ContextDestroyed, InjectedScript
+from invisible_core.juggler.injected import (ContextDestroyed, EvaluationError,
+                                             InjectedScript)
 from invisible_core.juggler.keyboard import MODIFIER_MASK
 from invisible_core.juggler.lifecycle import Lifecycle
 
@@ -1400,70 +1401,127 @@ class FrameDispatcher(Dispatcher):
         `to_be_*` and `to_have_count` failed, whatever the page held
         (2026-10-12). Polling is the server's, and so is the verdict:
         `isNot` inverts it, and a condition that never held is
-        `ExpectNotMet` with the last value seen."""
+        `ExpectNotMet` with the last value seen.
+
+        ⛔ AND WHAT IS POLLED IS PLAYWRIGHT'S OWN READING ([B328]). Until 0.38
+        this file re-wrote the conditions one by one, in Python, and had
+        written two families: `to.have.count` and the `to.be.*` states.
+        Everything else - `to_have_text`, `to_have_value`, `to_have_attribute`,
+        `to_have_class`, `to_be_in_viewport`, `to_have_title`, `to_have_url`,
+        `to_be_focused`, `to_be_empty`, `to_have_js_property`, `to_have_values`
+        and the rest - answered "is not implemented yet", and Playwright's own
+        suite was red on every one of them. The injected script this package
+        already ships carries Playwright's `expect`, every condition of it, so
+        the reading is that one function, called the way Playwright's server
+        calls it (`_expectInternal` in `frames.ts`), and there is no second
+        definition to fall behind. What stays here is what is the server's
+        there too: the polling, the strict check, and the verdict.
+
+        A JavaScript error in the reading - a strict-mode violation, a
+        `to_have_values` on something that is not a multiple select - ends the
+        wait at once and travels as the message, as upstream: it is not a
+        condition that a later page could make hold.
+        """
         expression = params.get("expression") or ""
         selector = params.get("selector")
         is_not = bool(params.get("isNot"))
         deadline = Deadline(self._timeout(params))
+        last: Optional[Dict] = None
         while True:
-            matches, received = self._expect_probe(expression, selector, params)
-            if matches != is_not:
-                return None
+            try:
+                reading = self._expect_probe(expression, selector, params)
+            except ContextDestroyed:
+                # A navigation under the reading: the next turn asks the new
+                # document, as Playwright's polling survives one.
+                reading = None
+            except EvaluationError as e:
+                message = str(e).split("\n", 1)[0]
+                if message.startswith("Error: "):
+                    message = message[len("Error: "):]
+                raise ExpectNotMet(message, {"customErrorMessage": message})
+            if reading is not None:
+                if reading["matches"] != is_not:
+                    return None
+                last = reading
             if deadline.passed():
+                details: Dict[str, Any] = {"timedOut": True}
+                if last is not None:
+                    received: Dict[str, Any] = {}
+                    if "received" in last:
+                        received["value"] = _serialize(last["received"])
+                    if last.get("ariaSnapshot") is not None:
+                        received["ariaSnapshot"] = last["ariaSnapshot"]
+                    if received:
+                        details["received"] = received
+                    if last.get("missingReceived"):
+                        details["customErrorMessage"] = "element(s) not found"
                 raise ExpectNotMet(
                     "expect(%s%s) did not hold within %dms"
                     % ("not " if is_not else "", expression,
                        round(deadline.seconds * 1000)),
-                    {"received": {"value": _serialize(received)},
-                     "timedOut": True})
+                    details)
             time.sleep(deadline.slice(0.1))
 
+    #: What Playwright's server hands the injected `expect` of the caller's
+    #: options. `expectedValue` is added parsed, as its dispatcher does.
+    _EXPECT_OPTIONS = ("expression", "expressionArg", "expectedText",
+                       "expectedNumber", "useInnerText", "isNot", "selector")
+
+    #: One reading, as `_expectInternal` makes it: every element the selector
+    #: matches, refused when a single-element condition matches more than one,
+    #: and the first match handed to the injected script's `expect`.
+    #: ⛔ `to.have.property` reads THE PAGE'S property: upstream sends that one
+    #: condition to the main world, where the page's own expandos live. From
+    #: this world the same object is `wrappedJSObject`, the page's view of the
+    #: node, and every other condition stays on the native one.
+    _EXPECT = (
+        "async (injected, sel, options) => {"
+        "  let elements = [];"
+        "  if (sel !== null) {"
+        "    const parsed = injected.parseSelector(sel);"
+        "    elements = injected.querySelectorAll(parsed, document);"
+        "    const isArray = options.expression === 'to.have.count'"
+        "        || options.expression.endsWith('.array');"
+        "    if (!isArray && elements.length > 1)"
+        "      throw injected.strictModeViolationError(parsed, elements);"
+        "  }"
+        "  let element = elements[0];"
+        "  if (options.expression === 'to.have.property' && element"
+        "      && element.wrappedJSObject)"
+        "    element = element.wrappedJSObject;"
+        "  const r = await injected.expect(element, options, elements);"
+        "  const out = { matches: !!r.matches,"
+        "                missingReceived: !!r.missingReceived };"
+        "  if (r.received) {"
+        "    out.received = r.received.value === undefined ? null : r.received.value;"
+        "    if (r.received.ariaSnapshot !== undefined)"
+        "      out.ariaSnapshot = r.received.ariaSnapshot;"
+        "  }"
+        "  return out; }")
+
     def _expect_probe(self, expression: str, selector: Optional[str],
-                      params: Dict) -> tuple:
+                      params: Dict) -> Dict:
         """One reading of an expect condition, on the page as it is NOW:
-        `(matches, received)`."""
-        if selector and expression == "to.have.count":
-            frame_id, sel = self.enter_frames(selector)
-            count = self.injected.count(frame_id, sel)
-            return count == params.get("expectedNumber"), count
-        if selector and expression.startswith("to.be."):
-            return self._expect_state(expression[len("to.be."):], selector,
-                                      params)
-        raise ProtocolException(
-            "expect(%r) is not implemented yet" % expression)
+        `{matches, received?, ariaSnapshot?, missingReceived}`.
 
-    def _expect_state(self, name: str, selector: str, params: Dict) -> tuple:
-        """`to.be.<name>` on the element as it is now: `(matches, received)`.
-
-        ⛔ UNTIL 0.34.1 THE STATE WAS READ INTO A VARIABLE NOBODY USED, and any
-        element that existed matched: `to_be_checked()` on an empty box,
-        `to_be_visible()` on a hidden element. Each state is now the
-        element's, read with the match in one command (`read_match`), and a
-        missing element is hidden and nothing else, as in Playwright."""
-        frame_id, sel = self.enter_frames(selector)
-        if name in ("attached", "detached"):
-            found = self.injected.count(frame_id, sel) > 0
-            return found == (name == "attached"), found
-        if name == "checked":
-            wanted = _deserialize(params.get("expectedValue")) or {}
-            if wanted.get("indeterminate"):
-                state = "indeterminate"
-            else:
-                state = ("unchecked" if wanted.get("checked") is False
-                         else "checked")
-            invert = False
-        elif name == "readonly":
-            state, invert = "editable", True
-        elif name in ("visible", "hidden", "enabled", "disabled", "editable"):
-            state, invert = name, False
-        else:
+        ⛔ `to.match.aria` IS REFUSED BY NAME: its template is YAML that
+        Playwright's server parses into a tree before the injected script sees
+        it, and this server has no parser for it. Saying so is the honest
+        answer; matching an unparsed string would be a verdict on nothing."""
+        if expression == "to.match.aria":
             raise ProtocolException(
-                "expect(%r) is not implemented yet" % ("to.be." + name))
-        found, value = self.injected.read_match(frame_id, sel, "state", state,
-                                                strict=True)
-        if not found:
-            return state == "hidden", None
-        return bool(value) != invert, bool(value)
+                "expect('to.match.aria') is not implemented yet: the template is "
+                "YAML that Playwright's server parses, and this one has no parser "
+                "for it")
+        if selector:
+            frame_id, sel = self.enter_frames(selector)
+        else:
+            frame_id, sel = self.frame_id, None
+        options = {k: params[k] for k in self._EXPECT_OPTIONS if k in params}
+        if params.get("expectedValue") is not None:
+            options["expectedValue"] = _deserialize(params["expectedValue"])
+        return self.injected.call(frame_id, self._EXPECT, sel, options) or {
+            "matches": False, "missingReceived": True}
 
     def op_aria_snapshot(self, params: Dict) -> Any:
         """The accessibility tree, as the injected script builds it.
