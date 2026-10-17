@@ -415,6 +415,35 @@ def test_the_reading_is_the_injected_scripts_expect_with_playwrights_options(pag
     assert sel2 is None and options2["expectedText"] == [{"string": "T", "matchSubstring": False}]
 
 
+@pytest.mark.parametrize("value", [
+    {"o": [{"k": "a", "v": {"n": 1}}], "id": 1},
+    {"a": [{"n": 1}], "id": 1},
+    {"d": "2021-07-28T20:26:32.000Z"},
+    {"r": {"p": "x", "f": ""}},
+])
+def test_a_structured_js_property_is_refused_rather_than_called_different(page, value):
+    """Across realms Playwright's `deepEquals` calls two equal objects different;
+    the refusal says so instead of failing an assertion that holds."""
+    from invisible_playwright._juggler.dispatcher import ProtocolException
+
+    page.injected = Mock()
+    with pytest.raises(ProtocolException, match="another realm"):
+        page.frame._expect_probe("to.have.property", "div", {
+            "expression": "to.have.property", "expressionArg": "foo",
+            "expectedValue": {"value": value, "handles": []}})
+    assert not page.injected.call.called
+
+
+@pytest.mark.parametrize("value", [{"n": 3}, {"s": "x"}, {"b": True}, {"v": "null"}])
+def test_a_primitive_js_property_is_compared(page, value):
+    page.injected = Mock()
+    page.injected.call = Mock(return_value={"matches": True, "missingReceived": False})
+    page.frame.enter_frames = lambda selector: ("main", selector)
+    assert page.frame._expect_probe("to.have.property", "div", {
+        "expression": "to.have.property", "expressionArg": "foo",
+        "expectedValue": {"value": value, "handles": []}})["matches"] is True
+
+
 def test_to_match_aria_is_refused_by_name(page):
     from invisible_playwright._juggler.dispatcher import ProtocolException
 
