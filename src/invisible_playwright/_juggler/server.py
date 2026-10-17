@@ -1730,6 +1730,10 @@ class RequestDispatcher(Dispatcher):
         #: heuristic - which is what makes `PageDispatcher.navigation_response`
         #: able to answer `goto` with the response of the document it loaded.
         self.navigation_id = params.get("navigationId")
+        #: Where the request went: the URL it was sent with, until a route
+        #: sends it on somewhere else (`continued_at`). Its response is that
+        #: URL's, as Playwright's server has it.
+        self.url = params.get("url") or ""
         self.raw_headers = _headers_array(params.get("headers"))
         self.response: Optional["ResponseDispatcher"] = None
         #: Filled by `Network.requestFailed`. ⛔ None until it fails: an
@@ -1738,7 +1742,7 @@ class RequestDispatcher(Dispatcher):
         self.failure: Optional[str] = None
         frame_id = params.get("frameId") or page.frame.frame_id
         super().__init__(server, page, {
-            "url": params.get("url") or "",
+            "url": self.url,
             "method": params.get("method") or "GET",
             "headers": self.raw_headers,
             # ⛔ OMITTED WHEN ABSENT, never sent as null. The client reads
@@ -1762,6 +1766,21 @@ class RequestDispatcher(Dispatcher):
             "resourceType": _resource_type(params),
             "frame": page.frame_for(frame_id).channel,
         })
+
+    def continued_at(self, url: str) -> None:
+        """A route sent this request on to `url`.
+
+        ⛔ THE ENGINE SAYS NOTHING OF IT: it applies a route's URL as an
+        internal redirect, as upstream's does, so this is the one place that
+        knows. Two things follow from it, and both are told here: the
+        response is `url`'s (Playwright's server answers `response.url` with
+        the overridden URL), and a navigation's document went to `url`, which
+        is where the lifecycle judges its commit. Until this, a
+        `route.fallback(url=...)` on a navigation made `goto` refuse the page
+        the route had sent it to (B326)."""
+        self.url = url
+        if self.navigation_id:
+            self.page.lifecycle.went_to(self.navigation_id, url)
 
     def op_response(self, params: Dict) -> Any:
         return {"response": self.response.channel if self.response else None}
@@ -1805,7 +1824,7 @@ class ResponseDispatcher(Dispatcher):
         # and a response outliving its request is not a shape anybody has
         # thought about. Matching the driver costs one word.
         super().__init__(server, request, {
-            "url": request.initializer["url"],
+            "url": request.url,
             "status": params.get("status") or 0,
             "statusText": params.get("statusText") or "",
             "headers": self.raw_headers,
@@ -1970,6 +1989,10 @@ class RouteDispatcher(Dispatcher):
                        if params.get("headers") is not None else None,
             "postData": params.get("postData"),
         })
+        # Before the command, not after: the document may commit before its
+        # reply is read, and the lifecycle judges the commit by this.
+        if params.get("url"):
+            self.request.continued_at(params["url"])
         return self._send("Network.resumeInterceptedRequest", payload)
 
     def op_fulfill(self, params: Dict) -> Any:

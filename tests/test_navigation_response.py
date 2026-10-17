@@ -506,6 +506,43 @@ def test_a_page_request_beside_the_favicon_is_still_reported():
     assert told == ["request"]
 
 
+def test_a_route_that_sends_a_navigation_on_tells_where_it_went():
+    """B326: `route.fallback(url=...)` on a navigation. The engine applies the
+    URL as an internal redirect and says nothing, so the route tells the
+    request: its response is that URL's, and the lifecycle judges the commit
+    there. Known bad: the response kept the URL the request was sent with, and
+    `goto` refused the page as landed elsewhere."""
+    from invisible_playwright._juggler.server import RouteDispatcher
+
+    page, _told, _sent = _favicon_page(intercepting=True)
+    page.send = lambda command, params=None, timeout=None: {}
+    routed = "http://127.0.0.1/global-var.html"
+    _deliver(page, [("Network.requestWillBeSent", {
+        "requestId": "D", "url": "http://127.0.0.1/foo", "method": "GET",
+        "frameId": "F1", "navigationId": "NAV1", "isIntercepted": True,
+        "headers": []})])
+    request = page._requests["D"]
+    told_lifecycle = []
+    went_to = page.lifecycle.went_to
+    page.lifecycle.went_to = lambda nav, url: (told_lifecycle.append((nav, url)),
+                                               went_to(nav, url))
+    route = object.__new__(RouteDispatcher)
+    route.answered = False
+    route.request = request
+    route.dispose = lambda: None
+    route.op_continue({"url": routed})
+    assert request.url == routed
+    # What the lifecycle does with it is the core's own test
+    # (`test_a_goto_lands_where_it_went.py`); here, that it is told.
+    assert told_lifecycle == [("NAV1", routed)]
+    _deliver(page, [("Network.responseReceived", {
+        "requestId": "D", "status": 200, "statusText": "OK", "headers": []})])
+    assert request.response.initializer["url"] == routed
+    # The request keeps the URL it was sent with: the client applies the
+    # route's override to it on its side, as Playwright's does.
+    assert request.initializer["url"] == "http://127.0.0.1/foo"
+
+
 # -- the e2e half: a real browser, and `.status` read off the answer ---------
 
 PAGE = (b"<!doctype html><html><head><title>local</title></head>"

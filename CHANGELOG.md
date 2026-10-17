@@ -50,6 +50,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **`route.abort()` with no error code fails the request with
   `NS_ERROR_FAILURE`, as in Playwright on Firefox.** It failed with
   `NS_ERROR_ABORT`, the code of `route.abort("aborted")`.
+- **A route that sends a navigation to another URL lands there.**
+  `route.fallback(url=...)` or `route.continue_(url=...)` on a document
+  request made `goto` fail with "reported committed on ..., which is not where
+  it went", and the response kept the URL the request was sent with. The
+  response is now the routed URL's, and `goto` lands on it.
 
 ## [0.36.2] - 2026-10-17
 
