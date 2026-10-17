@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.36.3] - 2026-10-17
+
+### Fixed
+- **Answering a route whose request a navigation already aborted no longer
+  raises into the caller's next call.** With `page.route("**/*", lambda r:
+  r.continue_())`, each `goto` aborted the previous document's favicon while
+  its route was still being continued; the engine answered
+  `NS_BINDING_ABORTED`, and the error came out of the next `goto` or
+  `evaluate`, or that `goto` timed out waiting for load: 4-12 of every 60
+  sequential routed gotos on a loopback page. `continue_`, `fulfill` and
+  `abort` now treat a request that is gone as answered, as Playwright's own
+  Firefox server does (`sendMayFail`).
+
 ## [0.36.2] - 2026-10-17
 
 The pin moves to invisible-core 48.43.0, still on the firefox-48 engine.
