@@ -194,7 +194,12 @@ def main() -> int:
     import os
     env = dict(os.environ)
     env["INVPW_BINARY_PATH"] = a.binary
-    env["PYTHONPATH"] = str(ROOT)
+    # ⛔ THIS CHECKOUT'S `src` TOO, or the suite measures whatever wrapper is
+    # INSTALLED: `ROOT` alone only makes `scripts._upstream_alias` importable,
+    # and `invisible_playwright` then resolves to the editable install, which
+    # from a worktree is somebody else's tree on somebody else's commit. A
+    # branch measured that way reports main's numbers as its own.
+    env["PYTHONPATH"] = os.pathsep.join([str(ROOT), str(ROOT / "src")])
 
     if not a.per_file:
         print("running: %s" % " ".join(argv[3:]))
