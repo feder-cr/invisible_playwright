@@ -92,6 +92,31 @@ class HarRecordingMetadata(TypedDict, total=False):
     content: Optional[HarContentPolicy]
 
 
+
+# MODIFIED by invisible_playwright: asyncio.wait without the 3.14 awaited-by leak.
+_discard_from_awaited_by = getattr(asyncio, "future_discard_from_awaited_by", None)
+
+
+async def wait_released(fs: Any, **kwargs: Any) -> Tuple[Set[Any], Set[Any]]:
+    """`asyncio.wait`, then take the waiting task back out of every future.
+
+    On Python 3.14 `asyncio.wait` records the calling task in each future's
+    awaited-by set and removes it only from the futures that complete
+    (CPython gh-152569). A future that outlives the call - the transport's
+    `on_error_future`, which every protocol message races, or a page's close
+    future - therefore kept every task that ever waited on it, with its frame
+    and locals, for the life of the connection. Discarding an absent waiter
+    is a no-op, so this is safe on every version.
+    """
+    fs = list(fs)
+    try:
+        return await asyncio.wait(fs, **kwargs)
+    finally:
+        task = asyncio.current_task()
+        if _discard_from_awaited_by is not None and task is not None:
+            for fut in fs:
+                _discard_from_awaited_by(fut, task)
+
 def prepare_record_har_options(params: Dict) -> Dict[str, Any]:
     out_params: Dict[str, Any] = {"path": str(params["recordHarPath"])}
     if "recordHarUrlFilter" in params:

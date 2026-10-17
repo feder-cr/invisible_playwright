@@ -60,6 +60,7 @@ from invisible_playwright._pw._impl._frame import Frame
 from invisible_playwright._pw._impl._greenlets import LocatorHandlerGreenlet
 from invisible_playwright._pw._impl._har_router import HarRouter
 from invisible_playwright._pw._impl._helper import (
+    wait_released,
     ColorScheme,
     Contrast,
     DocumentLoadState,
@@ -1162,7 +1163,7 @@ class Page(ChannelOwner):
         self._browser_context.set_default_navigation_timeout(0)
         self._browser_context.set_default_timeout(0)
         try:
-            await asyncio.wait(
+            await wait_released(
                 [
                     asyncio.create_task(
                         self._browser_context._channel.send("pause", None)

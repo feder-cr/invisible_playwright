@@ -1723,6 +1723,21 @@ class RequestDispatcher(Dispatcher):
             "frame": page.frame_for(frame_id).channel,
         })
 
+    @property
+    def collectable(self) -> bool:
+        """⛔ NOT WHILE IN FLIGHT. `requestFinished` and `requestFailed` still
+        name this request, and the client cannot resolve a guid it has been
+        told is gone. The page pops it from `_requests` on either."""
+        return self.request_id not in self.page._requests
+
+    def dispose(self, reason: Optional[str] = None) -> None:
+        # A collected document request must not be handed out again as the
+        # `newDocument` of a navigation the client can still ask about.
+        index = self.page._navigation_requests
+        if index.get(self.navigation_id) is self:
+            del index[self.navigation_id]
+        super().dispose(reason)
+
     def op_response(self, params: Dict) -> Any:
         return {"response": self.response.channel if self.response else None}
 
@@ -1890,6 +1905,14 @@ class RouteDispatcher(Dispatcher):
         self.request = request
         self.answered = False
         super().__init__(server, request.page, {"request": request.channel})
+
+    @property
+    def collectable(self) -> bool:
+        """⛔ NEVER. An answered route is disposed at once, so every Route
+        still registered is a request held in the network layer, and
+        collecting it would leave that request hanging with nothing able to
+        release it - see the class docstring."""
+        return False
 
     def _send(self, command: str, params: Dict) -> Any:
         if self.answered:

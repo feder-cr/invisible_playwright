@@ -16,6 +16,7 @@ import asyncio
 from typing import Any
 
 from invisible_playwright._pw._impl._connection import Connection
+from invisible_playwright._pw._impl._helper import wait_released
 from invisible_playwright._pw._impl._object_factory import create_remote_object
 from invisible_playwright._juggler.transport import make_transport
 from invisible_playwright._pw.async_api._generated import Playwright as AsyncPlaywright
@@ -49,7 +50,7 @@ class PlaywrightContextManager:
         loop.create_task(self._connection.run())
         playwright_future = self._connection.playwright_future
 
-        done, _ = await asyncio.wait(
+        done, _ = await wait_released(
             {self._connection._transport.on_error_future, playwright_future},
             return_when=asyncio.FIRST_COMPLETED,
         )
