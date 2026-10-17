@@ -1499,6 +1499,15 @@ class FrameDispatcher(Dispatcher):
         "  }"
         "  return out; }")
 
+    @staticmethod
+    def _structured(argument: Any) -> bool:
+        """Whether Playwright's serialized argument is an object, an array, a
+        date, a regular expression, a URL, an error, a typed array or a handle:
+        anything that is not a primitive."""
+        value = argument.get("value") if isinstance(argument, dict) else None
+        return isinstance(value, dict) and any(
+            tag in value for tag in ("o", "a", "d", "r", "u", "e", "ta", "h"))
+
     def _expect_probe(self, expression: str, selector: Optional[str],
                       params: Dict) -> Dict:
         """One reading of an expect condition, on the page as it is NOW:
@@ -1513,6 +1522,17 @@ class FrameDispatcher(Dispatcher):
                 "expect('to.match.aria') is not implemented yet: the template is "
                 "YAML that Playwright's server parses, and this one has no parser "
                 "for it")
+        if expression == "to.have.property" and self._structured(params.get("expectedValue")):
+            # ⛔ A FALSE "DIFFERENT" IS WORSE THAN A REFUSAL. Upstream compares in
+            # the page's own realm; here the page's value is read from the
+            # utility world, and Playwright's `deepEquals` refuses two objects
+            # whose constructors are not the same one, which across realms they
+            # never are. A primitive compares by value and is answered.
+            raise ProtocolException(
+                "expect('to.have.property') with an object, an array or a date "
+                "as the expected value is not implemented yet: the page's value "
+                "lives in another realm, and comparing it would always say it "
+                "differs. A primitive value is compared.")
         if selector:
             frame_id, sel = self.enter_frames(selector)
         else:
