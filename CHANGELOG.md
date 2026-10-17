@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.37.0] - 2026-10-17
+
+The pin moves to invisible-core 49.44.0, on the firefox-49 engine.
+
 ### Changed
 - **Your code runs in a world of its own, where a page that replaced a
   standard API cannot count your calls.** `evaluate`, `evaluate_handle`,
