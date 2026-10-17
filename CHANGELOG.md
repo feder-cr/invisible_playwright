@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.39.0] - 2026-10-18
+
+### Fixed
+- **`expect()` works for every condition, not two families.** The server
+  re-wrote Playwright's assertions in Python one condition at a time and had
+  written `to_have_count` and the `to_be_*` states; `to_have_text`,
+  `to_contain_text`, `to_have_value`, `to_have_values`, `to_have_attribute`,
+  `to_have_class`, `to_contain_class`, `to_have_css`, `to_have_id`,
+  `to_have_js_property`, `to_be_focused`, `to_be_empty`, `to_be_in_viewport`,
+  `to_have_title`, `to_have_url` and the accessibility ones answered "is not
+  implemented yet". Each reading is now Playwright's own `expect`, from the
+  injected script this package already ships, called the way Playwright's
+  server calls it: strict mode, `element(s) not found`, and a JavaScript error
+  that ends the wait with its message. On Playwright's own suite, its expect
+  tests on firefox-49 went from 30 of 94 passing to 75, with none lost.
+- `to_have_js_property` with an object, an array or a date as the expected
+  value is refused by name: the page's value lives in another realm, and
+  comparing it would always report a difference. Primitives are compared.
+  `to_match_aria_snapshot` is refused by name too: its template is YAML that
+  Playwright's server parses, and this one has no parser for it.
+
 ## [0.38.0] - 2026-10-18
 
 The pin moves to invisible-core 49.46.0. The desktop settings a page can read -
