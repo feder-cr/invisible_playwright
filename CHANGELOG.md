@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.36.3] - 2026-10-17
+
 ### Fixed
 - **Answering a route whose request a navigation already aborted no longer
   raises into the caller's next call.** With `page.route("**/*", lambda r:
