@@ -480,10 +480,12 @@ def test_a_page_replaying_held_events_agrees_with_the_lifecycle():
 
 def test_the_page_answers_with_the_lifecycles_memory_and_keeps_none():
     """Known bad: a page that classified requests on its own could disagree with
-    the lifecycle about one. Here the lifecycle is told an ordinary URL is a
-    favicon's, and the page must hide it: its answer can only be the lifecycle's."""
+    the lifecycle about one. Here the lifecycle and the page are handed the same
+    request id with different URLs, and the page must answer as the lifecycle
+    did, whatever its own copy of the event says."""
     page, told, _ = _favicon_page(intercepting=False)
-    page.lifecycle.favicons._ids["X"] = None
+    page.lifecycle.c.dispatch_event("Network.requestWillBeSent", {
+        "requestId": "X", "url": "http://127.0.0.1/favicon.ico"}, "S1")
     page._on_juggler_event("Network.requestWillBeSent", {
         "requestId": "X", "url": "http://127.0.0.1/data.json", "method": "GET",
         "frameId": "F1", "isIntercepted": False, "headers": []})
