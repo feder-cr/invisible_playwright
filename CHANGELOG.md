@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.36.3] - 2026-10-17
+
 ### Fixed
 - **A finished task is no longer kept alive by a future it raced.** On Python
   3.14 `asyncio.wait` records the waiting task in every future's awaited-by set
