@@ -40,7 +40,6 @@ from invisible_core.juggler import PageActs, popup_number
 from invisible_core.juggler import connection as juggler
 from invisible_core.juggler.actions import Actions
 from invisible_core.juggler.deadline import Deadline
-from invisible_core.juggler.favicon import FaviconRequests
 from .dispatcher import (Dispatcher, ExpectNotMet, ProtocolException,
                          Server)
 from invisible_core.juggler.injected import ContextDestroyed, InjectedScript
@@ -2058,10 +2057,6 @@ class PageDispatcher(Dispatcher):
         self._held_lock = threading.Lock()
         self.lifecycle = Lifecycle(conn, session)
         self.injected = InjectedScript(conn, session)
-        # This page's own memory of which requests are the favicon: the
-        # lifecycle keeps its own, because the events held at birth reach
-        # this page after the lifecycle has finished with them (`favicon.py`).
-        self._favicons = FaviconRequests()
         conn.add_listener(self._route_juggler_event)
         try:
             self._build(server, context, session, conn, opener)
@@ -2419,11 +2414,15 @@ class PageDispatcher(Dispatcher):
                 # reaches `load` leaves a wait on it hanging forever.
                 self.frame_for(params["frameId"]).emit(
                     "loadstate", {"add": state})
-        elif method.startswith("Network.") and self._favicons.see(method, params):
+        elif (method.startswith("Network.")
+              and self.lifecycle.favicons.is_favicon(params.get("requestId"))):
             # The browser's own favicon request, as Playwright treats it
             # (`invisible_core.juggler.favicon`): no event reaches the client
             # and no route handler sees it. Held by a route, it goes on to the
             # network instead of being aborted, as from any Firefox.
+            # ⛔ ASKED, NOT KEPT: the lifecycle read this event first and holds
+            # the session's one memory of it, so this page and the lifecycle
+            # cannot disagree about a request, a redirect or a replay.
             if method == "Network.requestWillBeSent" and params.get("isIntercepted"):
                 self._let_through(params.get("requestId"))
         elif method == "Network.requestWillBeSent":

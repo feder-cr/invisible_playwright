@@ -41,8 +41,9 @@ from types import SimpleNamespace
 
 import pytest
 
+from invisible_core.juggler.connection import EventListeners
 from invisible_core.juggler.favicon import FaviconRequests
-from invisible_core.juggler.lifecycle import NavigationMark
+from invisible_core.juggler.lifecycle import Lifecycle, NavigationMark
 
 
 # -- the unit half: the server, fed the events a navigation produces ---------
@@ -69,7 +70,9 @@ def _bare_page():
     page._requests = {}
     page._request_log = []
     page._navigation_requests = {}
-    page._favicons = FaviconRequests()
+    # The network branches ask the session's lifecycle which requests are the
+    # favicon; an empty memory answers "none", as for a page without one.
+    page.lifecycle = SimpleNamespace(favicons=FaviconRequests())
     page.messages = up
     page.context = SimpleNamespace(emit=lambda *a, **k: None, intercepting=False)
     page.frame = SimpleNamespace(frame_id="F1")
@@ -363,15 +366,28 @@ def test_a_response_with_no_certificate_answers_None(sent):
     assert response.op_security_details({}) == {"value": None}
 
 
+class _Pipe(EventListeners):
+    """The subscriber registry the session's lifecycle listens on, and the
+    `post` a held request is released with."""
+
+    def __init__(self, sent):
+        super().__init__()
+        self._sent = sent
+
+    def post(self, method, params=None, session=None):
+        self._sent.append((method, params, session))
+
+
 def _favicon_page(intercepting):
-    """A bare page that records what reaches the client and what is sent."""
+    """A bare page with a REAL lifecycle on its session, recording what reaches
+    the client and what is posted to the engine."""
     page = _bare_page()
     told, sent = [], []
-    conn = SimpleNamespace(post=lambda method, params=None, session=None:
-                           sent.append((method, params, session)))
+    pipe = _Pipe(sent)
+    page.lifecycle = Lifecycle(pipe, "S1")
     page.context = SimpleNamespace(
         emit=lambda event, params: told.append(event), intercepting=intercepting,
-        browser=SimpleNamespace(conn=conn))
+        browser=SimpleNamespace(conn=pipe))
     page.session = "S1"
     page.intercepting = False
 
@@ -384,19 +400,41 @@ def _favicon_page(intercepting):
     return page, told, sent
 
 
-def _favicon_chain(page, *, intercepted):
-    """The browser's favicon request, redirected once, in the engine's order."""
+def _chain(*, intercepted):
+    """The browser's favicon request, redirected once, in the engine's order:
+    a hop is finished BEFORE the next one is sent."""
+    out = []
     for rid, url, came_from in (("FAV", "http://127.0.0.1/favicon.ico", None),
                                 ("FAV-redirect1", "http://127.0.0.1/icon.png", "FAV")):
         params = {"requestId": rid, "url": url, "method": "GET", "frameId": "F1",
                   "isIntercepted": intercepted, "headers": []}
         if came_from:
             params["redirectedFrom"] = came_from
-        page._on_juggler_event("Network.requestWillBeSent", params)
-        page._on_juggler_event("Network.responseReceived", {
-            "requestId": rid, "status": 302 if came_from is None else 200,
-            "statusText": "", "headers": []})
-        page._on_juggler_event("Network.requestFinished", {"requestId": rid})
+        out += [("Network.requestWillBeSent", params),
+                ("Network.responseReceived", {
+                    "requestId": rid, "status": 302 if came_from is None else 200,
+                    "statusText": "", "headers": []}),
+                ("Network.requestFinished", {"requestId": rid})]
+    return out
+
+
+def _deliver(page, events, *, held=False):
+    """As the connection delivers: the session's lifecycle first, the page
+    after it. `held`: the page replays them only once the lifecycle has seen
+    the whole chain, as for the events a page holds at its birth."""
+    if held:
+        for method, params in events:
+            page.lifecycle.c.dispatch_event(method, params, "S1")
+        for method, params in events:
+            page._on_juggler_event(method, params)
+        return
+    for method, params in events:
+        page.lifecycle.c.dispatch_event(method, params, "S1")
+        page._on_juggler_event(method, params)
+
+
+def _favicon_chain(page, *, intercepted, held=False):
+    _deliver(page, _chain(intercepted=intercepted), held=held)
 
 
 def test_the_favicon_reaches_the_client_with_no_event():
@@ -424,19 +462,45 @@ def test_a_request_held_after_interception_went_off_is_released_without_blocking
     event neither the page nor the context intercepts any more. It used to
     `send` the release from the reader thread, the deadlock the favicon found."""
     page, told, sent = _favicon_page(intercepting=False)
-    page._on_juggler_event("Network.requestWillBeSent", {
+    _deliver(page, [("Network.requestWillBeSent", {
         "requestId": "R", "url": "http://127.0.0.1/data.json", "method": "GET",
-        "frameId": "F1", "isIntercepted": True, "headers": []})
+        "frameId": "F1", "isIntercepted": True, "headers": []})])
     assert sent == [("Network.resumeInterceptedRequest", {"requestId": "R"}, "S1")]
+    assert told == ["request"]
+
+
+def test_a_page_replaying_held_events_agrees_with_the_lifecycle():
+    """The page replays the events it held at birth after the lifecycle has
+    seen the whole chain, finishes included. One memory, so the same answer."""
+    page, told, _ = _favicon_page(intercepting=False)
+    _favicon_chain(page, intercepted=False, held=True)
+    assert told == []
+    assert page.lifecycle.inflight == 0
+
+
+def test_the_page_answers_with_the_lifecycles_memory_and_keeps_none():
+    """Known bad: a page that classified requests on its own could disagree with
+    the lifecycle about one. Here the lifecycle is told an ordinary URL is a
+    favicon's, and the page must hide it: its answer can only be the lifecycle's."""
+    page, told, _ = _favicon_page(intercepting=False)
+    page.lifecycle.favicons._ids["X"] = None
+    page._on_juggler_event("Network.requestWillBeSent", {
+        "requestId": "X", "url": "http://127.0.0.1/data.json", "method": "GET",
+        "frameId": "F1", "isIntercepted": False, "headers": []})
+    assert told == []
+    # And a favicon URL the lifecycle has not seen is not hidden by the page.
+    page._on_juggler_event("Network.requestWillBeSent", {
+        "requestId": "Y", "url": "http://127.0.0.1/favicon.ico", "method": "GET",
+        "frameId": "F1", "isIntercepted": False, "headers": []})
     assert told == ["request"]
 
 
 def test_a_page_request_beside_the_favicon_is_still_reported():
     page, told, _ = _favicon_page(intercepting=False)
     _favicon_chain(page, intercepted=False)
-    page._on_juggler_event("Network.requestWillBeSent", {
+    _deliver(page, [("Network.requestWillBeSent", {
         "requestId": "R", "url": "http://127.0.0.1/data.json", "method": "GET",
-        "frameId": "F1", "isIntercepted": False, "headers": []})
+        "frameId": "F1", "isIntercepted": False, "headers": []})])
     assert told == ["request"]
 
 
