@@ -1952,9 +1952,15 @@ class RouteDispatcher(Dispatcher):
         """⛔ The error code travels: `NS_ERROR_ABORT` and `NS_ERROR_FAILURE`
         are not the same thing to a page that inspects the failure, and
         collapsing every reason into one is the sort of flattening a detector
-        can read."""
+        can read.
+
+        ⛔ AND A `route.abort()` WITH NO CODE IS "failed", as Playwright's own
+        server has it (`errorCode || "failed"`), which the engine turns into
+        `NS_ERROR_FAILURE`. This defaulted to "aborted", so the navigation
+        failed with `NS_ERROR_ABORT` where Playwright's Firefox says
+        `NS_ERROR_FAILURE` (B325)."""
         return self._send("Network.abortInterceptedRequest",
-                          {"errorCode": params.get("errorCode") or "aborted"})
+                          {"errorCode": params.get("errorCode") or "failed"})
 
     def op_continue(self, params: Dict) -> Any:
         payload = only_set({

@@ -47,6 +47,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   session.** Its release was sent from the thread that delivers the engine's
   events and waited for a reply only that thread could read; the next command
   of the page then waited forever.
+- **`route.abort()` with no error code fails the request with
+  `NS_ERROR_FAILURE`, as in Playwright on Firefox.** It failed with
+  `NS_ERROR_ABORT`, the code of `route.abort("aborted")`.
 
 ## [0.36.2] - 2026-10-17
 
