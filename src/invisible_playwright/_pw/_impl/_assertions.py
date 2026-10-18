@@ -27,7 +27,8 @@ from invisible_playwright._pw._impl._connection import format_call_log
 from invisible_playwright._pw._impl._errors import Error
 from invisible_playwright._pw._impl._fetch import APIResponse
 from invisible_playwright._pw._impl._helper import is_textual_mime_type
-from invisible_playwright._pw._impl._js_handle import parse_value
+# MODIFIED by invisible_playwright: `parse_value` is no longer imported, since
+# `_expect_impl` uses the value `Frame._expect` already parsed ([B344]).
 from invisible_playwright._pw._impl._locator import Locator
 from invisible_playwright._pw._impl._page import Page
 from invisible_playwright._pw._impl._str_utils import escape_regex_flags
@@ -106,8 +107,16 @@ class AssertionsBase:
             aria_snapshot = None
             if isinstance(received, dict):
                 aria_snapshot = received.get("ariaSnapshot")
-                value = received.get("value")
-                actual = parse_value(value) if value is not None else None
+                # MODIFIED by invisible_playwright: the value is used as it
+                # arrives. `Frame._expect` has already turned it from its wire
+                # form into a Python value, and a second `parse_value` read that
+                # value AS the wire form: a dict whose keys are serialization
+                # tags became something else, {"v": "x"} became "x" and
+                # {"n": 5} became 5, and {"a": 1} died with KeyError: 'id'
+                # instead of giving the assertion's message. Identical in
+                # Playwright 1.61.0 and on its main branch of 2026-10-16
+                # ([B344]).
+                actual = received.get("value")
             else:
                 actual = received
             if self._custom_message:
