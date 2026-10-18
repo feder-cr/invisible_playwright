@@ -53,13 +53,6 @@ from ._reaper import SessionToken, guard_for
 # and the use sites below read it from there. This name survives only because
 # async_api imports it, and it resolves to the same declaration.
 
-# The IANA -> POSIX TZ table moved to `_session` on 2026-07-27, so the async
-# class no longer has to import it FROM the sync module. Re-exported under the
-# original names because tests and `async_api` import them from here.
-_IANA_TO_POSIX_TZ = _session._IANA_TO_POSIX_TZ
-_tz_env = _session.tz_env
-
-
 class InvisiblePlaywright(_session.CommonLaunch):
     """Context manager launching a patched Firefox with a deterministic profile.
 

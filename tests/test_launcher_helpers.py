@@ -19,69 +19,6 @@ from invisible_playwright import InvisiblePlaywright, _cursor
 # because the file holding it does not use it - another module can be reaching
 # a name THROUGH it, and no single-file analysis can see that.
 from invisible_core.constants import TASKBAR_PX as _TASKBAR_H
-from invisible_playwright.launcher import (
-    _IANA_TO_POSIX_TZ,
-    _tz_env,
-)
-
-
-# ── _tz_env (IANA → POSIX) ────────────────────────────────────────────
-
-
-@pytest.mark.unit
-def test_tz_env_eastern_us_maps_to_posix_with_dst():
-    """Eastern US zones share the same POSIX form; spot-check a few."""
-    assert _tz_env("America/New_York") == "EST5EDT"
-    assert _tz_env("America/Detroit") == "EST5EDT"
-    assert _tz_env("America/Indiana/Indianapolis") == "EST5EDT"
-
-
-@pytest.mark.unit
-def test_tz_env_central_mountain_pacific_map_to_posix_with_dst():
-    assert _tz_env("America/Chicago") == "CST6CDT"
-    assert _tz_env("America/Denver") == "MST7MDT"
-    assert _tz_env("America/Los_Angeles") == "PST8PDT"
-
-
-@pytest.mark.unit
-def test_tz_env_phoenix_strips_dst():
-    """Arizona (outside Navajo Nation) does NOT observe DST. The POSIX
-    form must be ``MST7`` (no second segment) - using ``MST7MDT`` caused
-    FP Pro to deduce vpn_origin_timezone=America/Denver from a 60-minute
-    offset error in summer. Guard against regression of that mapping.
-    """
-    assert _tz_env("America/Phoenix") == "MST7"
-
-
-@pytest.mark.unit
-def test_tz_env_honolulu_strips_dst():
-    """Hawaii does not observe DST. POSIX form ``HST10`` (no DST segment)."""
-    assert _tz_env("Pacific/Honolulu") == "HST10"
-
-
-@pytest.mark.unit
-def test_tz_env_passthrough_for_unmapped_zone():
-    """Zones outside the lookup table fall through to their IANA name -
-    glibc on Linux reads /usr/share/zoneinfo directly. Windows MSVCRT
-    won't understand them but that's accepted; the mapping covers the
-    common residential-proxy zones."""
-    assert _tz_env("Europe/Berlin") == "Europe/Berlin"
-    assert _tz_env("Asia/Tokyo") == "Asia/Tokyo"
-
-
-@pytest.mark.unit
-def test_tz_env_empty_string_passes_through():
-    """Empty string is never set as ``TZ`` by the caller, but the helper
-    is still defensive - return it unchanged rather than raising."""
-    assert _tz_env("") == ""
-
-
-@pytest.mark.unit
-def test_iana_to_posix_phoenix_and_honolulu_present():
-    """Sanity-check the no-DST entries are still in the mapping; deleting
-    them would silently revert the Phoenix DST bug."""
-    assert _IANA_TO_POSIX_TZ["America/Phoenix"] == "MST7"
-    assert _IANA_TO_POSIX_TZ["Pacific/Honolulu"] == "HST10"
 
 
 # ── InvisiblePlaywright._humanize_max_seconds ─────────────────────────
@@ -295,7 +232,7 @@ def test_build_env_drops_the_variables_the_display_names_absent():
     ``None`` value and, worse, keep ``WAYLAND_DISPLAY``."""
     from invisible_playwright._session import build_env
     base = {"PATH": "/usr/bin", "WAYLAND_DISPLAY": "wayland-0", "DISPLAY": ":0"}
-    env = build_env(timezone=None, srflx_declared=None, base_env=base,
+    env = build_env(srflx_declared=None, base_env=base,
                     display_env={"DISPLAY": ":123", "GDK_BACKEND": "x11",
                                  "WAYLAND_DISPLAY": None, "PULSE_SERVER": None})
     assert env["DISPLAY"] == ":123"

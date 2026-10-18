@@ -11,40 +11,7 @@ from invisible_core import generate_profile
 # a name THROUGH it, and no single-file analysis can see that.
 from invisible_core.constants import (TASKBAR_PX as _TASKBAR_H,
                                       WINDOW_FRAME_BY_DPR as _FRAMES)
-from invisible_playwright.launcher import (
-    InvisiblePlaywright,
-    _IANA_TO_POSIX_TZ,
-    _tz_env,
-)
-
-
-def test_tz_env_known_iana_returns_posix():
-    assert _tz_env("America/New_York") == "EST5EDT"
-    assert _tz_env("America/Chicago") == "CST6CDT"
-    assert _tz_env("America/Los_Angeles") == "PST8PDT"
-
-
-def test_tz_env_arizona_no_dst():
-    """America/Phoenix must NOT have a DST suffix - Arizona doesn't observe DST."""
-    assert _tz_env("America/Phoenix") == "MST7"
-
-
-def test_tz_env_hawaii_no_dst():
-    assert _tz_env("Pacific/Honolulu") == "HST10"
-
-
-def test_tz_env_unknown_iana_passes_through():
-    """Linux glibc parses IANA names directly via /usr/share/zoneinfo,
-    so unknown zones should fall through unchanged."""
-    assert _tz_env("Europe/Berlin") == "Europe/Berlin"
-    assert _tz_env("Asia/Tokyo") == "Asia/Tokyo"
-
-
-def test_iana_to_posix_table_well_formed():
-    for iana, posix in _IANA_TO_POSIX_TZ.items():
-        assert "/" in iana, f"{iana} is not an IANA zone identifier"
-        assert "/" not in posix, f"{posix} should be POSIX format, no slashes"
-        assert posix[0].isalpha(), f"{posix} should start with a letter"
+from invisible_playwright.launcher import InvisiblePlaywright
 
 
 def test_chrome_offsets_are_positive_ints():

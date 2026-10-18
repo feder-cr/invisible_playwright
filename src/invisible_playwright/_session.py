@@ -71,43 +71,8 @@ def true_headless_requested(env: Optional[Dict[str, str]] = None) -> bool:
 
 #: The IANA -> POSIX conversion comes from the core, which is where the table
 #: lives. It was duplicated here byte-for-byte - ten entries, including the
-#: Phoenix row that exists because mapping Arizona to MST7MDT made libc apply
-#: DST and an identification service deduce a Denver origin. The core's own
-#: comment admitted its copy had been "copied verbatim from the wrapper", so
-#: the two had a documented keep-in-sync obligation and nothing enforcing it.
-#: `tz_env` was made public in the core for exactly this reason. (No version
-#: number here on purpose: the pin lives in pyproject.toml and a test
-#: forbids a second copy of it anywhere in src/, prose included.)
-#
-#: GUARDED, because an import that fails must say WHY. Taking these names
-#: unguarded meant that an environment holding an older core died with
-#: `ImportError: cannot import name 'IANA_TO_POSIX_TZ' from 'invisible_core'` -
-#: a message about a symbol, from a package the user did not choose the version
-#: of, on the browser launch path. The pin machinery exists to explain exactly
-#: this, and a bare module-level import walks straight past it. Reported by a
-#: user within minutes of the change.
-try:
-    from invisible_core import (  # noqa: F401 - the import IS the probe
-        IANA_TO_POSIX_TZ as _IANA_TO_POSIX_TZ,
-        tz_env,
-    )
-except ImportError as _exc:  # pragma: no cover - exercised by the old-core probe
-    from ._pin import declared_core_pin as _declared_core_pin, reinstall_command
-
-    try:
-        _want = _declared_core_pin() or "a newer version"
-    except Exception:
-        _want = "a newer version"
-    raise ImportError(
-        f"invisible-playwright needs invisible-core {_want}: the installed one "
-        f"does not provide the timezone conversion this version imports "
-        f"({_exc}). Reinstall it with `{reinstall_command()}`, which "
-        f"pulls the core it was built against."
-    ) from _exc
-
 def build_env(
     *,
-    timezone: Optional[str],
     #: The address to DECLARE as srflx, or None to declare nothing and let the
     #: real one through. ⛔ This is NOT the egress IP: it is a DECISION the
     #: core makes in a single place, looking at the capabilities of the egress
@@ -149,7 +114,7 @@ def build_env(
     What is composed here is only what needs the EXECUTABLE: the manifest is
     verified against the engine's own fonts before its path is handed over.
     The environment itself is composed by the core's `build_launch_env`, the
-    one place that knows TZ, the WebRTC declaration, the manifest variable and
+    one place that knows the WebRTC declaration, the manifest variable and
     the hidden surface's `launch_env()`; until 0.25.2 this function was a twin
     of that body, and the hidden-surface half of the contract lived only here.
     """
@@ -175,7 +140,7 @@ def build_env(
                     f"(e.g. {missing[:3]}). Engine: {executable}. The metrics "
                     f"would describe fonts that are not there.")
         manifest_path = cached_font_manifest_path(manifest)
-    return build_launch_env({}, timezone=timezone, srflx_declared=srflx_declared,
+    return build_launch_env({}, srflx_declared=srflx_declared,
                             manifest_path=manifest_path, base_env=base_env,
                             display_env=display_env)
 
@@ -458,8 +423,7 @@ class CommonLaunch:
         """
         vd = self._virtual_display
         return self._session_token.stamp(
-            build_env(timezone=self._timezone,
-                      srflx_declared=self._srflx_declared,
+            build_env(srflx_declared=self._srflx_declared,
                       profile=self._profile,
                       executable=resolve_executable(self._binary_path),
                       display_env=vd.launch_env() if vd is not None else None))
