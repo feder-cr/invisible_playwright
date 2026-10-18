@@ -13,19 +13,20 @@ Measured on 2026-09-14 by driving a real browser through the MCP server:
     /ARGH/                    ran as  /nullH/
     const ARG = 5             ran as  const null = 5    and was a SyntaxError
 
-Three of those four are SILENT, which is the bad kind: no error, no warning,
-just a wrong answer that a caller builds its next decision on. The three
-letters only have to appear inside a longer word, so MARGIN, LARGE and CHARGE
-are all affected.
+⛔ AND THEN THE WRAPPER ITSELF WENT ([B340]). The fix of 2026-09-14 kept the
+caller's text inside `(() => { const r = (TEXT); return typeof r === 'function'
+? r(ARG) : r; })()`, pinned here byte for byte because a page can look at the
+code it runs. An expression is all a pair of parentheses holds, so every
+statement died with "missing ) in parenthetical" where Playwright, which runs
+the text with `globalThis.eval`, evaluates it. The text is now evaluated as a
+script on its own, and a function it produced is called by a protocol call
+with the argument as a protocol value. What a page can see of the code is the
+caller's text and nothing of this package's - a stronger form of what the
+byte-for-byte test protected - and that is what the first test pins now.
+The change of shape was decided by the project manager on 2026-10-18.
 
-⛔ AND THE FIRST TEST HERE IS NOT ABOUT THE DEFECT. `op_evaluate` runs the
-caller's code, the one thing this server deliberately runs outside the utility
-world, and a site can still look at it: a function the caller hands to the
-page shows its source to the page's toString. That makes the emitted script
-something a site can look at, so a change to its SHAPE is a stealth change even when it is a
-correctness fix. The script is pinned byte for byte against what shipped
-before: for an expression that never spelled the placeholder, this fix must
-produce exactly the same characters, and that is what the first test proves.
+No browser here: the server's own functions run against an injected script
+that records what it is asked.
 """
 from __future__ import annotations
 
@@ -34,35 +35,73 @@ import pathlib
 
 import pytest
 
-from invisible_playwright._juggler import _marshal
-from invisible_playwright._juggler._marshal import _as_callable, _with_argument
+from invisible_playwright._juggler import _marshal, server
+from invisible_playwright._juggler._marshal import _as_script
+from invisible_playwright._juggler.server import _Predicate, _run_callers_code
 
-#: What the wrapper emitted before this fix, captured from the shipped code.
-#: Any change to these strings changes what a page can see, so it has to be a
-#: decision rather than a side effect of tidying.
-SHIPPED = [
-    ({"expression": "document.title"},
-     "(() => { const r = (document.title);"
-     "  return typeof r === 'function' ? r(null) : r; })()"),
-    ({"expression": "() => x + 1", "arg": {"n": 7}},
-     "(() => { const r = (() => x + 1);"
-     "  return typeof r === 'function' ? r(7) : r; })()"),
-    ({"expression": "els => els.length", "arg": {"s": "hello"}},
-     "(() => { const r = (els => els.length);"
-     '  return typeof r === \'function\' ? r("hello") : r; })()'),
+
+class _Injected:
+    """Records every command; `evaluated` are the RemoteObjects the scripts
+    produce, in order, and `called` the one every call answers."""
+
+    def __init__(self, *evaluated, called=None, context="world-1"):
+        self.evaluated = list(evaluated)
+        self.called = called if called is not None else {"value": "called"}
+        self.context = context
+        self.log = []
+
+    def caller_context(self, frame_id, **options):
+        return self.context
+
+    def evaluate_raw(self, context, expression, **options):
+        self.log.append(("evaluate", context, expression))
+        return self.evaluated.pop(0)
+
+    def call_raw(self, context, declaration, args, by_value=False, **options):
+        self.log.append(("call", context, declaration, args, by_value))
+        if isinstance(self.called, Exception):
+            raise self.called
+        return self.called
+
+    def release(self, context, object_id):
+        self.log.append(("release", context, object_id))
+
+    def texts(self):
+        """Every piece of code sent to the page."""
+        return [entry[2] for entry in self.log if entry[0] in ("evaluate", "call")]
+
+
+FUNCTION = {"type": "function", "objectId": "the-function"}
+
+
+SCRIPTS = [
+    ("document.title", "document.title"),
+    ("() => x + 1", "() => x + 1"),
+    ("setTimeout(() => { document.title = 'x' }, 2000);",
+     "setTimeout(() => { document.title = 'x' }, 2000);"),
+    ("  els => els.length\n", "els => els.length"),
+    ("const a = 1; a + 1", "const a = 1; a + 1"),
+    ("function f() { return 1 }", "(function f() { return 1 })"),
+    ("async function () {}", "(async function () {})"),
+    ("(1+2)", "(1+2)"),
+    # JavaScript's trim, not Python's strip: U+FEFF goes, U+0085 stays.
+    ("\ufeffdocument.title", "document.title"),
+    ("\x85document.title", "\x85document.title"),
 ]
 
 
-@pytest.mark.parametrize("params,shipped", SHIPPED,
-                         ids=["no argument", "number", "string"])
-def test_the_script_the_page_runs_is_byte_for_byte_what_it_was(params, shipped):
-    """The page must not be able to tell this fix happened.
+@pytest.mark.parametrize("text,evaluated", SCRIPTS, ids=[t for t, _ in SCRIPTS])
+def test_the_script_the_page_evaluates_is_the_callers_text(text, evaluated):
+    """Nothing of this package's is added to the caller's code: the text
+    arrives trimmed as JavaScript trims, and a function DECLARATION in
+    parentheses so that it is a value, which is Playwright's own
+    normalisation. A statement with its semicolon stays a statement.
 
-    Known-bad: change one character of the template - a space, the name `r`,
-    the arrow - and this goes red, which is the point. The wrapper is page
-    visible, so its shape is not free to drift.
-    """
-    assert _with_argument(params) == shipped
+    Known-bad: put the text back inside `const r = (...)`, or any wrapper."""
+    injected = _Injected({"value": 1})
+    _run_callers_code(injected, "frame", {"expression": text}, by_value=True)
+    assert injected.log == [("evaluate", "world-1", evaluated)]
+    assert _as_script(text) == evaluated
 
 
 SPELLS_IT = [
@@ -77,101 +116,159 @@ SPELLS_IT = [
 @pytest.mark.parametrize("expression,word", SPELLS_IT,
                          ids=[w for _, w in SPELLS_IT])
 def test_an_expression_that_spells_the_placeholder_is_left_alone(expression, word):
-    """The caller's code is an argument to the format string, never a place
-    the format string looks.
-
-    Known-bad: go back to `_as_callable(expression).replace("ARG", ...)` and
-    every one of these loses its word.
-    """
-    built = _with_argument({"expression": expression})
-    assert word in built, (
-        "the caller wrote %r and the script that runs does not contain it: %r"
-        % (word, built))
-    assert "null" not in built.replace("r(null)", ""), (
-        "something in the caller's expression was replaced: %r" % built)
+    """The caller's code is sent as it is; nothing looks inside it."""
+    injected = _Injected(FUNCTION)
+    _run_callers_code(injected, "frame", {"expression": expression, "arg": {"n": 7}},
+                      by_value=True)
+    assert injected.texts()[0] == expression and word in injected.texts()[0]
 
 
-def test_the_argument_still_reaches_the_function():
-    """The placeholder moved, so the thing it existed for has to be re-proved.
+@pytest.mark.parametrize("arg,value", [
+    (None, None), ({"n": 7}, 7), ({"s": "hi"}, "hi"), ({"b": True}, True),
+    ({"a": [{"n": 1}, {"n": 2}]}, [1, 2]),
+    ({"o": [{"k": "k", "v": {"n": 1}}]}, {"k": 1}),
+], ids=["none", "number", "string", "bool", "list", "object"])
+def test_the_argument_reaches_the_function_as_a_protocol_value(arg, value):
+    """The argument is the call's last protocol argument and in no text: there
+    is no placeholder to substitute, because there is no template."""
+    injected = _Injected(FUNCTION)
+    params = {"expression": "f"} if arg is None else {"expression": "f", "arg": arg}
+    _run_callers_code(injected, "frame", params, by_value=True)
+    call = next(entry for entry in injected.log if entry[0] == "call")
+    assert call[3] == [{"objectId": "the-function"}, {"value": value}]
+    assert all("7" not in text and "hi" not in text for text in injected.texts())
 
-    Known-bad: drop the second `%s` and the argument never arrives.
-    """
-    assert "r(null)" in _with_argument({"expression": "f"})
-    assert "r(7)" in _with_argument({"expression": "f", "arg": {"n": 7}})
-    assert 'r("hi")' in _with_argument({"expression": "f", "arg": {"s": "hi"}})
-    assert "r(true)" in _with_argument({"expression": "f", "arg": {"b": True}})
-    assert "r([1, 2])" in _with_argument(
-        {"expression": "f", "arg": {"a": [{"n": 1}, {"n": 2}]}})
-    assert 'r({"k": 1})' in _with_argument(
-        {"expression": "f", "arg": {"o": [{"k": "k", "v": {"n": 1}}]}})
+
+def test_the_receivers_come_first_and_the_argument_last():
+    """`fn(element, arg)`, Playwright's contract for the element-scoped calls."""
+    injected = _Injected(FUNCTION)
+    _run_callers_code(injected, "frame", {"expression": "f", "arg": {"n": 2}},
+                      ["el-1", "el-2"], by_value=False)
+    call = next(entry for entry in injected.log if entry[0] == "call")
+    assert call[3] == [{"objectId": "the-function"}, {"objectId": "el-1"},
+                       {"objectId": "el-2"}, {"value": 2}]
+    assert call[4] is False
 
 
-def test_the_wrapper_cannot_be_built_without_saying_what_the_argument_is():
-    """`_as_callable` takes the argument now, so there is no half-built script
-    with a placeholder in it for somebody to substitute later.
+def test_the_function_is_released_after_its_call_even_when_it_throws():
+    injected = _Injected(FUNCTION, called=RuntimeError("the page threw"))
+    with pytest.raises(RuntimeError):
+        _run_callers_code(injected, "frame", {"expression": "f"}, by_value=True)
+    assert injected.log[-1] == ("release", "world-1", "the-function")
 
-    Known-bad: give the parameter a default and the old two-step shape becomes
-    writable again.
-    """
-    with pytest.raises(TypeError):
-        _as_callable("document.title")
+
+def test_an_object_read_by_value_is_released_and_a_primitive_is_answered_as_it_is():
+    injected = _Injected({"type": "object", "objectId": "the-object"},
+                         called={"value": {"a": 1}})
+    assert _run_callers_code(injected, "frame", {"expression": "({a: 1})"},
+                             by_value=True) == {"value": {"a": 1}}
+    assert [e[0] for e in injected.log] == ["evaluate", "call", "release"]
+    assert injected.log[-1] == ("release", "world-1", "the-object")
+
+    injected = _Injected({"value": 3})
+    assert _run_callers_code(injected, "frame", {"expression": "1 + 2"},
+                             by_value=True) == {"value": 3}
+    assert [e[0] for e in injected.log] == ["evaluate"]
+
+
+def test_by_reference_the_object_is_the_callers_to_keep():
+    """`evaluate_handle`: the reference IS the handle, so nothing releases it."""
+    injected = _Injected({"type": "object", "objectId": "the-object"})
+    assert _run_callers_code(injected, "frame", {"expression": "document"},
+                             by_value=False)["objectId"] == "the-object"
+    assert [e[0] for e in injected.log] == ["evaluate"]
+
+
+# --- wait_for_function --------------------------------------------------------
+
+def test_a_function_predicate_is_evaluated_once_per_world_and_called_each_turn():
+    """Playwright's poll keeps the function it evaluated (`evaledExpression`)
+    and calls it again on every turn; a new world evaluates the script again."""
+    injected = _Injected(FUNCTION, FUNCTION, called={"value": False})
+    predicate = _Predicate(injected, "frame", {"expression": "() => window.ready"})
+    assert predicate.turn() is None
+    assert predicate.turn() is None
+    assert [e[0] for e in injected.log] == ["evaluate", "call", "call"]
+    injected.context = "world-2"
+    predicate.turn()
+    assert [e[0] for e in injected.log] == ["evaluate", "call", "call", "evaluate", "call"]
+
+
+def test_an_expression_predicate_is_evaluated_again_each_turn():
+    injected = _Injected({"value": False}, {"value": 0}, {"value": "yes"})
+    predicate = _Predicate(injected, "frame", {"expression": "window.ready"})
+    assert predicate.turn() is None
+    assert predicate.turn() is None
+    assert predicate.turn() == {"value": "yes"}
+    assert [e[0] for e in injected.log] == ["evaluate"] * 3
+
+
+def test_the_predicate_releases_its_function_and_every_falsy_object():
+    injected = _Injected(FUNCTION, called={"type": "object", "subtype": "null",
+                                           "objectId": "falsy"})
+    predicate = _Predicate(injected, "frame", {"expression": "() => document.all"})
+    server.js_truthy, real = (lambda remote: False), server.js_truthy
+    try:
+        assert predicate.turn() is None
+    finally:
+        server.js_truthy = real
+    assert ("release", "world-1", "falsy") in injected.log
+    predicate.release()
+    assert injected.log[-1] == ("release", "world-1", "the-function")
+    predicate.release()
+    assert injected.log.count(("release", "world-1", "the-function")) == 1
+
+
+# --- the class: one place, no template, no placeholder -----------------------
+
+def _package_trees():
+    root = pathlib.Path(_marshal.__file__).resolve().parents[1]
+    for path in sorted(root.rglob("*.py")):
+        yield path.relative_to(root).as_posix(), ast.parse(
+            path.read_text(encoding="utf-8"), filename=str(path))
 
 
 def test_no_placeholder_is_left_anywhere_in_the_package():
-    """The class, not the instance. That word was only ever this placeholder,
-    so the package holding none of it is the property worth keeping: a second
-    helper that reintroduces the trick fails here rather than in a caller's
-    wrong answer six months later.
+    """The class, not the instance: that word was only ever the placeholder.
 
-    ⛔ READ AS SYNTAX, NOT AS TEXT, and the first draft proved why. A line scan
-    was red on the DOCSTRING three functions up, which explains the defect and
-    therefore spells it - the gate accused the paragraph that documents it.
-    A placeholder is a string literal that IS the word; prose that mentions it
-    is a longer string that merely contains it, and the tree tells them apart
-    where a grep cannot.
-
-    Known-bad: pass that word as a literal to anything in the package.
-    """
-    root = pathlib.Path(_marshal.__file__).resolve().parents[1]
-    guilty = []
-    for path in sorted(root.rglob("*.py")):
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Constant) and node.value == "A" + "RG":
-                guilty.append("%s:%d" % (path.relative_to(root), node.lineno))
-    assert not guilty, (
-        "the argument placeholder is back, and whatever reads it reads the "
-        "caller's code too: %s" % guilty)
+    ⛔ READ AS SYNTAX, NOT AS TEXT: a docstring that explains the defect spells
+    the word, and only the tree tells a literal that IS it from prose that
+    merely contains it. Known-bad: pass that word as a literal to anything."""
+    guilty = ["%s:%d" % (rel, node.lineno) for rel, tree in _package_trees()
+              for node in ast.walk(tree)
+              if isinstance(node, ast.Constant) and node.value == "A" + "RG"]
+    assert not guilty, guilty
 
 
-def test_one_function_builds_every_call_of_the_caller_s_expression():
-    """The class, for the other defect this file's builder had: a second copy.
+def test_the_callers_text_is_evaluated_in_one_place_and_wrapped_in_none():
+    """The other defect a builder had: copies. `handle.evaluate` was fixed to
+    pass the argument while `eval_on_selector`, built by hand two methods
+    away, kept dropping it. Now no literal wraps the caller's text, and the
+    text is evaluated only by `_run_callers_code` and the predicate's turn.
 
-    `handle.evaluate` was fixed to pass the argument and `eval_on_selector`,
-    built by hand two methods away, kept dropping it, because each wrapper
-    spelled the call on its own. A wrapper is a string literal that contains
-    the call, so the package may hold exactly one, and it is in `_marshal`.
-
-    Known-bad: write the wrapper inline in a dispatcher method again.
-    """
-    root = pathlib.Path(_marshal.__file__).resolve().parents[1]
-    builders = []
-    for path in sorted(root.rglob("*.py")):
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    Known-bad: evaluate `_as_script(...)` from a dispatcher method, or write a
+    `typeof r === 'function'` wrapper anywhere."""
+    wrappers, evaluators = [], set()
+    for rel, tree in _package_trees():
+        # A docstring that explains the old wrapper quotes it; it is prose,
+        # not a literal anything sends.
+        docstrings = {id(n.body[0].value) for n in ast.walk(tree)
+                      if isinstance(n, (ast.Module, ast.ClassDef, ast.FunctionDef,
+                                        ast.AsyncFunctionDef))
+                      and n.body and isinstance(n.body[0], ast.Expr)
+                      and isinstance(n.body[0].value, ast.Constant)}
         for node in ast.walk(tree):
             if (isinstance(node, ast.Constant) and isinstance(node.value, str)
+                    and id(node) not in docstrings
                     and "typeof r === 'function'" in node.value):
-                builders.append("%s:%d" % (path.relative_to(root).as_posix(),
-                                           node.lineno))
-    assert len(builders) == 1 and builders[0].startswith("_juggler/_marshal.py"), (
-        "the caller's expression is wrapped in more than one place, so a fix "
-        "to one leaves the others: %s" % builders)
-
-
-def test_the_receiver_comes_first_and_the_argument_second():
-    """`fn(element, arg)`: the element-scoped wrappers name their receiver."""
-    from invisible_playwright._juggler._marshal import _called_on
-
-    body = _called_on({"expression": "f", "arg": {"n": 2}}, "els")
-    assert "r(els, 2)" in body, body
-    assert "r(el, null)" in _called_on({"expression": "f"}, "el")
+                wrappers.append("%s:%d" % (rel, node.lineno))
+        for owner in ast.walk(tree):
+            if not isinstance(owner, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            for node in ast.walk(owner):
+                if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                        and node.func.id == "_as_script"):
+                    evaluators.add("%s::%s" % (rel, owner.name))
+    assert not wrappers, wrappers
+    assert evaluators == {"_juggler/server.py::_run_callers_code",
+                          "_juggler/server.py::turn"}, evaluators

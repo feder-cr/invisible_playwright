@@ -40,6 +40,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   "Invalid url /empty.html"; it now navigates to the base's `/empty.html`, as
   Playwright does. The address is resolved by the engine's own URL parser,
   the one that then navigates to it.
+- `page.evaluate`, `evaluate_handle`, `wait_for_function` and the
+  element-scoped evaluations run the caller's text as a script, as Playwright
+  does. The server put it inside an expression so that it could call the
+  result in the same pass, so a statement with its semicolon,
+  `setTimeout(() => {...}, 2000);`, died with "missing ) in parenthetical".
+  The text is now evaluated on its own and a function it produces is called
+  with the argument, and the page sees the caller's code without anything
+  around it. `wait_for_function` evaluates a function predicate once per
+  document and calls it on every turn, as Playwright's poll does.
 
 ## [0.39.0] - 2026-10-18
 

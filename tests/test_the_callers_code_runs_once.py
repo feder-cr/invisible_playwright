@@ -20,26 +20,29 @@ from invisible_playwright._juggler import server
 pytestmark = pytest.mark.unit
 
 
+FUNCTION = {"type": "function", "objectId": "fn"}
+
+
 class _Injected:
-    def __init__(self, answers):
+    """`answers` are what the caller's script produces, turn by turn;
+    `called` what its function answers, call by call."""
+
+    def __init__(self, answers, called=()):
         self.answers = list(answers)
+        self.called = list(called)
         self.calls = []
+        self.repeatable = False
 
-    def evaluate_in_caller(self, frame_id, expression, *, by_value=True, timeout=30.0,
-                           repeatable=False):
-        self.calls.append(("evaluate_in_caller", by_value))
-        self.repeatable = repeatable
+    def evaluate_raw(self, context, expression, *, by_value=False, timeout=30.0):
+        self.calls.append(("evaluate_raw", expression))
         answer = self.answers.pop(0)
         if isinstance(answer, BaseException):
             raise answer
         return answer
 
-    def poll_in_caller(self, frame_id, expression, *, timeout=30.0):
-        self.calls.append(("poll_in_caller", None))
-        answer = self.answers.pop(0)
-        if isinstance(answer, BaseException):
-            raise answer
-        return answer
+    def in_current_world(self, attempt, *, timeout):
+        self.repeatable = True
+        return attempt(None)
 
     def call(self, frame_id, declaration, *arguments, **kwargs):
         self.calls.append(("call", kwargs))
@@ -62,7 +65,9 @@ class _Injected:
 
     def call_raw(self, context, declaration, args, *, by_value=False, timeout=30.0):
         self.calls.append(("call_raw", (context, [a.get("objectId") for a in args])))
-        return {"value": 2}
+        if declaration == server._ARRAY:
+            return {"objectId": "els", "type": "object", "subtype": "array"}
+        return self.called.pop(0) if self.called else {"value": 2}
 
     def release(self, context, object_id):
         self.calls.append(("release", object_id))
@@ -83,29 +88,38 @@ def test_a_poll_goes_on_through_a_world_that_went(monkeypatch):
     monkeypatch.setattr(server, "ElementHandleDispatcher",
                         lambda *a, **k: SimpleNamespace(channel="handle"))
     # A turn whose world went, then a falsy turn, then a truthy one. Each turn
-    # sends the caller's code ONCE (`poll_in_caller`, [B323]): the truthy value
-    # is already the handle, and nothing runs the predicate again to get one.
+    # is ONE command ([B323]): the script is evaluated in the world that is
+    # there, and the function it produced is called on the turns after, as
+    # Playwright's poll keeps `evaledExpression` ([B340]). The truthy value is
+    # already the handle, and the function's reference is released at the end.
     injected = _Injected([ContextDestroyed("Execution context was destroyed"),
-                          None, {"objectId": "oid", "type": "object"}])
+                          FUNCTION],
+                         called=[{"value": False},
+                                 {"objectId": "oid", "type": "object"}])
     answer = _frame(injected).op_wait_for_function(
-        {"expression": "() => window.ready", "isFunction": True, "timeout": 5000})
+        {"expression": "() => window.ready", "timeout": 5000})
     assert answer == {"handle": "handle"}
-    assert [c for c, _ in injected.calls] == ["poll_in_caller"] * 3
+    assert [c for c, _ in injected.calls] == [
+        "evaluate_raw", "evaluate_raw", "call_raw", "call_raw", "release"]
+    assert injected.calls[-1] == ("release", "fn")
 
 
 def test_eval_on_selector_all_sends_the_callers_function_once_in_its_world():
     """The elements are this package's read; the caller's function runs ONCE
     ([B285]), in the caller's world, on the same nodes carried there ([B322]),
     and the copies and the reads are released after it."""
-    injected = _Injected([])
+    injected = _Injected([FUNCTION])
     answer = _frame(injected).op_eval_on_selector_all(
-        {"selector": "li", "expression": "els => els.length", "isFunction": True})
+        {"selector": "li", "expression": "els => els.length"})
     assert answer == {"value": {"n": 2}}
     assert injected.calls == [
         ("query_selector_all", "li"),
         ("node_to_caller", "u1"), ("node_to_caller", "u2"),
-        ("call_raw", ("caller-ctx", [None, "c-u1", "c-u2"])),
-        ("release", "c-u1"), ("release", "c-u2"),
+        ("call_raw", ("caller-ctx", ["c-u1", "c-u2"])),
+        ("evaluate_raw", "els => els.length"),
+        ("call_raw", ("caller-ctx", ["fn", "els", None])),
+        ("release", "fn"),
+        ("release", "els"), ("release", "c-u1"), ("release", "c-u2"),
         ("dispose", "u1"), ("dispose", "u2"),
     ]
 
@@ -154,8 +168,8 @@ def test_the_fork_s_locator_asks_the_server_s_read_and_not_eval_on_selector_all(
 def test_only_evaluate_read_makes_the_page_world_code_again(sent, repeatable):
     """`page.evaluate` sends the caller's code once; the fork's
     `evaluate_read` alone says `repeatable`, and only a real True counts."""
-    injected = _Injected([2])
-    params = {"expression": "1 + 1", "isFunction": False}
+    injected = _Injected([{"value": 2}])
+    params = {"expression": "1 + 1"}
     params.update(sent)
     _frame(injected).op_evaluate(params)
     assert injected.repeatable is repeatable

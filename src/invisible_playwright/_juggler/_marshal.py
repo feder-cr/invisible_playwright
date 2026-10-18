@@ -15,6 +15,7 @@ there has to move.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Dict, List, Optional
 
 
@@ -41,76 +42,45 @@ def _caller_timeout(params: Dict, default_ms: float = 30000) -> Optional[float]:
     return default_ms / 1000.0
 
 
-def _as_callable(expression: str, argument: Any) -> str:
-    """Wrap an expression so it can always be CALLED with the argument.
+#: What JavaScript's `String.prototype.trim` removes, WhiteSpace and
+#: LineTerminator, and nothing else: Python's `str.strip()` also removes U+0085
+#: and U+001C-U+001F, and keeps U+FEFF.
+_JS_WHITESPACE = ("\t\n\v\f\r \u00a0\u1680\u2000\u2001\u2002\u2003\u2004"
+                  "\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f"
+                  "\u205f\u3000\ufeff")
 
-    <M> PLAYWRIGHT SENDS BOTH FORMS DOWN THE SAME FIELD. `page.evaluate("1+1")`
-    and `page.evaluate("() => document.title")` arrive as the same
-    `expression` string, and the client does not say which is which. Evaluating
-    the raw string works for the first and, for the second, produces a FUNCTION
-    OBJECT: no error, no exception, and the caller gets None back for a call
-    that looked fine.
 
-    Measured on 2026-08-27: `page.evaluate("() => !!x")` answered None, and the
-    assertion that caught it read like the browser had changed behaviour.
+def _as_script(expression: str) -> str:
+    """The caller's text as Playwright evaluates it ([B340]).
 
-    So the string is wrapped and the result called if it turned out to be a
-    function. Deciding by shape - does it start with `(` or `function` or
-    `async` - is the version that gets it wrong: `(1+2)` starts with a
-    parenthesis and is not a function.
+    Playwright's server passes `page.evaluate`'s text through
+    `normalizeEvaluationExpression` and its utility script runs it with
+    `globalThis.eval`: the text is a SCRIPT, so a statement with its semicolon
+    is fine and the value is the script's completion value, and when that
+    value is a function it is called with the argument (`_run_callers_code`
+    in `server.py`). The client sends both forms down the same field without
+    saying which, so the function is recognised by what the script produced,
+    never by its shape: `(1+2)` starts with a parenthesis and is not one.
 
-    <M> THE ARGUMENT GOES IN HERE, IN THE SAME PASS, AND THAT IS THE WHOLE
-    POINT. It used to be spelled `r(ARG)` and the caller substituted it
-    afterwards with `.replace("ARG", ...)` - over a string that already held
-    the caller's expression. So every uppercase `ARG` a caller wrote was
-    rewritten to the argument's JSON, inside their own code, silently.
+    ⛔ UNTIL [B340] THE TEXT WAS PUT INSIDE AN EXPRESSION, `const r = (TEXT);`,
+    so that its result could be called in the same pass, and an expression is
+    all a pair of parentheses holds: `setTimeout(...);` died with "missing ) in
+    parenthetical" where Playwright runs it. And the page could see that
+    scaffolding around the caller's code. Nothing is added now; the text is
+    normalised as Playwright normalises it when the client does not say
+    whether it is a function: trimmed as JavaScript trims, and a `function` or
+    `async function` DECLARATION put in parentheses, so that it is a value
+    rather than a statement whose completion value is undefined.
 
-    Measured on 2026-09-14 by driving it: `'CARGO'.length` answered 6 instead
-    of 5, because the source that ran was `'CnullO'.length`; a selector
-    `[data-role='TARGET']` became `[data-role='TnullET']` and matched nothing;
-    `/ARGH/` became `/nullH/`; and `const ARG = 5` was a SyntaxError. The three
-    letters need only appear inside a longer word - MARGIN, LARGE, CHARGE - and
-    three of those four failures are silent, which is the bad kind.
-
-    A format string is only scanned where the format string itself is, so the
-    expression is an ARGUMENT to `%` and never a place `%` looks.
+    ⛔ AND THE ARGUMENT IS NOT IN THE TEXT. It used to be written into the
+    wrapper, once as a placeholder that a `.replace` then hunted for inside the
+    caller's own code (`'CARGO'.length` answered 6, measured 2026-09-14). It is
+    a protocol argument of the call now, so there is nothing to find.
     """
-    return "(() => { %s })()" % _invocation(expression, argument)
-
-
-def _invocation(expression: str, argument: Any, *receivers: str) -> str:
-    """The statements that evaluate the caller's expression and, when it is a
-    function, call it with `receivers` first and the argument last.
-
-    <M> THE ONLY PLACE THAT SPELLS THE CALL. The caller's-world wrapper above and
-    the three element-scoped ones (`handle.evaluate`, `eval_on_selector`,
-    `eval_on_selector_all`) used to write it out each on its own, and that is
-    how the argument reached `handle.evaluate` and was dropped by the other
-    two: a callback reading its second parameter got `undefined` there.
-
-    That wrapper's output is pinned byte for byte by
-    `test_the_argument_does_not_rewrite_the_expression.py`, because the page
-    can read it: a function the caller hands to the page shows its source to
-    the page's toString.
-    """
-    return ("const r = (%s);  return typeof r === 'function' ? r(%s) : r;"
-            % (expression,
-               ", ".join(receivers + (json.dumps(argument, default=str),))))
-
-
-def _called_on(params: Dict, receiver: str) -> str:
-    """The body of an element-scoped wrapper: the caller's function called
-    with `receiver` and the caller's argument, Playwright's `fn(element, arg)`.
-    """
-    return _invocation(params["expression"], _deserialize(params.get("arg")),
-                       receiver)
-
-
-def _element_function(params: Dict) -> str:
-    """The declaration `handle.evaluate` and `eval_on_selector` both send: one
-    element, then the argument. Both run in the caller's world
-    (`FrameDispatcher._call_on_elements`)."""
-    return "(injected, el) => { %s }" % _called_on(params, "el")
+    text = expression.strip(_JS_WHITESPACE)
+    if re.match(r"(async)?\s*function(\s|\()", text):
+        text = "(" + text + ")"
+    return text
 
 
 def _deserialize(value: Any) -> Any:
@@ -132,16 +102,6 @@ def _deserialize(value: Any) -> Any:
     if "o" in value:
         return {e["k"]: _deserialize(e["v"]) for e in value["o"]}
     return None
-
-
-def _with_argument(params: Dict) -> str:
-    """The expression, callable, with the caller's argument placed in it.
-
-    <M> THE ONLY PLACE THAT BUILDS THIS. `wait_for_function` used to repeat the
-    two lines inline, which is how one of the two could have been fixed and the
-    other left alone.
-    """
-    return _as_callable(params["expression"], _deserialize(params.get("arg")))
 
 
 def _js_string(value: str) -> str:
