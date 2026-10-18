@@ -295,6 +295,11 @@ class InProcessTransport(Transport):
         details = getattr(failure, "details", None)
         if details is not None:
             out["errorDetails"] = details
+        # And its call log, where `Connection.dispatch` reads it: the client
+        # prints it under "Call log:" ([B341]).
+        log = getattr(failure, "log", None)
+        if log:
+            out["log"] = list(log)
         self.emit_message(out)
 
 # ── choosing one ────────────────────────────────────────────────────────────

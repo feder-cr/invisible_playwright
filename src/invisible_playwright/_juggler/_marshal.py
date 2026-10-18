@@ -18,6 +18,13 @@ import json
 from typing import Any, Dict, List, Optional
 
 
+def _js_number(value: Any) -> str:
+    """A number as JavaScript prints it in a template literal: `111`, never
+    Python's `111.0` (the timeout of an expect's call log, [B341])."""
+    number = float(value)
+    return str(int(number)) if number.is_integer() else repr(number)
+
+
 def _caller_timeout(params: Dict, default_ms: float = 30000) -> Optional[float]:
     """The caller's timeout off the wire, in seconds; None is no limit.
 

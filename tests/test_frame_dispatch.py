@@ -320,6 +320,8 @@ def _reading(matches, received=None, **more):
 
 
 def test_expect_polls_until_the_condition_holds(page):
+    # The locator the wait names, from the injected script's `asLocator` ([B341]).
+    page.injected.call.return_value = 'locator("x")'
     page.frame._expect_probe = Mock(side_effect=[_reading(False, 0), _reading(False, 1),
                                                  _reading(True, 2)])
     assert page.frame.op_expect({"expression": "to.have.count", "selector": "x",
@@ -330,6 +332,8 @@ def test_expect_polls_until_the_condition_holds(page):
 def test_expect_not_inverts_and_a_condition_that_never_holds_carries_details(page):
     from invisible_playwright._juggler.dispatcher import ExpectNotMet
 
+    # The locator the wait names, from the injected script's `asLocator` ([B341]).
+    page.injected.call.return_value = 'locator("x")'
     page.frame._expect_probe = Mock(return_value=_reading(True, "checked"))
     with pytest.raises(ExpectNotMet) as caught:
         page.frame.op_expect({"expression": "to.be.checked", "selector": "x",
@@ -346,6 +350,8 @@ def test_a_missing_element_says_so_as_playwright_does(page):
     with the last value, for the error the client renders."""
     from invisible_playwright._juggler.dispatcher import ExpectNotMet
 
+    # The locator the wait names, from the injected script's `asLocator` ([B341]).
+    page.injected.call.return_value = 'locator("x")'
     page.frame._expect_probe = Mock(return_value={
         "matches": False, "missingReceived": True, "ariaSnapshot": "- main"})
     with pytest.raises(ExpectNotMet) as caught:
@@ -364,6 +370,8 @@ def test_a_javascript_error_in_the_reading_ends_the_wait_with_its_message(page):
     from invisible_core.juggler.injected import EvaluationError
     from invisible_playwright._juggler.dispatcher import ExpectNotMet
 
+    # The locator the wait names, from the injected script's `asLocator` ([B341]).
+    page.injected.call.return_value = 'locator("x")'
     page.frame._expect_probe = Mock(side_effect=EvaluationError(
         "Error: strict mode violation: locator('button') resolved to 2 elements\n"
         "    at strictModeViolationError"))
@@ -380,6 +388,8 @@ def test_a_javascript_error_in_the_reading_ends_the_wait_with_its_message(page):
 def test_a_navigation_under_the_reading_is_read_again(page):
     from invisible_core.juggler.injected import ContextDestroyed
 
+    # The locator the wait names, from the injected script's `asLocator` ([B341]).
+    page.injected.call.return_value = 'locator("x")'
     page.frame._expect_probe = Mock(side_effect=[ContextDestroyed("gone"), _reading(True, "x")])
     assert page.frame.op_expect({"expression": "to.have.text", "selector": "p",
                                  "timeout": 5000}) is None

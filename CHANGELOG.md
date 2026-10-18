@@ -30,6 +30,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   and `{"v": "x"}` or `{"n": 5}` were reported as `x` and `5`. The vendored
   client had the two reads from Playwright 1.61.0, which still has them; the
   second one is gone.
+- A failed `expect` prints its call log, as Playwright's does: the assertion
+  and its timeout (`Expect "to_be_visible" with timeout 5000ms`), what it
+  waited for (`waiting for locator("#a1")`), and what each reading found
+  (`locator resolved to <input/>`, `unexpected value "Go"`). The message said
+  what was expected and what was seen, and nothing of the wait in between.
 
 ## [0.39.0] - 2026-10-18
 

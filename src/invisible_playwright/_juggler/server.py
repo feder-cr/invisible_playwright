@@ -41,7 +41,7 @@ from invisible_core.juggler import connection as juggler
 from invisible_core.juggler.actions import Actions
 from invisible_core.juggler.deadline import Deadline
 from .dispatcher import (Dispatcher, ExpectNotMet, ProtocolException,
-                         Server)
+                         Server, current_call)
 from invisible_core.juggler.injected import (ContextDestroyed, EvaluationError,
                                              InjectedScript)
 from invisible_core.juggler.keyboard import MODIFIER_MASK
@@ -53,7 +53,7 @@ from invisible_core.juggler.lifecycle import Lifecycle
 # from HERE, and a move that breaks its callers to tidy a file is not a
 # tidy-up. One definition, two names to reach it. (The profile helpers and the
 # `user.js` writer are the core's since 0.30.0, and their tests are there.)
-from ._marshal import (_as_callable, _button, _called_on, _caller_timeout,
+from ._marshal import (_js_number, _as_callable, _button, _called_on, _caller_timeout,
                        _console_text,
                        _deserialize, _element_function, _guid_of,
                        _headers_array, _js_string, _location,
@@ -1427,6 +1427,19 @@ class FrameDispatcher(Dispatcher):
         is_not = bool(params.get("isNot"))
         deadline = Deadline(self._timeout(params))
         last: Optional[Dict] = None
+        # ⛔ THE CALL LOG, line for line where Playwright writes it ([B341]):
+        # the title and the timeout (its dispatcher), what is waited for
+        # (`frames.ts` `expect`), and each reading (`_expectInternal`). Until
+        # [B341] a failed expect said what was expected and what was seen, and
+        # nothing of the wait in between.
+        call = current_call()
+        call.log("%s%s" % (call.title, " with timeout %sms" % _js_number(params["timeout"])
+                           if params.get("timeout") else ""))
+        if selector:
+            call.log("waiting for " + self.injected.call(
+                self.frame_id,
+                "(injected, sel) => injected.utils.asLocator(injected._sdkLanguage, sel)",
+                selector))
         while True:
             try:
                 reading = self._expect_probe(expression, selector, params)
@@ -1438,8 +1451,12 @@ class FrameDispatcher(Dispatcher):
                 message = str(e).split("\n", 1)[0]
                 if message.startswith("Error: "):
                     message = message[len("Error: "):]
-                raise ExpectNotMet(message, {"customErrorMessage": message})
+                raise ExpectNotMet(message, {"customErrorMessage": message},
+                                   call.lines)
             if reading is not None:
+                for line in (reading.get("log"), reading.get("unexpected")):
+                    if line:
+                        call.log(line)
                 if reading["matches"] != is_not:
                     return None
                 last = reading
@@ -1459,7 +1476,7 @@ class FrameDispatcher(Dispatcher):
                     "expect(%s%s) did not hold within %dms"
                     % ("not " if is_not else "", expression,
                        round(deadline.seconds * 1000)),
-                    details)
+                    details, call.lines)
             time.sleep(deadline.slice(0.1))
 
     #: What Playwright's server hands the injected `expect` of the caller's
@@ -1477,13 +1494,18 @@ class FrameDispatcher(Dispatcher):
     _EXPECT = (
         "async (injected, sel, options) => {"
         "  let elements = [];"
+        "  let log = '';"
         "  if (sel !== null) {"
         "    const parsed = injected.parseSelector(sel);"
         "    elements = injected.querySelectorAll(parsed, document);"
         "    const isArray = options.expression === 'to.have.count'"
         "        || options.expression.endsWith('.array');"
-        "    if (!isArray && elements.length > 1)"
+        "    if (isArray)"
+        "      log = `  locator resolved to ${elements.length} element${elements.length === 1 ? '' : 's'}`;"
+        "    else if (elements.length > 1)"
         "      throw injected.strictModeViolationError(parsed, elements);"
+        "    else if (elements.length)"
+        "      log = `  locator resolved to ${injected.previewNode(elements[0])}`;"
         "  }"
         "  let element = elements[0];"
         "  if (options.expression === 'to.have.property' && element"
@@ -1491,7 +1513,11 @@ class FrameDispatcher(Dispatcher):
         "    element = element.wrappedJSObject;"
         "  const r = await injected.expect(element, options, elements);"
         "  const out = { matches: !!r.matches,"
-        "                missingReceived: !!r.missingReceived };"
+        "                missingReceived: !!r.missingReceived, log };"
+        "  const value = r.received ? r.received.value : undefined;"
+        "  if (!!r.matches === !!options.isNot && !r.missingReceived"
+        "      && !Array.isArray(value))"
+        "    out.unexpected = `  unexpected value \"${value}\"`;"
         "  if (r.received) {"
         "    out.received = r.received.value === undefined ? null : r.received.value;"
         "    if (r.received.ariaSnapshot !== undefined)"
