@@ -35,6 +35,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   waited for (`waiting for locator("#a1")`), and what each reading found
   (`locator resolved to <input/>`, `unexpected value "Go"`). The message said
   what was expected and what was seen, and nothing of the wait in between.
+- `page.goto` follows the context's `base_url`. The server never read it, so
+  `goto("/empty.html")` in a context created with a base failed with
+  "Invalid url /empty.html"; it now navigates to the base's `/empty.html`, as
+  Playwright does. The address is resolved by the engine's own URL parser,
+  the one that then navigates to it.
 
 ## [0.39.0] - 2026-10-18
 

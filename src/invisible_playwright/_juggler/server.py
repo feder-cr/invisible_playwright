@@ -807,9 +807,31 @@ class FrameDispatcher(Dispatcher):
 
 
     # ── navigation ──────────────────────────────────────────────────────────
+    def _navigation_url(self, url: str) -> str:
+        """The address `goto` navigates to: `url` resolved against the
+        context's `baseURL`, as Playwright's server does in `goto`
+        (`new URL(given, base).toString()`, and the given text as it is when
+        that throws). Until [B342] `baseURL` was read nowhere in this server,
+        so `goto("/empty.html")` with a base failed with "Invalid url".
+
+        ⛔ RESOLVED BY THE ENGINE'S OWN URL PARSER, in the utility world, not
+        with `urllib.parse.urljoin`: the URL standard and Python's RFC 3986
+        join disagree at the edges (dot segments, special schemes,
+        percent-encoding, hosts), and the address resolved here is the one the
+        engine then navigates to, so one parser does both. It costs one
+        evaluation, and only when the context has a base."""
+        base = self.page.context.options.get("baseURL")
+        if not base:
+            return url
+        return self.injected.call(
+            self.frame_id,
+            "(injected, given, base) => { try { return new URL(given, base).toString(); }"
+            " catch (e) { return given; } }",
+            url, base)
+
     def op_goto(self, params: Dict) -> Any:
         result = self.lifecycle.goto(
-            params["url"], frame_id=self.frame_id,
+            self._navigation_url(params["url"]), frame_id=self.frame_id,
             until=params.get("waitUntil") or "load",
             timeout=self._timeout(params))
         # Navigation events come from the engine, not a snapshot taken when
