@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-## [0.38.0] - 2026-10-17
+## [0.38.0] - 2026-10-18
 
 The pin moves to invisible-core 49.46.0. The desktop settings a page can read -
 scrollbars, text scale, drag threshold, double-click selection, the system
