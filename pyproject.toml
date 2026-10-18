@@ -243,7 +243,6 @@ release_tags = ["v"]
 # exclusion that names nothing is refused by the gate.
 [tool.invisible.english]
 excluded = [
-    "src/invisible_playwright/_pw/",
     "tests/test_fork.py",
 ]
 marker = "MODIFIED by invisible_playwright"

@@ -28,11 +28,10 @@ class PlaywrightContextManager:
 
     async def __aenter__(self) -> AsyncPlaywright:
         loop = asyncio.get_running_loop()
-        # MODIFIED by invisible_playwright: the transport is chosen, not hardcoded.
-        # The Node driver stays reachable BY NAME - `INVPW_TRANSPORT=driver` -
-        # as the only second arm this project has to judge the Python server
-        # against; the Python server has been the default since 2026-08-28.
-        # See `_juggler/transport.py` for the switch.
+        # MODIFIED by invisible_playwright: the transport is the in-process
+        # server, from `make_transport`. The Node driver was removed on
+        # 2026-08-28, and `INVPW_TRANSPORT=driver` is refused with a message
+        # that says so - see `_juggler/transport.py`.
         transport = make_transport(loop)
         self._connection = Connection(
             None,

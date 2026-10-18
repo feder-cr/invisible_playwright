@@ -11,7 +11,7 @@ the user receives.
 
 | folder | what it is | license |
 |---|---|---|
-| `_pw/` | Playwright's Python client, version **1.61.1** | Apache-2.0 (`_pw/LICENSE`) |
+| `_pw/` | Playwright's Python client, version **1.61.0** | Apache-2.0 (`_pw/LICENSE`) |
 
 The client's namespace is `invisible_playwright._pw` instead of `playwright`, so
 it does not collide with a stock `playwright` that might be installed alongside

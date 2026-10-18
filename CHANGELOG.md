@@ -50,6 +50,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   around it. `wait_for_function` evaluates a function predicate once per
   document and calls it on every turn, as Playwright's poll does.
 
+### Changed
+- **The vendored client's README says what actually differs from upstream.**
+  `_pw/README.md` named `_impl/_driver.py`, a file removed with the Node driver,
+  as the only changed file, while eight files carry the
+  `# MODIFIED by invisible_playwright` marker; it now lists them, in English.
+- **`_pw/` is no longer excluded from the English gate.** The upstream code is
+  English already, so the folder exclusion only hid our own text: the README
+  and the error raised for `chromium` and `webkit`, now in English.
+- `THIRD_PARTY_FORK.md` gives the vendored client's version as 1.61.0, which is
+  what `_pw/_repo_version.py` and the development pin say.
+
 ## [0.39.0] - 2026-10-18
 
 The pin moves to invisible-core 50.47.0, on the firefox-50 engine. From

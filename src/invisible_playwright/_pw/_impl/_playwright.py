@@ -47,8 +47,8 @@ class Playwright(ChannelOwner):
         # AttributeError on a field that nobody sets anymore.
         if value in ("chromium", "webkit"):
             raise ValueError(
-                "invisible_playwright pilota SOLO Firefox: il supporto a "
-                "%s e' stato rimosso dal driver, non e' disabilitato." % value)
+                "invisible_playwright drives Firefox ONLY: support for %s "
+                "has been removed from the driver, not disabled." % value)
         raise ValueError("Invalid browser " + value)
 
     def _set_selectors(self, selectors: Selectors) -> None:
