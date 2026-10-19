@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.40.0] - 2026-10-19
+
+The pin moves to invisible-core 50.48.0, on the same firefox-50 engine.
+
 ### Fixed
 - **`expect()` works for every condition, not two families.** The server
   re-wrote Playwright's assertions in Python one condition at a time and had
@@ -51,6 +55,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   document and calls it on every turn, as Playwright's poll does.
 
 ### Changed
+- **The user-install job runs on the ledger pull request**, not on
+  `release: published`, which never fired: the Release is created with
+  GITHUB_TOKEN, and an event that token causes starts no other workflow.
+  CI checks the wiring with `python -m invisible_core.install_job`.
+- The release tests keep out of the venvs they build every variable the
+  core's library reads, as `invisible_core.install_job.LEAKS` lists them: an
+  engine folder, a seal file or a GitHub token in the caller's shell no
+  longer changes what they measure.
+- The publish workflow checks the version and the ledger against the index
+  before it uploads (`invisible_core.release check --verify-index`), as the
+  pre-push hook does: a clone without the hook can no longer skip it.
 - **The vendored client's README says what actually differs from upstream.**
   `_pw/README.md` named `_impl/_driver.py`, a file removed with the Node driver,
   as the only changed file, while eight files carry the
