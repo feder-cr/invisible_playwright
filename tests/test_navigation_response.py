@@ -74,7 +74,8 @@ def _bare_page():
     # favicon; an empty memory answers "none", as for a page without one.
     page.lifecycle = SimpleNamespace(favicons=FaviconRequests())
     page.messages = up
-    page.context = SimpleNamespace(emit=lambda *a, **k: None, intercepting=False)
+    page.context = SimpleNamespace(emit=lambda *a, **k: None, intercepting=False,
+                                   options={})
     page.frame = SimpleNamespace(frame_id="F1")
     page.frame_for = lambda fid: SimpleNamespace(channel={"guid": "frame@%s" % fid})
     return page

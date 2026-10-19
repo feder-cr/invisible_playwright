@@ -52,6 +52,31 @@ DECLARED = _pin.declared_core_pin()
 CORE_PKG = Path(importlib.util.find_spec("invisible_core").origin).resolve().parent
 
 
+#: Modules the stub writes itself, so an import of one is not copied.
+_STUB_OWNS = frozenset({"__init__", "_version", "seal"})
+
+
+def _imported_by(names) -> list:
+    """Every module of the installed core that these import relatively,
+    transitively, as file names: `from .x import y` and `from . import x`."""
+    import ast
+    seen, todo = set(), [n for n in names if (CORE_PKG / n).exists()]
+    while todo:
+        tree = ast.parse((CORE_PKG / todo.pop()).read_bytes())
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.ImportFrom) and node.level == 1):
+                continue
+            found = ([node.module.split(".")[0]] if node.module
+                     else [alias.name for alias in node.names])
+            for module in found:
+                file = module + ".py"
+                if module in _STUB_OWNS or file in seen or not (CORE_PKG / file).exists():
+                    continue
+                seen.add(file)
+                todo.append(file)
+    return sorted(seen)
+
+
 def child_env(**overrides) -> dict:
     """Every stub below is a deliberately broken environment, and a mismatch is
     REPAIRED at import now. Without the kill switch, `test_a_sealed_core_at_the
@@ -106,9 +131,11 @@ def stub_core(tmp_path: Path, *, with_seal: bool, version: str | None = None,
     # only; newer ones carry `pin.py` plus a two-line `sys.modules` alias at
     # `_pin.py`. Copying `pin.py` unconditionally made this whole file fail
     # against a published core that predated it - eight tests, and the stub was
-    # never built. `installer.py` likewise, from 49.45.0, where `pin.py`
-    # imports it at load: without it the stub dies on its first line.
-    for name in ("pin.py", "_pin.py", "installer.py"):
+    # never built. And every module those import, read from the installed
+    # copies, not listed here: `installer.py` from 49.45.0 and `environment.py`
+    # from 50.48.0 were each a new line in a hand list, and each core that added
+    # one killed the stub on its first import until the list caught up.
+    for name in ("pin.py", "_pin.py", *_imported_by(("pin.py", "_pin.py"))):
         if (CORE_PKG / name).exists():
             shutil.copy2(CORE_PKG / name, pkg / name)
     assert (pkg / "_pin.py").exists(), (

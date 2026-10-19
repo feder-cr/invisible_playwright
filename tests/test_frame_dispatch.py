@@ -22,6 +22,7 @@ def page():
     messages = []
     server.attach(SimpleNamespace(emit_message=messages.append))
     context = Dispatcher(server, None)
+    context.options = {}    # created without a base URL
     page = object.__new__(PageDispatcher)
     page.context = context
     # The connection's own registry, as every stand-in for it inherits
@@ -250,7 +251,12 @@ def test_every_element_callback_receives_the_caller_s_argument(page, method, rec
     page.injected.query_selector_all.return_value = ["node"]
     page.injected.caller_context.return_value = "caller-ctx"
     page.injected.node_to_caller.return_value = "copy"
-    page.injected.call_raw.return_value = {"value": 6}
+    # The caller's text is evaluated as a script, and the function it makes is
+    # called with the receivers and the argument as protocol values ([B340]).
+    page.injected.evaluate_raw.return_value = {"type": "function", "objectId": "fn"}
+    from invisible_playwright._juggler.server import _ARRAY, _CALL
+    page.injected.call_raw.side_effect = lambda context, script, args, **k: (
+        {"objectId": "array"} if script == _ARRAY else {"value": 6})
     params = {"selector": "compound", "expression": "(x, a) => a",
               "arg": {"value": {"o": [{"k": "n", "v": {"n": 2}}]}, "handles": []}}
     if method == "handle.evaluate":
@@ -259,10 +265,14 @@ def test_every_element_callback_receives_the_caller_s_argument(page, method, rec
     else:
         page.frame.call(method, params)
     # the caller's code, in the caller's world, on the node carried there [B322]
-    context, script, args = page.injected.call_raw.call_args.args[:3]
+    calls = [c.args[:3] for c in page.injected.call_raw.call_args_list]
+    [(context, _, args)] = [c for c in calls if c[1] == _CALL]
     assert context == "caller-ctx"
-    assert {"objectId": "copy"} in args
-    assert ("r(%s, {\"n\": 2})" % receiver) in script, script
+    held = {"objectId": "array" if receiver == "els" else "copy"}
+    assert args == [{"objectId": "fn"}, held, {"value": {"n": 2}}], args
+    if receiver == "els":
+        [(_, _, items)] = [c for c in calls if c[1] == _ARRAY]
+        assert items == [{"objectId": "copy"}], items
 
 
 def test_networkidle_reaches_the_client_as_a_load_state(page):
