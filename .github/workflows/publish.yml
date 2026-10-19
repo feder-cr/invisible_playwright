@@ -158,8 +158,13 @@ jobs:
         # pre-push hook checks them: in layers, not as alternatives, because the
         # hook is per clone and can be missing or skipped, and this cannot
         # ([B353]). Exit codes: 0 pass, 1 refused, 2 gate broken, 4 no usable
-        # ledger; only 0 continues.
-        run: python -m invisible_core.release check --verify-index
+        # ledger; only 0 continues. The check builds the package to compare
+        # it, without isolation, so the build backend is installed here: the
+        # dev extra carries `build` and not `hatchling`, and without it the
+        # check stopped as "gate broken" on the first tag (v0.40.0).
+        run: |
+          python -m pip install build hatchling
+          python -m invisible_core.release check --verify-index
 
       - name: arm the pre-push gates
         # The suite asserts core.hooksPath is set and a fresh checkout has none.
