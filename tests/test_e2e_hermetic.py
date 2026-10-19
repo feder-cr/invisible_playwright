@@ -32,14 +32,19 @@ import sys
 from pathlib import Path
 
 import pytest
+from invisible_core import install_job
 
 HERE = Path(__file__).resolve().parent
 E2E_FILES = ("test_release_e2e.py", "test_upgrade_e2e.py")
 
-#: The measured variables, plus the one added by construction. If a file
-#: forgot one of these, the comparison between the two copies below would
-#: report it as a divergence.
-EXPECTED = ("PYTHONPATH", "INVISIBLE_SEAL_FILE", "PYTHONHOME")
+#: What the copies must cover: the core's one definition (core 50.48.0), the
+#: interpreter's variables and every variable its library reads. These test
+#: files can import the core; the two e2e files cannot.
+EXPECTED = install_job.LEAKS
+#: Set in the caller's environment by the cases below: the two measured on
+#: 2026-08-11, PYTHONHOME, and the engine folder a developer may have set.
+_SET = ("PYTHONPATH", "INVISIBLE_SEAL_FILE", "PYTHONHOME",
+        "INVISIBLE_PLAYWRIGHT_ENGINE_DIR")
 
 
 def _load(name: str):
@@ -62,17 +67,16 @@ def modules():
 
 def test_both_files_declare_the_same_variables(modules):
     """Two copies that diverge are worse than a single copy."""
-    seen = {n: tuple(m._NON_ERMETICHE) for n, m in modules.items()}
+    seen = {n: tuple(sorted(m._LEAKS)) for n, m in modules.items()}
     values = set(seen.values())
     assert len(values) == 1, (
         "the two e2e files clean up DIFFERENT environments, so one of them "
         "lets through something the other one stops:\n  "
         + "\n  ".join("%s -> %s" % (n, v) for n, v in sorted(seen.items())))
-    assert values.pop() == EXPECTED, (
-        "the list changed without updating this test. The three expected "
-        "values are %s: the first two are measured (sixteen reds on "
-        "2026-08-11), the third is PYTHONHOME, which redirects the standard "
-        "library and would break the venv before it ran a single line." % (EXPECTED,))
+    missing = sorted(set(EXPECTED) - set(values.pop()))
+    assert not missing, (
+        "the copies leave %s in the venvs they build: invisible_core.install_job."
+        "LEAKS names them, and the core's library reads every one" % missing)
 
 
 @pytest.mark.parametrize("name", E2E_FILES)
@@ -81,13 +85,16 @@ def test_clean_env_removes_the_variables_and_leaves_the_rest(modules, name, monk
     monkeypatch.setenv("PYTHONPATH", "/c/src/firefox-stealth/release/invisible_core/src")
     monkeypatch.setenv("INVISIBLE_SEAL_FILE", "C:/tmp/seal-locale.json")
     monkeypatch.setenv("PYTHONHOME", "/opt/altrove")
+    monkeypatch.setenv("INVISIBLE_PLAYWRIGHT_ENGINE_DIR", "C:/tmp/engines")
     monkeypatch.setenv("UNA_QUALSIASI", "resta")
+    for k in set(EXPECTED) - set(_SET):
+        monkeypatch.delenv(k, raising=False)
 
     env, removed = m._clean_env()
 
     for k in EXPECTED:
         assert k not in env, "%s: %s is still in the subprocess environment" % (name, k)
-    assert sorted(removed) == sorted(EXPECTED), (
+    assert sorted(removed) == sorted(_SET), (
         "%s: claims to have removed %s" % (name, removed))
     assert env.get("UNA_QUALSIASI") == "resta", (
         "%s: cleaned up more than it should have. An emptied environment "

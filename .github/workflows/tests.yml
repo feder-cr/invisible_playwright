@@ -112,6 +112,31 @@ jobs:
           python -m invisible_core.way_in --selftest
           python -m invisible_core.way_in
 
+  # The user-install job installs what was published, as a user would. It ran
+  # on `release: published`, which never fires: the Release is created with
+  # GITHUB_TOKEN, and an event that token causes starts no other workflow
+  # ([B347], core 50.48.0). `invisible_core.install_job` judges this tree: the
+  # job runs on the ledger pull request, its wait for the index is scoped to it
+  # and bounded, and every test file it runs keeps out, in a `_LEAKS`, every
+  # variable the pinned core's library reads.
+  install-job:
+    name: the user-install job runs on the ledger pull request
+    needs: core-on-index
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: install the pinned core, which carries the gate
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+      - name: check the install job
+        run: |
+          python -m invisible_core.install_job --selftest
+          python -m invisible_core.install_job
+
   # `pip install -e ".[dev]"` below resolves `invisible-core==N.M.0` from the
   # package index. The core is published BEFORE this package, so between the
   # first push of this repo and that upload there is a window in which no
@@ -292,7 +317,7 @@ jobs:
   # exits 1 without saying which of five inputs went red is a gate somebody has
   # to open five tabs to read.
   gate:
-    needs: [core-on-index, unit, docs-api, english, claims, version, way-in]
+    needs: [core-on-index, unit, docs-api, english, claims, version, way-in, install-job]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -305,6 +330,7 @@ jobs:
           echo "claims:        ${{ needs.claims.result }}"
           echo "way-in:        ${{ needs.way-in.result }}"
           echo "version:       ${{ needs.version.result }}"
+          echo "install-job:   ${{ needs.install-job.result }}"
           case "${{ needs.unit.result }}" in
             failure|cancelled) echo "the suite did not pass"; exit 1 ;;
           esac
@@ -325,6 +351,9 @@ jobs:
           esac
           case "${{ needs.version.result }}" in
             failure|cancelled) echo "the version this change proposes is already taken"; exit 1 ;;
+          esac
+          case "${{ needs.install-job.result }}" in
+            failure|cancelled) echo "the user-install job would not run on a release, or leaks"; exit 1 ;;
           esac
           echo "ok"
 

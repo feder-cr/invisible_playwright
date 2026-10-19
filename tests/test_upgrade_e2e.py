@@ -60,7 +60,17 @@ import pytest
 # tests that download the published release fail. Sixteen reds in one day, none
 # of them the product's - and the dangerous direction is the other one: a green
 # from an environment no user has.
-_NON_ERMETICHE = ("PYTHONPATH", "INVISIBLE_SEAL_FILE", "PYTHONHOME")
+# A copy of `invisible_core.install_job.LEAKS` (the interpreter's variables
+# and every variable the core's library reads), which this file cannot
+# import; the core's install_job gate checks that it covers it ([B349]).
+_LEAKS = ("PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV",
+          "INVISIBLE_PLAYWRIGHT_ENGINE_DIR", "INVISIBLE_PLAYWRIGHT_CACHE_DIR",
+          "INVISIBLE_DOWNLOAD_DEADLINE", "STEALTHFOX_GITHUB_TOKEN", "GITHUB_TOKEN",
+          "INVISIBLE_SEAL_FILE", "INVISIBLE_CORE_PIN", "INVISIBLE_CORE_AUTOFIX",
+          "INVISIBLE_CORE_AUTOFIX_TIMEOUT", "UV", "STEALTHFOX_GEOIP_MMDB",
+          "STEALTHFOX_FONT_MANIFEST", "STEALTHFOX_WEBRTC_PUBLIC_IP",
+          "INVPW_CURSOR_TIMER", "INVISIBLE_CORE_AUTOFIX_ATTEMPTED",
+          "INVPW_SESSION_TOKEN", "INVPW_DESKTOP", "STEALTHFOX_WEBRTC_DISABLE_IPV6")
 
 
 def _clean_env(base=None):
@@ -70,7 +80,7 @@ def _clean_env(base=None):
     class of defect as one silently inherited, with the sign flipped.
     """
     env = dict(os.environ if base is None else base)
-    removed = [k for k in _NON_ERMETICHE if k in env]
+    removed = [k for k in _LEAKS if k in env]
     for k in removed:
         env.pop(k, None)
     return env, removed

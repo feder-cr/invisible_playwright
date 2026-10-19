@@ -153,6 +153,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
+      - name: version gate
+        # The version and the ledger against what the index serves, as the
+        # pre-push hook checks them: in layers, not as alternatives, because the
+        # hook is per clone and can be missing or skipped, and this cannot
+        # ([B353]). Exit codes: 0 pass, 1 refused, 2 gate broken, 4 no usable
+        # ledger; only 0 continues.
+        run: python -m invisible_core.release check --verify-index
+
       - name: arm the pre-push gates
         # The suite asserts core.hooksPath is set and a fresh checkout has none.
         run: python scripts/install_hooks.py
