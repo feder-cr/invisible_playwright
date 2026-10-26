@@ -67,6 +67,7 @@ def _page_with_one_frame():
     page._requests = {}
     page._request_log = []
     page._navigation_requests = {}
+    page._announced_closed = False
     page.context = SimpleNamespace(emit=lambda *a, **k: None, intercepting=False)
     page.frame = frame
     page.frame_for = lambda fid: frame
@@ -115,9 +116,9 @@ def test_a_full_navigation_still_announces_its_document():
     stops answering with a Response ([B200] all over again)."""
     page, frame = _page_with_one_frame()
 
-    page._on_juggler_event("Page.navigationCommitted",
-                           {"frameId": "F1", "navigationId": "N1",
-                            "url": "http://127.0.0.1/other"})
+    page.lifecycle._on_event("Page.navigationCommitted",
+                             {"frameId": "F1", "navigationId": "N1",
+                              "url": "http://127.0.0.1/other"})
 
     # A new document also resets the frame's load states around the event;
     # this test is about the `navigated` one.

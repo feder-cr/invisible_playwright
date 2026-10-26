@@ -2561,7 +2561,8 @@ class PageDispatcher(Dispatcher):
         self.lifecycle.announce = self._on_lifecycle
 
     def _on_lifecycle(self, what: str, frame_id: str,
-                      url: Optional[str] = None) -> None:
+                      url: Optional[str] = None, *, name: str = "",
+                      navigation: Optional[str] = None) -> None:
         # ⛔ THE CLIENT'S FRAMES COME FROM HERE ALONE. The lifecycle owns the
         # frame tree: it says a frame is born when its id is new, and gone when
         # it detaches or its parent's new document replaces it. Until 0.34.1
@@ -2611,6 +2612,26 @@ class PageDispatcher(Dispatcher):
             # `_onSameDocumentNavigation` sends.
             child.url = url or ""
             child.emit("navigated", {"url": child.url, "name": child.name})
+        elif what == "commit":
+            # ⛔ FROM HERE, LIKE `sameDocument`, AND FOR THE SAME REASON. Sent
+            # from `_on_juggler_event`, this page's own listener, it ran after
+            # the lifecycle had woken the wait the commit ended, and raced its
+            # answer: on a 157 engine `page.click("#next")` - which waits for
+            # the commit of the navigation it planned - returned with
+            # `page.url` still on the page it had left (2026-10-27). Not while
+            # the page is closed: `_deliver` would not have delivered it.
+            if self._announced_closed:
+                return
+            for state in ("commit", "domcontentloaded", "load", "networkidle"):
+                child.emit("loadstate", {"remove": state})
+            child.url = url or ""
+            child.name = name or ""
+            child.emit("navigated", {
+                "url": child.url,
+                "name": child.name,
+                "newDocument": self.navigation_document(navigation),
+            })
+            child.emit("loadstate", {"add": "commit"})
 
     #: Events held while the page is being built. The birth of a page is a
     #: burst of a few dozen; a page that never finishes building must not
@@ -2825,21 +2846,9 @@ class PageDispatcher(Dispatcher):
                     "failureText": params.get("errorCode") or "failed",
                     "page": self.channel,
                 })
-        elif method == "Page.navigationCommitted":
-            child = self.frame_for(params["frameId"])
-            for state in ("commit", "domcontentloaded", "load", "networkidle"):
-                child.emit("loadstate", {"remove": state})
-            child.url = params.get("url") or ""
-            child.name = params.get("name") or ""
-            child.emit("navigated", {
-                "url": child.url,
-                "name": child.name,
-                "newDocument": self.navigation_document(params.get("navigationId")),
-            })
-            child.emit("loadstate", {"add": "commit"})
-        # `Page.sameDocumentNavigation` is not handled here: the lifecycle
-        # announces it (`_on_lifecycle`), so the `navigated` it causes goes up
-        # BEFORE a `goto` waiting for it answers.
+        # `Page.navigationCommitted` and `Page.sameDocumentNavigation` are not
+        # handled here: the lifecycle announces them (`_on_lifecycle`), so the
+        # `navigated` they cause goes up BEFORE a wait they end answers.
 
     #: How many entries are kept. ⛔ A CAP, not a history: a page printing in
     #: a loop would exhaust the memory of the process DRIVING it, and a driver
