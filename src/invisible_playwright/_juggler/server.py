@@ -34,7 +34,7 @@ import tempfile
 import threading
 import time
 import warnings
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from invisible_core.juggler import PageActs, popup_number
 from invisible_core.juggler import connection as juggler
@@ -751,9 +751,9 @@ class ElementHandleDispatcher(Dispatcher):
                 **self.frame._act_opts(params)}
 
     def op_click(self, params: Dict) -> Any:
-        self.frame.actions.click(_HANDLE, position=self.frame._position(params),
-                                 **self.frame._pointer(params),
-                                 **self._act_args(params))
+        self.frame._waiting_after(params, lambda: self.frame.actions.click(
+            _HANDLE, position=self.frame._position(params),
+            **self.frame._pointer(params), **self._act_args(params)))
         return None
 
     def op_hover(self, params: Dict) -> Any:
@@ -788,9 +788,9 @@ class ElementHandleDispatcher(Dispatcher):
         return None
 
     def op_press(self, params: Dict) -> Any:
-        self.frame.actions.press(_HANDLE, params["key"],
-                                 dwell_ms=_key_delay(params),
-                                 **self._act_args(params))
+        self.frame._waiting_after(params, lambda: self.frame.actions.press(
+            _HANDLE, params["key"], dwell_ms=_key_delay(params),
+            **self._act_args(params)))
         return None
 
     def op_focus(self, params: Dict) -> Any:
@@ -1228,12 +1228,37 @@ class FrameDispatcher(Dispatcher):
             return position
         return None
 
+    def _waiting_after(self, params: Dict, act: Callable[[], Any]) -> Any:
+        """Run `act`, then wait for the navigations it set off, unless the
+        caller passed `noWaitAfter`: Playwright's `waitForSignalsCreatedBy`,
+        which its click and press run (dblclick, tap, hover and check do not).
+        The page's main frame is the one waited on, as there.
+
+        ⛔ WITHOUT IT A FORM SUBMITTED BY A CLICK WAS NOT THERE WHEN THE CLICK
+        RETURNED. From Firefox 157 the submission is a planned navigation that
+        starts after the click (the retail's dom.forms.submit_async_navigation):
+        `page.click("input[type=submit]")` came back 7 ms before the POST was
+        announced, so the requests read right after it were none, where 151 and
+        Microsoft's client both had it (Playwright's own suite,
+        test_should_parse_the_data_if_content_type_is_form_urlencoded, failed
+        3/3). The engine reports the plan as Page.linkClicked, and
+        `Lifecycle.wait_for_action_signals` waits it out.
+        """
+        if params.get("noWaitAfter"):
+            return act()
+        lifecycle, main = self.page.lifecycle, self.page.main_frame_id
+        since = lifecycle.mark(main)
+        deadline = Deadline(self._timeout(params))
+        result = act()
+        lifecycle.wait_for_action_signals(main, since, deadline.left(floor=0.05))
+        return result
+
     def op_click(self, params: Dict) -> Any:
         frame_id, selector = self.enter_frames(params["selector"])
-        self.actions.click(selector, timeout=self._timeout(params),
-                                frame_id=frame_id, **self._act_opts(params),
-                                position=self._position(params),
-                                **self._pointer(params))
+        self._waiting_after(params, lambda: self.actions.click(
+            selector, timeout=self._timeout(params), frame_id=frame_id,
+            **self._act_opts(params), position=self._position(params),
+            **self._pointer(params)))
         return None
 
     def op_dblclick(self, params: Dict) -> Any:
@@ -1297,10 +1322,10 @@ class FrameDispatcher(Dispatcher):
 
     def op_press(self, params: Dict) -> Any:
         frame_id, selector = self.enter_frames(params["selector"])
-        self.actions.press(selector, params["key"],
-                                timeout=self._timeout(params), frame_id=frame_id,
-                                dwell_ms=_key_delay(params),
-                                **self._act_opts(params))
+        self._waiting_after(params, lambda: self.actions.press(
+            selector, params["key"], timeout=self._timeout(params),
+            frame_id=frame_id, dwell_ms=_key_delay(params),
+            **self._act_opts(params)))
         return None
 
     def op_type(self, params: Dict) -> Any:
