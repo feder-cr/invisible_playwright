@@ -3905,10 +3905,17 @@ class BrowserContextDispatcher(Dispatcher):
         return None
 
     def op_set_offline(self, params: Dict) -> Any:
-        raise ProtocolException(
-            "set_offline() has no engine command in this Juggler: the "
-            "protocol declares no offline override, so honouring it would "
-            "mean lying about the network state")
+        """Juggler's `Browser.setOnlineOverride`, the command
+        `new_context(offline=True)` already sends; None clears it.
+
+        ⛔ IT WAS REFUSED until the engine honoured it. The engine's HTTP
+        channel answered a stub instead of the browsing context's ForceOffline
+        (fixed in firefox_antidetect_patch 3087f02c56), so an offline context
+        told the page `navigator.onLine === false` and still loaded every
+        request. With the engine fixed, refusing it only breaks callers."""
+        self._browser_send("Browser.setOnlineOverride",
+                           {"override": "offline" if params.get("offline") else None})
+        return None
 
     def op_set_extra_headers(self, params: Dict) -> Any:
         raise ProtocolException(

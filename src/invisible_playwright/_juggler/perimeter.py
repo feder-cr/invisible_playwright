@@ -156,7 +156,6 @@ COURTESY = {
 #: revisit on our own: honouring them would mean inventing an answer.
 NO_ENGINE_COMMAND = {
     "drop",
-    "setOffline",
     "setWebSocketInterceptionPatterns",
 }
 
