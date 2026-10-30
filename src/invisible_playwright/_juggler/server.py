@@ -34,7 +34,7 @@ import tempfile
 import threading
 import time
 import warnings
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from invisible_core.juggler import PageActs, popup_number
 from invisible_core.juggler import connection as juggler
@@ -751,9 +751,9 @@ class ElementHandleDispatcher(Dispatcher):
                 **self.frame._act_opts(params)}
 
     def op_click(self, params: Dict) -> Any:
-        self.frame.actions.click(_HANDLE, position=self.frame._position(params),
-                                 **self.frame._pointer(params),
-                                 **self._act_args(params))
+        self.frame._waiting_after(params, lambda: self.frame.actions.click(
+            _HANDLE, position=self.frame._position(params),
+            **self.frame._pointer(params), **self._act_args(params)))
         return None
 
     def op_hover(self, params: Dict) -> Any:
@@ -788,9 +788,9 @@ class ElementHandleDispatcher(Dispatcher):
         return None
 
     def op_press(self, params: Dict) -> Any:
-        self.frame.actions.press(_HANDLE, params["key"],
-                                 dwell_ms=_key_delay(params),
-                                 **self._act_args(params))
+        self.frame._waiting_after(params, lambda: self.frame.actions.press(
+            _HANDLE, params["key"], dwell_ms=_key_delay(params),
+            **self._act_args(params)))
         return None
 
     def op_focus(self, params: Dict) -> Any:
@@ -1228,12 +1228,37 @@ class FrameDispatcher(Dispatcher):
             return position
         return None
 
+    def _waiting_after(self, params: Dict, act: Callable[[], Any]) -> Any:
+        """Run `act`, then wait for the navigations it set off, unless the
+        caller passed `noWaitAfter`: Playwright's `waitForSignalsCreatedBy`,
+        which its click and press run (dblclick, tap, hover and check do not).
+        The page's main frame is the one waited on, as there.
+
+        ⛔ WITHOUT IT A FORM SUBMITTED BY A CLICK WAS NOT THERE WHEN THE CLICK
+        RETURNED. From Firefox 157 the submission is a planned navigation that
+        starts after the click (the retail's dom.forms.submit_async_navigation):
+        `page.click("input[type=submit]")` came back 7 ms before the POST was
+        announced, so the requests read right after it were none, where 151 and
+        Microsoft's client both had it (Playwright's own suite,
+        test_should_parse_the_data_if_content_type_is_form_urlencoded, failed
+        3/3). The engine reports the plan as Page.linkClicked, and
+        `Lifecycle.wait_for_action_signals` waits it out.
+        """
+        if params.get("noWaitAfter"):
+            return act()
+        lifecycle, main = self.page.lifecycle, self.page.main_frame_id
+        since = lifecycle.mark(main)
+        deadline = Deadline(self._timeout(params))
+        result = act()
+        lifecycle.wait_for_action_signals(main, since, deadline.left(floor=0.05))
+        return result
+
     def op_click(self, params: Dict) -> Any:
         frame_id, selector = self.enter_frames(params["selector"])
-        self.actions.click(selector, timeout=self._timeout(params),
-                                frame_id=frame_id, **self._act_opts(params),
-                                position=self._position(params),
-                                **self._pointer(params))
+        self._waiting_after(params, lambda: self.actions.click(
+            selector, timeout=self._timeout(params), frame_id=frame_id,
+            **self._act_opts(params), position=self._position(params),
+            **self._pointer(params)))
         return None
 
     def op_dblclick(self, params: Dict) -> Any:
@@ -1297,10 +1322,10 @@ class FrameDispatcher(Dispatcher):
 
     def op_press(self, params: Dict) -> Any:
         frame_id, selector = self.enter_frames(params["selector"])
-        self.actions.press(selector, params["key"],
-                                timeout=self._timeout(params), frame_id=frame_id,
-                                dwell_ms=_key_delay(params),
-                                **self._act_opts(params))
+        self._waiting_after(params, lambda: self.actions.press(
+            selector, params["key"], timeout=self._timeout(params),
+            frame_id=frame_id, dwell_ms=_key_delay(params),
+            **self._act_opts(params)))
         return None
 
     def op_type(self, params: Dict) -> Any:
@@ -2536,7 +2561,8 @@ class PageDispatcher(Dispatcher):
         self.lifecycle.announce = self._on_lifecycle
 
     def _on_lifecycle(self, what: str, frame_id: str,
-                      url: Optional[str] = None) -> None:
+                      url: Optional[str] = None, *, name: str = "",
+                      navigation: Optional[str] = None) -> None:
         # ⛔ THE CLIENT'S FRAMES COME FROM HERE ALONE. The lifecycle owns the
         # frame tree: it says a frame is born when its id is new, and gone when
         # it detaches or its parent's new document replaces it. Until 0.34.1
@@ -2586,6 +2612,26 @@ class PageDispatcher(Dispatcher):
             # `_onSameDocumentNavigation` sends.
             child.url = url or ""
             child.emit("navigated", {"url": child.url, "name": child.name})
+        elif what == "commit":
+            # ⛔ FROM HERE, LIKE `sameDocument`, AND FOR THE SAME REASON. Sent
+            # from `_on_juggler_event`, this page's own listener, it ran after
+            # the lifecycle had woken the wait the commit ended, and raced its
+            # answer: on a 157 engine `page.click("#next")` - which waits for
+            # the commit of the navigation it planned - returned with
+            # `page.url` still on the page it had left (2026-10-27). Not while
+            # the page is closed: `_deliver` would not have delivered it.
+            if self._announced_closed:
+                return
+            for state in ("commit", "domcontentloaded", "load", "networkidle"):
+                child.emit("loadstate", {"remove": state})
+            child.url = url or ""
+            child.name = name or ""
+            child.emit("navigated", {
+                "url": child.url,
+                "name": child.name,
+                "newDocument": self.navigation_document(navigation),
+            })
+            child.emit("loadstate", {"add": "commit"})
 
     #: Events held while the page is being built. The birth of a page is a
     #: burst of a few dozen; a page that never finishes building must not
@@ -2800,21 +2846,9 @@ class PageDispatcher(Dispatcher):
                     "failureText": params.get("errorCode") or "failed",
                     "page": self.channel,
                 })
-        elif method == "Page.navigationCommitted":
-            child = self.frame_for(params["frameId"])
-            for state in ("commit", "domcontentloaded", "load", "networkidle"):
-                child.emit("loadstate", {"remove": state})
-            child.url = params.get("url") or ""
-            child.name = params.get("name") or ""
-            child.emit("navigated", {
-                "url": child.url,
-                "name": child.name,
-                "newDocument": self.navigation_document(params.get("navigationId")),
-            })
-            child.emit("loadstate", {"add": "commit"})
-        # `Page.sameDocumentNavigation` is not handled here: the lifecycle
-        # announces it (`_on_lifecycle`), so the `navigated` it causes goes up
-        # BEFORE a `goto` waiting for it answers.
+        # `Page.navigationCommitted` and `Page.sameDocumentNavigation` are not
+        # handled here: the lifecycle announces them (`_on_lifecycle`), so the
+        # `navigated` they cause goes up BEFORE a wait they end answers.
 
     #: How many entries are kept. ⛔ A CAP, not a history: a page printing in
     #: a loop would exhaust the memory of the process DRIVING it, and a driver
@@ -3620,6 +3654,113 @@ def _address(context_id: Optional[str], params: Dict) -> Dict:
     return out
 
 
+class StreamDispatcher(Dispatcher):
+    """A file handed to the client in chunks: what `Download.save_as` reads.
+
+    The client asks `read` until it gets an empty answer; each chunk is base64.
+    """
+
+    TYPE = "Stream"
+    METHODS = {"read": "op_read", "close": "op_close"}
+
+    def __init__(self, server, parent, path: str) -> None:
+        self._file = open(path, "rb")
+        super().__init__(server, parent, {})
+
+    def op_read(self, params: Dict) -> Any:
+        size = int(params.get("size") or 1024 * 1024)
+        return {"binary": base64.b64encode(self._file.read(size)).decode("ascii")}
+
+    def op_close(self, params: Dict) -> Any:
+        self._file.close()
+        return None
+
+    def dispose(self, reason: Optional[str] = None) -> None:
+        try:
+            self._file.close()
+        except Exception:
+            pass
+        super().dispose(reason)
+
+
+class ArtifactDispatcher(Dispatcher):
+    """One download, as Playwright's server has it (`server/artifact.ts`).
+
+    ⛔ CREATED WHEN THE ENGINE SAYS `Browser.downloadCreated`, finished when it
+    says `Browser.downloadFinished`. Both arrive on the reader thread; the
+    methods below run on a caller's thread and wait for the finish with an
+    Event, so a `save_as` asked mid-transfer returns the complete file.
+    """
+
+    TYPE = "Artifact"
+    METHODS = {
+        "pathAfterFinished": "op_path_after_finished",
+        "saveAs": "op_save_as",
+        "saveAsStream": "op_save_as_stream",
+        "failure": "op_failure",
+        "stream": "op_stream",
+        "cancel": "op_cancel",
+        "delete": "op_delete",
+    }
+
+    def __init__(self, server, parent: "BrowserContextDispatcher", uuid: str,
+                 path: str) -> None:
+        self.uuid = uuid
+        self.path = path
+        self.finished = threading.Event()
+        self.error: Optional[str] = None
+        super().__init__(server, parent, {"absolutePath": path})
+
+    def report_finished(self, error: Optional[str]) -> None:
+        self.error = error
+        self.finished.set()
+
+    def _wait(self) -> None:
+        while not self.finished.wait(0.2):
+            if self.disposed:
+                raise ProtocolException("Target page, context or browser has been closed")
+        if self.error:
+            raise ProtocolException(self.error)
+
+    def op_path_after_finished(self, params: Dict) -> Any:
+        self._wait()
+        return {"value": self.path}
+
+    def op_save_as(self, params: Dict) -> Any:
+        self._wait()
+        import shutil
+        target = params["path"]
+        os.makedirs(os.path.dirname(os.path.abspath(target)), exist_ok=True)
+        shutil.copyfile(self.path, target)
+        return None
+
+    def op_save_as_stream(self, params: Dict) -> Any:
+        self._wait()
+        return {"stream": StreamDispatcher(self.server, self, self.path).channel}
+
+    def op_stream(self, params: Dict) -> Any:
+        return self.op_save_as_stream(params)
+
+    def op_failure(self, params: Dict) -> Any:
+        self.finished.wait()
+        return {"value": self.error}
+
+    def op_cancel(self, params: Dict) -> Any:
+        if not self.finished.is_set():
+            self.parent.browser.conn.send("Browser.cancelDownload",
+                                          {"uuid": self.uuid}, timeout=None)
+        return None
+
+    def op_delete(self, params: Dict) -> Any:
+        self.op_cancel(params)
+        self.finished.wait(10)
+        try:
+            os.remove(self.path)
+        except OSError:
+            pass
+        return None
+
+
 class BrowserContextDispatcher(Dispatcher):
     TYPE = "BrowserContext"
     METHODS = {
@@ -3871,10 +4012,17 @@ class BrowserContextDispatcher(Dispatcher):
         return None
 
     def op_set_offline(self, params: Dict) -> Any:
-        raise ProtocolException(
-            "set_offline() has no engine command in this Juggler: the "
-            "protocol declares no offline override, so honouring it would "
-            "mean lying about the network state")
+        """Juggler's `Browser.setOnlineOverride`, the command
+        `new_context(offline=True)` already sends; None clears it.
+
+        ⛔ IT WAS REFUSED until the engine honoured it. The engine's HTTP
+        channel answered a stub instead of the browsing context's ForceOffline
+        (fixed in firefox_antidetect_patch 3087f02c56), so an offline context
+        told the page `navigator.onLine === false` and still loaded every
+        request. With the engine fixed, refusing it only breaks callers."""
+        self._browser_send("Browser.setOnlineOverride",
+                           {"override": "offline" if params.get("offline") else None})
+        return None
 
     def op_set_extra_headers(self, params: Dict) -> Any:
         raise ProtocolException(
@@ -4052,6 +4200,9 @@ class BrowserDispatcher(Dispatcher):
                          {"version": version, "name": "firefox",
                           "browserName": "firefox"})
         self.contexts: List[BrowserContextDispatcher] = []
+        self._artifacts: Dict[str, "ArtifactDispatcher"] = {}
+        self._finished_early: Dict[str, Optional[str]] = {}
+        self._downloads_root: Optional[str] = None
         # ⛔ Adoptions start HERE, not at `add_listener` above. Anything the
         # engine attached in between predates every context (see the note on
         # the target map): recorded for its session, never built into a page.
@@ -4149,6 +4300,10 @@ class BrowserDispatcher(Dispatcher):
                                      params.get("sessionId"),
                                      info.get("browserContextId"),
                                      info.get("openerId"))
+        elif method == "Browser.downloadCreated":
+            self._on_download_created(params)
+        elif method == "Browser.downloadFinished":
+            self._on_download_finished(params)
         elif method == "Browser.detachedFromTarget":
             self._handle_detach(params.get("targetId"),
                                 params.get("sessionId"))
@@ -4594,6 +4749,74 @@ class BrowserDispatcher(Dispatcher):
             self._context_send("Browser.setDefaultViewport",
                            {"browserContextId": context_id,
                             "viewport": wanted})
+
+        # ⛔ DOWNLOADS ARE OPT-IN IN THE ENGINE: Juggler intercepts one only
+        # when the context has download options, so without this command a
+        # click on a download link saved nothing, raised no `download` event
+        # and left a `goto` to a file waiting for a navigation that never ends.
+        # Upstream sets them at context creation (ffBrowser.ts): `accept` (the
+        # default) saves to the browser's directory, `deny` cancels.
+        self._context_send("Browser.setDownloadOptions", {
+            "browserContextId": context_id,
+            "downloadOptions": {
+                "behavior": ("cancel" if params.get("acceptDownloads") == "deny"
+                             else "saveToDisk"),
+                "downloadsDir": self._downloads_dir(context_id)}})
+
+    def _downloads_dir(self, context_id: Optional[str]) -> str:
+        """The directory this context's downloads land in, under one root that
+        is the session's own and goes with it (as the profile's temp does)."""
+        root = self._downloads_root
+        if root is None:
+            import shutil
+            root = self._downloads_root = tempfile.mkdtemp(prefix="invpw-downloads-")
+            self.server.after_shutdown(
+                lambda: shutil.rmtree(root, ignore_errors=True))
+        path = os.path.join(root, context_id or "default")
+        os.makedirs(path, exist_ok=True)
+        return path
+
+    def _on_download_created(self, params: Dict) -> None:
+        context = next((c for c in self.contexts
+                        if c.context_id == params.get("browserContextId")), None)
+        page = self._page_targets.get(params.get("pageTargetId"))
+        if context is None:
+            return
+        directory = self._downloads_dir(params.get("browserContextId"))
+        artifact = ArtifactDispatcher(self.server, context, params["uuid"],
+                                      os.path.join(directory, params["uuid"]))
+        self._artifacts[params["uuid"]] = artifact
+        early = self._finished_early.pop(params["uuid"], None)
+        if page is not None:
+            # ⛔ THE ENGINE ENDS A NAVIGATION THAT BECAME A DOWNLOAD WITH NO
+            # EVENT AT ALL (no navigationCommitted, no navigationAborted), so
+            # a `goto` or a click waiting on it waited out its timeout.
+            # Upstream's server ends it here, on the download announcement
+            # (ffBrowser.ts: frameAbortedNavigation(frameId, 'Download is
+            # starting')); the lifecycle is fed the same abort. A frame whose
+            # current navigation already committed is left alone: the
+            # download came from a click or a script, not from a load.
+            frame = page.lifecycle.frame(params.get("frameId"))
+            if (frame is not None and frame.navigation
+                    and frame.navigation not in frame.aborted
+                    and not any(c[1] == frame.navigation
+                                for c in frame._commits)):
+                page.lifecycle._on_event("Page.navigationAborted", {
+                    "frameId": frame.id, "navigationId": frame.navigation,
+                    "errorText": "Download is starting"})
+            page.emit("download", {"url": params.get("url") or "",
+                                   "suggestedFilename": params.get("suggestedFileName") or "",
+                                   "artifact": artifact.channel})
+        if early is not None:
+            artifact.report_finished(early)
+
+    def _on_download_finished(self, params: Dict) -> None:
+        error = params.get("error") or ("canceled" if params.get("canceled") else None)
+        artifact = self._artifacts.get(params.get("uuid"))
+        if artifact is None:
+            self._finished_early[params.get("uuid")] = error
+        else:
+            artifact.report_finished(error)
 
     def _context_send(self, command: str, params: Dict) -> Any:
         """A `Browser.*` command about one context. The literal dicts above

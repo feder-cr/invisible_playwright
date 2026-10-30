@@ -70,6 +70,7 @@ def _bare_page():
     page._requests = {}
     page._request_log = []
     page._navigation_requests = {}
+    page._announced_closed = False
     # The network branches ask the session's lifecycle which requests are the
     # favicon; an empty memory answers "none", as for a page without one.
     page.lifecycle = SimpleNamespace(favicons=FaviconRequests())
@@ -98,9 +99,8 @@ def test_new_document_request_is_a_channel_or_omitted(has_request, source):
     page.frame_for = lambda fid: frame
 
     def committed():
-        page._on_juggler_event("Page.navigationCommitted", {
-            "frameId": "F1", "navigationId": "NAV1", "url": "about:blank",
-        })
+        # As the lifecycle announces a commit (`_on_lifecycle`).
+        page._on_lifecycle("commit", "F1", "about:blank", navigation="NAV1")
 
     if source == "goto":
         def goto(*args, **kwargs):

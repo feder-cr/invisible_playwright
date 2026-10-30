@@ -67,26 +67,34 @@ def test_scroll_into_view_puts_the_element_in_the_viewport(firefox_binary, html)
         os.environ.pop(factory.CHOICE_ENV, None)
 
 
+IS_IN_FULL_VIEW = """el => {
+    const r = el.getBoundingClientRect();
+    return r.top >= 0 && r.bottom <= window.innerHeight
+        && r.left >= 0 && r.right <= window.innerWidth;
+}"""
+
+CENTRE_OFFSET = """el => {
+    const r = el.getBoundingClientRect();
+    return Math.abs((r.top + r.bottom) / 2 - window.innerHeight / 2);
+}"""
+
+
 @pytest.mark.e2e
-def test_it_CENTRES_rather_than_scrolling_the_minimum(firefox_binary):
-    """⛔ A NAMED DIVERGENCE FROM PLAYWRIGHT, asserted so it cannot drift.
+def test_it_scrolls_ONLY_IF_NEEDED_and_then_centres(firefox_binary):
+    """What the method does with the page: nothing for an element in full view,
+    and centring for one that is not.
 
-    Upstream's `scrollIntoViewIfNeeded` scrolls the least it can and leaves a
-    page alone when the element is already visible. This one always centres,
-    because it reuses the helper the CLICK path uses, and that helper centres
-    deliberately: an element flush against the top edge sits under the sticky
-    header a great many sites paint there, and the hit-target check then
-    correctly reports that the event landed on something else.
+    ⛔ IT CENTRED EVERY TIME, and this test used to assert that. The core helper
+    is called before every click as well, so a click on a button in plain view
+    moved the page under it, which neither Chromium's `scrollIntoViewIfNeeded`
+    nor a person does. Since core 54.48.0 the helper leaves an element in full
+    view where it is, and centres only one that is not (the centre keeps it
+    clear of a sticky header along the top edge).
 
-    Writing a second helper to get the "if needed" half would put one concept
-    in two places and let the two scroll behaviours drift apart - which is the
-    defect this whole fix removes. So the divergence stays, and this test is
-    where it is written down in a form that runs: implement true "if needed"
-    some day and this goes red, which is the only way anybody reads the note.
-
-    The page below has room to scroll and the element starts visible, so the
-    two behaviours give different answers. On a page with nowhere to scroll
-    they agree, which is why that case cannot be the one asserted here.
+    Both halves run on the same page, where centring and "the least" give
+    different answers: the element sits LOW in the viewport, so a helper that
+    still centred would move the page in the first half, and one that scrolled
+    the minimum would leave it on the bottom edge in the second.
     """
     os.environ[factory.CHOICE_ENV] = factory.JUGGLER
     from invisible_playwright import InvisiblePlaywright
@@ -94,31 +102,29 @@ def test_it_CENTRES_rather_than_scrolling_the_minimum(firefox_binary):
         with InvisiblePlaywright(seed=42, binary_path=firefox_binary,
                                  headless=True) as browser:
             page = browser.new_page()
+            # `80vh` rather than a pixel count: the viewport height is a
+            # property of the profile, and this must hold whatever it is.
             page.set_content(
+                "<div style='height:80vh'></div>"
                 "<div id=x style='width:120px;height:40px'>target</div>"
                 "<div style='height:3000px'></div>")
-            assert page.evaluate("window.scrollY") == 0
-            assert page.eval_on_selector("#x", IS_IN_VIEWPORT), (
-                "the element starts out of view: the test proves nothing")
+            assert page.eval_on_selector("#x", IS_IN_FULL_VIEW), (
+                "the element starts partly out of view: the test proves nothing")
             page.locator("#x").scroll_into_view_if_needed(timeout=5000)
             assert page.evaluate("window.scrollY") == 0, (
-                "an element at the very top of a scrollable page cannot be "
-                "centred any further, so the page must not have moved")
+                "the element was in full view, and the page moved anyway")
 
-            # And the same element sitting LOW in the viewport but still inside
-            # it: now there is room above to scroll into, so centring moves the
-            # page while "if needed" would have left it alone. `90vh` rather
-            # than a pixel count, because the viewport height is a property of
-            # the profile and this must hold whatever it is.
+            # Half of it below the bottom edge: now it is needed.
             page.set_content(
-                "<div style='height:90vh'></div>"
+                "<div style='height:calc(100vh - 20px)'></div>"
                 "<div id=x style='width:120px;height:40px'>target</div>"
                 "<div style='height:3000px'></div>")
-            assert page.eval_on_selector("#x", IS_IN_VIEWPORT), (
-                "the element starts out of view: the test proves nothing")
+            assert not page.eval_on_selector("#x", IS_IN_FULL_VIEW), (
+                "the element starts in full view: the test proves nothing")
             page.locator("#x").scroll_into_view_if_needed(timeout=5000)
             assert page.evaluate("window.scrollY") > 0, (
-                "the helper is expected to centre a visible element, and the "
-                "page did not move at all")
+                "the element was cut by the bottom edge, and the page did not move")
+            assert page.eval_on_selector("#x", CENTRE_OFFSET) <= 1, (
+                "the page moved, but not to centre the element")
     finally:
         os.environ.pop(factory.CHOICE_ENV, None)

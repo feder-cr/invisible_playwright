@@ -40,10 +40,32 @@ class _Recorder:
         self.calls.append(("press", kw))
 
 
+class _Lifecycle:
+    """What `FrameDispatcher._waiting_after` asks of a page's lifecycle."""
+
+    def __init__(self):
+        self.waited = []
+
+    def mark(self, frame_id):
+        return ("mark", frame_id)
+
+    def wait_for_action_signals(self, frame_id, since, timeout):
+        self.waited.append((frame_id, since))
+
+
+class _Page:
+    def __init__(self):
+        self.lifecycle = _Lifecycle()
+        self.main_frame_id = "frame-main"
+
+
 class _Frame:
     def __init__(self):
         self.actions = _Recorder()
         self.frame_id = "frame-main"
+        self.page = _Page()
+
+    _waiting_after = FrameDispatcher._waiting_after
 
     def enter_frames(self, selector):
         return self.frame_id, selector
@@ -79,6 +101,9 @@ class _FrameSelf:
         self.enter_frames = frame.enter_frames
         self._timeout = frame._timeout
         self._act_opts = frame._act_opts
+        self.page = frame.page
+
+    _waiting_after = FrameDispatcher._waiting_after
 
 
 def _handle_op(name, params):
