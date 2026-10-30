@@ -19,6 +19,9 @@ class _Connection(EventListeners):
     def __init__(self, failure=None):
         super().__init__()
         self.sent = []
+        #: Download options are sent for every context; kept apart so the
+        #: ordering assertions below stay about the worker policy.
+        self.downloads = []
         self.failure = failure
         self.closed = False
 
@@ -26,6 +29,9 @@ class _Connection(EventListeners):
         return self.send(method, params, timeout=None)
 
     def send(self, method, params=None, session=None, timeout=30):
+        if method == "Browser.setDownloadOptions":
+            self.downloads.append(params)
+            return {}
         self.sent.append((method, params))
         if method == _COMMAND and self.failure:
             raise self.failure
@@ -106,3 +112,17 @@ def test_worker_protocol_addresses_the_default_context_without_a_null_id():
         }},
         "returns": None,
     }
+
+
+@pytest.mark.parametrize("accept,behavior", [
+    (None, "saveToDisk"), ("accept", "saveToDisk"), ("deny", "cancel")])
+def test_every_context_gets_download_options(accept, behavior):
+    """Juggler intercepts a download only when the context has options; before
+    this the wrapper never sent them and no download ever reached the client."""
+    browser, conn = _browser()
+    params = {} if accept is None else {"acceptDownloads": accept}
+    browser._apply_context_options("CTX", params)
+    (sent,) = conn.downloads
+    assert sent["browserContextId"] == "CTX"
+    assert sent["downloadOptions"]["behavior"] == behavior
+    assert sent["downloadOptions"]["downloadsDir"]
