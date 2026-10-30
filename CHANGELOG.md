@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.44.0] - 2026-10-30
+
+The pin moves to invisible-core 54.48.0, which brings the firefox-54 engine:
+Firefox 159.0.
+
+### Changed
+- invisible-core 53.48.0 -> 54.48.0, sealed to the firefox-54 engine (Firefox
+  159.0). Every identity reports what Firefox 159 reports: its User-Agent, its
+  WebGL extensions and its branding.
+- A click on an element that is already in full view no longer scrolls the
+  page. The element is brought to the centre only when part of it is outside
+  the viewport, as Chromium's scrollIntoViewIfNeeded does.
+
+### Fixed
+- Downloads reach Playwright: `page.expect_download()`, `Download.save_as()`,
+  `path()`, `failure()`, `delete()` and `cancel()` work, and a `goto` that ends
+  in a download fails with "Download is starting" instead of hanging until its
+  timeout. Contexts created with `accept_downloads=False` cancel downloads.
+- `BrowserContext.set_offline()` works instead of being refused: an offline
+  context loads nothing and reports `navigator.onLine === false`.
+
+### Tests
+- e2e: a clicked download and a navigation that ends in a download.
+- e2e: no scroll for an element in full view, also inside a same-origin frame;
+  an element below the fold is centred.
+- e2e: set_offline stops loads and set_offline(False) resumes them.
+
 ## [0.43.0] - 2026-10-24
 
 The pin moves to invisible-core 53.48.0, which brings the firefox-53 engine.
