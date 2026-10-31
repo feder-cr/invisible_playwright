@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-## [0.44.0] - 2026-10-30
+## [0.44.0] - 2026-10-31
 
 The pin moves to invisible-core 54.48.0, which brings the firefox-54 engine:
 Firefox 159.0.
