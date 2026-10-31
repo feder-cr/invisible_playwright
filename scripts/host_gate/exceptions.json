@@ -1,0 +1,33 @@
+{
+  "identity": [
+    {"keys": ["surface.screen.*", "surface.window.innerWidth", "surface.window.innerHeight",
+              "surface.window.outerWidth", "surface.window.outerHeight", "surface.window.screen*",
+              "surface.window.mozInnerScreen*", "surface.visualViewport.width", "surface.visualViewport.height",
+              "surface.computedStyle.body.width", "surface.computedStyle.body.inline-size",
+              "surface.computedStyle.body.perspective-origin", "surface.computedStyle.body.transform-origin"],
+     "why": "the declared screen and window; the body is as wide as the window"},
+    {"keys": ["surface.navigator.hardwareConcurrency", "surface.worker.hc"],
+     "why": "the declared core count"},
+    {"keys": ["surface.voices"],
+     "why": "the declared speech voices"},
+    {"keys": ["surface.webgl*.unmasked", "surface.webgl*.parameters.RENDERER",
+              "surface.webgl*.extension_parameters.WEBGL_debug_renderer_info.*",
+              "surface.webgl*.parameters.MAX_*", "surface.webgl*.extension_parameters.*.MAX_*",
+              "surface.webgpu.adapters.*"],
+     "why": "the declared GPU: its name and its limits (ANGLE gives NVIDIA one vertex uniform vector less)"}
+  ],
+  "noise": [],
+  "network": [],
+  "measurement": [
+    {"keys": ["surface.document.hasFocus"],
+     "why": "retail was measured on a hidden desktop, where its window never has focus"}
+  ],
+  "known_defects": [
+    {"keys": ["text.*", "blend.*"],
+     "why": "phase 4: text from idwr (DWrite 26100) on every OS; today Windows asks the host's DWrite and Linux FreeType"},
+    {"keys": ["surface.computedStyle.textarea.*"], "legs": ["linux-x86_64", "linux-arm64"],
+     "why": "phase 4: FreeType's average character width sets the textarea's width at fractional DPRs"},
+    {"keys": ["control.webgl1", "control.webgl2"], "legs": ["linux-x86_64", "linux-arm64"],
+     "why": "WebGL draws through the host's driver (llvmpipe here, ANGLE on Windows); a host-independent rasterizer is its own project"}
+  ]
+}

@@ -1,0 +1,287 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>host-gate</title>
+<body>
+<script>
+// host-gate/1: everything a page can read that the theory says is f(identity, Firefox code).
+// TEXT (text.*), CONTROL (control.*), BLEND (blend.*), SURFACE (surface.*): whole APIs, not chosen fields.
+// noise.*: only what varies between two launches of the same official build.
+// Must be served from a secure context (http://127.0.0.1 or https) for WebGPU and media APIs.
+(async () => {
+const G = {format: 'host-gate/1', meta: {devicePixelRatio: window.devicePixelRatio, userAgent: navigator.userAgent}, items: {}, noise: {}};
+const put = (k, v) => { G.items[k] = v; };
+const noise = (k, v) => { G.noise[k] = v; };
+const errs = e => 'ERR ' + ((e && e.name) || '') + ': ' + ((e && e.message) || String(e));
+const safe = async (k, f) => { try { put(k, await f()); } catch (e) { put(k, errs(e)); } };
+const b64 = u8 => { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); };
+const alphaOf = (g, w, h) => { const d = g.getImageData(0, 0, w, h).data, a = new Uint8Array(w * h); for (let i = 0; i < a.length; i++) a[i] = d[i * 4 + 3]; return a; };
+const img = (g, w, h, rgba) => ({w, h, enc: rgba ? 'rgba8' : 'alpha8', data: rgba ? b64(new Uint8Array(g.getImageData(0, 0, w, h).data.buffer)) : b64(alphaOf(g, w, h))});
+const canvas = (w, h, fn) => { const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'); fn(g, c); return [g, c]; };
+// a plain, comparable copy of any object: own + inherited enumerable data, functions as "function"
+const plain = (o, depth = 2) => {
+  if (o === null || o === undefined) return o;
+  const t = typeof o;
+  if (t === 'number' || t === 'string' || t === 'boolean') return o;
+  if (t === 'function') return 'function';
+  if (t === 'bigint') return String(o);
+  if (depth < 0) return '…';
+  if (Array.isArray(o) || ArrayBuffer.isView(o)) return Array.from(o, v => plain(v, depth - 1));
+  const out = {}; for (const k in o) { try { out[k] = plain(o[k], depth - 1); } catch (e) { out[k] = errs(e); } }
+  return out;
+};
+const names = o => { try { return Object.getOwnPropertyNames(o).sort(); } catch (e) { return errs(e); } };
+
+// ================================================================= TEXT
+const PIX = "\u{1F6CD}1>'`amlρiюदे來˦\u{25578}に◌\u{2003E}ԩԨ";
+const FONTS = ['Segoe UI', 'Arial', 'Times New Roman', 'Calibri', 'Consolas', 'Microsoft New Tai Lue', 'Myanmar Text', 'Microsoft PhagsPa',
+  'Segoe UI Emoji', 'Segoe UI Symbol', 'sans-serif', 'serif', 'monospace', 'system-ui'];
+const PPEM = [4, 5, 6, 7, 8, 9, 10, 11, 12, 16, 20, 32];
+const TEXTS = {H: 'H', o: 'o', word: 'Hamburgefonstiv', digits: '0123456789', pixelscan: PIX};
+const fam = f => /^(sans-serif|serif|monospace|system-ui)$/.test(f) ? f : `"${f}"`;
+const drawText = (font, px, s, rgba) => {
+  const p = document.createElement('canvas').getContext('2d'); p.font = `${px}px ${font}`;
+  const w = Math.ceil(p.measureText(s).width) + 8, h = Math.ceil(px * 2) + 4;
+  const [g] = canvas(w, h, g => { g.fillStyle = 'black'; g.font = `${px}px ${font}`; g.fillText(s, 4, Math.ceil(px) + 2); });
+  return img(g, w, h, rgba);
+};
+const TM = ['width', 'actualBoundingBoxLeft', 'actualBoundingBoxRight', 'actualBoundingBoxAscent', 'actualBoundingBoxDescent',
+  'fontBoundingBoxAscent', 'fontBoundingBoxDescent', 'emHeightAscent', 'emHeightDescent', 'hangingBaseline', 'alphabeticBaseline', 'ideographicBaseline'];
+const metrics = (font, px, s) => { const g = document.createElement('canvas').getContext('2d'); g.font = `${px}px ${font}`; const m = g.measureText(s);
+  return Object.fromEntries(TM.map(k => [k, m[k]])); };
+for (const f of FONTS) { const F = fam(f);
+  for (const px of PPEM) for (const [t, s] of Object.entries(TEXTS)) { put(`text.canvas.${f}.${px}.${t}`, drawText(F, px, s)); put(`text.metrics.${f}.${px}.${t}`, metrics(F, px, s)); }
+  for (const px of [4, 8, 16]) [...PIX].forEach((ch, i) => put(`text.char.${f}.${px}.${i}`, drawText(F, px, ch)));
+}
+const EMOJI = {shop: '\u{1F6CD}', grin: '\u{1F600}', flag: '\u{1F1EE}\u{1F1F9}', family: '\u{1F468}‍\u{1F469}‍\u{1F467}', heart: '❤️', skin: '\u{1F44D}\u{1F3FD}'};
+for (const f of ['Segoe UI Emoji', 'sans-serif']) for (const px of [8, 16, 32]) for (const [n, s] of Object.entries(EMOJI)) put(`text.emoji.${f}.${px}.${n}`, drawText(fam(f), px, s, true));
+const PIXFONTS = ['Arial', 'Calibri', 'Cambria Math', 'Cambria', 'Candara', 'Comic Sans MS', 'Consolas', 'Constantia', 'Corbel', 'Courier New', 'Ebrima', 'Franklin Gothic', 'Gabriola', 'Georgia', 'Impact', 'Lucida Console', 'Lucida Sans Unicode', 'MS Gothic', 'MS PGothic', 'MV Boli', 'Malgun Gothic', 'Marlett', 'Microsoft Himalaya', 'Microsoft JhengHei', 'Microsoft New Tai Lue', 'Microsoft PhagsPa', 'Microsoft Sans Serif', 'Microsoft YaHei', 'Microsoft Yi Baiti', 'MingLiU-ExtB', 'Mongolian Baiti', 'PMingLiU-ExtB', 'Palatino Linotype', 'Segoe Print', 'Segoe Script', 'Segoe UI Symbol', 'Segoe UI', 'SimSun', 'SimSun-ExtB', 'Sylfaen', 'Trebuchet MS', 'Verdana', 'Webdings', 'Gadugi', 'Javanese Text', 'Microsoft JhengHei UI', 'Myanmar Text', 'Sitka Small', 'Yu Gothic'];
+{ const seen = new Set();
+  for (const f of PIXFONTS) { const [g] = canvas(80, 10, g => { g.fillStyle = 'red'; g.font = 'normal 4px ' + f; g.fillText(PIX, 5, 5); });
+    const a = img(g, 80, 10); put(`text.pixelscan.${f}`, a); seen.add(a.data); }
+  put('text.pixelscan.distinct', seen.size); }
+{ const box = document.createElement('div'); box.style.cssText = 'position:absolute;left:0;top:0;white-space:nowrap'; document.body.appendChild(box);
+  const span = (css, s) => { const e = document.createElement('span'); e.style.cssText = css; e.textContent = s; box.appendChild(e); const r = e.getBoundingClientRect();
+    const out = [r.x, r.y, r.width, r.height, e.offsetWidth, e.offsetHeight]; e.remove(); return out; };
+  for (const f of FONTS) { const F = fam(f).replace(/"/g, "'");
+    for (const [t, s] of Object.entries(TEXTS)) put(`text.rect.${f}.${t}`, span(`font:16px ${F}`, s));
+    const u = {}; for (const unit of ['ex', 'cap', 'ch', 'ic', 'lh', 'rex', 'rcap', 'rch', 'ric', 'rlh']) { const e = document.createElement('div'); e.style.cssText = `font:16px ${F};width:1${unit};height:1px`;
+      box.appendChild(e); u[unit] = e.getBoundingClientRect().width; e.remove(); } put(`text.units.${f}`, u);
+    for (const mode of ['0.5', 'ex-height 0.5', 'cap-height 0.7', 'ch-width 0.6', 'ic-width 1', 'from-font'])
+      put(`text.adjust.${f}.${mode}`, span(`font:16px ${F};font-size-adjust:${mode}`, TEXTS.word));
+  }
+  box.remove(); }
+put('text.fonts.check', Object.fromEntries([...new Set([...FONTS, ...PIXFONTS])].map(f => [f, document.fonts.check(`16px ${fam(f)}`)])));
+put('text.fonts.size', document.fonts.size);
+const svgDraw = (attr, family, s) => new Promise(res => {
+  const src = `<svg xmlns="http://www.w3.org/2000/svg" width="240" height="40"><text x="4" y="26" font-family="${family}" font-size="18" ${attr}>${s}</text></svg>`;
+  const im = new Image(); im.onload = () => { const [g] = canvas(240, 40, g => g.drawImage(im, 0, 0)); try { res(img(g, 240, 40)); } catch (e) { res(errs(e)); } };
+  im.onerror = () => res('ERR load'); im.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(src); });
+for (const f of ['Segoe UI', 'Arial', 'Times New Roman', 'serif'])
+  for (const [n, a] of Object.entries({plain: '', underline: 'text-decoration="underline"', linethrough: 'text-decoration="line-through"', overline: 'text-decoration="overline"'}))
+    put(`text.svg.${f}.${n}`, await svgDraw(a, f, TEXTS.word));
+put('text.svg.emoji', await svgDraw('', 'Segoe UI Emoji', EMOJI.grin + EMOJI.flag));
+const SCRIPTS = {latin: 'Hamburg', greek: 'αβγδε', cyrillic: 'жизнь', arabic: 'مرحبا', hebrew: 'שלום', devanagari: 'नमस्ते', bengali: 'বাংলা',
+  thai: 'สวัสดี', lao: 'ສະບາຍ', khmer: 'សួស្តី', myanmar: 'မင်္ဂလာ', sinhala: 'සිංහල', tamil: 'தமிழ்', ethiopic: 'ሰላም', tibetan: 'བོད་ཡིག',
+  georgian: 'ქართული', armenian: 'Հայերեն', cjk: '漢字中文', cjkextb: '\u{20000}\u{25578}', hiragana: 'ひらがな', hangul: '한국어', mongolian: 'ᠮᠣᠩᠭᠣᠯ',
+  cherokee: 'ᏣᎳᎩ', math: '∑∫√∞≠', arrows: '←↑→↓↔', box: '┌─┐│└┘', pua: '', symbols: '☀☂☃★♠'};
+for (const g of ['sans-serif', 'serif', 'monospace']) for (const [n, s] of Object.entries(SCRIPTS)) {
+  put(`text.fallback.${n}.${g}`, drawText(g, 16, s)); put(`text.fallbackwidth.${n}.${g}`, metrics(g, 16, s).width); }
+
+// ================================================================= CONTROL (no text)
+const ctl = (k, w, h, fn) => { const [g] = canvas(w, h, fn); put(`control.${k}`, img(g, w, h, true)); };
+ctl('rects', 64, 64, g => { g.fillStyle = '#c33'; g.fillRect(3.5, 3.5, 30, 20); g.strokeStyle = 'rgba(0,80,200,.6)'; g.lineWidth = 2.5; g.strokeRect(10.25, 15.75, 40, 30); });
+ctl('arcs', 64, 64, g => { g.beginPath(); g.arc(32, 32, 20.3, 0, Math.PI * 1.7); g.lineWidth = 3; g.strokeStyle = '#080'; g.stroke();
+  g.beginPath(); g.ellipse(30, 30, 12, 7, 0.6, 0, 2 * Math.PI); g.fillStyle = 'rgba(200,100,0,.5)'; g.fill(); });
+ctl('beziers', 64, 64, g => { g.beginPath(); g.moveTo(2, 60); g.bezierCurveTo(10, 0, 50, 70, 62, 4); g.quadraticCurveTo(40, 40, 5, 30);
+  g.lineWidth = 1.7; g.lineJoin = 'round'; g.lineCap = 'round'; g.setLineDash([4, 3]); g.stroke(); });
+ctl('linear', 64, 32, g => { const l = g.createLinearGradient(0, 0, 64, 32); l.addColorStop(0, '#f00'); l.addColorStop(.5, 'rgba(0,255,0,.5)'); l.addColorStop(1, '#00f'); g.fillStyle = l; g.fillRect(0, 0, 64, 32); });
+ctl('radial', 64, 64, g => { const r = g.createRadialGradient(20, 20, 2, 32, 32, 30); r.addColorStop(0, '#fff'); r.addColorStop(1, '#048'); g.fillStyle = r; g.fillRect(0, 0, 64, 64); });
+ctl('conic', 64, 64, g => { const c = g.createConicGradient(0.3, 32, 32); c.addColorStop(0, 'red'); c.addColorStop(.5, 'yellow'); c.addColorStop(1, 'red'); g.fillStyle = c; g.fillRect(0, 0, 64, 64); });
+ctl('pattern', 64, 64, g => { const [, p] = canvas(5, 5, h => { h.fillStyle = '#123'; h.fillRect(0, 0, 3, 3); }); g.fillStyle = g.createPattern(p, 'repeat'); g.translate(.5, .3); g.rotate(.2); g.fillRect(0, 0, 70, 70); });
+ctl('shadow', 64, 64, g => { g.shadowColor = 'rgba(0,0,0,.6)'; g.shadowBlur = 6; g.shadowOffsetX = 3; g.shadowOffsetY = 2; g.fillStyle = '#e91'; g.fillRect(12, 12, 30, 30); });
+for (const op of ['source-over', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'color-dodge', 'color-burn', 'hard-light', 'soft-light', 'difference', 'exclusion', 'hue', 'saturation', 'color', 'luminosity', 'xor', 'lighter'])
+  ctl(`composite.${op}`, 32, 32, g => { g.fillStyle = 'rgba(30,140,220,.8)'; g.fillRect(2, 2, 20, 20); g.globalCompositeOperation = op; g.fillStyle = 'rgba(240,60,40,.7)'; g.beginPath(); g.arc(20, 20, 10, 0, 7); g.fill(); });
+ctl('image_scaled', 48, 48, g => { const [, s] = canvas(7, 7, h => { for (let i = 0; i < 49; i++) { h.fillStyle = `rgb(${i * 5},${255 - i * 5},${(i * 37) % 255})`; h.fillRect(i % 7, (i / 7) | 0, 1, 1); } });
+  g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high'; g.drawImage(s, 0, 0, 48, 48); });
+ctl('filter', 48, 48, g => { g.filter = 'blur(2px) hue-rotate(40deg)'; g.fillStyle = '#3a6'; g.fillRect(8, 8, 30, 30); });
+{ // toDataURL: the PNG with its per-launch "deBG" chunk taken out (that chunk is noise.png_deBG)
+  const [, c] = canvas(16, 16, g => { g.fillStyle = 'rgba(10,20,30,.5)'; g.fillRect(1, 1, 9, 9); });
+  const bin = atob(c.toDataURL().split(',')[1]); const u = Uint8Array.from(bin, ch => ch.charCodeAt(0));
+  const keep = [u.subarray(0, 8)]; let i = 8, deBG = null;
+  while (i < u.length) { const n = (u[i] << 24 | u[i + 1] << 16 | u[i + 2] << 8 | u[i + 3]) >>> 0; const t = String.fromCharCode(...u.subarray(i + 4, i + 8));
+    if (t === 'deBG') deBG = String.fromCharCode(...u.subarray(i + 8, i + 8 + n)); else keep.push(u.subarray(i, i + 12 + n)); i += 12 + n; }
+  const out = new Uint8Array(keep.reduce((a, x) => a + x.length, 0)); let o = 0; for (const k of keep) { out.set(k, o); o += k.length; }
+  put('control.toDataURL', {w: 16, h: 16, enc: 'png', data: b64(out)});
+  put('control.toDataURL_deBG_shape', deBG === null ? 'absent' : (/^[0-9A-F]{16}$/.test(deBG) ? 'hex16' : 'other:' + deBG.length));
+  noise('png_deBG', deBG); }
+const glScene = version => { const c = document.createElement('canvas'); c.width = 32; c.height = 32;
+  const gl = c.getContext(version, {preserveDrawingBuffer: true, antialias: false}); if (!gl) return 'no ' + version;
+  const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; };
+  const pr = gl.createProgram(); gl.attachShader(pr, sh(gl.VERTEX_SHADER, 'attribute vec2 p; varying vec2 v; void main(){ v = p; gl_Position = vec4(p, 0.0, 1.0); }'));
+  gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, 'precision mediump float; varying vec2 v; void main(){ gl_FragColor = vec4(fract(v.x*3.7), abs(sin(v.y*5.0)), 0.5+0.5*v.x*v.y, 1.0); }'));
+  gl.linkProgram(pr); gl.useProgram(pr);
+  gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer()); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-0.9, -0.8, 0.85, -0.7, 0.1, 0.95]), gl.STATIC_DRAW);
+  const loc = gl.getAttribLocation(pr, 'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+  gl.clearColor(0.1, 0.2, 0.3, 1); gl.clear(gl.COLOR_BUFFER_BIT); gl.drawArrays(gl.TRIANGLES, 0, 3);
+  const px = new Uint8Array(32 * 32 * 4); gl.readPixels(0, 0, 32, 32, gl.RGBA, gl.UNSIGNED_BYTE, px); return {w: 32, h: 32, enc: 'rgba8', data: b64(px)}; };
+put('control.webgl1', glScene('webgl')); put('control.webgl2', glScene('webgl2'));
+
+// ================================================================= BLEND (Skia CPU blending of text)
+const BL = {red: g => { g.fillStyle = '#d22'; }, alpha: g => { g.fillStyle = 'rgba(0,0,0,.45)'; }, global: g => { g.globalAlpha = .6; g.fillStyle = '#226'; },
+  overcolour: g => { g.fillStyle = '#9cf'; g.fillRect(0, 0, 200, 40); g.fillStyle = 'rgba(200,30,30,.7)'; }};
+for (const f of ['Segoe UI', 'Arial', 'Times New Roman']) for (const px of [8, 16]) for (const [n, set] of Object.entries(BL)) {
+  const [g] = canvas(200, 40, g => { set(g); g.font = `${px}px "${f}"`; g.fillText('Hamburgefonstiv 0123', 4, 26); }); put(`blend.${f}.${px}.${n}`, img(g, 200, 40, true)); }
+
+// ================================================================= SURFACE (whole APIs)
+put('surface.window_own', names(window));
+for (const n of ['Navigator', 'Document', 'HTMLDocument', 'Element', 'HTMLElement', 'Node', 'EventTarget', 'Screen', 'ScreenOrientation', 'Performance',
+  'HTMLCanvasElement', 'CanvasRenderingContext2D', 'OffscreenCanvas', 'WebGLRenderingContext', 'WebGL2RenderingContext', 'AudioContext', 'BaseAudioContext',
+  'MediaDevices', 'Permissions', 'Notification', 'GPU', 'GPUAdapter', 'GPUDevice', 'StorageManager', 'Crypto', 'SubtleCrypto', 'CSS', 'History', 'Location',
+  'PluginArray', 'MimeTypeArray', 'MouseEvent', 'PointerEvent', 'KeyboardEvent', 'Worker', 'ServiceWorkerContainer', 'RTCPeerConnection', 'SpeechSynthesis',
+  'VisualViewport', 'FontFaceSet', 'Clipboard', 'ImageDecoder', 'VideoDecoder', 'AudioDecoder', 'VideoEncoder', 'WebTransport', 'LockManager', 'WakeLock', 'Gamepad',
+  'Scheduler', 'CookieStore', 'NetworkInformation', 'MediaCapabilities', 'MediaSource', 'MediaRecorder', 'IntersectionObserver', 'ResizeObserver', 'TextMetrics',
+  'CustomElementRegistry', 'Window'])
+  put(`surface.proto.${n}`, typeof window[n] === 'undefined' ? 'absent' : (window[n].prototype ? names(window[n].prototype) : names(window[n])));
+put('surface.navigator', plain(navigator, 1));
+put('surface.navigator.plugins', [...navigator.plugins].map(p => [p.name, p.filename, p.description, [...p].map(m => m.type)]));
+put('surface.navigator.mimeTypes', [...navigator.mimeTypes].map(m => [m.type, m.suffixes, m.description]));
+put('surface.screen', plain(screen, 1));
+put('surface.screen.orientation', screen.orientation ? [screen.orientation.type, screen.orientation.angle] : 'absent');
+put('surface.window', Object.fromEntries(['innerWidth', 'innerHeight', 'outerWidth', 'outerHeight', 'screenX', 'screenY', 'screenLeft', 'screenTop',
+  'devicePixelRatio', 'mozInnerScreenX', 'mozInnerScreenY', 'scrollMaxX', 'scrollMaxY', 'isSecureContext', 'crossOriginIsolated', 'name', 'closed', 'length']
+  .map(k => [k, window[k]])));
+// the origin without its port: the port is the gate server's, not the browser's
+put('surface.window.origin_scheme_host', location.protocol + '//' + location.hostname);
+put('surface.visualViewport', window.visualViewport ? plain(visualViewport, 0) : 'absent');
+put('surface.document', Object.fromEntries(['characterSet', 'compatMode', 'contentType', 'designMode', 'dir', 'visibilityState', 'hidden', 'fullscreenEnabled',
+  'pictureInPictureEnabled', 'pointerLockElement', 'hasStorageAccess'].map(k => [k, typeof document[k] === 'function' ? 'function' : document[k]])));
+put('surface.document.hasFocus', document.hasFocus());
+{ const Q = {}; const feat = {'prefers-color-scheme': ['light', 'dark'], 'prefers-reduced-motion': ['no-preference', 'reduce'], 'prefers-contrast': ['no-preference', 'more', 'less', 'custom'],
+    'prefers-reduced-transparency': ['no-preference', 'reduce'], 'forced-colors': ['none', 'active'], 'inverted-colors': ['none', 'inverted'], pointer: ['none', 'coarse', 'fine'],
+    hover: ['none', 'hover'], 'any-pointer': ['none', 'coarse', 'fine'], 'any-hover': ['none', 'hover'], 'color-gamut': ['srgb', 'p3', 'rec2020'], 'dynamic-range': ['standard', 'high'],
+    'video-dynamic-range': ['standard', 'high'], 'display-mode': ['browser', 'fullscreen', 'standalone', 'minimal-ui'], update: ['none', 'slow', 'fast'], scripting: ['none', 'initial-only', 'enabled'],
+    'overflow-block': ['none', 'scroll', 'paged'], 'overflow-inline': ['none', 'scroll'], orientation: ['portrait', 'landscape'], grid: ['0', '1'], monochrome: ['0'],
+    '-moz-platform': ['windows', 'macos', 'linux', 'android'], '-moz-windows-non-native-menus': ['0', '1'], '-moz-overlay-scrollbars': ['0', '1'], 'prefers-reduced-data': ['no-preference', 'reduce']};
+  for (const [f, vs] of Object.entries(feat)) Q[f] = vs.filter(v => matchMedia(`(${f}: ${v})`).matches);
+  for (const f of ['color', 'color-index', 'resolution', 'device-pixel-ratio']) Q['supports-' + f] = matchMedia(`(${f})`).matches;
+  Q.color_bits = [1, 2, 4, 6, 8, 10, 12, 16].filter(n => matchMedia(`(color: ${n})`).matches);
+  put('surface.mq', Q); }
+{ const I = {}; const ctors = ['DateTimeFormat', 'NumberFormat', 'Collator', 'PluralRules', 'RelativeTimeFormat', 'ListFormat', 'Segmenter', 'DisplayNames', 'DurationFormat'];
+  for (const c of ctors) { try { I[c] = Intl[c] ? new Intl[c](undefined, c === 'DisplayNames' ? {type: 'region'} : undefined).resolvedOptions() : 'absent'; } catch (e) { I[c] = errs(e); } }
+  for (const k of ['calendar', 'collation', 'currency', 'numberingSystem', 'timeZone', 'unit']) { try { I['supported_' + k] = Intl.supportedValuesOf(k); } catch (e) { I['supported_' + k] = errs(e); } }
+  const d = new Date(Date.UTC(2026, 0, 15, 12, 0, 0)), s = new Date(Date.UTC(2026, 6, 15, 12, 0, 0));
+  I.offsets = [d.getTimezoneOffset(), s.getTimezoneOffset()]; I.strings = [d.toString(), s.toString(), d.toLocaleString(), (1234567.891).toLocaleString(), d.toLocaleDateString(undefined, {dateStyle: 'full'})];
+  I.languages = navigator.languages; put('surface.intl', I); }
+const glAll = version => { const c = document.createElement('canvas'); const gl = c.getContext(version); if (!gl) return 'no ' + version;
+  const P = {}, proto = Object.getPrototypeOf(gl);
+  for (const k of Object.getOwnPropertyNames(proto.constructor)) if (/^[A-Z0-9_]+$/.test(k) && typeof gl[k] === 'number') {
+    const v = gl.getParameter(gl[k]); gl.getError(); if (v !== null && v !== undefined) P[k] = plain(v, 1); }
+  const ext = gl.getSupportedExtensions() || []; const E = {};
+  for (const e of ext) { const o = gl.getExtension(e); if (!o) continue; const ep = {};
+    for (const k in o) if (/^[A-Z0-9_]+$/.test(k) && typeof o[k] === 'number') { const v = gl.getParameter(o[k]); gl.getError(); if (v !== null && v !== undefined) ep[k] = plain(v, 1); }
+    E[e] = ep; }
+  const prec = {}; for (const st of ['VERTEX_SHADER', 'FRAGMENT_SHADER']) for (const pt of ['LOW_FLOAT', 'MEDIUM_FLOAT', 'HIGH_FLOAT', 'LOW_INT', 'MEDIUM_INT', 'HIGH_INT']) {
+    const p = gl.getShaderPrecisionFormat(gl[st], gl[pt]); prec[`${st}.${pt}`] = [p.rangeMin, p.rangeMax, p.precision]; }
+  const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+  return {parameters: P, extensions: ext, extension_parameters: E, precisions: prec, attributes: gl.getContextAttributes(),
+    unmasked: dbg ? [gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL), gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)] : 'absent'}; };
+await safe('surface.webgl1', () => glAll('webgl')); await safe('surface.webgl2', () => glAll('webgl2'));
+// getParameter must answer only where Firefox would: WebGL2-only enums on a WebGL1 context and the
+// enums of extensions not enabled, each as [value, getError()] (official: null + INVALID_ENUM)
+await safe('surface.webgl_invalid_enums', () => {
+  const val = x => (x === null || x === undefined) ? x : (typeof x === 'object' ? (ArrayBuffer.isView(x) || Array.isArray(x) ? Array.from(x) : String(x)) : x);
+  const ask = (gl, enums) => { const o = {}; gl.getError(); for (const [n, e] of enums) { let v; try { v = val(gl.getParameter(e)); } catch (x) { v = 'THROW ' + x.name; } o[n] = [v, gl.getError()]; } return o; };
+  const g1 = new Set(Object.getOwnPropertyNames(WebGLRenderingContext));
+  const only2 = Object.getOwnPropertyNames(WebGL2RenderingContext).filter(k => /^[A-Z0-9_]+$/.test(k) && !g1.has(k)).map(k => [k, WebGL2RenderingContext[k]]);
+  const EXT = Object.entries({MAX_TEXTURE_MAX_ANISOTROPY_EXT: 0x84FF, TEXTURE_MAX_ANISOTROPY_EXT: 0x84FE, MAX_VIEWS_OVR: 0x9631, UNMASKED_VENDOR_WEBGL: 0x9245,
+    UNMASKED_RENDERER_WEBGL: 0x9246, MAX_DRAW_BUFFERS_WEBGL: 0x8824, MAX_COLOR_ATTACHMENTS_WEBGL: 0x8CDF, FRAGMENT_SHADER_DERIVATIVE_HINT_OES: 0x8B8B,
+    VERTEX_ARRAY_BINDING_OES: 0x85B5, TIMESTAMP_EXT: 0x8E28, GPU_DISJOINT_EXT: 0x8FBB, QUERY_COUNTER_BITS_EXT: 0x8864, MAX_CLIP_DISTANCES_WEBGL: 0x0D32,
+    MAX_CULL_DISTANCES_WEBGL: 0x82F9, MAX_COMBINED_CLIP_AND_CULL_DISTANCES_WEBGL: 0x82FA, PROVOKING_VERTEX_WEBGL: 0x8E4F, POLYGON_OFFSET_CLAMP_EXT: 0x8E1B,
+    CLIP_ORIGIN_EXT: 0x935C, CLIP_DEPTH_MODE_EXT: 0x935D, MAX_DUAL_SOURCE_DRAW_BUFFERS_WEBGL: 0x88FC, DEPTH_CLAMP_EXT: 0x864F});
+  const c1 = document.createElement('canvas').getContext('webgl'), c2 = document.createElement('canvas').getContext('webgl2');
+  return {webgl1_webgl2only: ask(c1, only2), webgl1_ext_not_enabled: ask(c1, EXT), webgl2_ext_not_enabled: ask(c2, EXT)}; });
+await safe('surface.webgpu', async () => { if (!navigator.gpu) return 'absent'; const W = {preferredCanvasFormat: navigator.gpu.getPreferredCanvasFormat(),
+    wgslLanguageFeatures: [...navigator.gpu.wgslLanguageFeatures].sort(), adapters: {}};
+  for (const [n, o] of Object.entries({none: undefined, low_power: {powerPreference: 'low-power'}, high_performance: {powerPreference: 'high-performance'}, fallback: {forceFallbackAdapter: true}})) {
+    const a = await navigator.gpu.requestAdapter(o); if (!a) { W.adapters[n] = null; continue; }
+    const L = {}; for (const k in a.limits) L[k] = a.limits[k];
+    const A = {features: [...a.features].sort(), limits: L, info: plain(a.info, 0)};
+    try { const d = await a.requestDevice({requiredFeatures: A.features}); A.device = 'ok'; d.destroy(); } catch (e) { A.device = errs(e); }
+    W.adapters[n] = A; }
+  return W; });
+{ const types = ['video/mp4', 'video/webm', 'video/ogg', 'audio/mpeg', 'audio/mp4', 'audio/webm', 'audio/ogg', 'audio/wav', 'audio/flac', 'audio/aac',
+    'video/mp4; codecs="avc1.42E01E"', 'video/mp4; codecs="avc1.640028"', 'video/mp4; codecs="hev1.1.6.L93.B0"', 'video/mp4; codecs="hvc1.1.6.L93.B0"',
+    'video/mp4; codecs="av01.0.05M.08"', 'video/webm; codecs="av01.0.05M.08"', 'video/mp4; codecs="vp09.00.10.08"', 'video/webm; codecs="vp9"', 'video/webm; codecs="vp8"',
+    'video/webm; codecs="vp8, vorbis"', 'audio/mp4; codecs="mp4a.40.2"', 'audio/mp4; codecs="opus"', 'audio/webm; codecs="opus"', 'audio/ogg; codecs="vorbis"',
+    'audio/mp4; codecs="flac"', 'audio/mp4; codecs="ec-3"', 'audio/mp4; codecs="ac-3"', 'video/x-matroska', 'application/x-mpegURL', 'application/vnd.apple.mpegurl'];
+  const v = document.createElement('video');
+  put('surface.media.canPlayType', Object.fromEntries(types.map(t => [t, v.canPlayType(t)])));
+  put('surface.media.MediaSource', window.MediaSource ? Object.fromEntries(types.map(t => [t, MediaSource.isTypeSupported(t)])) : 'absent');
+  put('surface.media.MediaRecorder', window.MediaRecorder ? Object.fromEntries(types.map(t => [t, MediaRecorder.isTypeSupported(t)])) : 'absent');
+  const D = {}; const vcodecs = {avc: 'video/mp4; codecs="avc1.640028"', hevc: 'video/mp4; codecs="hvc1.1.6.L93.B0"', vp8: 'video/webm; codecs="vp8"', vp9: 'video/webm; codecs="vp09.00.10.08"',
+    av1: 'video/mp4; codecs="av01.0.05M.08"'};
+  for (const [n, ct] of Object.entries(vcodecs)) for (const type of ['file', 'media-source']) for (const [w, h, fr, br] of [[1280, 720, 30, 2e6], [1920, 1080, 60, 8e6], [3840, 2160, 30, 2e7]]) {
+    try { const r = await navigator.mediaCapabilities.decodingInfo({type, video: {contentType: ct, width: w, height: h, bitrate: br, framerate: fr}}); D[`${type}.${n}.${h}p${fr}`] = [r.supported, r.smooth, r.powerEfficient]; }
+    catch (e) { D[`${type}.${n}.${h}p${fr}`] = errs(e); } }
+  for (const ct of ['video/VP8', 'video/VP9', 'video/AV1', 'video/H264']) {
+    try { const r = await navigator.mediaCapabilities.decodingInfo({type: 'webrtc', video: {contentType: ct, width: 1280, height: 720, bitrate: 1e6, framerate: 30}}); D['webrtc.' + ct] = [r.supported, r.smooth, r.powerEfficient]; }
+    catch (e) { D['webrtc.' + ct] = errs(e); }
+    try { const r = await navigator.mediaCapabilities.encodingInfo({type: 'webrtc', video: {contentType: ct, width: 1280, height: 720, bitrate: 1e6, framerate: 30}}); D['webrtc-encode.' + ct] = [r.supported, r.smooth, r.powerEfficient]; }
+    catch (e) { D['webrtc-encode.' + ct] = errs(e); } }
+  for (const [n, ct] of Object.entries({aac: 'audio/mp4; codecs="mp4a.40.2"', opus: 'audio/webm; codecs="opus"', flac: 'audio/flac', mp3: 'audio/mpeg'})) {
+    try { const r = await navigator.mediaCapabilities.decodingInfo({type: 'file', audio: {contentType: ct, channels: '2', bitrate: 128000, samplerate: 48000}}); D['audio.' + n] = [r.supported, r.smooth, r.powerEfficient]; }
+    catch (e) { D['audio.' + n] = errs(e); } }
+  put('surface.media.capabilities', D); }
+await safe('surface.audio', async () => { const c = new AudioContext(); const o = {sampleRate: c.sampleRate, baseLatency: c.baseLatency, state: c.state,
+    destination: plain(c.destination, 0), listener: Object.keys(plain(c.listener, 0)).length}; await c.close();
+  const oc = new OfflineAudioContext(1, 5000, 44100), an = oc.createAnalyser(), os = oc.createOscillator(), dc = oc.createDynamicsCompressor();
+  os.type = 'triangle'; os.frequency.value = 10000; dc.threshold.value = -50; dc.knee.value = 40; dc.attack.value = 0;
+  os.connect(dc); dc.connect(an); dc.connect(oc.destination); os.start(0); const buf = await oc.startRendering();
+  const ch = buf.getChannelData(0); let s = 0; for (let i = 4500; i < 5000; i++) s += Math.abs(ch[i]);
+  o.offline_sum = s; o.offline_reduction = dc.reduction; o.offline_head = Array.from(ch.subarray(4500, 4520)); return o; });
+await safe('surface.voices', () => new Promise(res => { const get = () => speechSynthesis.getVoices().map(v => [v.name, v.lang, v.localService, v.default, v.voiceURI]);
+  const now = get(); if (now.length) return res(now); speechSynthesis.onvoiceschanged = () => res(get()); setTimeout(() => res(get()), 3000); }));
+await safe('surface.permissions', async () => { const P = {}; for (const n of ['geolocation', 'notifications', 'push', 'persistent-storage', 'camera', 'microphone', 'midi',
+  'clipboard-read', 'clipboard-write', 'screen-wake-lock', 'storage-access', 'background-sync', 'accelerometer', 'gyroscope', 'magnetometer', 'local-fonts', 'payment-handler']) {
+  try { P[n] = (await navigator.permissions.query({name: n})).state; } catch (e) { P[n] = errs(e); } } return P; });
+await safe('surface.storage', async () => { const e = await navigator.storage.estimate(); noise('storage_usage', e.usage); return {quota: e.quota, persisted: await navigator.storage.persisted()}; });
+await safe('surface.devices', async () => (await navigator.mediaDevices.enumerateDevices()).map(d => [d.kind, d.label, d.deviceId === '' ? '' : 'id', d.groupId === '' ? '' : 'id']));
+{ const style = el => { document.body.appendChild(el); const cs = getComputedStyle(el); const o = {}; for (let i = 0; i < cs.length; i++) o[cs[i]] = cs.getPropertyValue(cs[i]); el.remove(); return o; };
+  for (const [n, mk] of Object.entries({body: () => document.createElement('div'), button: () => document.createElement('button'), input: () => document.createElement('input'),
+    select: () => document.createElement('select'), textarea: () => document.createElement('textarea'), a: () => Object.assign(document.createElement('a'), {href: '#'})}))
+    put(`surface.computedStyle.${n}`, style(mk()));
+  const SC = ['AccentColor', 'AccentColorText', 'ActiveText', 'ButtonBorder', 'ButtonFace', 'ButtonText', 'Canvas', 'CanvasText', 'Field', 'FieldText', 'GrayText', 'Highlight',
+    'HighlightText', 'LinkText', 'Mark', 'MarkText', 'SelectedItem', 'SelectedItemText', 'VisitedText', 'ActiveBorder', 'ActiveCaption', 'AppWorkspace', 'Background',
+    'ButtonHighlight', 'ButtonShadow', 'CaptionText', 'InactiveBorder', 'InactiveCaption', 'InactiveCaptionText', 'InfoBackground', 'InfoText', 'Menu', 'MenuText',
+    'Scrollbar', 'ThreeDDarkShadow', 'ThreeDFace', 'ThreeDHighlight', 'ThreeDLightShadow', 'ThreeDShadow', 'Window', 'WindowFrame', 'WindowText',
+    '-moz-buttonhoverface', '-moz-buttonhovertext', '-moz-cellhighlight', '-moz-dialog', '-moz-dialogtext', '-moz-oddtreerow'];
+  const e = document.createElement('div'); document.body.appendChild(e); const C = {};
+  for (const c of SC) { e.style.color = ''; e.style.color = c; C[c] = getComputedStyle(e).color; } e.remove(); put('surface.systemColors', C);
+  const F = {}; const f = document.createElement('div'); document.body.appendChild(f);
+  for (const k of ['caption', 'icon', 'menu', 'message-box', 'small-caption', 'status-bar', '-moz-button', '-moz-field', '-moz-list', '-moz-pull-down-menu', 'system-ui'])
+    { f.style.font = ''; f.style.font = k === 'system-ui' ? '16px system-ui' : k; const cs = getComputedStyle(f); F[k] = [cs.fontFamily, cs.fontSize, cs.fontWeight, cs.fontStyle]; }
+  f.remove(); put('surface.systemFonts', F); }
+{ const M = {}; for (const [n, x] of Object.entries({acos: .123, acosh: 1e308, asin: .123, asinh: 1, atanh: .5, atan: 2, sin: -1e300, sinh: 1, cos: 10.000000000123, cosh: 1,
+    tan: -1e300, tanh: 1, exp: 1, expm1: 1, log1p: 10, cbrt: 100, pow: 2}))
+    M[n] = n === 'pow' ? Math.pow(Math.PI, -100) : Math[n](x);
+  put('surface.math', M); }
+{ const E = {}; const tries = {undef: () => null.x, call: () => (1)(), reduce: () => [].reduce((a, b) => a), json: () => JSON.parse('{'), range: () => new Array(-1), stack: () => { throw new Error('x'); }};
+  for (const [n, f] of Object.entries(tries)) { try { f(); } catch (e) { E[n] = [e.name, e.message, (e.stack || '').split('\n')[0].replace(/@.*$/, '@<page>')]; } }
+  put('surface.errors', E); }
+await safe('surface.worker', () => new Promise(res => {
+  const src = `const t0 = performance.now(); postMessage({ua: navigator.userAgent, hc: navigator.hardwareConcurrency, lang: navigator.languages, platform: navigator.platform,
+    gpu: 'gpu' in navigator, tz: Intl.DateTimeFormat().resolvedOptions().timeZone, t0});`;
+  const w = new Worker(URL.createObjectURL(new Blob([src], {type: 'text/javascript'}))); const t = performance.now();
+  w.onmessage = e => { noise('worker_start_ms', Math.round(performance.now() - t)); const d = e.data; delete d.t0; res(d); w.terminate(); };
+  setTimeout(() => res('timeout'), 5000); }));
+await safe('surface.branding', () => Promise.all(['chrome://branding/locale/brand.properties', 'chrome://branding/content/about-logo.png',
+  'resource://app/localization/en-US/branding/brand.ftl'].map(u => new Promise(res => { const s = document.createElement('script'); let done = false;
+  const fin = v => { if (!done) { done = true; res([u, v]); } }; s.onload = () => fin('load'); s.onerror = () => fin('error'); s.src = u; document.head.appendChild(s); setTimeout(() => fin('timeout'), 3000); }))));
+noise('history_length', history.length);
+noise('main_loop_ms', await new Promise(r => { const t = performance.now(); setTimeout(() => r(Math.round(performance.now() - t)), 20); }));
+
+window.__hostGate = G;
+if (location.protocol.startsWith('http')) { try { await fetch('/result' + location.search, {method: 'POST', body: JSON.stringify(G)}); } catch (e) {} }
+document.title = 'done';
+})();
+</script>

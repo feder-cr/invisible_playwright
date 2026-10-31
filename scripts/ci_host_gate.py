@@ -12,16 +12,24 @@ the next leak will be:
      retail Firefox for Windows answers on the same page, at the same device
      pixel ratio.
 
-Which values depend on the identity is not written down anywhere: it is
-measured. Each leg visits the page with several seeds at a fixed DPR; a value
-that is the same for all of them does not depend on the identity and is held to
-property 2; one that changes with the seed is held to property 1 only.
+Values are compared leaf by leaf: an object the page reads (navigator, screen)
+mixes fields the identity decides with fields it does not, and each is held to
+its own property.
 
-The only exceptions live in host_gate/exceptions.json, in three kinds, each
-with its reason:
+Which values depend on the identity is measured AND declared. Each leg visits
+the page with several seeds at a fixed DPR; a value that changes with the seed
+depends on the identity and is held to property 1 only. A value the identity
+decides can still come out the same for every seed (16 cores, a 1920x1080
+screen), so those are declared as well.
+
+The only exceptions live in host_gate/exceptions.json, each with its reason:
+  - identity: values the declared identity decides; exempt from property 2,
+    never from property 1;
   - noise: values that differ between two launches of retail itself;
   - network: values the identity takes from the network (language and zone
     from the egress IP), which CI without a proxy cannot reproduce;
+  - measurement: values that record how the reference was taken rather than
+    what Firefox answers (focus, on the hidden desktop retail ran on);
   - known_defects: open divergences with the work that closes them. This list
     only shrinks: an entry that no longer matches a difference fails the gate,
     so it is removed when its fix lands.
@@ -30,20 +38,24 @@ This replaces ci_font_gate.py, which checked one surface (the font list) of
 the same rule.
 
     python ci_host_gate.py dump <firefox> --leg linux-x86_64 --out dumps/
-    python ci_host_gate.py compare dumps/ --reference host_gate/reference/firefox-159
+    python ci_host_gate.py compare dumps/          (reference: host_gate/reference/firefox-159)
 """
 from __future__ import annotations
 
 import argparse
 import base64
 import fnmatch
+import gzip
 import json
 import sys
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent / "host_gate"
 PAGE = HERE / "host_gate_page.html"
 EXCEPTIONS = HERE / "exceptions.json"
+REFERENCE = HERE / "reference" / "firefox-159"
 FORMAT = "host-gate/1"
 
 #: DPRs the reference is recorded at, and the seeds visited at each. Three seeds
@@ -57,36 +69,83 @@ ANCHOR = "win-x86_64"
 
 
 # -
-# Dump: one leg, every (dpr, seed) visit.
+# Dump: one leg, every (dpr, seed) visit, the way the reference was measured:
+# the page over http://127.0.0.1 (a secure context), en-US, the zone the retail
+# reference reported (retail on Windows ignores TZ and answers the machine's),
+# the device pixel ratio through layout.css.devPixelsPerPx, no drawn cursor.
 
-def dump(firefox: str, leg: str, out: Path, timeout_ms: int = 600_000) -> int:
+class _Page(BaseHTTPRequestHandler):
+    def do_GET(self):
+        body = PAGE.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_POST(self):  # the page also posts its result; the dump reads it from the page
+        self.rfile.read(int(self.headers.get("Content-Length") or 0))
+        self.send_response(204)
+        self.end_headers()
+
+    def log_message(self, *args):
+        pass
+
+
+def reference_items(reference: Path, dpr: float) -> dict | None:
+    """Retail's items at one DPR, from dpr<x>.json.gz (or a plain dpr<x>.json)."""
+    for name in ("dpr%s.json.gz" % dpr, "dpr%s.json" % dpr):
+        path = reference / name
+        if path.is_file():
+            raw = path.read_bytes()
+            return json.loads(gzip.decompress(raw) if name.endswith(".gz") else raw)["items"]
+    return None
+
+
+def reference_zone(reference: Path) -> str:
+    return reference_items(reference, 1.0)["surface.intl"]["DateTimeFormat"]["timeZone"]
+
+
+def dump(firefox: str, leg: str, out: Path, reference: Path, timeout_ms: int = 180_000) -> int:
     from invisible_playwright import InvisiblePlaywright
 
     out.mkdir(parents=True, exist_ok=True)
-    for dpr in DPRS:
-        for seed in SEEDS:
-            with InvisiblePlaywright(seed=seed, binary_path=firefox, headless=True,
-                                     pin={"screen.dpr": dpr}) as browser:
-                page = browser.new_page()
-                page.goto(PAGE.as_uri())
-                page.wait_for_function("document.title === 'done'", timeout=timeout_ms)
-                result = page.evaluate("window.__hostGate")
-            if result.get("format") != FORMAT:
-                print("the page answered format %r, not %r" % (result.get("format"), FORMAT))
-                return 2
-            path = out / ("%s_dpr%s_seed%d.json" % (leg, dpr, seed))
-            path.write_text(json.dumps({"leg": leg, "dpr": dpr, "seed": seed, "result": result}),
-                            encoding="utf-8")
-            print("dumped %s: %d items" % (path.name, len(result["items"])))
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _Page)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    zone = reference_zone(reference)
+    try:
+        for dpr in DPRS:
+            for seed in SEEDS:
+                with InvisiblePlaywright(seed=seed, binary_path=firefox, headless=True, show_cursor=False,
+                                         locale="en-US", timezone=zone,
+                                         extra_prefs={"layout.css.devPixelsPerPx": str(dpr)}) as browser:
+                    page = browser.new_context().new_page()
+                    page.goto("http://127.0.0.1:%d/?dpr%s" % (server.server_address[1], dpr))
+                    page.wait_for_function("document.title === 'done'", timeout=timeout_ms)
+                    result = page.evaluate("window.__hostGate")
+                if result.get("format") != FORMAT:
+                    print("the page answered format %r, not %r" % (result.get("format"), FORMAT))
+                    return 2
+                path = out / ("%s_dpr%s_seed%d.json" % (leg, dpr, seed))
+                path.write_text(json.dumps({"leg": leg, "dpr": dpr, "seed": seed, "result": result}),
+                                encoding="utf-8")
+                print("dumped %s: %d items" % (path.name, len(result["items"])))
+    finally:
+        server.shutdown()
     return 0
 
 
 # -
 # Compare: every leg, every visit, against each other and against retail.
 
+KINDS = ("identity", "noise", "network", "measurement", "known_defects")
+
+
 def load_exceptions(path: Path = EXCEPTIONS) -> dict:
     data = json.loads(path.read_text(encoding="utf-8"))
-    for kind in ("noise", "network", "known_defects"):
+    unknown = set(data) - set(KINDS)
+    if unknown:
+        raise SystemExit("exceptions.json: unknown kinds %s" % sorted(unknown))
+    for kind in KINDS:
         for entry in data.get(kind, []):
             if not entry.get("keys") or not entry.get("why"):
                 raise SystemExit("exceptions.json: every %s entry needs keys and why" % kind)
@@ -97,6 +156,26 @@ def matching(entries: list, key: str, leg: str | None = None) -> list:
     return [e for e in entries
             if any(fnmatch.fnmatchcase(key, p) for p in e["keys"])
             and (leg is None or not e.get("legs") or leg in e["legs"])]
+
+
+def is_image(value) -> bool:
+    return isinstance(value, dict) and "data" in value and "enc" in value
+
+
+def leaves(items: dict) -> dict:
+    """Every value as a leaf with a dotted key; an image stays one value."""
+    out = {}
+
+    def walk(key, value):
+        if isinstance(value, dict) and value and not is_image(value):
+            for k, v in value.items():
+                walk("%s.%s" % (key, k), v)
+        else:
+            out[key] = value
+
+    for key, value in items.items():
+        walk(key, value)
+    return out
 
 
 def describe(a, b) -> str:
@@ -116,24 +195,25 @@ def compare(dumps: Path, reference: Path, exceptions: dict) -> list:
     visits = {}   # (leg, dpr, seed) -> items
     for path in sorted(dumps.glob("*.json")):
         d = json.loads(path.read_text(encoding="utf-8"))
-        visits[(d["leg"], d["dpr"], d["seed"])] = d["result"]["items"]
+        visits[(d["leg"], d["dpr"], d["seed"])] = leaves(d["result"]["items"])
     if not visits:
         return ["no dumps in %s" % dumps]
     legs = sorted({k[0] for k in visits})
     refs = {}
     for dpr in DPRS:
-        ref = reference / ("dpr%s.json" % dpr)
-        if not ref.is_file():
-            return ["no retail reference for dpr %s at %s" % (dpr, ref)]
-        refs[dpr] = json.loads(ref.read_text(encoding="utf-8"))["items"]
+        items = reference_items(reference, dpr)
+        if items is None:
+            return ["no retail reference for dpr %s in %s" % (dpr, reference)]
+        refs[dpr] = leaves(items)
 
-    noise, network = exceptions.get("noise", []), exceptions.get("network", [])
+    identity = exceptions.get("identity", [])
+    excusable = exceptions.get("noise", []) + exceptions.get("network", []) + exceptions.get("measurement", [])
     known = exceptions.get("known_defects", [])
     used = set()
     failures = []
 
     def excused(key, leg):
-        if matching(noise, key) or matching(network, key):
+        if matching(excusable, key):
             return True
         hit = matching(known, key, leg)
         for e in hit:
@@ -163,7 +243,7 @@ def compare(dumps: Path, reference: Path, exceptions: dict) -> list:
             for leg in legs:
                 per_seed = [visits[(leg, dpr, s)].get(key, "<missing>")
                             for s in SEEDS if (leg, dpr, s) in visits]
-                if len({json.dumps(v, sort_keys=True) for v in per_seed}) != 1:
+                if len({json.dumps(v, sort_keys=True) for v in per_seed}) != 1 or matching(identity, key):
                     continue  # depends on the identity: property 1 only
                 retail = refs[dpr].get(key, "<missing>")
                 if per_seed[0] != retail and not excused(key, leg):
@@ -184,12 +264,13 @@ def main(argv=None) -> int:
     d.add_argument("firefox")
     d.add_argument("--leg", required=True)
     d.add_argument("--out", type=Path, required=True)
+    d.add_argument("--reference", type=Path, default=REFERENCE)
     c = sub.add_parser("compare")
     c.add_argument("dumps", type=Path)
-    c.add_argument("--reference", type=Path, required=True)
+    c.add_argument("--reference", type=Path, default=REFERENCE)
     args = ap.parse_args(argv)
     if args.cmd == "dump":
-        return dump(args.firefox, args.leg, args.out)
+        return dump(args.firefox, args.leg, args.out, args.reference)
     failures = compare(args.dumps, args.reference, load_exceptions())
     for f in failures:
         print("FAIL " + f)

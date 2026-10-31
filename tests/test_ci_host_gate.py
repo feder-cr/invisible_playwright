@@ -24,8 +24,8 @@ LEGS = ("linux-x86_64", "win-x86_64")
 def write(tmp_path, items_by_leg_seed, retail):
     dumps = tmp_path / "dumps"
     ref = tmp_path / "ref"
-    dumps.mkdir()
-    ref.mkdir()
+    dumps.mkdir(parents=True)
+    ref.mkdir(parents=True)
     for dpr in gate.DPRS:
         (ref / ("dpr%s.json" % dpr)).write_text(json.dumps({"items": retail}), encoding="utf-8")
         for leg in LEGS:
@@ -39,7 +39,7 @@ def write(tmp_path, items_by_leg_seed, retail):
 
 def run(tmp_path, items, retail, exceptions=None):
     dumps, ref = write(tmp_path, items, retail)
-    return gate.compare(dumps, ref, exceptions or {"noise": [], "network": [], "known_defects": []})
+    return gate.compare(dumps, ref, exceptions or {})
 
 
 def test_identical_hosts_and_retail_pass(tmp_path):
@@ -82,8 +82,7 @@ def test_noise_and_network_are_excused_known_defects_must_still_be_seen(tmp_path
 
 def test_a_known_defect_is_scoped_to_its_legs(tmp_path):
     items = lambda leg, seed: {"text.canvas.H": "x" if leg == "win-x86_64" else "y"}
-    exceptions = {"noise": [], "network": [],
-                  "known_defects": [{"keys": ["text.*"], "legs": ["linux-arm64"], "why": "phase 4"}]}
+    exceptions = {"known_defects": [{"keys": ["text.*"], "legs": ["linux-arm64"], "why": "phase 4"}]}
     failures = run(tmp_path, items, {"text.canvas.H": "x"}, exceptions)
     assert any(f.startswith("host  text.canvas.H") for f in failures)
 
@@ -96,5 +95,35 @@ def test_an_image_difference_is_told_in_bytes():
 def test_an_exception_without_a_reason_is_refused(tmp_path):
     path = tmp_path / "exceptions.json"
     path.write_text(json.dumps({"noise": [{"keys": ["a.*"]}]}), encoding="utf-8")
+    with pytest.raises(SystemExit):
+        gate.load_exceptions(path)
+
+
+def test_an_object_is_compared_field_by_field(tmp_path):
+    # hardwareConcurrency is the identity's, appName is Firefox's: one wrong
+    # field fails alone, and the identity's field does not drag the object down
+    items = lambda leg, seed: {"surface.navigator": {"hardwareConcurrency": 4 + seed, "appName": "Gecko"}}
+    failures = run(tmp_path, items, {"surface.navigator": {"hardwareConcurrency": 24, "appName": "Netscape"}})
+    assert [f.split()[1] for f in failures] == ["surface.navigator.appName"] * (len(LEGS) * len(gate.DPRS))
+
+
+def test_a_declared_identity_value_that_happens_to_repeat_is_not_held_to_retail(tmp_path):
+    # 16 cores for every seed visited, 24 on the retail machine
+    items = lambda leg, seed: {"surface.worker": {"hc": 16}}
+    assert run(tmp_path / "plain", items, {"surface.worker": {"hc": 24}}) != []
+    exceptions = {"identity": [{"keys": ["surface.worker.hc"], "why": "the declared core count"}]}
+    assert run(tmp_path / "declared", items, {"surface.worker": {"hc": 24}}, exceptions) == []
+
+
+def test_a_declared_identity_value_is_still_held_to_host_independence(tmp_path):
+    items = lambda leg, seed: {"surface.worker": {"hc": 16 if leg.startswith("win") else 8}}
+    exceptions = {"identity": [{"keys": ["surface.worker.hc"], "why": "the declared core count"}]}
+    failures = run(tmp_path, items, {"surface.worker": {"hc": 16}}, exceptions)
+    assert any(f.startswith("host  surface.worker.hc") for f in failures)
+
+
+def test_an_unknown_kind_is_refused(tmp_path):
+    path = tmp_path / "exceptions.json"
+    path.write_text(json.dumps({"whatever": [{"keys": ["a"], "why": "b"}]}), encoding="utf-8")
     with pytest.raises(SystemExit):
         gate.load_exceptions(path)
