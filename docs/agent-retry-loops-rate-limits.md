@@ -1,6 +1,6 @@
 ---
 title: "AI agent retry loops trip rate limits, not fingerprints"
-description: "Retry and re-plan loops multiply requests into a volume signal; throttling belongs in the agent loop. This page moved to the AIHawk wiki."
+description: "Retry and re-plan loops multiply requests into a volume signal; throttling belongs in the agent loop. This page moved to the invisible_playwright_mcp wiki."
 parent: "AI Agents and Frameworks"
 grand_parent: "Guides"
 nav_order: 17
@@ -9,10 +9,10 @@ nav_order: 17
 
 # AI agent retry loops trip rate limits, not fingerprints
 
-This page moved to the AIHawk wiki, where the agent-experience content now
+This page moved to the invisible_playwright_mcp wiki, where the agent-experience content now
 lives:
 
-**[Agent retry loops trip rate limits, not fingerprints](https://github.com/feder-cr/AIHawk/wiki/agent-retry-loops-rate-limits)**
+**[Agent retry loops trip rate limits, not fingerprints](https://github.com/feder-cr/invisible_playwright_mcp/wiki/agent-retry-loops-rate-limits)**
 
 The one-paragraph version: an agent that retries and re-plans multiplies its
 requests, and volume is scored server-side against your address and account.

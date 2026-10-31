@@ -1,6 +1,6 @@
 ---
 title: "Computer-use agents and browser fingerprint detection"
-description: "Clicking by pixel makes driver flags moot; the engine fingerprint and action rhythm stay checkable. This page moved to the AIHawk wiki."
+description: "Clicking by pixel makes driver flags moot; the engine fingerprint and action rhythm stay checkable. This page moved to the invisible_playwright_mcp wiki."
 parent: "AI Agents and Frameworks"
 grand_parent: "Guides"
 nav_order: 6
@@ -9,10 +9,10 @@ nav_order: 6
 
 # Computer-use agents and browser fingerprint detection
 
-This page moved to the AIHawk wiki, retargeted at the question people
+This page moved to the invisible_playwright_mcp wiki, retargeted at the question people
 actually search:
 
-**[Claude computer use detected as a bot](https://github.com/feder-cr/AIHawk/wiki/claude-computer-use-detected-as-bot)**
+**[Claude computer use detected as a bot](https://github.com/feder-cr/invisible_playwright_mcp/wiki/claude-computer-use-detected-as-bot)**
 
 The core of it, kept here in brief: a coordinate-clicking agent never
 generates the DOM-automation tells, so `navigator.webdriver` advice mostly
