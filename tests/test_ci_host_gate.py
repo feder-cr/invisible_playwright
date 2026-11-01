@@ -199,6 +199,16 @@ def test_a_value_missing_on_one_leg_still_fails(tmp_path):
     assert any(f.startswith("retail surface.gpu.limits") and "on linux-x86_64" in f for f in failures)
 
 
+def test_a_visit_pins_its_dpr_in_the_persona_and_never_forces_the_pref():
+    # Run 41325657085: the pref forced over whatever persona the seed drew made
+    # a window smaller than its own viewport. The DPR is the persona's.
+    for dpr in gate.DPRS:
+        opts = gate.visit_options("firefox", 12, dpr, "UTC")
+        assert opts["pin"] == {"screen.dpr": dpr}
+        assert "layout.css.devPixelsPerPx" not in (opts.get("extra_prefs") or {})
+        assert opts["seed"] == 12 and opts["binary_path"] == "firefox"
+
+
 def test_the_dump_prints_the_diag_values_of_the_leg():
     first = {"surface.gpu.limits": 8,
              "diag.webgl": {"webgl2": {"is_null": True, "creation_errors": ["AllowWebgl2:false"]},

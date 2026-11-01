@@ -342,7 +342,7 @@ def invariant_lines(visit: str, items: dict) -> list:
 # Dump: one leg, every (dpr, seed) visit, the way the reference was measured:
 # the page over http://127.0.0.1 (a secure context), en-US, the zone the retail
 # reference reported (retail on Windows ignores TZ and answers the machine's),
-# the device pixel ratio through layout.css.devPixelsPerPx, no drawn cursor.
+# the device pixel ratio pinned in the persona, no drawn cursor.
 
 class _Page(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -375,6 +375,18 @@ def reference_zone(reference: Path) -> str:
     return reference_items(reference, 1.0)["surface.intl"]["DateTimeFormat"]["timeZone"]
 
 
+def visit_options(firefox: str, seed: int, dpr: float, zone: str) -> dict:
+    """The launch of one (dpr, seed) visit. The DPR is PINNED in the persona
+    (screen.dpr), so the core declares a screen, a work area and a window made
+    at that scale. It used to be forced through
+    extra_prefs={"layout.css.devPixelsPerPx": ...} on whatever persona the seed
+    drew: a 100% persona at 1.5 read innerWidth 1920 inside an outerWidth of
+    1291 (run 41325657085), an identity no machine has, which the engine now
+    refuses to start with."""
+    return {"seed": seed, "binary_path": firefox, "headless": True, "show_cursor": False,
+            "locale": "en-US", "timezone": zone, "pin": {"screen.dpr": dpr}}
+
+
 def dump(firefox: str, leg: str, out: Path, reference: Path, timeout_ms: int = 180_000) -> int:
     from invisible_playwright import InvisiblePlaywright
 
@@ -386,9 +398,7 @@ def dump(firefox: str, leg: str, out: Path, reference: Path, timeout_ms: int = 1
     try:
         for dpr in DPRS:
             for seed in SEEDS:
-                with InvisiblePlaywright(seed=seed, binary_path=firefox, headless=True, show_cursor=False,
-                                         locale="en-US", timezone=zone,
-                                         extra_prefs={"layout.css.devPixelsPerPx": str(dpr)}) as browser:
+                with InvisiblePlaywright(**visit_options(firefox, seed, dpr, zone)) as browser:
                     page = browser.new_context().new_page()
                     page.goto("http://127.0.0.1:%d/?dpr%s" % (server.server_address[1], dpr))
                     page.wait_for_function("document.title === 'done'", timeout=timeout_ms)
