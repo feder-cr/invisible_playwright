@@ -34,6 +34,13 @@ The only exceptions live in host_gate/exceptions.json, each with its reason:
     only shrinks: an entry that no longer matches a difference fails the gate,
     so it is removed when its fix lands.
 
+Values under the diag. prefix are not held to either property. They are
+information the page records about the host (diag.webgl: whether WebGL2 and
+multisampling exist there and, when not, the message Firefox gives): the legs
+legitimately differ on them and the retail reference does not record them.
+compare() skips them by name; dump() prints them into the job log, so a run
+tells why without its artifacts being downloaded.
+
 This replaces ci_font_gate.py, which checked one surface (the font list) of
 the same rule.
 
@@ -66,6 +73,31 @@ SEEDS = (11, 12, 13)
 
 #: The leg every other leg is compared with: the platform the identity claims.
 ANCHOR = "win-x86_64"
+
+#: Keys under this prefix are information, never compared (see the module docstring).
+DIAG = "diag."
+
+
+def is_diag(key: str) -> bool:
+    return key.startswith(DIAG)
+
+
+def diag_lines(items: dict, before: dict | None = None) -> list:
+    """The diag. leaves of one visit as 'key = value' lines; with before (an
+    earlier visit's diag leaves), only the keys whose value changed."""
+    now = {k: v for k, v in leaves(items).items() if is_diag(k)}
+    lines = ["  %s = %s" % (k, json.dumps(v, sort_keys=True)) for k, v in now.items()
+             if before is None or before.get(k, "<missing>") != v]
+    return lines + ["  %s = <missing>" % k for k in (before or {}) if k not in now]
+
+
+def diag_report(visit: str, items: dict, first: dict | None) -> list:
+    """What dump() prints for one visit: every diag. value on the leg's first
+    visit (first is None), then only what changed from it."""
+    if first is None:
+        return ["diag %s:" % visit] + (diag_lines(items) or ["  (the page recorded no diag. keys)"])
+    changed = diag_lines(items, first)
+    return ["diag %s: %s" % (visit, "changed from the first visit:" if changed else "as the first visit")] + changed
 
 
 # -
@@ -112,6 +144,7 @@ def dump(firefox: str, leg: str, out: Path, reference: Path, timeout_ms: int = 1
     server = ThreadingHTTPServer(("127.0.0.1", 0), _Page)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     zone = reference_zone(reference)
+    first_diag = None
     try:
         for dpr in DPRS:
             for seed in SEEDS:
@@ -129,6 +162,11 @@ def dump(firefox: str, leg: str, out: Path, reference: Path, timeout_ms: int = 1
                 path.write_text(json.dumps({"leg": leg, "dpr": dpr, "seed": seed, "result": result}),
                                 encoding="utf-8")
                 print("dumped %s: %d items" % (path.name, len(result["items"])))
+                for line in diag_report("%s dpr %s seed %d" % (leg, dpr, seed), result["items"], first_diag):
+                    print(line)
+                sys.stdout.flush()
+                if first_diag is None:
+                    first_diag = {k: v for k, v in leaves(result["items"]).items() if is_diag(k)}
     finally:
         server.shutdown()
     return 0
@@ -195,7 +233,8 @@ def compare(dumps: Path, reference: Path, exceptions: dict) -> list:
     visits = {}   # (leg, dpr, seed) -> items
     for path in sorted(dumps.glob("*.json")):
         d = json.loads(path.read_text(encoding="utf-8"))
-        visits[(d["leg"], d["dpr"], d["seed"])] = leaves(d["result"]["items"])
+        visits[(d["leg"], d["dpr"], d["seed"])] = {k: v for k, v in leaves(d["result"]["items"]).items()
+                                                    if not is_diag(k)}
     if not visits:
         return ["no dumps in %s" % dumps]
     legs = sorted({k[0] for k in visits})
@@ -204,7 +243,7 @@ def compare(dumps: Path, reference: Path, exceptions: dict) -> list:
         items = reference_items(reference, dpr)
         if items is None:
             return ["no retail reference for dpr %s in %s" % (dpr, reference)]
-        refs[dpr] = leaves(items)
+        refs[dpr] = {k: v for k, v in leaves(items).items() if not is_diag(k)}
 
     identity = exceptions.get("identity", [])
     excusable = exceptions.get("noise", []) + exceptions.get("network", []) + exceptions.get("measurement", [])

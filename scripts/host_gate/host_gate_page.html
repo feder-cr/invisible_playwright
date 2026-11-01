@@ -6,6 +6,7 @@
 // host-gate/1: everything a page can read that the theory says is f(identity, Firefox code).
 // TEXT (text.*), CONTROL (control.*), BLEND (blend.*), SURFACE (surface.*): whole APIs, not chosen fields.
 // noise.*: only what varies between two launches of the same official build.
+// diag.*: information for the job log (why a host answers what it does); the gate never compares it.
 // Must be served from a secure context (http://127.0.0.1 or https) for WebGPU and media APIs.
 (async () => {
 const G = {format: 'host-gate/1', meta: {devicePixelRatio: window.devicePixelRatio, userAgent: navigator.userAgent}, items: {}, noise: {}};
@@ -279,6 +280,30 @@ await safe('surface.branding', () => Promise.all(['chrome://branding/locale/bran
   const fin = v => { if (!done) { done = true; res([u, v]); } }; s.onload = () => fin('load'); s.onerror = () => fin('error'); s.src = u; document.head.appendChild(s); setTimeout(() => fin('timeout'), 3000); }))));
 noise('history_length', history.length);
 noise('main_loop_ms', await new Promise(r => { const t = performance.now(); setTimeout(() => r(Math.round(performance.now() - t)), 20); }));
+
+// ================================================================= DIAG (information, never compared)
+// diag.*: why this host's WebGL is what it is (no WebGL2, no MSAA). Last, so its extra contexts
+// cannot disturb anything measured above; each is lost again once read.
+await safe('diag.webgl', async () => {
+  const probe = async (version, attrs) => {
+    const c = document.createElement('canvas'), creation_errors = [];
+    c.addEventListener('webglcontextcreationerror', e => creation_errors.push(e.statusMessage));
+    let gl = null; const o = {};
+    try { gl = attrs ? c.getContext(version, attrs) : c.getContext(version); } catch (e) { o.thrown = errs(e); }
+    await new Promise(r => setTimeout(r, 0));
+    o.is_null = !gl; o.creation_errors = creation_errors;
+    if (!gl) return o;
+    const ask = e => { gl.getError(); let v; try { v = gl.getParameter(e); } catch (x) { return 'THROW ' + x.name; } const err = gl.getError(); return err ? 'GL error ' + err : plain(v, 1); };
+    o.attributes = gl.getContextAttributes();
+    o.strings = Object.fromEntries(['VENDOR', 'RENDERER', 'VERSION', 'SHADING_LANGUAGE_VERSION'].map(k => [k, ask(gl[k])]));
+    const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+    o.unmasked = dbg ? [ask(dbg.UNMASKED_VENDOR_WEBGL), ask(dbg.UNMASKED_RENDERER_WEBGL)] : 'absent';
+    o.SAMPLES = ask(gl.SAMPLES); o.SAMPLE_BUFFERS = ask(gl.SAMPLE_BUFFERS);
+    o.MAX_SAMPLES = 'MAX_SAMPLES' in gl ? ask(gl.MAX_SAMPLES) : 'absent';
+    const lose = gl.getExtension('WEBGL_lose_context'); if (lose) lose.loseContext();
+    return o; };
+  return {webgl1: await probe('webgl'), webgl1_fail_if_caveat: await probe('webgl', {failIfMajorPerformanceCaveat: true}),
+    webgl2: await probe('webgl2'), webgl2_fail_if_caveat: await probe('webgl2', {failIfMajorPerformanceCaveat: true})}; });
 
 window.__hostGate = G;
 if (location.protocol.startsWith('http')) { try { await fetch('/result' + location.search, {method: 'POST', body: JSON.stringify(G)}); } catch (e) {} }

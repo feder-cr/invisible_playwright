@@ -127,3 +127,62 @@ def test_an_unknown_kind_is_refused(tmp_path):
     path.write_text(json.dumps({"whatever": [{"keys": ["a"], "why": "b"}]}), encoding="utf-8")
     with pytest.raises(SystemExit):
         gate.load_exceptions(path)
+
+
+def test_diag_values_are_information_never_compared(tmp_path):
+    # diag.* differs between the legs and between the seeds, and retail does not
+    # record it: none of that is a failure
+    items = lambda leg, seed: {
+        "surface.gpu.limits": 8,
+        "diag.webgl": {"webgl2": {"is_null": leg.startswith("win"),
+                                  "creation_errors": ["AllowWebgl2:false"] if leg.startswith("win") else []},
+                       "webgl1": {"SAMPLES": 0 if leg.startswith("win") else 4, "seed": seed}},
+    }
+    assert run(tmp_path, items, {"surface.gpu.limits": 8}) == []
+
+
+def test_a_diag_value_is_not_the_cause_of_a_known_defect_being_seen(tmp_path):
+    # an exception that only a diag. key would match is still reported as no longer seen
+    items = lambda leg, seed: {"diag.webgl": {"webgl2": {"is_null": leg.startswith("win")}}}
+    exceptions = {"known_defects": [{"keys": ["diag.*"], "why": "should never be needed"}]}
+    failures = run(tmp_path, items, {}, exceptions)
+    assert failures == ["known defect no longer seen, remove it from exceptions.json: "
+                        "['diag.*'] (should never be needed)"]
+
+
+def test_only_the_diag_prefix_is_skipped(tmp_path):
+    items = lambda leg, seed: {"diagnostics.webgl": leg}
+    failures = run(tmp_path, items, {"diagnostics.webgl": "win-x86_64"})
+    assert any(f.startswith("host  diagnostics.webgl") for f in failures)
+
+
+def test_a_value_missing_on_one_leg_still_fails(tmp_path):
+    items = lambda leg, seed: ({"surface.gpu.limits": 8, "diag.webgl": 1} if leg.startswith("win")
+                               else {"diag.webgl": 2})
+    failures = run(tmp_path, items, {"surface.gpu.limits": 8})
+    host = [f for f in failures if f.startswith("host  surface.gpu.limits")]
+    assert len(host) == len(gate.SEEDS) * len(gate.DPRS)
+    assert all('"<missing>" vs 8' in f for f in host)
+    assert any(f.startswith("retail surface.gpu.limits") and "on linux-x86_64" in f for f in failures)
+
+
+def test_the_dump_prints_the_diag_values_of_the_leg():
+    first = {"surface.gpu.limits": 8,
+             "diag.webgl": {"webgl2": {"is_null": True, "creation_errors": ["AllowWebgl2:false"]},
+                            "webgl1": {"SAMPLES": 0}}}
+    lines = gate.diag_report("win-x86_64 dpr 1.0 seed 11", first, None)
+    assert lines == ["diag win-x86_64 dpr 1.0 seed 11:",
+                     '  diag.webgl.webgl2.is_null = true',
+                     '  diag.webgl.webgl2.creation_errors = ["AllowWebgl2:false"]',
+                     '  diag.webgl.webgl1.SAMPLES = 0']
+    seen = {k: v for k, v in gate.leaves(first).items() if gate.is_diag(k)}
+    assert gate.diag_report("win-x86_64 dpr 1.0 seed 12", first, seen) == [
+        "diag win-x86_64 dpr 1.0 seed 12: as the first visit"]
+    later = {"diag.webgl": {"webgl2": {"is_null": True, "creation_errors": ["AllowWebgl2:false"]},
+                            "webgl1": {}}}
+    assert gate.diag_report("win-x86_64 dpr 1.5 seed 11", later, seen) == [
+        "diag win-x86_64 dpr 1.5 seed 11: changed from the first visit:",
+        "  diag.webgl.webgl1 = {}",
+        "  diag.webgl.webgl1.SAMPLES = <missing>"]
+    assert gate.diag_report("linux-x86_64 dpr 1.0 seed 11", {"surface.gpu.limits": 8}, None) == [
+        "diag linux-x86_64 dpr 1.0 seed 11:", "  (the page recorded no diag. keys)"]
