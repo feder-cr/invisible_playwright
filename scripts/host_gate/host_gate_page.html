@@ -305,6 +305,50 @@ await safe('diag.webgl', async () => {
   return {webgl1: await probe('webgl'), webgl1_fail_if_caveat: await probe('webgl', {failIfMajorPerformanceCaveat: true}),
     webgl2: await probe('webgl2'), webgl2_fail_if_caveat: await probe('webgl2', {failIfMajorPerformanceCaveat: true})}; });
 
+// ================================================================= STATES (state.*)
+// The window in the states a page can drive it to: normal, fullscreen, back. Nothing here runs on load:
+// fullscreen needs a user gesture, so the dump (ci_host_gate.py drive_states) calls these after 'done'
+// and gives every click and move as real input. Defined last so surface.window_own does not list it.
+window.__hostGateStates = (() => {
+  let events = {}, request = null, pending = null;
+  // each event type keeps the distinct (screen - client) offsets it was seen with
+  const record = e => { const p = [e.screenX - e.clientX, e.screenY - e.clientY], l = (events[e.type] = events[e.type] || []);
+    if (!l.some(q => q[0] === p[0] && q[1] === p[1])) l.push(p); };
+  const geometry = () => ({innerWidth, innerHeight, outerWidth, outerHeight, screenX, screenY, mozInnerScreenX, mozInnerScreenY,
+    screen: {width: screen.width, height: screen.height, availWidth: screen.availWidth, availHeight: screen.availHeight},
+    display_mode_fullscreen: matchMedia('(display-mode: fullscreen)').matches,
+    fullscreen_element: document.fullscreenElement !== null,
+    window_fullScreen: typeof window.fullScreen === 'boolean' ? window.fullScreen : 'absent'});
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  // the geometry once it holds for 4 polls in a row (a transition resizes in steps); false if it never does in 3 s
+  const settle = async () => { let last = JSON.stringify(geometry()), still = 0;
+    for (let i = 0; i < 60 && still < 4; i++) { await sleep(50); const g = JSON.stringify(geometry()); still = g === last ? still + 1 : 0; last = g; }
+    return still >= 4; };
+  // the next fullscreenchange or fullscreenerror, or 'timeout' after ms: a failure is recorded, never waited on
+  const arm = ms => { request = null; pending = new Promise(res => {
+    let t = null;
+    const fin = how => { clearTimeout(t); document.removeEventListener('fullscreenchange', ok); document.removeEventListener('fullscreenerror', bad); res(how); };
+    const ok = () => fin('fullscreenchange'), bad = () => fin('fullscreenerror');
+    document.addEventListener('fullscreenchange', ok); document.addEventListener('fullscreenerror', bad);
+    t = setTimeout(() => fin('timeout'), ms); }); };
+  const asked = p => { request = 'pending'; p.then(() => { request = 'resolved'; }, e => { request = errs(e); }); };
+  return {
+    // listens to the mouse and adds the button whose click asks for fullscreen; returns its centre
+    prepare() {
+      for (const t of ['mousemove', 'mousedown', 'mouseup', 'click']) addEventListener(t, record, true);
+      const b = document.createElement('button'); b.textContent = 'fullscreen';
+      b.style.cssText = 'position:fixed;left:20px;top:20px;width:160px;height:40px;margin:0;z-index:2147483647';
+      b.addEventListener('click', () => asked(document.documentElement.requestFullscreen()));
+      document.body.appendChild(b);
+      const r = b.getBoundingClientRect(); return {x: r.left + r.width / 2, y: r.top + r.height / 2}; },
+    arm,
+    leave(ms) { arm(ms); asked(document.exitFullscreen()); },
+    async wait() { const how = await pending; const settled = await settle(); return {how, request: request === null ? 'not asked' : request, settled}; },
+    clear() { events = {}; },
+    measure() { return Object.assign(geometry(), {events}); },
+  };
+})();
+
 window.__hostGate = G;
 if (location.protocol.startsWith('http')) { try { await fetch('/result' + location.search, {method: 'POST', body: JSON.stringify(G)}); } catch (e) {} }
 document.title = 'done';
