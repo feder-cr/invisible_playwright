@@ -6,6 +6,51 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.45.0] - 2026-11-04
+
+The pin moves to invisible-core 55.50.0, which brings the firefox-55 engine.
+Firefox is still 159.0.
+
+### Changed
+- What a page reads about the graphics card is the identity's, on every host.
+  Each identity now stands for one real Windows 11 GPU, and Firefox's
+  graphics blocklist answers as Firefox 159 for Windows answers on that GPU.
+  A host whose adapter Firefox would block (a virtual machine, a CI runner)
+  no longer turns WebGL2 or antialiasing off.
+- `navigator.gpu.requestAdapter()` returns the adapter of Firefox 159 for
+  Windows on every identity, with the same features and limits, also on hosts
+  without a GPU.
+- Text is measured and drawn the same way on every OS (the Windows
+  DirectWrite implementation): on Linux, text metrics and rendering are those
+  of Windows.
+- A 2D canvas is drawn on the CPU on every host, so its pixels no longer
+  depend on the host GPU.
+- WebRTC video encoding support is the same as Firefox 159 for Windows,
+  whatever encoders the host has.
+- A new profile opens straight on the page: the first-run terms-of-use dialog
+  of Firefox no longer covers it and the page has focus and input at once.
+- Fullscreen follows the identity's screen.
+- 17 seeds in 1500 get a different GPU: the identities that drew a
+  Direct3D 10 class card (which has no Windows 11 driver) now draw a current
+  GeForce card.
+
+### Fixed
+- `getParameter` answers state the page has set (depth function, stencil,
+  blend, pixel store, draw buffers) from the live context instead of its
+  initial value; the stencil masks are 4294967295 as on Firefox 159.
+- `getParameter(MAX_VIEWS_OVR)` answers 4 wherever `OVR_multiview2` is
+  offered, instead of the host's value.
+- The CSS system colour `-moz-dialog` is white, as on Firefox 159.
+
+### Tests
+- The host gate: what a page reads at a given seed is compared between
+  Windows and Linux hosts and with official Firefox 159, including the
+  window in fullscreen and back.
+
+### Known issues
+- On Linux arm64 `navigator.gpu.requestAdapter()` returns null.
+- On Linux `maxBindingsPerBindGroup` differs from Firefox 159 for Windows.
+
 ## [0.44.1] - 2026-10-31
 
 The pin moves to invisible-core 54.49.0. The engine is the same firefox-54
