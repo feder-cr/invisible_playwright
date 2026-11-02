@@ -60,9 +60,31 @@ Exit 0 + "DRIVE GATE OK ..." on success; non-zero with a reason on failure.
 from __future__ import annotations
 
 import http.server
+import json
+import shutil
 import socketserver
 import sys
+import tempfile
 import threading
+from pathlib import Path
+
+# ⛔ THE FIRST RUN IS DECLARED HERE, A COPY OF THE CORE'S, written into the
+# profile's user.js. Since firefox-55 the engine leaves Mozilla's first-run
+# lines and invisible_core declares the state (terms of use accepted long ago,
+# pre-onboarding off). This job installs only Playwright, so nothing declared
+# it: measured 2026-11-02 on run 41388672849, Windows showed the terms-of-use
+# modal ("the page did not handle mouse event") and Linux opened
+# https://www.mozilla.org/en-US/privacy/firefox/ in a second tab (the legacy
+# data-reporting flow) ("Unexpected number of tabs in the new window: 2").
+# Upstream Playwright sends its own defaults in Browser.enable, which this
+# engine refuses, so a raw launch runs on Mozilla's lines alone. With these
+# three in user.js, both legs drive. tests/test_ci_drive_gate_first_run.py
+# ties the copy to the core.
+FIRST_RUN = {
+    "browser.preonboarding.enabled": False,
+    "termsofuse.acceptedVersion": 4,
+    "termsofuse.acceptedDate": "1785573000000",
+}
 
 HTML = (
     "<!doctype html><html><head><title>dt</title></head><body>"
@@ -135,10 +157,16 @@ def _drive(exe: str, url: str, level: str) -> str:
     full = level == "full"
     from playwright.sync_api import sync_playwright
 
+    # A user.js is read at startup, before the window that would carry the
+    # modal; a persistent context is the only way to hand Playwright a profile.
+    profile_dir = Path(tempfile.mkdtemp(prefix="ci-drive-gate-"))
+    (profile_dir / "user.js").write_bytes(
+        "".join("user_pref(%s, %s);\n" % (json.dumps(k), json.dumps(v))
+                for k, v in sorted(FIRST_RUN.items())).encode("utf-8"))
     with sync_playwright() as p:
-        browser = p.firefox.launch(executable_path=exe, headless=True)
+        ctx = p.firefox.launch_persistent_context(str(profile_dir), executable_path=exe, headless=True)
         try:
-            page = browser.new_page()
+            page = ctx.new_page()
             resp = page.goto(url, wait_until="load")
             assert resp and resp.ok, f"navigation to {url} failed: {resp.status if resp else 'no response'}"
             ua = page.evaluate("() => navigator.userAgent")
@@ -163,7 +191,8 @@ def _drive(exe: str, url: str, level: str) -> str:
                 inter["langs"] = page.evaluate("() => navigator.languages.length")
                 inter["plugins"] = page.evaluate("() => navigator.plugins instanceof PluginArray")
         finally:
-            browser.close()
+            ctx.close()
+            shutil.rmtree(profile_dir, ignore_errors=True)
 
     # SMOKE asserts (always).
     assert "Firefox" in ua, f"unexpected UA (binary not driving correctly): {ua!r}"
@@ -171,7 +200,7 @@ def _drive(exe: str, url: str, level: str) -> str:
     assert not webdriver, f"navigator.webdriver leaked True (stealth regression): {webdriver!r}"
 
     if interacts:
-        assert inter["clicked"] == 1, "page.click() did not fire the click listener - mouse-event synthesis broken (firefox-2 class), or a chrome overlay is swallowing input (terms-of-use modal: see browser/app/profile/firefox.js, termsofuse.acceptedDate)"
+        assert inter["clicked"] == 1, "page.click() did not fire the click listener - mouse-event synthesis broken (firefox-2 class), or a chrome overlay is swallowing input (terms-of-use modal: see FIRST_RUN above)"
         assert inter["moves"] >= 1, "page.mouse.move() produced no mousemove - jugglerSendMouseEvent regression, or a chrome overlay is swallowing input"
     if full:
         assert inter["typed"] == "ok", f"page.keyboard.type() failed: {inter['typed']!r}"
