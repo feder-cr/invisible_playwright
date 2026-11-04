@@ -133,6 +133,18 @@ def sample_profile():
 
 
 @pytest.fixture(scope="session")
+def first_run_prefs():
+    """What invisible_core declares for a new profile's first run. Since firefox-55 the
+    engine leaves Mozilla's first-run lines, so a test that starts the engine without
+    the core has to bring this, or a second tab fails Browser.newPage."""
+    from invisible_core._fpforge import generate_profile
+    from invisible_core.prefs import translate_profile_to_prefs
+
+    prefs = translate_profile_to_prefs(generate_profile(970411), timezone="America/New_York")
+    return {k: v for k, v in prefs.items() if k.startswith(("termsofuse.", "browser.preonboarding."))}
+
+
+@pytest.fixture(scope="session")
 def firefox_binary():
     """Locate the patched Firefox binary for E2E tests, or skip cleanly.
 

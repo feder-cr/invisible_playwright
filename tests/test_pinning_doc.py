@@ -57,6 +57,11 @@ _NOT_PINNABLE_FIELDS = {
     "screen.avail_height": ("Same as avail_width, and removing it also removed "
                             "the special case that let a pin beat the taskbar "
                             "re-derivation: there is no pin left to lose to."),
+    "gpu.device": ("The real Windows GPU behind the renderer, drawn by the core "
+                   "from the renderer's bucket (invisible-core, 2026-11-01). Only "
+                   "a device of that bucket is coherent with the renderer, so "
+                   "the knob is the renderer: pin gpu.renderer and the device "
+                   "follows it."),
 }
 
 #: Profile GROUPS that exist but are deliberately not pinnable, with the reason.

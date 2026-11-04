@@ -139,7 +139,7 @@ def test_the_page_dispatcher_unsubscribes_all_three_when_the_page_closes():
 
 
 @pytest.mark.e2e
-def test_a_long_session_does_not_accumulate_subscribers(firefox_binary):
+def test_a_long_session_does_not_accumulate_subscribers(firefox_binary, first_run_prefs):
     """⛔ THE ONE THAT WOULD HAVE CAUGHT IT, and the reason it is worth its
     forty pages: this defect is only visible by ACCUMULATION. Every other gate
     in this project drives a handful of pages and cannot distinguish a
@@ -155,7 +155,8 @@ def test_a_long_session_does_not_accumulate_subscribers(firefox_binary):
 
     with sync_playwright() as p:
         browser = p.firefox.launch(headless=True,
-                                   executable_path=firefox_binary)
+                                   executable_path=firefox_binary,
+                                   firefox_user_prefs=first_run_prefs)
         server = browser._impl_obj._connection._transport._server
         conn = next(d.conn for d in list(server._objects.values())
                     if getattr(d, "conn", None) is not None)

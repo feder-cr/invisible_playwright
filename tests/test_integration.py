@@ -335,7 +335,12 @@ def test_linux_xvfb_workarounds_with_socks_proxy(monkeypatch):
     assert pw_proxy is not None      # a single path, here too
     # Xvfb workarounds present.
     assert prefs["gfx.webrender.all"] is False
-    assert prefs["webgl.force-enabled"] is True
+    # WebGL2 is not the host adapter's decision: since invisible-core 9d74a77 the
+    # engine answers the blocklist from the declared outcomes, and
+    # webgl.force-enabled left the core.
+    assert "webgl.force-enabled" not in prefs
+    status = dict(e.split("|")[:2] for e in prefs["zoom.stealth.gfx.feature_status"].split(","))
+    assert status["WEBGL2"] == "1"
     # Windows-only sandbox key absent on Linux even with virtual_display=True.
     assert "security.sandbox.gpu.level" not in prefs
     # GPU renderer is spoofed from the validated WebGL persona (a coherent Windows

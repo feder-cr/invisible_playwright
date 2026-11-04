@@ -1,0 +1,38 @@
+{
+  "identity": [
+    {"keys": ["surface.screen.*", "surface.window.innerWidth", "surface.window.innerHeight",
+              "surface.window.outerWidth", "surface.window.outerHeight", "surface.window.screen*",
+              "surface.window.mozInnerScreen*", "surface.visualViewport.width", "surface.visualViewport.height",
+              "surface.computedStyle.body.width", "surface.computedStyle.body.inline-size",
+              "surface.computedStyle.body.perspective-origin", "surface.computedStyle.body.transform-origin"],
+     "why": "the declared screen and window; the body is as wide as the window"},
+    {"keys": ["state.*.innerWidth", "state.*.innerHeight", "state.*.outerWidth", "state.*.outerHeight",
+              "state.*.screenX", "state.*.screenY", "state.*.screen.*", "state.*.mozInnerScreen*", "state.*.events.*"],
+     "why": "the declared screen and window in each driven state (ci_host_gate.py INVARIANTS hold their relations); an event's screen - client is where the window puts the viewport"},
+    {"keys": ["surface.navigator.hardwareConcurrency", "surface.worker.hc"],
+     "why": "the declared core count"},
+    {"keys": ["surface.voices"],
+     "why": "the declared speech voices"},
+    {"keys": ["surface.webgl*.unmasked", "surface.webgl*.parameters.RENDERER",
+              "surface.webgl*.extension_parameters.WEBGL_debug_renderer_info.*",
+              "surface.webgl*.parameters.MAX_*", "surface.webgl*.extension_parameters.*.MAX_*",
+              "surface.webgpu.adapters.*"],
+     "why": "the declared GPU: its name and its limits (ANGLE gives NVIDIA one vertex uniform vector less)"}
+  ],
+  "noise": [],
+  "network": [],
+  "measurement": [
+    {"keys": ["surface.document.hasFocus"],
+     "why": "retail was measured on a hidden desktop, where its window never has focus"}
+  ],
+  "known_defects": [
+    {"keys": ["text.*", "blend.*"],
+     "why": "phase 4: text from idwr (DWrite 26100) on every OS; today Windows asks the host's DWrite and Linux FreeType"},
+    {"keys": ["control.composite.*", "control.pattern", "control.shadow", "surface.audio.offline_*"], "legs": ["linux-arm64"],
+     "why": "arm64 only, not worked on (arm64 is not a priority, 01/11): Skia's NEON paths in composite, pattern and shadow, and the offline audio FFT"},
+    {"keys": ["surface.webgpu.adapters", "surface.webgpu.adapters.*"], "legs": ["linux-arm64"],
+     "why": "arm64 only, not worked on (arm64 is not a priority, 01/11): the leg ships without our Vulkan driver, so requestAdapter answers null there, never the host's driver"},
+    {"keys": ["control.webgl1", "control.webgl2"], "legs": ["linux-x86_64", "linux-arm64"],
+     "why": "WebGL draws through the host's driver (llvmpipe here, ANGLE on Windows); a host-independent rasterizer is its own project"}
+  ]
+}

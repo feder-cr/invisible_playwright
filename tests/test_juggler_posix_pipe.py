@@ -31,6 +31,7 @@ directions before anything is claimed about it.
 from __future__ import annotations
 
 import http.server
+import json
 import os
 import sys
 import tempfile
@@ -71,12 +72,14 @@ def served():
 
 
 @pytest.mark.e2e
-def test_the_posix_pipe_carries_messages_both_ways(firefox_binary, served):
+def test_the_posix_pipe_carries_messages_both_ways(firefox_binary, served, first_run_prefs):
     from invisible_core.juggler import connection as conn
     from invisible_core.juggler.injected import InjectedScript
     from invisible_core.juggler.lifecycle import Lifecycle
 
     profile = tempfile.mkdtemp(prefix="posix_pipe_")
+    with open(os.path.join(profile, "user.js"), "w", encoding="utf-8") as f:
+        f.writelines("user_pref(%s, %s);\n" % (json.dumps(k), json.dumps(v)) for k, v in first_run_prefs.items())
     c = conn.launch(str(firefox_binary), profile, headless=True)
     sessions: dict = {}
     c.add_listener(lambda m, p, s: (
