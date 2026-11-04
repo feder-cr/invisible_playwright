@@ -78,7 +78,7 @@ One caveat: Python's own `platform.machine()` inside your automation does not pr
 
 ## What this project ships, and does not
 
-This project currently builds and publishes engines for Linux on both x86_64 and arm64, and for Windows on x86_64. There is no macOS build; macOS support was discontinued after the engine build for it ended, so a macOS host has no engine to download here regardless of its own CPU architecture.
+This project builds and publishes engines for Linux x86_64 and Windows x86_64. Linux arm64 is no longer supported from firefox-56: firefox-55 is the last engine built for it. There is no macOS build; macOS support was discontinued after the engine build for it ended, so a macOS host has no engine to download here regardless of its own CPU architecture.
 
 ## Short answers to the questions that lead here
 
@@ -92,7 +92,7 @@ It usually starts under emulation, but runs slower and less predictably, which m
 Run `file` on the resolved browser binary to see its real architecture, and compare it to the host's own `uname -m` or your cloud provider's listed instance type, rather than trusting the image tag alone.
 
 **Does invisible_playwright support ARM64?**
-Yes, on Linux: separate engine builds for x86_64 and arm64, alongside a Windows x86_64 build. There is currently no macOS build.
+Not on Linux from firefox-56: firefox-55 is the last engine built for Linux arm64. The engines are Linux x86_64 and Windows x86_64. There is currently no macOS build.
 
 **Is WebKit's ARM64 Linux support as mature as Chromium and Firefox?**
 Playwright's own system requirements name Debian 12 and 13 and Ubuntu 22.04, 24.04 and 26.04 on "x86-64 or arm64" without splitting the list per browser, so confirm the browser you need actually downloads on your distribution before you build around it.

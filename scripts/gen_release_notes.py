@@ -109,7 +109,7 @@ def build_body(tag: str, current_sha: str, bullets: list[str],
         parts += [f"- {b}" for b in bullets]
         parts.append("")
     parts += [
-        "Builds: Linux x86_64, Linux arm64, Windows x86_64.",
+        "Builds: Linux x86_64, Windows x86_64.",
         "",
         "Most people won't grab these by hand. The wrapper fetches the right one for "
         "your platform on first run; how to install it is in " + INSTALL_DOC + ".",

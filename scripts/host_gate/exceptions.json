@@ -28,11 +28,7 @@
   "known_defects": [
     {"keys": ["text.*", "blend.*"],
      "why": "phase 4: text from idwr (DWrite 26100) on every OS; today Windows asks the host's DWrite and Linux FreeType"},
-    {"keys": ["control.composite.*", "control.pattern", "control.shadow", "surface.audio.offline_*"], "legs": ["linux-arm64"],
-     "why": "arm64 only, not worked on (arm64 is not a priority, 01/11): Skia's NEON paths in composite, pattern and shadow, and the offline audio FFT"},
-    {"keys": ["surface.webgpu.adapters", "surface.webgpu.adapters.*"], "legs": ["linux-arm64"],
-     "why": "arm64 only, not worked on (arm64 is not a priority, 01/11): the leg ships without our Vulkan driver, so requestAdapter answers null there, never the host's driver"},
-    {"keys": ["control.webgl1", "control.webgl2"], "legs": ["linux-x86_64", "linux-arm64"],
+    {"keys": ["control.webgl1", "control.webgl2"], "legs": ["linux-x86_64"],
      "why": "WebGL draws through the host's driver (llvmpipe here, ANGLE on Windows); a host-independent rasterizer is its own project"}
   ]
 }

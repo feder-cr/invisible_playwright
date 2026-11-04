@@ -6,8 +6,8 @@ Two properties follow, and they are checked for every value the page dumps
 (whole APIs, not a hand-picked list), so the gate needs no knowledge of where
 the next leak will be:
 
-  1. HOST-INDEPENDENCE. The same identity on different hosts (the Windows,
-     Linux x86_64 and Linux arm64 legs) gives the same bytes.
+  1. HOST-INDEPENDENCE. The same identity on different hosts (the Windows and
+     Linux x86_64 legs) gives the same bytes.
   2. RETAIL EQUALITY. A value that does not depend on the identity equals what
      retail Firefox for Windows answers on the same page, at the same device
      pixel ratio.

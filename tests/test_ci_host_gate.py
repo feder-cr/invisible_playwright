@@ -115,7 +115,8 @@ def test_noise_and_network_are_excused_known_defects_must_still_be_seen(tmp_path
 
 def test_a_known_defect_is_scoped_to_its_legs(tmp_path):
     items = lambda leg, seed: {"text.canvas.H": "x" if leg == "win-x86_64" else "y"}
-    exceptions = {"known_defects": [{"keys": ["text.*"], "legs": ["linux-arm64"], "why": "phase 4"}]}
+    # Scoped to a leg that took no part in the run: it excuses nothing on the two that did.
+    exceptions = {"known_defects": [{"keys": ["text.*"], "legs": ["another-leg"], "why": "phase 4"}]}
     failures = run(tmp_path, items, {"text.canvas.H": "x"}, exceptions)
     assert any(f.startswith("host  text.canvas.H") for f in failures)
 

@@ -44,7 +44,7 @@ override from the page, because the page is not where the tell originates.
 - [Execution context was destroyed, and when it means detection](execution-context-destroyed.md) - Usually a race condition, but sometimes a redirect to a challenge; how to tell the two apart.
 - [Why content_frame() returns None for a cross-origin iframe](cross-origin-iframe-unreachable.md) - One shared cause behind None, throws and timeouts: process isolation, not a permissions bug.
 
-- [Running Playwright Firefox on ARM64 Linux](playwright-firefox-arm64-linux.md) - What ships per architecture on ARM64 Linux, the emulation trap, and the memory ceiling.
+- [Running Playwright Firefox on ARM64 Linux](playwright-firefox-arm64-linux.md) - What ships per architecture on ARM64 Linux, the emulation trap, and the memory ceiling (this project no longer ships a Linux arm64 engine from firefox-56).
 
 ## Human-like input and interaction
 
