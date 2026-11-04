@@ -267,7 +267,10 @@ def test_the_supported_platforms_are_the_ones_the_seal_actually_ships():
     #: the seal contains, and that is correct: it does not claim a platform that
     #: is no longer supported. It is not the other half of the defect (claiming
     #: what is not built): that stays forbidden below.
-    DROPPED = {"macos-arm64", "macos-x86_64"}
+    #: Linux arm64 went out on 2026-11-04 (owner's decision): no engine from
+    #: firefox-56 on. A pin to firefox-55 or older still ships it, and the page
+    #: then says it is no longer supported, as for macOS.
+    DROPPED = {"macos-arm64", "macos-x86_64", "linux-arm64"}
 
     missing = []
     for token, spellings in expected.items():
@@ -286,9 +289,9 @@ def test_the_supported_platforms_are_the_ones_the_seal_actually_ships():
     # understand why the package refuses. A positive gate, not "do not mention it".
     if any(t in assets for t in DROPPED):
         assert "macos is no longer supported" in text or "no longer supported" in text, (
-            "the seal still ships macOS assets (historical pin) but the page does "
-            "not say macOS is no longer supported: a Mac user would not understand "
-            "the refusal")
+            "the seal still ships a retired platform's assets (historical pin) but "
+            "the page does not say it is no longer supported: a user on it would not "
+            "understand the refusal")
 
     # And the other direction: nothing claimed that is not built.
     for token in expected:
@@ -300,6 +303,18 @@ def test_the_supported_platforms_are_the_ones_the_seal_actually_ships():
         assert family not in text, (
             f"the page mentions {family} but the seal ships no {token} archive, so "
             f"that download does not exist")
+
+
+def test_the_page_promises_no_linux_arm64_engine():
+    """No Linux arm64 engine from firefox-56 on (2026-11-04). The page said
+    "Linux x86_64 / arm64" and quoted an arm64 download size: a reader on an
+    arm64 machine would install, and `fetch` would find nothing to download.
+    The page names Linux arm64 only to say it is no longer supported."""
+    text = _readme().lower()
+    assert "x86_64 / arm64" not in text and "(arm64)" not in text, (
+        "the page still lists Linux arm64 as a platform or quotes its download")
+    assert "linux arm64 is no longer supported" in text, (
+        "the page does not say Linux arm64 is no longer supported")
 
 
 def test_every_python_example_on_the_page_parses():

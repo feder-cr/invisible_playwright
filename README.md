@@ -50,10 +50,10 @@ source $HOME/.local/bin/env
 uv init --python ">=3.11" my-project
 cd my-project
 uv add invisible-playwright
-uv run invisible-playwright fetch      # one-time download, sha256-verified: 262 MB (x86_64) / 253 MB (arm64), about 550 MB unpacked
+uv run invisible-playwright fetch      # one-time download, sha256-verified: 262 MB, about 550 MB unpacked
 ```
 
-Supported platforms: **Windows x86_64**, **Linux x86_64 / arm64**.
+Supported platforms: **Windows x86_64**, **Linux x86_64**. Linux arm64 is no longer supported from firefox-56 (firefox-55 is the last engine built for it).
 
 Then save one of the examples below as `main.py` in `my-project` and run it with `uv run main.py`.
 

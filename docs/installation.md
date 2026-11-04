@@ -27,8 +27,9 @@ without a network call.
 
 ## Supported platforms
 
-**Windows x86_64**, **Linux x86_64 / arm64**. There is no macOS engine: its
-build ended on 2026-08-26.
+**Windows x86_64**, **Linux x86_64**. There is no macOS engine: its
+build ended on 2026-08-26. Linux arm64 is no longer supported from firefox-56:
+firefox-55 is the last engine built for it.
 
 `invisible-playwright version` prints the cache location, and
 `invisible-playwright fetch` prints the exact binary path as its last line.
@@ -79,7 +80,7 @@ Point `INVPW_BINARY_PATH` at a binary you already have to skip the download
 entirely. [Configuration](configuration.md) lists the other environment variables,
 including the ones for corporate networks and CI.
 
-**Which platforms are supported?** Windows x86_64 and Linux x86_64/arm64.
+**Which platforms are supported?** Windows x86_64 and Linux x86_64. Linux arm64 is no longer supported from firefox-56.
 
 **See also:** [Configuration](configuration.md) for proxy, timezone and environment
 variables, [CLI reference](cli-reference.md) for what `fetch` and `version` do in

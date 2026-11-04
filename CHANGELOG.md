@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Removed
+- Linux arm64 is no longer supported from firefox-56: no engine is built for
+  it. firefox-55 is the last engine with a Linux arm64 build. The engines are
+  Linux x86_64 and Windows x86_64; Windows on ARM64 still runs the x86_64
+  engine.
+
 ## [0.45.0] - 2026-11-04
 
 The pin moves to invisible-core 55.50.0, which brings the firefox-55 engine.
