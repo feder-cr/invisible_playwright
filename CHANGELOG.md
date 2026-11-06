@@ -11,6 +11,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   it. firefox-55 is the last engine with a Linux arm64 build. The engines are
   Linux x86_64 and Windows x86_64; Windows on ARM64 still runs the x86_64
   engine.
+- `scripts/ci_font_gate.py` and its test. The host gate
+  (`scripts/ci_host_gate.py`) asks the general question, whether anything a
+  page reads comes from the host, and it covers the font list. It ran green
+  on the firefox-55 release, which was the condition for removing the font
+  gate.
 
 ## [0.45.0] - 2026-11-04
 

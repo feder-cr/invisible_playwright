@@ -223,9 +223,9 @@ deploy on. A blank or changing emoji is a failure, not a pass.
 
 ## Sources
 
-- This project's font architecture and its cross-OS font gate, which runs the
-  browser on a Linux host with no Windows fonts and reads what it renders,
-  including colour emoji (decision log, 2026-06-20).
+- This project's font architecture and its cross-OS host gate, which runs the
+  browser on a Linux host with no Windows fonts and compares what a page reads,
+  colour emoji included, with the Windows build (decision log, 2026-06-20).
 - Firefox's use of a bundled colour-emoji font in place of the platform emoji
   font, verified against a stock build on more than one operating system.
 - [`HTMLCanvasElement.toDataURL()`](https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/toDataURL)
