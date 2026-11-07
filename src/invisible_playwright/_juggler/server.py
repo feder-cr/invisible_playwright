@@ -40,11 +40,13 @@ from invisible_core.juggler import PageActs, popup_number
 from invisible_core.juggler import connection as juggler
 from invisible_core.juggler.actions import Actions
 from invisible_core.juggler.deadline import Deadline
+from . import dialogs
 from .dispatcher import (Dispatcher, ExpectNotMet, ProtocolException,
                          Server, current_call)
 from invisible_core.juggler.injected import (ContextDestroyed, EvaluationError,
                                              InjectedScript, js_truthy)
 from invisible_core.juggler.keyboard import MODIFIER_MASK
+from invisible_core.juggler.keyboard import layout_for as keyboard_layout_for
 from invisible_core.juggler.lifecycle import Lifecycle
 
 # ⛔ RE-EXPORTED ON PURPOSE, not merely imported. These leaf helpers moved out
@@ -2457,6 +2459,11 @@ class PageDispatcher(Dispatcher):
         #: ⛔ Capped like the others: a page that fetches in a loop
         #: must not exhaust the process driving it.
         self._request_log: List[Any] = []
+        #: Dialogs still open, by id: when they opened (monotonic seconds),
+        #: their rank on this page and their text. `send_async` reads them
+        #: to answer after a reader's pause, see `dialogs.plan_answer_ms`.
+        self._dialogs_open: Dict[str, Any] = {}
+        self._dialogs_seen = 0
         self.main_frame_id = self.lifecycle.wait_for_main_frame(timeout=20.0)
         # ⛔ The Frame is created BEFORE the Page and adopted after: the Page
         # initializer has to name a mainFrame the client can already resolve.
@@ -2751,6 +2758,13 @@ class PageDispatcher(Dispatcher):
             self._remember(self._error_log, failure)
             self.context.emit("pageError", failure)
         elif method == "Page.dialogOpened":
+            # Clocked at the event, on the reader thread, so the answer's pause
+            # counts from when the dialog opened, not from when a handler
+            # got round to it.
+            self._dialogs_seen += 1
+            self._dialogs_open[params["dialogId"]] = (
+                time.monotonic(), self._dialogs_seen,
+                params.get("message") or "")
             self._emit_fused_dialog(params["dialogId"],
                                     params.get("type") or "alert",
                                     params.get("message") or "",
@@ -3053,8 +3067,40 @@ class PageDispatcher(Dispatcher):
         via `Server.run_blocking` and awaits the result, instead of a fused
         type reaching for the pool on its own and reinventing the translation
         `run_blocking` already does. Dialog is the first caller, 2026-08-29.
+
+        ⛔ A DIALOG IS ANSWERED AFTER A READER'S PAUSE (2026-11-07). Until
+        then `Page.handleDialog` left in the same millisecond the dialog
+        opened, whoever answered it: the auto-dismiss with no handler, or a
+        handler's `accept()`. The pause is drawn from the session's seed and
+        the dialog's text (`dialogs.plan_answer_ms`); only the remainder is
+        waited, and it is waited here, in the worker, not on the loop.
         """
+        if command == "Page.handleDialog":
+            return await self.server.run_blocking(
+                self._answer_dialog, command, params)
         return await self.server.run_blocking(self.send, command, params)
+
+    def _answer_dialog(self, command: str, params: Dict) -> Any:
+        """The pause, then the answer. ⛔ THE ANSWER ALWAYS GOES OUT: a dialog
+        left open blocks the page's script for good (every evaluate on it
+        times out), so whatever goes wrong in planning the pause is a warning,
+        never a reason not to send. 0.46.0's first CI run found exactly that:
+        the seed was read from the transport instead of the browser, the
+        AttributeError swallowed the answer, three e2e tests hung for 30 s."""
+        opened = self._dialogs_open.pop(params.get("dialogId"), None)
+        if opened is not None:
+            try:
+                opened_at, ordinal, message = opened
+                planned = dialogs.plan_answer_ms(self.browser.session_seed,
+                                                 self.number, ordinal, message)
+                wait = dialogs.remaining_ms(planned, opened_at, time.monotonic())
+            except Exception as exc:  # noqa: BLE001 - the answer must go out
+                warnings.warn("dialog pause not planned (%s): answering at once" % exc,
+                              RuntimeWarning, stacklevel=2)
+                wait = 0.0
+            if wait > 0:
+                time.sleep(wait / 1000.0)
+        return self.send(command, params)
 
     def _emit_fused_dialog(self, dialog_id: str, kind: str, message: str,
                            default_value: str) -> None:
@@ -4084,8 +4130,13 @@ class BrowserDispatcher(Dispatcher):
     def __init__(self, server, browser_type: "BrowserTypeDispatcher",
                  conn: Any, version: str, session_seed: Any = None,
                  motion_budget_s: Any = None,
-                 service_workers_enabled: bool = True) -> None:
+                 service_workers_enabled: bool = True,
+                 layout: str = "us") -> None:
         self.conn = conn
+        #: The keyboard the persona types on, from the session's language
+        #: (`keyboard.layout_for` on `intl.accept_languages`): one keyboard per
+        #: session, whatever a context later says its language is.
+        self.layout = layout
         #: ⛔ WHETHER `route()` CAN WORK AT ALL. Firefox asks a channel's
         #: intercept controller - the hook Juggler holds requests through -
         #: only while `dom.serviceWorkers.enabled` is true; with it false the
@@ -4234,7 +4285,8 @@ class BrowserDispatcher(Dispatcher):
         return Actions(self.conn, session, lifecycle, injected,
                        acts=PageActs(number),
                        session_seed=self.session_seed,
-                       motion_budget_s=self.motion_budget_s)
+                       motion_budget_s=self.motion_budget_s,
+                       layout=self.layout)
 
     @contextlib.contextmanager
     def _asking(self, context_id: Optional[str]):
@@ -5030,7 +5082,11 @@ class BrowserTypeDispatcher(Dispatcher):
                 self.server, self, conn, version, session_seed=session_seed,
                 motion_budget_s=motion_budget_s,
                 service_workers_enabled=prefs.get(
-                    "dom.serviceWorkers.enabled") is not False)
+                    "dom.serviceWorkers.enabled") is not False,
+                # The persona's keyboard follows the language the launcher
+                # decided for the session (`intl.accept_languages`): an
+                # Italian persona types on an Italian keyboard.
+                layout=keyboard_layout_for(prefs.get("intl.accept_languages") or ""))
         except BaseException:
             conn.close()
             raise

@@ -6,11 +6,47 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.46.0] - 2026-11-07
+
+### Changed
+- Engine firefox-56 (Firefox 159.0), through invisible-core 56.51.0. A WebGL
+  extension the persona declares can now be called without killing the
+  browser: the host serves every declared extension wherever its GL can, and
+  an entry point whose extension is off returns instead of asserting. Until
+  now one `provokingVertexWEBGL()` call on Linux took the main process down,
+  one page in 5,000 (`tests/test_a_declared_webgl_extension_survives_its_use_e2e.py`).
+- The persona types on the keyboard of its language. The server reads the
+  language the launcher decided for the session (`intl.accept_languages`) and
+  hands the matching layout to every page's hands: Italian, German, French,
+  Spanish, Brazilian (ABNT2) and British keyboards, read from the layouts
+  Windows ships, with Firefox's own `keyCode`s on Windows; everything else
+  stays on the US keyboard. Until now every persona typed on one US table with
+  Chromium's key codes: an Italian persona typed `ò` with no key event at all
+  and `@` as Shift+Digit2, and every persona sent 186/187/189 for `;`/`=`/`-`
+  where Firefox sends 59/61/173. The tables and the keyboard live in
+  invisible-core 56.51.0, which this version pins
+  (`tests/test_the_keyboard_follows_the_session_language.py`).
+- A dialog (`alert`, `confirm`, `prompt`) is answered after the pause a
+  reader takes, counted from the moment it opened: a reaction part and a
+  reading part that grows with the words, both drawn from the session's seed
+  and clamped, one draw per dialog. Until now `Page.handleDialog` left in the
+  same millisecond `Page.dialogOpened` arrived, whether the client dismissed
+  the dialog itself (no handler) or a handler called `accept()`; a page timing
+  `alert()`'s return saw single-digit milliseconds. Only the remainder is
+  waited, so a handler that took its time is not made slower, and a session
+  with no seed (humanising off) answers at once as before
+  (`_juggler/dialogs.py`, `tests/test_a_dialog_is_answered_after_a_pause.py`).
+
 ### Removed
 - Linux arm64 is no longer supported from firefox-56: no engine is built for
   it. firefox-55 is the last engine with a Linux arm64 build. The engines are
   Linux x86_64 and Windows x86_64; Windows on ARM64 still runs the x86_64
   engine.
+- `scripts/ci_font_gate.py` and its test. The host gate
+  (`scripts/ci_host_gate.py`) asks the general question, whether anything a
+  page reads comes from the host, and it covers the font list. It ran green
+  on the firefox-55 release, which was the condition for removing the font
+  gate.
 
 ## [0.45.0] - 2026-11-04
 
