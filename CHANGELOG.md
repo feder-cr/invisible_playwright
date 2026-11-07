@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.46.1] - 2026-11-07
+
+### Fixed
+- The typing rhythm uses the hand of the key on the persona's keyboard, through
+  invisible-core 56.52.0, which this version pins: on a German keyboard `z`
+  was counted as a left-hand key and an Italian `ò` had no hand, so the
+  same-hand and alternate-hand timings were applied to the wrong pairs. The
+  US keyboard is unchanged.
+- The pyproject comment on the dependencies names the server that exists
+  (`_juggler/`), not a Node driver (`tests/test_pyproject_names_real_paths.py`).
+
 ## [0.46.0] - 2026-11-07
 
 ### Changed
