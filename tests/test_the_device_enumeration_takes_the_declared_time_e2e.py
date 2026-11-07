@@ -12,38 +12,51 @@ profile and never restated); the list is then kept, as Firefox keeps it.
 """
 from __future__ import annotations
 
+import glob
 import http.server
 import threading
 
 import pytest
 
 # `wall_clock`: the e2e run gives this file the machine alone, after the
-# parallel tests. Why it needs that is on HOST_STACK_MS.
+# parallel tests: the lower bounds below still read the page's clock.
 pytestmark = [pytest.mark.e2e, pytest.mark.wall_clock]
 
 _SEED = 42
 
-#: The smallest time the host's audio stack added to an enumeration before
-#: firefox-45 (287-351 ms on our Windows build, the docstring above). The
-#: margin over the declared time is half of it: wide enough for a runner's own
-#: noise, narrow enough that the defect it guards cannot hide in it.
-#:
-#: These bounds used to be absolute - the first within declared + 110 ms, the
-#: second under 50 ms - and a CI run with four browsers crossed each of them
-#: once in the release of 0.35.10 (656 against 543 + 110, then exactly 50),
-#: both green again on the same SHA ([B312]). A bound that the load of the
-#: machine can cross is a bound on the machine, not on the engine.
-#:
-#: ⛔ AND THE RELATIVE BOUND THAT REPLACED THEM CROSSED TOO, because its premise
-#: was false: that the load both calls share cancels out of their difference.
-#: It does not. The declared wait is dispatched on the parent process's main
-#: thread, which four browsers make late, and only the FIRST call waits it; the
-#: second pays the round trip alone. Measured on a CI run of PR #355: 807 ms of
-#: difference against 686, green again on the same SHA. No margin holds beside
-#: four browsers, so the test no longer runs beside them.
-HOST_STACK_MS = 287
 
-MEASURE = """async () => {
+class _Page(http.server.BaseHTTPRequestHandler):
+    """A page on 127.0.0.1: a potentially trustworthy origin, so mediaDevices exists."""
+
+    def do_GET(self):
+        body = b"<!doctype html><title>e</title>"
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *a):
+        pass
+
+
+def _measure(firefox_binary):
+    from invisible_playwright import InvisiblePlaywright
+
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _Page)
+    srv.daemon_threads = True
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        with InvisiblePlaywright(seed=_SEED, binary_path=firefox_binary,
+                                 headless=True) as browser:
+            page = browser.new_page()
+            page.goto("http://127.0.0.1:%d/" % srv.server_address[1])
+            return page.evaluate(MEASURE)
+    finally:
+        srv.shutdown()
+
+
+MEASURE ="""async () => {
   const out = [];
   for (let i = 0; i < 2; i++) {
     const t0 = performance.now();
@@ -55,31 +68,7 @@ MEASURE = """async () => {
 
 
 def test_the_first_enumeration_takes_the_declared_time(firefox_binary):
-    from invisible_playwright import InvisiblePlaywright
-
-    class H(http.server.BaseHTTPRequestHandler):
-        def do_GET(self):
-            body = b"<!doctype html><title>e</title>"
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-
-        def log_message(self, *a):
-            pass
-
-    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
-    srv.daemon_threads = True
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
-    try:
-        with InvisiblePlaywright(seed=_SEED, binary_path=firefox_binary,
-                                 headless=True) as browser:
-            page = browser.new_page()
-            page.goto("http://127.0.0.1:%d/" % srv.server_address[1])
-            (first, kinds), (second, _) = page.evaluate(MEASURE)
-    finally:
-        srv.shutdown()
+    (first, kinds), (second, _) = _measure(firefox_binary)
     from invisible_core._fpforge import generate_profile
     declared = generate_profile(_SEED).hardware.media_enumeration_ms
     assert kinds == "audioinput,videoinput"
@@ -88,8 +77,32 @@ def test_the_first_enumeration_takes_the_declared_time(firefox_binary):
     # Kept, as Firefox keeps it: a list asked again would wait the declared
     # time again.
     assert second < declared / 2, (second, declared)
-    # And nothing on top of it. The second call is the same round trip to the
-    # parent without the wait, so the difference is the declared time plus
-    # whatever the host added. It is NOT free of the machine's load (see
-    # HOST_STACK_MS): this holds because the run gives the test the machine.
-    assert first - second < declared + HOST_STACK_MS / 2, (first, second, declared)
+    # ⛔ NO UPPER BOUND HERE ANY MORE. "Nothing on top of the declared time"
+    # was measured with the page's clock against a runner whose load delays the
+    # parent's main thread by 150-200 ms (741 and 702 against 543 + 143 on the
+    # same day, green on rerun). Whether the host was asked is now read from
+    # inside the engine: the next test.
+
+
+def _engine_release() -> int:
+    import invisible_core
+    return int(invisible_core.__version__.split(".")[0])
+
+
+def test_the_engine_waits_the_declared_time_and_never_asks_the_host(firefox_binary, tmp_path, monkeypatch):
+    """From inside the engine, whatever the load of the machine: the declared
+    enumeration logs the wait it dispatched, and the host's speakers are never
+    asked (MOZ_LOG=StealthMediaEnumeration, from firefox-57)."""
+    if _engine_release() < 57:
+        pytest.skip("the engine logs the enumeration from firefox-57")
+    from invisible_core._fpforge import generate_profile
+
+    log = tmp_path / "enum"
+    monkeypatch.setenv("MOZ_LOG", "sync,StealthMediaEnumeration:4")
+    monkeypatch.setenv("MOZ_LOG_FILE", str(log))
+    _measure(firefox_binary)
+    text ="".join(open(f, encoding="utf-8", errors="replace").read()
+                   for f in glob.glob(str(log) + "*"))
+    declared = generate_profile(_SEED).hardware.media_enumeration_ms
+    assert text.count("declared wait: %d ms" % declared) == 1, text[-2000:]
+    assert "host speakers asked: yes" not in text, text[-2000:]
