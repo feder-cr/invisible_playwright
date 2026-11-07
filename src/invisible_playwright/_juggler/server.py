@@ -3081,12 +3081,23 @@ class PageDispatcher(Dispatcher):
         return await self.server.run_blocking(self.send, command, params)
 
     def _answer_dialog(self, command: str, params: Dict) -> Any:
+        """The pause, then the answer. ⛔ THE ANSWER ALWAYS GOES OUT: a dialog
+        left open blocks the page's script for good (every evaluate on it
+        times out), so whatever goes wrong in planning the pause is a warning,
+        never a reason not to send. 0.46.0's first CI run found exactly that:
+        the seed was read from the transport instead of the browser, the
+        AttributeError swallowed the answer, three e2e tests hung for 30 s."""
         opened = self._dialogs_open.pop(params.get("dialogId"), None)
         if opened is not None:
-            opened_at, ordinal, message = opened
-            planned = dialogs.plan_answer_ms(self.server.session_seed,
-                                             self.number, ordinal, message)
-            wait = dialogs.remaining_ms(planned, opened_at, time.monotonic())
+            try:
+                opened_at, ordinal, message = opened
+                planned = dialogs.plan_answer_ms(self.browser.session_seed,
+                                                 self.number, ordinal, message)
+                wait = dialogs.remaining_ms(planned, opened_at, time.monotonic())
+            except Exception as exc:  # noqa: BLE001 - the answer must go out
+                warnings.warn("dialog pause not planned (%s): answering at once" % exc,
+                              RuntimeWarning, stacklevel=2)
+                wait = 0.0
             if wait > 0:
                 time.sleep(wait / 1000.0)
         return self.send(command, params)

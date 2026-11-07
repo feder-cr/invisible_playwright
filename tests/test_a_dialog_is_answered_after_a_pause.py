@@ -51,17 +51,30 @@ def test_only_the_remainder_is_waited():
 # ── the wiring ─────────────────────────────────────────────────────────────
 
 class _Server:
-    def __init__(self, seed: Any) -> None:
-        self.session_seed = seed
+    """The transport: it runs blocking work, and it knows NO seed. The seed
+    lives on the browser (`BrowserDispatcher.session_seed`), reached from a
+    page through `page.browser`; 0.46.0's first CI run hung three e2e tests
+    because the pause read it from here."""
 
     async def run_blocking(self, fn: Any, *args: Any) -> Any:
         return fn(*args)
 
 
+class _Browser:
+    def __init__(self, seed: Any) -> None:
+        self.session_seed = seed
+
+
+class _Context:
+    def __init__(self, seed: Any) -> None:
+        self.browser = _Browser(seed)
+
+
 def _page(seed: Any, sent: List[Any]) -> PageDispatcher:
     """The dispatcher's dialog half alone: no engine, no client."""
     page = PageDispatcher.__new__(PageDispatcher)
-    page.server = _Server(seed)
+    page.server = _Server()
+    page.context = _Context(seed)
     page.number = 1
     page._dialogs_open = {}
     page._dialogs_seen = 0
@@ -119,6 +132,21 @@ def test_the_second_dialog_of_a_page_draws_its_own_pause(monkeypatch):
                                     {"dialogId": dialog_id, "accept": True}))
     assert len(slept) == 2 and slept[0] != slept[1]
     assert slept == [dialogs.plan_answer_ms(SEED, 1, n, "Saved") / 1000.0 for n in (1, 2)]
+
+
+def test_the_answer_goes_out_even_when_the_pause_cannot_be_planned(monkeypatch):
+    """A dialog left open blocks the page's script for good. Whatever fails in
+    planning the pause is a warning, never a swallowed answer."""
+    slept: List[float] = []
+    sent: List[Any] = []
+    monkeypatch.setattr(server_mod.time, "sleep", slept.append)
+    page = _page(SEED, sent)
+    page.context = None  # no browser to ask: the planning raises
+    page._on_juggler_event("Page.dialogOpened",
+                           {"dialogId": "d1", "type": "alert", "message": "Hi"})
+    with pytest.warns(RuntimeWarning, match="answering at once"):
+        asyncio.run(page.send_async("Page.handleDialog", {"dialogId": "d1", "accept": True}))
+    assert slept == [] and sent == [("Page.handleDialog", {"dialogId": "d1", "accept": True})]
 
 
 def test_a_command_that_is_not_a_dialog_goes_straight_through(monkeypatch):
