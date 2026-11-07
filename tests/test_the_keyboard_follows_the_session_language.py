@@ -31,7 +31,7 @@ def test_the_session_hands_the_server_its_language_and_country_s_keyboard():
     from invisible_core import SessionLocale
     from invisible_playwright._juggler.server import KEYBOARD_LAYOUT_PREF
     from invisible_playwright._session import build_prefs
-    from invisible_playwright._fpforge import generate_profile
+    from invisible_core import generate_profile
     prefs = build_prefs(profile=generate_profile(seed=4242), locale=SessionLocale(("de", "en-US", "en"), "CH"),
                         timezone="Europe/Zurich", extra_prefs=None, virtual_display=False,
                         cursor_engine="python", humanize=True, session_seed=4242)
