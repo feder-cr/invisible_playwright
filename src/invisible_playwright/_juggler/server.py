@@ -3148,8 +3148,20 @@ class PageDispatcher(Dispatcher):
 
     # ── pointer and keyboard ──────────────────────────────────────────
     def op_mouse_move(self, params: Dict) -> Any:
-        self.actions.move(params["x"], params["y"],
-                          steps=params.get("steps") or 1)
+        buttons = params.get("buttons")
+        if buttons is not None:
+            x, y = float(params["x"]), float(params["y"])
+            steps = max(1, params.get("steps") or 1)
+            x0, y0 = self.actions.position
+            for i in range(1, steps + 1):
+                self.actions._mouse_event(
+                    "mousemove",
+                    (x0 + (x - x0) * i / steps,
+                     y0 + (y - y0) * i / steps),
+                    buttons=buttons)
+        else:
+            self.actions.move(params["x"], params["y"],
+                              steps=params.get("steps") or 1)
         return None
 
     def op_mouse_down(self, params: Dict) -> Any:
