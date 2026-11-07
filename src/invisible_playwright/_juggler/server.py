@@ -46,6 +46,7 @@ from .dispatcher import (Dispatcher, ExpectNotMet, ProtocolException,
 from invisible_core.juggler.injected import (ContextDestroyed, EvaluationError,
                                              InjectedScript, js_truthy)
 from invisible_core.juggler.keyboard import MODIFIER_MASK
+from invisible_core.juggler.keyboard import layout_for as keyboard_layout_for
 from invisible_core.juggler.lifecycle import Lifecycle
 
 # ⛔ RE-EXPORTED ON PURPOSE, not merely imported. These leaf helpers moved out
@@ -4118,8 +4119,13 @@ class BrowserDispatcher(Dispatcher):
     def __init__(self, server, browser_type: "BrowserTypeDispatcher",
                  conn: Any, version: str, session_seed: Any = None,
                  motion_budget_s: Any = None,
-                 service_workers_enabled: bool = True) -> None:
+                 service_workers_enabled: bool = True,
+                 layout: str = "us") -> None:
         self.conn = conn
+        #: The keyboard the persona types on, from the session's language
+        #: (`keyboard.layout_for` on `intl.accept_languages`): one keyboard per
+        #: session, whatever a context later says its language is.
+        self.layout = layout
         #: ⛔ WHETHER `route()` CAN WORK AT ALL. Firefox asks a channel's
         #: intercept controller - the hook Juggler holds requests through -
         #: only while `dom.serviceWorkers.enabled` is true; with it false the
@@ -4268,7 +4274,8 @@ class BrowserDispatcher(Dispatcher):
         return Actions(self.conn, session, lifecycle, injected,
                        acts=PageActs(number),
                        session_seed=self.session_seed,
-                       motion_budget_s=self.motion_budget_s)
+                       motion_budget_s=self.motion_budget_s,
+                       layout=self.layout)
 
     @contextlib.contextmanager
     def _asking(self, context_id: Optional[str]):
@@ -5064,7 +5071,11 @@ class BrowserTypeDispatcher(Dispatcher):
                 self.server, self, conn, version, session_seed=session_seed,
                 motion_budget_s=motion_budget_s,
                 service_workers_enabled=prefs.get(
-                    "dom.serviceWorkers.enabled") is not False)
+                    "dom.serviceWorkers.enabled") is not False,
+                # The persona's keyboard follows the language the launcher
+                # decided for the session (`intl.accept_languages`): an
+                # Italian persona types on an Italian keyboard.
+                layout=keyboard_layout_for(prefs.get("intl.accept_languages") or ""))
         except BaseException:
             conn.close()
             raise

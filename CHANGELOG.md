@@ -7,6 +7,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [Unreleased]
 
 ### Changed
+- The persona types on the keyboard of its language. The server reads the
+  language the launcher decided for the session (`intl.accept_languages`) and
+  hands the matching layout to every page's hands: Italian, German, French,
+  Spanish, Brazilian (ABNT2) and British keyboards, read from the layouts
+  Windows ships, with Firefox's own `keyCode`s on Windows; everything else
+  stays on the US keyboard. Until now every persona typed on one US table with
+  Chromium's key codes: an Italian persona typed `ò` with no key event at all
+  and `@` as Shift+Digit2, and every persona sent 186/187/189 for `;`/`=`/`-`
+  where Firefox sends 59/61/173. The tables and the keyboard live in
+  invisible-core 55.51.0, which this version pins
+  (`tests/test_the_keyboard_follows_the_session_language.py`).
 - A dialog (`alert`, `confirm`, `prompt`) is answered after the pause a
   reader takes, counted from the moment it opened: a reaction part and a
   reading part that grows with the words, both drawn from the session's seed
