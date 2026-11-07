@@ -217,6 +217,10 @@ SESSION_SEED_PREF = "invisible.server.session_seed"
 #: a cap of its own would be a second answer to a question the caller answered,
 #: and would show up as a drag that ignores a budget every click obeys.
 MOTION_BUDGET_PREF = "invisible.server.motion_budget_ms"
+#: The persona's keyboard (a Windows KLID), decided by the core from the
+#: session's language AND country (`keyboard.layout_for`). Server-only, like
+#: the seed: taken out of the prefs before the profile is written.
+KEYBOARD_LAYOUT_PREF = "invisible.server.keyboard_layout"
 
 
 def take_session_motion(prefs: Dict) -> tuple:
@@ -5032,6 +5036,10 @@ class BrowserTypeDispatcher(Dispatcher):
         # answered in Python.
         prefs, session_seed, motion_budget_s = take_session_motion(
             params.get("firefoxUserPrefs") or {})
+        # The keyboard the session decided, out of the prefs before the
+        # profile sees them; without it, the language alone decides.
+        keyboard_layout = prefs.pop(KEYBOARD_LAYOUT_PREF, None) or \
+            keyboard_layout_for(prefs.get("intl.accept_languages") or "")
         write_user_js(profile, prefs)
         # ⛔ THE CALLER'S TIMEOUT, not ours. `launch(timeout=)` is a
         # documented option and this server ignored it, so a caller who
@@ -5083,10 +5091,10 @@ class BrowserTypeDispatcher(Dispatcher):
                 motion_budget_s=motion_budget_s,
                 service_workers_enabled=prefs.get(
                     "dom.serviceWorkers.enabled") is not False,
-                # The persona's keyboard follows the language the launcher
-                # decided for the session (`intl.accept_languages`): an
-                # Italian persona types on an Italian keyboard.
-                layout=keyboard_layout_for(prefs.get("intl.accept_languages") or ""))
+                # The persona's keyboard: the one a Windows install gives the
+                # session's language in its country (German in Switzerland
+                # types on the Swiss keyboard).
+                layout=keyboard_layout)
         except BaseException:
             conn.close()
             raise
