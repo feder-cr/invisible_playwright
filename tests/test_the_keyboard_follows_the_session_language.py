@@ -19,9 +19,23 @@ from invisible_playwright._juggler.server import BrowserDispatcher, keyboard_lay
 
 def test_the_layout_comes_from_the_language_the_launcher_wrote():
     assert keyboard_layout_for is layout_for
-    assert keyboard_layout_for("it-IT,it,en-US,en") == "it"
-    assert keyboard_layout_for("en-US,en") == "us"
-    assert keyboard_layout_for("") == "us"
+    assert keyboard_layout_for("it-IT,it,en-US,en") == "00000410"
+    assert keyboard_layout_for("en-US,en") == "00000409"
+    assert keyboard_layout_for("") == "00000409"
+
+
+def test_the_session_hands_the_server_its_language_and_country_s_keyboard():
+    """German in Switzerland types on the Swiss keyboard: only the session knows
+    the country, so the decision travels in a server-only pref, and the server
+    takes it out before the profile is written."""
+    from invisible_core import SessionLocale
+    from invisible_playwright._juggler.server import KEYBOARD_LAYOUT_PREF
+    from invisible_playwright._session import build_prefs
+    from invisible_core import generate_profile
+    prefs = build_prefs(profile=generate_profile(seed=4242), locale=SessionLocale(("de", "en-US", "en"), "CH"),
+                        timezone="Europe/Zurich", extra_prefs=None, virtual_display=False,
+                        cursor_engine="python", humanize=True, session_seed=4242)
+    assert prefs[KEYBOARD_LAYOUT_PREF] == "00000807"
 
 
 def test_the_browser_hands_its_layout_to_every_page(monkeypatch):
@@ -37,9 +51,9 @@ def test_the_browser_hands_its_layout_to_every_page(monkeypatch):
     browser.conn = object()
     browser.session_seed = 4242
     browser.motion_budget_s = None
-    browser.layout = "it"
+    browser.layout = "00000410"
     browser.actions_for_page("S", lifecycle=None, injected=None, number=1)
-    assert seen["layout"] == "it"
+    assert seen["layout"] == "00000410"
     assert isinstance(seen["acts"], PageActs) and seen["session_seed"] == 4242
 
 
@@ -47,4 +61,4 @@ def test_the_default_is_the_us_keyboard():
     """A browser built without a layout types on the US keyboard, as before."""
     import inspect
     sig = inspect.signature(BrowserDispatcher.__init__)
-    assert sig.parameters["layout"].default == "us"
+    assert sig.parameters["layout"].default == "us"  # the alias of 00000409

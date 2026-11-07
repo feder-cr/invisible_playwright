@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.46.2] - 2026-11-07
+
+### Changed
+- The persona types on the keyboard a Windows install gives its language in
+  its country, for every language: German in Switzerland on the Swiss
+  keyboard, Dutch on US-International, Polish, Czech, Turkish, Greek, Hebrew,
+  Arabic and the rest on their own keyboards; a language Windows has no
+  profile for takes the keyboard of the country's main language; Japanese and
+  Korean type on the keyboard under the IME. The session passes its country to
+  the server, which only had the language list before. The tables come from
+  invisible-core 56.53.0, which this version pins, read from the bytes of the
+  Windows layout files rather than from the machine.
+
 ## [0.46.1] - 2026-11-07
 
 ### Fixed
