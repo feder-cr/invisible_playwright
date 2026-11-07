@@ -40,6 +40,7 @@ from invisible_core.juggler import PageActs, popup_number
 from invisible_core.juggler import connection as juggler
 from invisible_core.juggler.actions import Actions
 from invisible_core.juggler.deadline import Deadline
+from . import dialogs
 from .dispatcher import (Dispatcher, ExpectNotMet, ProtocolException,
                          Server, current_call)
 from invisible_core.juggler.injected import (ContextDestroyed, EvaluationError,
@@ -2457,6 +2458,11 @@ class PageDispatcher(Dispatcher):
         #: ⛔ Capped like the others: a page that fetches in a loop
         #: must not exhaust the process driving it.
         self._request_log: List[Any] = []
+        #: Dialogs still open, by id: when they opened (monotonic seconds),
+        #: their rank on this page and their text. `send_async` reads them
+        #: to answer after a reader's pause, see `dialogs.plan_answer_ms`.
+        self._dialogs_open: Dict[str, Any] = {}
+        self._dialogs_seen = 0
         self.main_frame_id = self.lifecycle.wait_for_main_frame(timeout=20.0)
         # ⛔ The Frame is created BEFORE the Page and adopted after: the Page
         # initializer has to name a mainFrame the client can already resolve.
@@ -2751,6 +2757,13 @@ class PageDispatcher(Dispatcher):
             self._remember(self._error_log, failure)
             self.context.emit("pageError", failure)
         elif method == "Page.dialogOpened":
+            # Clocked at the event, on the reader thread, so the answer's pause
+            # counts from when the dialog opened, not from when a handler
+            # got round to it.
+            self._dialogs_seen += 1
+            self._dialogs_open[params["dialogId"]] = (
+                time.monotonic(), self._dialogs_seen,
+                params.get("message") or "")
             self._emit_fused_dialog(params["dialogId"],
                                     params.get("type") or "alert",
                                     params.get("message") or "",
@@ -3053,8 +3066,29 @@ class PageDispatcher(Dispatcher):
         via `Server.run_blocking` and awaits the result, instead of a fused
         type reaching for the pool on its own and reinventing the translation
         `run_blocking` already does. Dialog is the first caller, 2026-08-29.
+
+        ⛔ A DIALOG IS ANSWERED AFTER A READER'S PAUSE (2026-11-07). Until
+        then `Page.handleDialog` left in the same millisecond the dialog
+        opened, whoever answered it: the auto-dismiss with no handler, or a
+        handler's `accept()`. The pause is drawn from the session's seed and
+        the dialog's text (`dialogs.plan_answer_ms`); only the remainder is
+        waited, and it is waited here, in the worker, not on the loop.
         """
+        if command == "Page.handleDialog":
+            return await self.server.run_blocking(
+                self._answer_dialog, command, params)
         return await self.server.run_blocking(self.send, command, params)
+
+    def _answer_dialog(self, command: str, params: Dict) -> Any:
+        opened = self._dialogs_open.pop(params.get("dialogId"), None)
+        if opened is not None:
+            opened_at, ordinal, message = opened
+            planned = dialogs.plan_answer_ms(self.server.session_seed,
+                                             self.number, ordinal, message)
+            wait = dialogs.remaining_ms(planned, opened_at, time.monotonic())
+            if wait > 0:
+                time.sleep(wait / 1000.0)
+        return self.send(command, params)
 
     def _emit_fused_dialog(self, dialog_id: str, kind: str, message: str,
                            default_value: str) -> None:

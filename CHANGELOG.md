@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+- A dialog (`alert`, `confirm`, `prompt`) is answered after the pause a
+  reader takes, counted from the moment it opened: a reaction part and a
+  reading part that grows with the words, both drawn from the session's seed
+  and clamped, one draw per dialog. Until now `Page.handleDialog` left in the
+  same millisecond `Page.dialogOpened` arrived, whether the client dismissed
+  the dialog itself (no handler) or a handler called `accept()`; a page timing
+  `alert()`'s return saw single-digit milliseconds. Only the remainder is
+  waited, so a handler that took its time is not made slower, and a session
+  with no seed (humanising off) answers at once as before
+  (`_juggler/dialogs.py`, `tests/test_a_dialog_is_answered_after_a_pause.py`).
+
 ### Removed
 - Linux arm64 is no longer supported from firefox-56: no engine is built for
   it. firefox-55 is the last engine with a Linux arm64 build. The engines are
