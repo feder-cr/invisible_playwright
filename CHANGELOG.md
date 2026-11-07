@@ -6,7 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.46.0] - 2026-11-07
+
 ### Changed
+- Engine firefox-56 (Firefox 159.0), through invisible-core 56.51.0. A WebGL
+  extension the persona declares can now be called without killing the
+  browser: the host serves every declared extension wherever its GL can, and
+  an entry point whose extension is off returns instead of asserting. Until
+  now one `provokingVertexWEBGL()` call on Linux took the main process down,
+  one page in 5,000 (`tests/test_a_declared_webgl_extension_survives_its_use_e2e.py`).
 - The persona types on the keyboard of its language. The server reads the
   language the launcher decided for the session (`intl.accept_languages`) and
   hands the matching layout to every page's hands: Italian, German, French,
@@ -16,7 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   Chromium's key codes: an Italian persona typed `ò` with no key event at all
   and `@` as Shift+Digit2, and every persona sent 186/187/189 for `;`/`=`/`-`
   where Firefox sends 59/61/173. The tables and the keyboard live in
-  invisible-core 55.51.0, which this version pins
+  invisible-core 56.51.0, which this version pins
   (`tests/test_the_keyboard_follows_the_session_language.py`).
 - A dialog (`alert`, `confirm`, `prompt`) is answered after the pause a
   reader takes, counted from the moment it opened: a reaction part and a
