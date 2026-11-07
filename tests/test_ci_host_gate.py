@@ -420,3 +420,11 @@ def test_every_page_call_the_driver_makes_exists_in_the_page():
     assert used == {"prepare", "arm", "wait", "leave", "clear", "measure"}
     for name in used:
         assert re.search(r"\b%s\b\s*[(,]" % name, api), name
+
+
+def test_the_navigation_has_the_page_s_budget_not_goto_s_default():
+    """Known-bad: page.goto without a timeout, 30 s, while the wait for the page
+    after it has 180 s; a cold Windows runner crossed the 30 s on the first visit."""
+    src = (Path(__file__).resolve().parent.parent / "scripts" / "ci_host_gate.py").read_text(encoding="utf-8")
+    call = re.search(r"page\.goto\((.*?)\)$", src, re.S | re.M).group(1)
+    assert "timeout=timeout_ms" in call, call

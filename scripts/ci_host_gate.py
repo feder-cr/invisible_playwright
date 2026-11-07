@@ -400,7 +400,11 @@ def dump(firefox: str, leg: str, out: Path, reference: Path, timeout_ms: int = 1
             for seed in SEEDS:
                 with InvisiblePlaywright(**visit_options(firefox, seed, dpr, zone)) as browser:
                     page = browser.new_context().new_page()
-                    page.goto("http://127.0.0.1:%d/?dpr%s" % (server.server_address[1], dpr))
+                    # The same budget as the wait below: a cold Windows runner took
+                    # more than goto's default 30 s to reach `load` on the first
+                    # visit (candidate 42410156024), and passed locally 6/6.
+                    page.goto("http://127.0.0.1:%d/?dpr%s" % (server.server_address[1], dpr),
+                              timeout=timeout_ms)
                     page.wait_for_function("document.title === 'done'", timeout=timeout_ms)
                     result = page.evaluate("window.__hostGate")
                     if result.get("format") == FORMAT:
