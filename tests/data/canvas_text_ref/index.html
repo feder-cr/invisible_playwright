@@ -1,34 +1,34 @@
 <!doctype html>
-<html lang="en">
+<html lang="it">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>canvas ref</title>
 <style>
-@font-face{font-family:"Arial";src:url("fonts/arial.ttf") format("truetype");font-weight:400;font-style:normal}
-@font-face{font-family:"Segoe UI";src:url("fonts/segoeui.ttf") format("truetype");font-weight:400;font-style:normal}
-@font-face{font-family:"Times New Roman";src:url("fonts/times.ttf") format("truetype");font-weight:400;font-style:normal}
-@font-face{font-family:"Consolas";src:url("fonts/consola.ttf") format("truetype");font-weight:400;font-style:normal}
-@font-face{font-family:"Calibri";src:url("fonts/calibri.ttf") format("truetype");font-weight:400;font-style:normal}
+@font-face{font-family:"Arial";src:url("bundle/arial7_04.ttf") format("truetype");font-weight:400;font-style:normal}
+@font-face{font-family:"Segoe UI";src:url("bundle/segoeui5_67.ttf") format("truetype");font-weight:400;font-style:normal}
+@font-face{font-family:"Times New Roman";src:url("bundle/times7_11.ttf") format("truetype");font-weight:400;font-style:normal}
+@font-face{font-family:"Consolas";src:url("bundle/consola7_00.ttf") format("truetype");font-weight:400;font-style:normal}
+@font-face{font-family:"Calibri";src:url("bundle/calibri6_26.ttf") format("truetype");font-weight:400;font-style:normal}
 body{margin:16px;background:#fff;color:#000;font:13px sans-serif}
 </style>
 </head>
 <body>
-<p id="status">loading fonts</p>
+<p id="status">caricamento font</p>
 <script>
-// Canvas 2D text reference: each case draws TEXT, reads its pixels with getImageData,
-// hashes the RGBA bytes with SHA-256 and keeps the PNG. Deterministic:
-// white background, fonts loaded before measuring or drawing.
+// Riferimento canvas 2D: ogni caso disegna TEXT, ne legge i pixel con getImageData,
+// calcola SHA-256 dei byte RGBA e tiene anche il PNG. Tutto deterministico:
+// canvas su sfondo bianco, font caricati prima di misurare o disegnare.
 const FAMILIES = ["Arial", "Segoe UI", "Times New Roman", "Consolas", "Calibri"];
 const SIZES = [9, 12.5, 16, 33, 72, 300];
 const TEXT = "Hamburgefonstiv 0123";
 const TRANSFORMS = ["none", "rot15-scale1.5x2"];
 
 const SPECS = [];
-// fillText and strokeText, with and without a transform
+// fillText e strokeText, con e senza trasformazione
 for (const family of FAMILIES) for (const size of SIZES) for (const transform of TRANSFORMS) for (const op of ["fill", "stroke"])
   SPECS.push({family, size, transform, style: "normal", weight: "normal", op});
-// synthetic italic and bold on a regular face (fillText)
+// italic e bold sintetici su una faccia regular (fillText)
 for (const family of FAMILIES) for (const size of SIZES) for (const transform of TRANSFORMS) for (const syn of ["italic", "bold"])
   SPECS.push({family, size, transform, style: syn === "italic" ? "italic" : "normal", weight: syn === "bold" ? "bold" : "normal", op: "fill"});
 for (const sp of SPECS) sp.id = [sp.family, sp.size, sp.transform, sp.style, sp.weight, sp.op].join("|");
@@ -76,20 +76,20 @@ async function drawCase(sp) {
     for (const f of FAMILIES) {
       const r = await document.fonts.load(`16px "${f}"`);
       window.FONTS[f] = r.map(x => x.status);
-      if (!r.length || r.some(x => x.status !== "loaded")) throw new Error("font not loaded: " + f);
+      if (!r.length || r.some(x => x.status !== "loaded")) throw new Error("font non caricato: " + f);
     }
     window.R = {};
     for (const sp of SPECS) {
       const r = await drawCase(sp);
       window.R[sp.id] = r;
-      st.textContent = `cases: ${Object.keys(window.R).length}/${SPECS.length}`;
+      st.textContent = `casi: ${Object.keys(window.R).length}/${SPECS.length}`;
     }
     window.CASE_COUNT = SPECS.length;
-    st.textContent = `done: ${SPECS.length} casi`;
+    st.textContent = `fatto: ${SPECS.length} casi`;
     window.DONE = true;
   } catch (e) {
     window.ERR = String(e);
-    st.textContent = "error: " + e;
+    st.textContent = "errore: " + e;
   }
 })();
 </script>

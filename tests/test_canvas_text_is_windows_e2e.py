@@ -1,7 +1,7 @@
 """Canvas 2D text is drawn as retail Firefox on Windows draws it, on every OS.
 
 Retail Firefox on Windows draws canvas text with Skia over DirectWrite. The engine draws it
-with Skia over idwr (DirectWrite 10.0.26100.9711 in portable C) from firefox-61, so the
+with Skia over idwr (DirectWrite 10.0.26100.9711 in portable C) from firefox-60, so the
 same page gives the same RGBA bytes on Windows, on Debian 12 and on Ubuntu 24.04.
 
 tests/data/canvas_text_ref/index.html draws 240 cases (Arial, Segoe UI, Times New Roman,
@@ -11,9 +11,9 @@ back with getImageData and hashes the RGBA bytes with SHA-256. The fonts are @fo
 webfonts: the files of the engine's own ``fonts`` directory, served by this test, so the
 comparison does not depend on what the host has installed. tests/data/canvas_text_ref/
 refs.json holds the hashes retail Firefox 159.0 on Windows gave for the same page and the
-same files (gfx.canvas.accelerated off, white background); rebuild.py of the reference
-writes it. Its ``fonts`` entries carry the sha256 of each file, which must be the engine's
-bundled one: a reference made with other font files compares nothing.
+same bundled files (gfx.canvas.accelerated off, white background), and the ClearType state
+of that machine, which the test declares as the persona (system text quality 5). Its ``fonts`` entries carry the sha256 of each file, which must be the engine's
+bundled one (Arial 05c7da5fe195...): a reference made with other font files compares nothing.
 
 Every differing case is listed, not just the first. Set INVISIBLE_CANVAS_TEXT_OUT to a
 directory and the run writes its hashes there (canvas_text_<tag>.json); scripts/
@@ -37,21 +37,34 @@ from invisible_playwright import InvisiblePlaywright
 
 DATA = Path(__file__).parent / "data" / "canvas_text_ref"
 
-#: The ClearType tuning of the machine the reference was measured on. refs.json may carry its
-#: own under "cleartype" (the pin keys of the declared persona); this is retail's default.
-_DEFAULT_PIN = {"screen.dpr": 1.0, "font.cleartype_gamma": 1800,
-                "font.cleartype_contrast": 100}
+#: What the reference's ``cleartype`` field says the retail machine had: FontSmoothing 2 with
+#: FontSmoothingType 2 is ClearType (system text quality 5). The other tuning values are an
+#: untuned Windows machine's (gamma 1.8, contrast 1.0, level 1.0), which refs.json does not
+#: record.
+_UNTUNED = {"font.cleartype_gamma": 1800, "font.cleartype_contrast": 100,
+            "font.cleartype_level": 100}
+
+
+def _pin(refs):
+    ct = refs["cleartype"]
+    smoothing, kind = str(ct["FontSmoothing"]), str(ct["FontSmoothingType"])
+    if smoothing == "2" and kind in ("2", "0x2"):
+        quality = 5
+    elif smoothing == "2":
+        quality = 4
+    else:
+        quality = 0
+    return {"screen.dpr": 1.0, "font.system_text_quality": quality, **_UNTUNED}
 
 
 def _bundle_font(fonts_dir, entry):
-    """The bundled file a reference entry stands for: ``bundle_file`` when the reference
-    names it, else the entry's own file name."""
-    return fonts_dir / entry.get("bundle_file", Path(entry["file"]).name)
+    """The bundled file a reference entry names."""
+    return fonts_dir / entry["bundle_file"]
 
 
 def _serve(fonts_dir, entries):
     """The page and, under fonts/<name from the page>, the engine's bundled files."""
-    by_url = {"/" + e["file"]: _bundle_font(fonts_dir, e) for e in entries}
+    by_url = {"/bundle/" + e["bundle_file"]: _bundle_font(fonts_dir, e) for e in entries}
     page = (DATA / "index.html").read_bytes()
 
     class _H(http.server.BaseHTTPRequestHandler):
@@ -80,7 +93,7 @@ def _serve(fonts_dir, entries):
 
 @pytest.mark.e2e
 def test_canvas_text_is_what_retail_windows_draws(firefox_binary, engine_at_least):
-    engine_at_least("firefox-61")
+    engine_at_least("firefox-60")
     refs_path = DATA / "refs.json"
     if not refs_path.is_file():
         pytest.fail("tests/data/canvas_text_ref/refs.json is missing: it is the reference "
@@ -93,17 +106,18 @@ def test_canvas_text_is_what_retail_windows_draws(firefox_binary, engine_at_leas
         f = _bundle_font(fonts_dir, e)
         got = hashlib.sha256(f.read_bytes()).hexdigest() if f.is_file() else None
         if got != e["sha256"]:
-            wrong.append("%s: %s has sha256 %s, the reference was made with %s"
+            wrong.append("%s: the engine's %s has sha256 %s, the reference was made with %s"
                          % (e["family"], f.name, got, e["sha256"]))
     assert not wrong, (
         "the reference was measured with other font files than the engine's bundle, so it "
         "compares nothing; rebuild refs.json from the bundled files:\n  " + "\n  ".join(wrong))
 
+    pin = _pin(refs)
     server = _serve(fonts_dir, refs["fonts"])
     try:
         url = "http://127.0.0.1:%d/" % server.server_address[1]
         with InvisiblePlaywright(seed=21, binary_path=firefox_binary, headless=True,
-                                 pin=refs.get("cleartype", _DEFAULT_PIN)) as b:
+                                 pin=pin) as b:
             page = b.new_context().new_page()
             page.goto(url, timeout=60_000)
             page.wait_for_function("window.DONE === true || window.ERR", timeout=300_000)
