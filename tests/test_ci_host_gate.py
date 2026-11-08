@@ -54,14 +54,14 @@ def broken(**override):
     return {inv.name for inv, state, message in gate.check_invariants(gate.visit_states(retail_states(**override)))}
 
 
-def write(tmp_path, items_by_leg_seed, retail):
+def write(tmp_path, items_by_leg_seed, retail, legs=None):
     dumps = tmp_path / "dumps"
     ref = tmp_path / "ref"
     dumps.mkdir(parents=True)
     ref.mkdir(parents=True)
     for dpr in gate.DPRS:
         (ref / ("dpr%s.json" % dpr)).write_text(json.dumps({"items": retail}), encoding="utf-8")
-        for leg in LEGS:
+        for leg in legs or LEGS:
             for seed in gate.SEEDS:
                 items = dict(retail_states(), **items_by_leg_seed(leg, seed))
                 (dumps / ("%s_dpr%s_seed%d.json" % (leg, dpr, seed))).write_text(json.dumps(
@@ -70,8 +70,8 @@ def write(tmp_path, items_by_leg_seed, retail):
     return dumps, ref
 
 
-def run(tmp_path, items, retail, exceptions=None, notes=None):
-    dumps, ref = write(tmp_path, items, retail)
+def run(tmp_path, items, retail, exceptions=None, notes=None, legs=None):
+    dumps, ref = write(tmp_path, items, retail, legs)
     return gate.compare(dumps, ref, exceptions or {}, notes)
 
 
@@ -428,3 +428,25 @@ def test_the_navigation_has_the_page_s_budget_not_goto_s_default():
     src = (Path(__file__).resolve().parent.parent / "scripts" / "ci_host_gate.py").read_text(encoding="utf-8")
     call = re.search(r"page\.goto\((.*?)\)$", src, re.S | re.M).group(1)
     assert "timeout=timeout_ms" in call, call
+
+
+
+# Two Linux machines were never compared with each other: every leg was held to
+# the Windows leg only, and a known defect (text, which Linux draws with the
+# host's FreeType) excused every Linux leg's difference from Windows, so two
+# distributions with different libraries could disagree and nothing saw it.
+
+THREE_LEGS = ["linux-x86_64", "linux-x86_64-debian12", "win-x86_64"]
+TEXT_DEFECT = {"known_defects": [{"keys": ["text.*"], "why": "phase 4"}]}
+
+
+def test_two_linux_machines_must_agree_where_a_known_defect_excuses_windows(tmp_path):
+    items = lambda leg, seed: {"text.canvas.H": {"win-x86_64": "dwrite", "linux-x86_64": "ft-ubuntu",
+                                                 "linux-x86_64-debian12": "ft-debian"}[leg]}
+    failures = run(tmp_path, items, {"text.canvas.H": "dwrite"}, TEXT_DEFECT, legs=THREE_LEGS)
+    assert failures and all("(same OS)" in f and "linux-x86_64-debian12" in f for f in failures)
+
+
+def test_two_linux_machines_that_agree_pass(tmp_path):
+    items = lambda leg, seed: {"text.canvas.H": "dwrite" if leg == "win-x86_64" else "freetype"}
+    assert run(tmp_path, items, {"text.canvas.H": "dwrite"}, TEXT_DEFECT, legs=THREE_LEGS) == []
