@@ -231,11 +231,14 @@ def build_prefs(
     # Milliseconds, and an int: Gecko has no float pref type, and `1.0` written
     # as a number arrives with the right value and the wrong type - the defect
     # `ui.textScaleFactor` had.
-    # The persona's keyboard, from the session's language AND country: the
+    # The persona's keyboards, from the session's language AND country: the
     # server cannot know the country, the decision can (SessionLocale.region).
+    # The one of the language first, then the second one Windows installs with
+    # it (English US with Russian or Greek), joined by commas.
     if locale is not None and hasattr(locale, "languages"):
-        from invisible_core.juggler.keyboard import layout_for
-        prefs[KEYBOARD_LAYOUT_PREF] = layout_for(list(locale.languages), locale.region)
+        from invisible_core.juggler.keyboard import layouts_for
+        prefs[KEYBOARD_LAYOUT_PREF] = ",".join(
+            layouts_for(list(locale.languages), locale.region))
     if session_seed is not None and humanize:
         prefs[SESSION_SEED_PREF] = int(session_seed)
         prefs[MOTION_BUDGET_PREF] = int(round(

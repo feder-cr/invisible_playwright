@@ -46,7 +46,7 @@ from .dispatcher import (Dispatcher, ExpectNotMet, ProtocolException,
 from invisible_core.juggler.injected import (ContextDestroyed, EvaluationError,
                                              InjectedScript, js_truthy)
 from invisible_core.juggler.keyboard import MODIFIER_MASK
-from invisible_core.juggler.keyboard import layout_for as keyboard_layout_for
+from invisible_core.juggler.keyboard import layouts_for as keyboard_layouts_for
 from invisible_core.juggler.lifecycle import Lifecycle
 
 # ⛔ RE-EXPORTED ON PURPOSE, not merely imported. These leaf helpers moved out
@@ -217,8 +217,9 @@ SESSION_SEED_PREF = "invisible.server.session_seed"
 #: a cap of its own would be a second answer to a question the caller answered,
 #: and would show up as a drag that ignores a budget every click obeys.
 MOTION_BUDGET_PREF = "invisible.server.motion_budget_ms"
-#: The persona's keyboard (a Windows KLID), decided by the core from the
-#: session's language AND country (`keyboard.layout_for`). Server-only, like
+#: The persona's keyboards (Windows KLIDs joined by commas, the language's
+#: first), decided by the core from the session's language AND country
+#: (`keyboard.layouts_for`). Server-only, like
 #: the seed: taken out of the prefs before the profile is written.
 KEYBOARD_LAYOUT_PREF = "invisible.server.keyboard_layout"
 
@@ -4137,8 +4138,8 @@ class BrowserDispatcher(Dispatcher):
                  service_workers_enabled: bool = True,
                  layout: str = "us") -> None:
         self.conn = conn
-        #: The keyboard the persona types on, from the session's language
-        #: (`keyboard.layout_for` on `intl.accept_languages`): one keyboard per
+        #: The keyboards the persona types on, from the session's language
+        #: (`keyboard.layouts_for`, KLIDs joined by commas): one set per
         #: session, whatever a context later says its language is.
         self.layout = layout
         #: ⛔ WHETHER `route()` CAN WORK AT ALL. Firefox asks a channel's
@@ -5038,8 +5039,8 @@ class BrowserTypeDispatcher(Dispatcher):
             params.get("firefoxUserPrefs") or {})
         # The keyboard the session decided, out of the prefs before the
         # profile sees them; without it, the language alone decides.
-        keyboard_layout = prefs.pop(KEYBOARD_LAYOUT_PREF, None) or \
-            keyboard_layout_for(prefs.get("intl.accept_languages") or "")
+        keyboard_layout = prefs.pop(KEYBOARD_LAYOUT_PREF, None) or ",".join(
+            keyboard_layouts_for(prefs.get("intl.accept_languages") or ""))
         write_user_js(profile, prefs)
         # ⛔ THE CALLER'S TIMEOUT, not ours. `launch(timeout=)` is a
         # documented option and this server ignored it, so a caller who
