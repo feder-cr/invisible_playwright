@@ -291,9 +291,23 @@ def isolated_cache_env(workspace: Path) -> dict:
     return env
 
 
+#: The deadline of a test that takes `clean_venv`. The module installs from the
+#: index ONCE, in that fixture, and pytest-timeout counts a fixture's setup in
+#: the first test that requests it: `--dist loadfile` keeps the module on one
+#: worker, so whichever of these tests runs first pays the README's whole
+#: block (uv, the packages from PyPI, the 110 MB engine). On 2026-11-08, with
+#: PyPI slow, that took 517 s, over run_e2e.py's 420 s per-test deadline, and
+#: the guard killed the worker on a test that was slow, not stuck. The global
+#: deadline stays tight; these tests get their own, under the block's own
+#: 1800 s cap (run_readme_block) so a real hang still ends in this file.
+INSTALL_DEADLINE_S = 900
+_install_deadline = pytest.mark.timeout(INSTALL_DEADLINE_S)
+
+
 # ---------- tests ----------------------------------------------------------- #
 
 
+@_install_deadline
 @pytest.mark.e2e
 def test_clean_install_the_way_a_user_does_it(clean_venv: Path, workspace: Path):
     """The README's install block, from the index, into a project uv made.
@@ -367,6 +381,7 @@ def test_clean_install_the_way_a_user_does_it(clean_venv: Path, workspace: Path)
     assert len(init) == 1 and f'--python "{floor}"' in init[0], (init, floor)
 
 
+@_install_deadline
 @pytest.mark.e2e
 def test_the_resolved_playwright_is_inside_the_range_the_package_declares(
         clean_venv: Path):
@@ -418,6 +433,7 @@ def test_the_resolved_playwright_is_inside_the_range_the_package_declares(
         f"creation.")
 
 
+@_install_deadline
 @pytest.mark.e2e
 def test_version_command_reports_wrapper_and_binary(clean_venv: Path):
     """`python -m invisible_playwright --version` runs and reports both the
@@ -430,6 +446,7 @@ def test_version_command_reports_wrapper_and_binary(clean_venv: Path):
     assert "firefox-" in text, f"BINARY_VERSION not reported: {text!r}"
 
 
+@_install_deadline
 @pytest.mark.e2e
 def test_fetch_against_live_release(clean_venv: Path, isolated_cache_env: dict):
     """Hit the LIVE GitHub release: download tarball + checksums.txt, parse,
@@ -468,6 +485,7 @@ def test_fetch_against_live_release(clean_venv: Path, isolated_cache_env: dict):
     )
 
 
+@_install_deadline
 @pytest.mark.e2e
 def test_binary_executes_after_fetch(clean_venv: Path, isolated_cache_env: dict):
     """After fetch, the binary cache contains a launchable Firefox."""
@@ -505,6 +523,7 @@ def test_binary_executes_after_fetch(clean_venv: Path, isolated_cache_env: dict)
     )
 
 
+@_install_deadline
 @pytest.mark.e2e
 def test_playwright_launch_against_real_site(clean_venv: Path,
                                              isolated_cache_env: dict):
@@ -549,6 +568,22 @@ def test_playwright_launch_against_real_site(clean_venv: Path,
 
 
 # ---------- meta: verify the test markers themselves work ------------------- #
+
+
+def test_every_test_that_installs_from_the_index_has_the_install_deadline():
+    """A test that takes `clean_venv` may be the one that pays the install, so
+    each of them carries INSTALL_DEADLINE_S, not run_e2e.py's 420 s: the
+    measured slow install (517 s) must fit, and the block's own 1800 s cap
+    must stay the outer bound."""
+    import inspect
+    assert 517 * 1.5 <= INSTALL_DEADLINE_S < 1800
+    takers = [(name, fn) for name, fn in sorted(globals().items())
+              if name.startswith("test_") and callable(fn)
+              and "clean_venv" in inspect.signature(fn).parameters]
+    assert len(takers) >= 6, [n for n, _ in takers]
+    for name, fn in takers:
+        deadlines = [m.args[0] for m in getattr(fn, "pytestmark", []) if m.name == "timeout"]
+        assert deadlines == [INSTALL_DEADLINE_S], (name, deadlines)
 
 
 @pytest.mark.e2e
