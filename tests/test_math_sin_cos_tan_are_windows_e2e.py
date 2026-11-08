@@ -26,8 +26,6 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.e2e
-
 DATA = Path(__file__).parent / "data" / "ucrt_sin_cos_tan.txt"
 
 #: Each function runs over its ~1,500 inputs for at least this long (and at
@@ -78,6 +76,7 @@ def _cases():
     return out
 
 
+@pytest.mark.unit
 def test_the_data_holds_the_inputs_that_tell_the_libraries_apart():
     cases = _cases()
     assert {c[0] for c in cases} == {"sin", "cos", "tan"}
@@ -86,6 +85,7 @@ def test_the_data_holds_the_inputs_that_tell_the_libraries_apart():
     assert ["sin", "3fe921fb54442d18", "3fe6a09e667f3bcd"] in cases
 
 
+@pytest.mark.e2e
 def test_math_sin_cos_tan_bytes_are_ucrtbase_over_a_long_hot_loop(firefox_binary, engine_at_least):
     engine_at_least("firefox-60")
     from invisible_playwright import InvisiblePlaywright

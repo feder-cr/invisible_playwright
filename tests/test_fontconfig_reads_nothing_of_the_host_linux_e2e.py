@@ -25,7 +25,9 @@ import re
 import shutil
 import signal
 import stat
+import subprocess
 import sys
+import time
 from collections import defaultdict
 from pathlib import Path
 
@@ -35,8 +37,8 @@ pytestmark = [
     pytest.mark.e2e,
     pytest.mark.skipif(not sys.platform.startswith("linux"),
                        reason="fontconfig is the Linux font system"),
-    pytest.mark.skipif(shutil.which("strace") is None,
-                       reason="needs strace (apt install strace)"),
+    pytest.mark.skipif(shutil.which("strace") is None or shutil.which("setsid") is None,
+                       reason="needs strace and setsid (apt install strace util-linux)"),
 ]
 
 _SYSCALLS = ("execve,clone,clone3,fork,vfork,open,openat,stat,lstat,"
@@ -62,9 +64,31 @@ def _host_font_paths() -> list:
     return sorted(set(p.rstrip("/") for p in paths if p))
 
 
-def _stand_in(binary: str, tree: Path, log: Path) -> str:
+def _strace_options() -> str:
+    """strace's own flags: quiet, follow forks, and die with the traced process
+    when this build knows --kill-on-exit."""
+    help_text = subprocess.run([shutil.which("strace"), "-h"], capture_output=True,
+                               text=True).stdout
+    return "-f -qq -s 4096" + (" --kill-on-exit" if "--kill-on-exit" in help_text else "")
+
+
+def _require_strace_can_trace(tmp: Path) -> None:
+    """strace needs ptrace: a container or yama can refuse it, and then the
+    failure is the environment's, said as such, not the launch's."""
+    probe = subprocess.run([shutil.which("strace"), "-o", str(tmp / "probe.log"), "true"],
+                           capture_output=True, text=True)
+    if probe.returncode != 0:
+        pytest.fail("strace cannot trace here: %s" % (probe.stderr.strip() or probe.returncode),
+                    pytrace=False)
+
+
+def _stand_in(binary: str, tree: Path, log: Path, pidfile: Path) -> str:
     """A copy of the engine's directory made of links, whose executable runs
-    the real one under strace."""
+    the real one under strace, in a session of its own.
+
+    The script writes its pid and execs ``setsid``: it is not a group leader,
+    so setsid does not fork, the pid stays, and it is the id of a process
+    group that holds strace and everything it traces (``_kill_group``)."""
     real = Path(os.path.realpath(binary))
     tree.mkdir()
     for entry in real.parent.iterdir():
@@ -73,8 +97,10 @@ def _stand_in(binary: str, tree: Path, log: Path) -> str:
     script = tree / real.name
     script.write_text(
         "#!/bin/sh\n"
-        'exec %s -f -qq -s 4096 -o %s -e trace=%s %s "$@"\n'
-        % (shutil.which("strace"), log, _SYSCALLS, real))
+        "echo $$ > %s\n"
+        'exec %s %s %s -o %s -e trace=%s %s "$@"\n'
+        % (pidfile, shutil.which("setsid"), shutil.which("strace"), _strace_options(),
+           log, _SYSCALLS, real))
     script.chmod(script.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     return str(script)
 
@@ -130,29 +156,88 @@ def _host_lookups(log: Path, real_binary: str) -> dict:
     return dict(found)
 
 
-def _kill_leftovers(tree: Path) -> None:
-    """The stand-in's strace and whatever it traced, if the session left any."""
+def _kill_group(pidfile: Path) -> None:
+    """Kill the stand-in's process group: strace, the browser and its children.
+
+    Looking for the stand-in's path in the command lines found nothing (strace
+    and its children carry the real binary's path), so the group is the handle."""
+    try:
+        pgid = int(pidfile.read_text().strip())
+    except (OSError, ValueError):
+        return
+    try:
+        os.killpg(pgid, signal.SIGKILL)
+    except OSError:
+        pass
+
+
+def _group_members(pidfile: Path) -> list:
+    """Pids still in the stand-in's process group."""
+    try:
+        pgid = int(pidfile.read_text().strip())
+    except (OSError, ValueError):
+        return []
+    members = []
     for pid in os.listdir("/proc"):
         if not pid.isdigit():
             continue
         try:
-            cmdline = Path("/proc/%s/cmdline" % pid).read_bytes()
+            stat_line = Path("/proc/%s/stat" % pid).read_text()
         except OSError:
             continue
-        if str(tree).encode() in cmdline:
-            try:
-                os.kill(int(pid), signal.SIGKILL)
-            except OSError:
-                pass
+        fields = stat_line.rsplit(")", 1)[1].split()
+        # fields: state ppid pgrp ...; a zombie is already dead.
+        if fields[0] != "Z" and int(fields[2]) == pgid:
+            members.append(int(pid))
+    return members
+
+
+def _wait_for_exit(pidfile: Path, seconds: float = 10.0) -> list:
+    end = time.monotonic() + seconds
+    left = _group_members(pidfile)
+    while left and time.monotonic() < end:
+        time.sleep(0.1)
+        left = _group_members(pidfile)
+    return left
+
+
+def test_a_killed_stand_in_leaves_neither_strace_nor_the_browser(firefox_binary, tmp_path):
+    """The cleanup after a forced timeout kills everything: it launches the
+    stand-in as the test does, kills it as the test's `finally` does, and
+    looks for survivors."""
+    _require_strace_can_trace(tmp_path)
+    log = tmp_path / "strace.log"
+    pidfile = tmp_path / "stand-in.pid"
+    stand_in = _stand_in(firefox_binary, tmp_path / "engine", log, pidfile)
+    profile = tmp_path / "profile"
+    profile.mkdir()
+    proc = subprocess.Popen([stand_in, "-headless", "-no-remote", "-profile", str(profile),
+                             "about:blank"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        end = time.monotonic() + 30
+        while time.monotonic() < end and "-contentproc" not in (
+                log.read_text(errors="replace") if log.exists() else ""):
+            time.sleep(0.2)
+        assert len(_group_members(pidfile)) >= 3, "strace and the browser did not come up"
+        _kill_group(pidfile)
+        proc.wait(timeout=10)
+        left = _wait_for_exit(pidfile)
+    finally:
+        _kill_group(pidfile)
+    assert not left, "processes left after the kill: %s" % [
+        Path("/proc/%d/cmdline" % p).read_bytes()[:120] for p in left
+        if Path("/proc/%d" % p).exists()]
 
 
 def test_no_process_reads_the_host_fontconfig(firefox_binary, tmp_path, engine_at_least):
     engine_at_least("firefox-60")
     from invisible_playwright import InvisiblePlaywright
 
+    _require_strace_can_trace(tmp_path)
     log = tmp_path / "strace.log"
     tree = tmp_path / "engine"
-    stand_in = _stand_in(firefox_binary, tree, log)
+    pidfile = tmp_path / "stand-in.pid"
+    stand_in = _stand_in(firefox_binary, tree, log, pidfile)
     real = os.path.realpath(firefox_binary)
     try:
         with InvisiblePlaywright(seed=4246, binary_path=stand_in,
@@ -164,7 +249,7 @@ def test_no_process_reads_the_host_fontconfig(firefox_binary, tmp_path, engine_a
                 "() => document.querySelector('p').getBoundingClientRect().width") > 0
             page.screenshot()
     finally:
-        _kill_leftovers(tree)
+        _kill_group(pidfile)
 
     text = log.read_text(errors="replace")
     assert "-contentproc" in text, (

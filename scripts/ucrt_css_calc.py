@@ -23,6 +23,10 @@ the test reads:
 
     <fn> <args...> <text on Windows>
 
+The reference is ucrtbase's FMA3 code path, the one every Windows 11 CPU runs
+(the same one idwr_math reproduces); the SSE2 fallback of older CPUs can differ in
+the last bit and is not what a page on Windows 11 reads.
+
 Inputs are exact in f32 (multiples of a power of two), so the page and this
 script read the same number whatever the CSS parser does with decimals.
 """

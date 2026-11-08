@@ -26,7 +26,6 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.e2e
 
 DATA = Path(__file__).parent / "data" / "ucrt_css_calc.txt"
 ANGLE_FUNCTIONS = ("asin", "acos", "atan", "atan2")
@@ -60,6 +59,7 @@ def _css(fn, args):
     return "word-spacing", "calc(1px * %s)" % call
 
 
+@pytest.mark.unit
 def test_the_data_has_every_function_and_the_inputs_that_tell_the_libraries_apart():
     cases = _cases()
     assert {c[0] for c in cases} == {
@@ -71,6 +71,7 @@ def test_the_data_has_every_function_and_the_inputs_that_tell_the_libraries_apar
     assert ("sin", ["-12.2958984375"], "0.267186px") in cases
 
 
+@pytest.mark.e2e
 def test_css_calc_functions_are_ucrtbase_bytes(firefox_binary, engine_at_least):
     engine_at_least("firefox-60")
     from invisible_playwright import InvisiblePlaywright

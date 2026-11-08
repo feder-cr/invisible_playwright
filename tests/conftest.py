@@ -221,7 +221,10 @@ def _skip_unless_engine_at_least(minimum, tag):
 @pytest.fixture(scope="session")
 def engine_at_least():
     """``engine_at_least("firefox-60")``: skip the test unless the engine in
-    use is that release or a later one (see above for how it is read)."""
+    use is that release or a later one (see above for how it is read). A seal
+    whose tag has no number (``local``, anything but firefox-N or
+    firefox-N-candidate) makes the test FAIL, saying so: it neither skips nor
+    runs."""
     _require_package()
     from invisible_core.seal import active_seal
     tag = active_seal().tag

@@ -49,6 +49,7 @@ def _pixel_bytes(png: bytes) -> bytes:
     return zlib.decompress(idat)
 
 
+@pytest.mark.wall_clock
 @pytest.mark.parametrize("headless", [True, False], ids=["headless", "headed"])
 def test_a_screenshot_of_a_page_with_text_returns(firefox_binary, headless):
     if not headless and not os.environ.get("DISPLAY"):
