@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.46.3] - 2026-11-08
+
+### Changed
+- Engine firefox-57 (Firefox 159.0), through invisible-core 57.53.0, which
+  this version pins. The WebGL extensions a page sees are decided once, by
+  the engine's WebGL host, from the persona's declared list: the content
+  process no longer has a list of its own, an extension the host's GPU
+  cannot serve is never created (its calls stay harmless), and
+  `getSupportedExtensions()` lists them in Firefox's own order, the only
+  order a retail Firefox gives (the WebGL 1 list had `EXT_sRGB` before
+  `EXT_shader_texture_lod`).
+
 ## [0.46.2] - 2026-11-07
 
 ### Changed
