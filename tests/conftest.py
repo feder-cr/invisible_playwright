@@ -2,6 +2,7 @@ import faulthandler
 import http.server
 import os
 import random
+import re
 import sys
 import tempfile
 import threading
@@ -179,6 +180,58 @@ def firefox_binary():
             "set INVPW_BINARY_PATH=<firefox binary> or run `invisible-playwright fetch`"
         )
     return str(entry)
+
+
+# ---------------------------------------------------------------------------
+# The engine a test runs against. main's e2e runs against the engine the
+# published core pins AND against the candidate of the next engine (the gate),
+# so a property only the newer engine promises must not run on the older one.
+#
+# The engine is read from the seal the process runs under, the same one that
+# checks the launch: `active_seal().tag`. Only the number counts: `firefox-60`
+# and `firefox-60-candidate` are both 60. A tag with no number (`local`, or
+# anything else) does not say which engine it is, so the test does not skip and
+# does not run: it fails and says why. A candidate is sealed as
+# `firefox-N-candidate` by the gate.
+#
+# No new pytest marker: the marker vocabulary is shared with invisible_core
+# and a marker only here would make the two drift.
+_ENGINE_TAG = re.compile(r"^firefox-(\d+)(?:-candidate)?$")
+
+
+def _engine_number(tag):
+    """N of `firefox-N` or `firefox-N-candidate`, or None."""
+    m = _ENGINE_TAG.match(tag or "")
+    return int(m.group(1)) if m else None
+
+
+def _skip_unless_engine_at_least(minimum, tag):
+    want = _engine_number(minimum)
+    if want is None:
+        raise pytest.UsageError("engine_at_least wants 'firefox-N', got %r" % (minimum,))
+    have = _engine_number(tag)
+    if have is None:
+        pytest.fail("the engine's seal has no number: a candidate must be sealed as "
+                    "firefox-N-candidate (seal tag %r)" % (tag,), pytrace=False)
+    if have < want:
+        pytest.skip("the property needs %s or later; this engine is %s"
+                    % (minimum, tag))
+
+
+@pytest.fixture(scope="session")
+def engine_at_least():
+    """``engine_at_least("firefox-60")``: skip the test unless the engine in
+    use is that release or a later one (see above for how it is read). A seal
+    whose tag has no number (``local``, anything but firefox-N or
+    firefox-N-candidate) makes the test FAIL, saying so: it neither skips nor
+    runs."""
+    _require_package()
+    from invisible_core.seal import active_seal
+    tag = active_seal().tag
+
+    def check(minimum):
+        _skip_unless_engine_at_least(minimum, tag)
+    return check
 
 
 # ---------------------------------------------------------------------------
