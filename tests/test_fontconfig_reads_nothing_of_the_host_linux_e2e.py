@@ -146,7 +146,8 @@ def _kill_leftovers(tree: Path) -> None:
                 pass
 
 
-def test_no_process_reads_the_host_fontconfig(firefox_binary, tmp_path):
+def test_no_process_reads_the_host_fontconfig(firefox_binary, tmp_path, engine_at_least):
+    engine_at_least("firefox-60")
     from invisible_playwright import InvisiblePlaywright
 
     log = tmp_path / "strace.log"

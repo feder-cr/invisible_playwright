@@ -2,6 +2,7 @@ import faulthandler
 import http.server
 import os
 import random
+import re
 import sys
 import tempfile
 import threading
@@ -179,6 +180,52 @@ def firefox_binary():
             "set INVPW_BINARY_PATH=<firefox binary> or run `invisible-playwright fetch`"
         )
     return str(entry)
+
+
+# ---------------------------------------------------------------------------
+# The engine a test runs against. main's e2e runs against the engine the
+# published core pins AND against the candidate of the next engine (the gate),
+# so a property only the newer engine promises must not run on the older one.
+#
+# The engine is read from the seal the process runs under, the same one that
+# checks the launch: `active_seal().tag`. A release seal is `firefox-N`; a
+# candidate's local seal has no number (`local`) and is the engine under test,
+# so it counts as the newest: nothing is skipped on it. The gate may name the
+# candidate (`--tag firefox-60`, or `firefox-60-candidate`): the number is the
+# first digits after `firefox-`.
+#
+# No new pytest marker: the marker vocabulary is shared with invisible_core
+# and a marker only here would make the two drift.
+_ENGINE_TAG = re.compile(r"^firefox-(\d+)")
+
+
+def _engine_number(tag):
+    """N of a `firefox-N...` tag, or None when the tag carries no number."""
+    m = _ENGINE_TAG.match(tag or "")
+    return int(m.group(1)) if m else None
+
+
+def _skip_unless_engine_at_least(minimum, tag):
+    want = _engine_number(minimum)
+    if want is None:
+        raise pytest.UsageError("engine_at_least wants 'firefox-N', got %r" % (minimum,))
+    have = _engine_number(tag)
+    if have is not None and have < want:
+        pytest.skip("the property needs %s or later; this engine is %s"
+                    % (minimum, tag))
+
+
+@pytest.fixture(scope="session")
+def engine_at_least():
+    """``engine_at_least("firefox-60")``: skip the test unless the engine in
+    use is that release or a later one (see above for how it is read)."""
+    _require_package()
+    from invisible_core.seal import active_seal
+    tag = active_seal().tag
+
+    def check(minimum):
+        _skip_unless_engine_at_least(minimum, tag)
+    return check
 
 
 # ---------------------------------------------------------------------------

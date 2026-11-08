@@ -86,7 +86,8 @@ def test_the_data_holds_the_inputs_that_tell_the_libraries_apart():
     assert ["sin", "3fe921fb54442d18", "3fe6a09e667f3bcd"] in cases
 
 
-def test_math_sin_cos_tan_bytes_are_ucrtbase_over_a_long_hot_loop(firefox_binary):
+def test_math_sin_cos_tan_bytes_are_ucrtbase_over_a_long_hot_loop(firefox_binary, engine_at_least):
+    engine_at_least("firefox-60")
     from invisible_playwright import InvisiblePlaywright
 
     cases = _cases()
