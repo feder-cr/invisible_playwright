@@ -188,19 +188,19 @@ def firefox_binary():
 # so a property only the newer engine promises must not run on the older one.
 #
 # The engine is read from the seal the process runs under, the same one that
-# checks the launch: `active_seal().tag`. A release seal is `firefox-N`; a
-# candidate's local seal has no number (`local`) and is the engine under test,
-# so it counts as the newest: nothing is skipped on it. The gate may name the
-# candidate (`--tag firefox-60`, or `firefox-60-candidate`): the number is the
-# first digits after `firefox-`.
+# checks the launch: `active_seal().tag`. Only the number counts: `firefox-60`
+# and `firefox-60-candidate` are both 60. A tag with no number (`local`, or
+# anything else) does not say which engine it is, so the test does not skip and
+# does not run: it fails and says why. A candidate is sealed as
+# `firefox-N-candidate` by the gate.
 #
 # No new pytest marker: the marker vocabulary is shared with invisible_core
 # and a marker only here would make the two drift.
-_ENGINE_TAG = re.compile(r"^firefox-(\d+)")
+_ENGINE_TAG = re.compile(r"^firefox-(\d+)(?:-candidate)?$")
 
 
 def _engine_number(tag):
-    """N of a `firefox-N...` tag, or None when the tag carries no number."""
+    """N of `firefox-N` or `firefox-N-candidate`, or None."""
     m = _ENGINE_TAG.match(tag or "")
     return int(m.group(1)) if m else None
 
@@ -210,7 +210,10 @@ def _skip_unless_engine_at_least(minimum, tag):
     if want is None:
         raise pytest.UsageError("engine_at_least wants 'firefox-N', got %r" % (minimum,))
     have = _engine_number(tag)
-    if have is not None and have < want:
+    if have is None:
+        pytest.fail("the engine's seal has no number: a candidate must be sealed as "
+                    "firefox-N-candidate (seal tag %r)" % (tag,), pytrace=False)
+    if have < want:
         pytest.skip("the property needs %s or later; this engine is %s"
                     % (minimum, tag))
 
