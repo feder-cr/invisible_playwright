@@ -47,6 +47,14 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Engine and GeoIP downloads go through the release API with this token.
+# Anonymous requests share a 60-an-hour limit per runner address and are the
+# ones GitHub drops first when it is degraded (2026-11-08: timeouts for
+# unauthenticated users failed the gates three times). user-install.yml stays
+# anonymous on purpose: it is the user's path.
+env:
+  GITHUB_TOKEN: ${{ github.token }}
+
 jobs:
   # The install below resolves `invisible-core==N.M.0` from the package index,
   # and the core is published BEFORE this package. This gate answers whether it
