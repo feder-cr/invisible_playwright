@@ -667,34 +667,17 @@ class ElementHandleDispatcher(Dispatcher):
             {"objectId": self.object_id}))}
 
     def op_scroll_into_view(self, params: Dict) -> Any:
-        """Bring the element into view, through the injected script.
+        """Bring the element into view, through the core's
+        `InjectedScript.scroll_into_view`, the one the click path uses too.
 
-        ⛔ IT USED TO SEND `Page.scrollIntoViewIfNeeded`, AND THAT COMMAND CAN
-        NEVER SUCCEED. [B184]: the engine's handler calls
-        `unsafeObject.scrollRectIntoViewIfNeeded`, and that method is not
-        declared in ANY binding of `Element` in the tree - not a `.webidl`, not
-        a `.idl`, not `Bindings.conf` - so it is `undefined` for every caller
-        and the `else` branch always throws. Measured on the shipped binary at
-        four positions, including an element ALREADY IN VIEW: timeout every
-        time, while `bounding_box()` on the same element answered correctly.
-
-        ⛔ AND THE REMEDY WAS ALREADY IN THIS FILE'S REACH, which is the part
-        worth knowing. `Actions` scrolls before every click through
-        `InjectedScript.scroll_into_view` - native `scrollIntoView` reached from
-        the utility world, `block: "center"` - and has done since a click below
-        the fold was found to miss. So the click path scrolled correctly while
-        the public method sent a command that cannot work. One concept, two
-        implementations, and the broken one was the one users call.
-
-        Reusing that helper rather than writing a second one is the whole fix:
-        no new abstraction, and the two paths cannot drift.
-
-        ⛔ `rect` IS NOT HONOURED, and saying so is better than pretending.
-        Playwright can ask to scroll a sub-rectangle of the element; the helper
-        scrolls the element. No caller in this package passes it, and a partial
-        answer that looks total is worse than a named limit.
+        The core sends the engine's `Page.scrollIntoViewIfNeeded` (firefox-58):
+        the page's own `scrollIntoView` through the Xray, only when the element
+        is not in full view, centred. Until firefox-58 that command failed on
+        every node [B184] and the core scrolled with a script in the page.
+        A `rect` in the call is handed on; the public method sends none.
         """
-        self.injected.scroll_into_view(self.frame.frame_id, self.object_id)
+        self.injected.scroll_into_view(self.frame.frame_id, self.object_id,
+                                       params.get("rect"))
         return None
 
     def op_owner_frame(self, params: Dict) -> Any:
