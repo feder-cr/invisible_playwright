@@ -9,7 +9,8 @@ GTK), colours from the declared palette or from Firefox's own stand-ins.
 tests/data/retail_159_system_theme.json is the measurement: Firefox 159 retail
 for Windows, headless, an empty profile, read through Marionette by
 scripts/measure_retail_system_theme.py. ``system-ui`` is a family keyword
-resolved by the font list, so only its computed size is compared here.
+resolved by the font list (retail: the menu font), so its computed family,
+size, weight, style and stretch are compared like the others.
 
 Every mismatch is listed in the failure, not just the first.
 """
@@ -76,8 +77,6 @@ def test_system_fonts_and_colours_match_windows_retail(firefox_binary, engine_at
     wrong = []
     for name, want in RETAIL["fonts"].items():
         have = got["fonts"][name]
-        if name == "system-ui":
-            have, want = {"size": have["size"]}, {"size": want["size"]}
         if have != want:
             wrong.append("font %s: page %r, retail %r" % (name, have, want))
     for scheme in ("light", "dark"):
