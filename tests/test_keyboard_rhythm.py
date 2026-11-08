@@ -158,7 +158,8 @@ def test_a_real_page_measures_a_human_rhythm(firefox_binary):
             "for (const t of ['keydown','keyup'])"
             " document.getElementById('f').addEventListener(t,"
             "  e => window.__e.push([t, e.key, e.timeStamp]));</script>")
-    with InvisiblePlaywright(seed=42, binary_path=firefox_binary) as browser:
+    # The US keyboard, named: the persona's keyboard follows the session's language, which the runner's address decides.
+    with InvisiblePlaywright(seed=42, binary_path=firefox_binary, locale="en-US") as browser:
         page = browser.new_page()
         page.goto("data:text/html," + urllib.parse.quote(html))
         page.click("#f")

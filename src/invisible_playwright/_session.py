@@ -26,7 +26,7 @@ from ._cursor import (ENGINE_BINARY,
                       enable_for as _enable_cursor_engine,
                       max_seconds_for as _cursor_max_seconds)
 from ._engine import resolve_executable
-from ._juggler.server import KEYBOARD_LAYOUT_PREF, MOTION_BUDGET_PREF, SESSION_SEED_PREF
+from ._juggler.server import MOTION_BUDGET_PREF, SESSION_SEED_PREF
 from typing import Any, Dict, Optional
 
 from invisible_core import compose_session_prefs, context_geometry, make_virtual_display
@@ -231,11 +231,8 @@ def build_prefs(
     # Milliseconds, and an int: Gecko has no float pref type, and `1.0` written
     # as a number arrives with the right value and the wrong type - the defect
     # `ui.textScaleFactor` had.
-    # The persona's keyboard, from the session's language AND country: the
-    # server cannot know the country, the decision can (SessionLocale.region).
-    if locale is not None and hasattr(locale, "languages"):
-        from invisible_core.juggler.keyboard import layout_for
-        prefs[KEYBOARD_LAYOUT_PREF] = layout_for(list(locale.languages), locale.region)
+    # The persona's keyboards are in the prefs already: the core declares them
+    # with the language and country (invisible_core.prefs._apply_locale).
     if session_seed is not None and humanize:
         prefs[SESSION_SEED_PREF] = int(session_seed)
         prefs[MOTION_BUDGET_PREF] = int(round(

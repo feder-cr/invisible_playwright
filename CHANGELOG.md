@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.47.0] - 2026-11-08
+
+### Changed
+- Engine firefox-58 (Firefox 159.0), through invisible-core 58.55.0, which
+  this version pins.
+- A persona has the keyboards Windows installs with its language: the
+  language's, and the second one (English US with Russian, Greek, Arabic,
+  Hebrew and most languages not written in Latin letters). A character the
+  active keyboard lacks is typed on the other one, after left Alt + left
+  Shift, Windows' default switch; `press("x")` on a Russian or Greek session
+  no longer raises "unknown key". Only a character no keyboard has is inserted
+  as text.
+- `scroll_into_view_if_needed()` is the engine's own scroll, only when needed.
+
+### Fixed
+- In the engine: a navigation Firefox refuses before any channel (a
+  restricted port) ends with its error instead of never; a request held by
+  `route()` that the page cancels is no longer held; `unroute` with a request
+  that can no longer be resumed no longer fails; a session cookie set with
+  `expires: -1` is kept, `sameSite: "None"` is SameSite=None, and a cookie
+  Firefox refuses fails `add_cookies()` with Firefox's reason.
+
 ## [0.46.4] - 2026-11-08
 
 ### Fixed

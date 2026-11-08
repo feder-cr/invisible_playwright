@@ -1,4 +1,5 @@
 """Frame identity must travel with every selector and handle."""
+import threading
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -163,6 +164,8 @@ def test_adopt_is_one_wire_call_for_both_crossings(element, into, expected):
     injected.session = "session"
     injected.contexts = {("widget", UTILITY_WORLD): "widget-utility",
                          ("payment", UTILITY_WORLD): "payment-utility"}
+    # What __init__ gives it: the world waits sleep on it (invisible-core 58).
+    injected._contexts_changed = threading.Condition()
     assert injected.adopt("widget", element, into=into) == "adopted"
     assert sent == [("Page.adoptNode", expected)]
 

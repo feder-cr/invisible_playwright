@@ -46,7 +46,7 @@ from .dispatcher import (Dispatcher, ExpectNotMet, ProtocolException,
 from invisible_core.juggler.injected import (ContextDestroyed, EvaluationError,
                                              InjectedScript, js_truthy)
 from invisible_core.juggler.keyboard import MODIFIER_MASK
-from invisible_core.juggler.keyboard import layout_for as keyboard_layout_for
+from invisible_core.juggler.keyboard import layouts_for as keyboard_layouts_for
 from invisible_core.juggler.lifecycle import Lifecycle
 
 # ⛔ RE-EXPORTED ON PURPOSE, not merely imported. These leaf helpers moved out
@@ -217,10 +217,11 @@ SESSION_SEED_PREF = "invisible.server.session_seed"
 #: a cap of its own would be a second answer to a question the caller answered,
 #: and would show up as a drag that ignores a budget every click obeys.
 MOTION_BUDGET_PREF = "invisible.server.motion_budget_ms"
-#: The persona's keyboard (a Windows KLID), decided by the core from the
-#: session's language AND country (`keyboard.layout_for`). Server-only, like
+#: The persona's keyboards (Windows KLIDs joined by commas, the language's
+#: first), decided by the core from the session's language AND country
+#: (`keyboard.layouts_for`). Server-only, like
 #: the seed: taken out of the prefs before the profile is written.
-KEYBOARD_LAYOUT_PREF = "invisible.server.keyboard_layout"
+from invisible_core.juggler.keyboard import KEYBOARD_LAYOUT_PREF  # noqa: E402
 
 
 def take_session_motion(prefs: Dict) -> tuple:
@@ -666,34 +667,17 @@ class ElementHandleDispatcher(Dispatcher):
             {"objectId": self.object_id}))}
 
     def op_scroll_into_view(self, params: Dict) -> Any:
-        """Bring the element into view, through the injected script.
+        """Bring the element into view, through the core's
+        `InjectedScript.scroll_into_view`, the one the click path uses too.
 
-        ⛔ IT USED TO SEND `Page.scrollIntoViewIfNeeded`, AND THAT COMMAND CAN
-        NEVER SUCCEED. [B184]: the engine's handler calls
-        `unsafeObject.scrollRectIntoViewIfNeeded`, and that method is not
-        declared in ANY binding of `Element` in the tree - not a `.webidl`, not
-        a `.idl`, not `Bindings.conf` - so it is `undefined` for every caller
-        and the `else` branch always throws. Measured on the shipped binary at
-        four positions, including an element ALREADY IN VIEW: timeout every
-        time, while `bounding_box()` on the same element answered correctly.
-
-        ⛔ AND THE REMEDY WAS ALREADY IN THIS FILE'S REACH, which is the part
-        worth knowing. `Actions` scrolls before every click through
-        `InjectedScript.scroll_into_view` - native `scrollIntoView` reached from
-        the utility world, `block: "center"` - and has done since a click below
-        the fold was found to miss. So the click path scrolled correctly while
-        the public method sent a command that cannot work. One concept, two
-        implementations, and the broken one was the one users call.
-
-        Reusing that helper rather than writing a second one is the whole fix:
-        no new abstraction, and the two paths cannot drift.
-
-        ⛔ `rect` IS NOT HONOURED, and saying so is better than pretending.
-        Playwright can ask to scroll a sub-rectangle of the element; the helper
-        scrolls the element. No caller in this package passes it, and a partial
-        answer that looks total is worse than a named limit.
+        The core sends the engine's `Page.scrollIntoViewIfNeeded` (firefox-58):
+        the page's own `scrollIntoView` through the Xray, only when the element
+        is not in full view, centred. Until firefox-58 that command failed on
+        every node [B184] and the core scrolled with a script in the page.
+        A `rect` in the call is handed on; the public method sends none.
         """
-        self.injected.scroll_into_view(self.frame.frame_id, self.object_id)
+        self.injected.scroll_into_view(self.frame.frame_id, self.object_id,
+                                       params.get("rect"))
         return None
 
     def op_owner_frame(self, params: Dict) -> Any:
@@ -4137,8 +4121,8 @@ class BrowserDispatcher(Dispatcher):
                  service_workers_enabled: bool = True,
                  layout: str = "us") -> None:
         self.conn = conn
-        #: The keyboard the persona types on, from the session's language
-        #: (`keyboard.layout_for` on `intl.accept_languages`): one keyboard per
+        #: The keyboards the persona types on, from the session's language
+        #: (`keyboard.layouts_for`, KLIDs joined by commas): one set per
         #: session, whatever a context later says its language is.
         self.layout = layout
         #: ⛔ WHETHER `route()` CAN WORK AT ALL. Firefox asks a channel's
@@ -5038,8 +5022,8 @@ class BrowserTypeDispatcher(Dispatcher):
             params.get("firefoxUserPrefs") or {})
         # The keyboard the session decided, out of the prefs before the
         # profile sees them; without it, the language alone decides.
-        keyboard_layout = prefs.pop(KEYBOARD_LAYOUT_PREF, None) or \
-            keyboard_layout_for(prefs.get("intl.accept_languages") or "")
+        keyboard_layout = prefs.pop(KEYBOARD_LAYOUT_PREF, None) or ",".join(
+            keyboard_layouts_for(prefs.get("intl.accept_languages") or ""))
         write_user_js(profile, prefs)
         # ⛔ THE CALLER'S TIMEOUT, not ours. `launch(timeout=)` is a
         # documented option and this server ignored it, so a caller who

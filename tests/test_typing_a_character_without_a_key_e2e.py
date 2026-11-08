@@ -22,8 +22,9 @@ PAGE = ("<!doctype html><input id=i><input id=j><script>window.log = [];"
 def test_text_with_a_character_without_a_key_is_typed(firefox_binary):
     from invisible_playwright import InvisiblePlaywright
 
+    # The US keyboard, named: the persona's keyboard follows the session's language, which the runner's address decides.
     with InvisiblePlaywright(seed=42, binary_path=firefox_binary,
-                             headless=True) as browser:
+                             headless=True, locale="en-US") as browser:
         page = browser.new_page()
         page.set_content(PAGE)
         page.type("#i", "café")
