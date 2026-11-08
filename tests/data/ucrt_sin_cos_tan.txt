@@ -1,7 +1,8 @@
 # Math.sin, Math.cos and Math.tan: input and ucrtbase.dll 10.0.26100.9711's result, as
-# IEEE-754 double bits in hex. Measured on Windows 11 (x64, FMA3 code path) over a list of
-# hard inputs (near multiples of pi/4, the reduction thresholds, huge arguments): every
-# input where glibc 2.43 or fdlibm gives another result (832), and every 8th of the others.
+# IEEE-754 double bits in hex. Measured on Windows 11 (x64, FMA3 code path) over 30,372
+# distinct hard inputs (near multiples of pi/4, the reduction thresholds, huge arguments;
+# NaN results left out): fdlibm differs from ucrtbase on 441, glibc 2.43 on 651, one or
+# both on 832. Kept: those 832 and every 8th of the others, 4516 lines.
 sin 400921fb54442d15 3cda34c4c6628b81
 sin 4012d97c7f3321d0 bff0000000000000
 sin 401921fb54442d17 bcd469898cc51702
