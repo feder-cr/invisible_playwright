@@ -221,7 +221,7 @@ MOTION_BUDGET_PREF = "invisible.server.motion_budget_ms"
 #: first), decided by the core from the session's language AND country
 #: (`keyboard.layouts_for`). Server-only, like
 #: the seed: taken out of the prefs before the profile is written.
-KEYBOARD_LAYOUT_PREF = "invisible.server.keyboard_layout"
+from invisible_core.juggler.keyboard import KEYBOARD_LAYOUT_PREF  # noqa: E402
 
 
 def take_session_motion(prefs: Dict) -> tuple:
