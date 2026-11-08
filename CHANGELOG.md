@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.48.0] - 2026-11-08
+
+### Changed
+- Engine firefox-59 (Firefox 159.0), through invisible-core 59.57.0, which
+  this version pins. On Linux WebGL draws on the engine's own GL, never the
+  host's, under X11 too, and every extension the persona declares answers as
+  on Windows.
+
 ## [0.47.1] - 2026-11-08
 
 ### Changed
