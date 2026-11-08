@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.47.1] - 2026-11-08
+
+### Changed
+- invisible-core 58.56.0, which this version pins. A persona has the keyboards
+  Windows installs with its language and country, read from Windows'
+  locale.nls (English US besides Persian, Azerbaijani, Bashkir, Cherokee and
+  Sakha; Russian besides Belarusian, Tatar and Armenian; Hindi Traditional for
+  Hindi), and switches as a user does: left Alt + Shift to the next language,
+  Ctrl + Shift to the next keyboard of the same language. The keyboard pref
+  carries Windows' own form (LANGID:KLID joined by semicolons).
+
 ## [0.47.0] - 2026-11-08
 
 ### Changed
