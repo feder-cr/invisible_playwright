@@ -450,3 +450,14 @@ def test_two_linux_machines_must_agree_where_a_known_defect_excuses_windows(tmp_
 def test_two_linux_machines_that_agree_pass(tmp_path):
     items = lambda leg, seed: {"text.canvas.H": "dwrite" if leg == "win-x86_64" else "freetype"}
     assert run(tmp_path, items, {"text.canvas.H": "dwrite"}, TEXT_DEFECT, legs=THREE_LEGS) == []
+
+
+def test_a_known_defect_of_linux_covers_every_linux_leg_of_the_gate():
+    """A defect of the Linux GL (Mesa's raster, delta 1 from Windows) is the same on both Linux legs: an exception
+    scoped to one of them failed the gate on the other (re-gate of firefox-59 with the Debian leg, 12 failures)."""
+    linux = [leg for leg in THREE_LEGS if leg.startswith("linux-")]
+    scoped = [e for e in gate.load_exceptions()["known_defects"] if e.get("legs")]
+    assert scoped
+    for e in scoped:
+        if any(leg.startswith("linux-") for leg in e["legs"]):
+            assert sorted(leg for leg in e["legs"] if leg.startswith("linux-")) == linux, e

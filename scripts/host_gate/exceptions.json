@@ -31,7 +31,7 @@
               "text.metrics.*.actualBoundingBoxRight", "text.fallbackwidth.*.serif",
               "text.fallbackwidth.*.monospace"],
      "why": "phase 4: text from idwr (DWrite 26100) on every OS; today Windows asks the host's DWrite and Linux FreeType. Only the rasterised glyphs, their advances and ink extents and the serif/monospace fallback widths differ (firefox-59 dumps): text.adjust, text.fonts, text.rect, text.units and the vertical metrics are held"},
-    {"keys": ["control.webgl1", "control.webgl2"], "legs": ["linux-x86_64"],
+    {"keys": ["control.webgl1", "control.webgl2"], "legs": ["linux-x86_64", "linux-x86_64-debian12"],
      "why": "WebGL draws through the host's driver (llvmpipe here, ANGLE on Windows); a host-independent rasterizer is its own project"}
   ]
 }
