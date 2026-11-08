@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.46.4] - 2026-11-08
+
+### Fixed
+- The engine and the GeoIP database install when GitHub's direct release
+  links fail. Through invisible-core 57.54.0, which this version pins: each
+  release file is fetched from the API route first and from the direct link
+  second, and one download attempt tries both, so a 504 on one route is
+  served by the other at once. On 2026-11-08 every direct link answered 504
+  while the API route served the same files.
+
 ## [0.46.3] - 2026-11-08
 
 ### Changed
