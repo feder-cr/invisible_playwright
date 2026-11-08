@@ -36,7 +36,7 @@ def test_the_session_hands_the_server_its_language_and_country_s_keyboard():
                         timezone="Europe/Zurich", extra_prefs=None, virtual_display=False,
                         cursor_engine="python", humanize=True, session_seed=4242)
     # Swiss French is the second keyboard Windows installs with Swiss German.
-    assert prefs[KEYBOARD_LAYOUT_PREF] == "00000807,0000100C"
+    assert prefs[KEYBOARD_LAYOUT_PREF] == "0807:00000807;100c:0000100C"
 
 
 def test_a_russian_session_has_english_as_its_second_keyboard():
@@ -48,7 +48,7 @@ def test_a_russian_session_has_english_as_its_second_keyboard():
     prefs = build_prefs(profile=generate_profile(seed=4242), locale=SessionLocale(("ru-RU", "ru"), "RU"),
                         timezone="Europe/Moscow", extra_prefs=None, virtual_display=False,
                         cursor_engine="python", humanize=True, session_seed=4242)
-    assert prefs[KEYBOARD_LAYOUT_PREF] == "00000419,00000409"
+    assert prefs[KEYBOARD_LAYOUT_PREF] == "0419:00000419;0409:00000409"
 
 
 def test_the_browser_hands_its_layout_to_every_page(monkeypatch):
