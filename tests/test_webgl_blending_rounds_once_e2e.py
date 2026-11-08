@@ -310,7 +310,8 @@ def _describe(failures: list, worst: int = 8) -> str:
     return "\n".join(lines)
 
 
-def test_blending_is_done_unquantized_and_rounded_once(firefox_binary):
+def test_blending_is_done_unquantized_and_rounded_once(firefox_binary, engine_at_least):
+    engine_at_least("firefox-60")
     from invisible_playwright import InvisiblePlaywright
 
     plan = build_plan()
