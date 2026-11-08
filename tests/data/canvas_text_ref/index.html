@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>canvas ref</title>
+<style>
+@font-face{font-family:"Arial";src:url("fonts/arial.ttf") format("truetype");font-weight:400;font-style:normal}
+@font-face{font-family:"Segoe UI";src:url("fonts/segoeui.ttf") format("truetype");font-weight:400;font-style:normal}
+@font-face{font-family:"Times New Roman";src:url("fonts/times.ttf") format("truetype");font-weight:400;font-style:normal}
+@font-face{font-family:"Consolas";src:url("fonts/consola.ttf") format("truetype");font-weight:400;font-style:normal}
+@font-face{font-family:"Calibri";src:url("fonts/calibri.ttf") format("truetype");font-weight:400;font-style:normal}
+body{margin:16px;background:#fff;color:#000;font:13px sans-serif}
+</style>
+</head>
+<body>
+<p id="status">loading fonts</p>
+<script>
+// Canvas 2D text reference: each case draws TEXT, reads its pixels with getImageData,
+// hashes the RGBA bytes with SHA-256 and keeps the PNG. Deterministic:
+// white background, fonts loaded before measuring or drawing.
+const FAMILIES = ["Arial", "Segoe UI", "Times New Roman", "Consolas", "Calibri"];
+const SIZES = [9, 12.5, 16, 33, 72, 300];
+const TEXT = "Hamburgefonstiv 0123";
+const TRANSFORMS = ["none", "rot15-scale1.5x2"];
+
+const SPECS = [];
+// fillText and strokeText, with and without a transform
+for (const family of FAMILIES) for (const size of SIZES) for (const transform of TRANSFORMS) for (const op of ["fill", "stroke"])
+  SPECS.push({family, size, transform, style: "normal", weight: "normal", op});
+// synthetic italic and bold on a regular face (fillText)
+for (const family of FAMILIES) for (const size of SIZES) for (const transform of TRANSFORMS) for (const syn of ["italic", "bold"])
+  SPECS.push({family, size, transform, style: syn === "italic" ? "italic" : "normal", weight: syn === "bold" ? "bold" : "normal", op: "fill"});
+for (const sp of SPECS) sp.id = [sp.family, sp.size, sp.transform, sp.style, sp.weight, sp.op].join("|");
+
+const fontCss = sp => `${sp.style} ${sp.weight} ${sp.size}px "${sp.family}"`;
+const hex = buf => [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, "0")).join("");
+
+function measure(sp) {
+  const ctx = document.createElement("canvas").getContext("2d");
+  ctx.font = fontCss(sp);
+  return ctx.measureText(TEXT).width;
+}
+
+async function drawCase(sp) {
+  const m = measure(sp), S = sp.size;
+  const W = Math.ceil(1.6 * m + 3 * S) + 80;
+  const H = Math.ceil(4 * S + 0.42 * m) + 80;
+  const c = document.createElement("canvas");
+  c.width = W; c.height = H;
+  const ctx = c.getContext("2d", {willReadFrequently: true});
+  ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "#000"; ctx.strokeStyle = "#000"; ctx.lineWidth = 1;
+  ctx.font = fontCss(sp);
+  ctx.textAlign = "start"; ctx.textBaseline = "alphabetic";
+  const y0 = Math.ceil(2.5 * S) + 40;
+  let x = 40, y = y0;
+  if (sp.transform !== "none") {
+    ctx.translate(40, y0);
+    ctx.rotate(15 * Math.PI / 180);
+    ctx.scale(1.5, 2);
+    x = 0; y = 0;
+  }
+  if (sp.op === "stroke") ctx.strokeText(TEXT, x, y); else ctx.fillText(TEXT, x, y);
+  const img = ctx.getImageData(0, 0, W, H);
+  const digest = await crypto.subtle.digest("SHA-256", img.data.buffer);
+  return {id: sp.id, family: sp.family, size: sp.size, transform: sp.transform, style: sp.style,
+          weight: sp.weight, op: sp.op, width: W, height: H, measured_width: m,
+          sha256: hex(digest), png: c.toDataURL("image/png")};
+}
+
+(async () => {
+  const st = document.getElementById("status");
+  try {
+    window.FONTS = {};
+    for (const f of FAMILIES) {
+      const r = await document.fonts.load(`16px "${f}"`);
+      window.FONTS[f] = r.map(x => x.status);
+      if (!r.length || r.some(x => x.status !== "loaded")) throw new Error("font not loaded: " + f);
+    }
+    window.R = {};
+    for (const sp of SPECS) {
+      const r = await drawCase(sp);
+      window.R[sp.id] = r;
+      st.textContent = `cases: ${Object.keys(window.R).length}/${SPECS.length}`;
+    }
+    window.CASE_COUNT = SPECS.length;
+    st.textContent = `done: ${SPECS.length} casi`;
+    window.DONE = true;
+  } catch (e) {
+    window.ERR = String(e);
+    st.textContent = "error: " + e;
+  }
+})();
+</script>
+</body>
+</html>
