@@ -211,8 +211,9 @@ def test_the_page_sees_the_delay_the_caller_asked_for(firefox_binary, page_url):
     150 ms and a dwell of 300 ms can only come from the caller's `delay`."""
     from invisible_playwright import InvisiblePlaywright
 
+    # The US keyboard, named: the persona's keyboard follows the session's language, which the runner's address decides.
     with InvisiblePlaywright(binary_path=firefox_binary, headless=True,
-                             humanize=False) as browser:
+                             humanize=False, locale="en-US") as browser:
         page = browser.new_page()
         page.goto(page_url)
         page.locator("#f").type("abcd", delay=150)

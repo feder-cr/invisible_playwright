@@ -12,16 +12,16 @@ and the keyboard; this file tests the wiring, on the public pieces.
 from __future__ import annotations
 
 from invisible_core.juggler import PageActs
-from invisible_core.juggler.keyboard import layout_for
+from invisible_core.juggler.keyboard import layouts_for
 
-from invisible_playwright._juggler.server import BrowserDispatcher, keyboard_layout_for
+from invisible_playwright._juggler.server import BrowserDispatcher, keyboard_layouts_for
 
 
 def test_the_layout_comes_from_the_language_the_launcher_wrote():
-    assert keyboard_layout_for is layout_for
-    assert keyboard_layout_for("it-IT,it,en-US,en") == "00000410"
-    assert keyboard_layout_for("en-US,en") == "00000409"
-    assert keyboard_layout_for("") == "00000409"
+    assert keyboard_layouts_for is layouts_for
+    assert keyboard_layouts_for("it-IT,it,en-US,en") == ["00000410"]
+    assert keyboard_layouts_for("en-US,en") == ["00000409"]
+    assert keyboard_layouts_for("") == ["00000409"]
 
 
 def test_the_session_hands_the_server_its_language_and_country_s_keyboard():
@@ -35,7 +35,20 @@ def test_the_session_hands_the_server_its_language_and_country_s_keyboard():
     prefs = build_prefs(profile=generate_profile(seed=4242), locale=SessionLocale(("de", "en-US", "en"), "CH"),
                         timezone="Europe/Zurich", extra_prefs=None, virtual_display=False,
                         cursor_engine="python", humanize=True, session_seed=4242)
-    assert prefs[KEYBOARD_LAYOUT_PREF] == "00000807"
+    # Swiss French is the second keyboard Windows installs with Swiss German.
+    assert prefs[KEYBOARD_LAYOUT_PREF] == "00000807,0000100C"
+
+
+def test_a_russian_session_has_english_as_its_second_keyboard():
+    """Windows installs English (US) with Russian: the persona types a Latin
+    letter on it, so the pref carries both, the language's first."""
+    from invisible_core import SessionLocale, generate_profile
+    from invisible_playwright._juggler.server import KEYBOARD_LAYOUT_PREF
+    from invisible_playwright._session import build_prefs
+    prefs = build_prefs(profile=generate_profile(seed=4242), locale=SessionLocale(("ru-RU", "ru"), "RU"),
+                        timezone="Europe/Moscow", extra_prefs=None, virtual_display=False,
+                        cursor_engine="python", humanize=True, session_seed=4242)
+    assert prefs[KEYBOARD_LAYOUT_PREF] == "00000419,00000409"
 
 
 def test_the_browser_hands_its_layout_to_every_page(monkeypatch):
