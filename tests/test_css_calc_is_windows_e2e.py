@@ -14,7 +14,7 @@ differing input in the searched grid (tan, atan, atan2, exp: 0 of 65,000 to
 90,000 each; hypot is a sum and a square root, exact) is in the file with
 control inputs only, so it checks that the page computes at all.
 
-A number is read with ``letter-spacing`` (px) and an angle with ``rotate``
+A number is read with ``word-spacing`` (px) and an angle with ``rotate``
 (deg): both are computed values that getComputedStyle writes as the style
 engine serialized them, with no layout in between.
 
@@ -57,7 +57,7 @@ def _css(fn, args):
     call = "%s(%s)" % (fn, ", ".join(args))
     if fn in ANGLE_FUNCTIONS:
         return "rotate", call
-    return "letter-spacing", "calc(1px * %s)" % call
+    return "word-spacing", "calc(1px * %s)" % call
 
 
 def test_the_data_has_every_function_and_the_inputs_that_tell_the_libraries_apart():
