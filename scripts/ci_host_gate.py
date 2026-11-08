@@ -545,6 +545,19 @@ def compare(dumps: Path, reference: Path, exceptions: dict, notes: list | None =
                     if leg != base and value != values[base] and not excused(key, leg):
                         failures.append("host  %s dpr %s seed %d: %s differs from %s: %s"
                                         % (key, dpr, seed, leg, base, describe(value, values[base])))
+            # 1b. host-independence among the legs of one OS (two Linux
+            # distributions): a known defect excuses a difference from Windows,
+            # never one between two machines of the same system, whose libraries
+            # (FreeType, fontconfig, Mesa) are the host's and must not show.
+            for seed in SEEDS:
+                for family in sorted({l.split("-")[0] for l in legs}):
+                    same_os = [l for l in legs if l.split("-")[0] == family and (l, dpr, seed) in visits]
+                    for leg in same_os[1:]:
+                        value = visits[(leg, dpr, seed)].get(key, "<missing>")
+                        first = visits[(same_os[0], dpr, seed)].get(key, "<missing>")
+                        if value != first and not matching(excusable, key):
+                            failures.append("host  %s dpr %s seed %d: %s differs from %s (same OS): %s"
+                                            % (key, dpr, seed, leg, same_os[0], describe(value, first)))
             # 2. retail equality, for a value that is the same for every seed
             if key.startswith(pending[dpr]):
                 continue
