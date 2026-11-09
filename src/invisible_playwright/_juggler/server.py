@@ -3091,8 +3091,26 @@ class PageDispatcher(Dispatcher):
                 time.sleep(wait / 1000.0)
         return self.send(command, params)
 
+    def _dismiss_unreachable_dialog(self, dialog_id: str) -> None:
+        """Answer a dialog nobody can answer, the way Playwright does when no
+        handler is registered: dismiss it. A dialog left open blocks the
+        page's script for good."""
+        try:
+            self._answer_dialog("Page.handleDialog",
+                                {"dialogId": dialog_id, "accept": False})
+        except Exception:  # noqa: BLE001 - the page may be gone already
+            pass
+
     def _emit_fused_dialog(self, dialog_id: str, kind: str, message: str,
                            default_value: str) -> None:
+        # A REGISTRY WITH NO IN-PROCESS CLIENT (`remote.py`) has no impl-side
+        # twin to hand the dialog to: the fused object is not on the wire. The
+        # dialog is dismissed, as with no handler, instead of left open.
+        if getattr(self.server, "dialogs_unreachable", False):
+            threading.Thread(target=self._dismiss_unreachable_dialog,
+                             args=(dialog_id,), daemon=True,
+                             name="invpw-dialog").start()
+            return
         """A dialog just opened: build the fused object and hand it to the
         impl-side `BrowserContext` directly, no `__create__`, no guid, no
         channel.
@@ -4915,6 +4933,10 @@ class BrowserDispatcher(Dispatcher):
 
 class BrowserTypeDispatcher(Dispatcher):
     TYPE = "BrowserType"
+    #: The class `launch` builds; None means `BrowserDispatcher`. A subclass
+    #: names its own: `remote.py` serves ONE browser to many clients, and its
+    #: `close` must not end the browser.
+    browser_class: Any = None
     METHODS = {"launch": "op_launch",
         "launchPersistentContext": "op_launch_persistent",
                }
@@ -5071,7 +5093,7 @@ class BrowserTypeDispatcher(Dispatcher):
         # nobody will close before the server shuts down.
         try:
             version = read_version(executable)
-            browser = BrowserDispatcher(
+            browser = (self.browser_class or BrowserDispatcher)(
                 self.server, self, conn, version, session_seed=session_seed,
                 motion_budget_s=motion_budget_s,
                 service_workers_enabled=prefs.get(
