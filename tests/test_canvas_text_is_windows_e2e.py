@@ -45,71 +45,14 @@ Run: pytest tests/test_canvas_text_is_windows_e2e.py -m e2e -v
 """
 from __future__ import annotations
 
-import hashlib
-import http.server
 import json
 import os
-import threading
 from pathlib import Path
 
 import pytest
 
+from _canvas_text import DATA, pin as _pin, serve as _serve, wrong_fonts
 from invisible_playwright import InvisiblePlaywright
-
-DATA = Path(__file__).parent / "data" / "canvas_text_ref"
-
-#: What the reference's ``cleartype`` field says the retail machine had: FontSmoothing 2 with
-#: FontSmoothingType 2 is ClearType (system text quality 5). The other tuning values are an
-#: untuned Windows machine's (gamma 1.8, contrast 1.0, level 1.0), which refs.json does not
-#: record.
-_UNTUNED = {"font.cleartype_gamma": 1800, "font.cleartype_contrast": 100,
-            "font.cleartype_level": 100}
-
-
-def _pin(refs):
-    ct = refs["cleartype"]
-    smoothing, kind = str(ct["FontSmoothing"]), str(ct["FontSmoothingType"])
-    if smoothing == "2" and kind in ("2", "0x2"):
-        quality = 5
-    elif smoothing == "2":
-        quality = 4
-    else:
-        quality = 0
-    return {"screen.dpr": 1.0, "font.system_text_quality": quality, **_UNTUNED}
-
-
-def _bundle_font(fonts_dir, entry):
-    """The bundled file a reference entry names."""
-    return fonts_dir / entry["bundle_file"]
-
-
-def _serve(fonts_dir, entries):
-    """The page and, under fonts/<name from the page>, the engine's bundled files."""
-    by_url = {"/bundle/" + e["bundle_file"]: _bundle_font(fonts_dir, e) for e in entries}
-    page = (DATA / "index.html").read_bytes()
-
-    class _H(http.server.BaseHTTPRequestHandler):
-        def do_GET(self):
-            path = self.path.split("?")[0]
-            if path in ("/", "/index.html"):
-                body, kind = page, "text/html"
-            elif path in by_url and by_url[path].is_file():
-                body, kind = by_url[path].read_bytes(), "font/ttf"
-            else:
-                self.send_error(404)
-                return
-            self.send_response(200)
-            self.send_header("Content-Type", kind)
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-
-        def log_message(self, *args):
-            pass
-
-    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _H)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    return server
 
 
 @pytest.mark.e2e
@@ -123,19 +66,14 @@ def test_canvas_text_is_what_retail_windows_draws(firefox_binary, engine_at_leas
     refs = json.loads(refs_path.read_text(encoding="utf-8"))
     fonts_dir = Path(firefox_binary).parent / "fonts"
 
-    wrong = []
-    for e in refs["fonts"]:
-        f = _bundle_font(fonts_dir, e)
-        got = hashlib.sha256(f.read_bytes()).hexdigest() if f.is_file() else None
-        if got != e["sha256"]:
-            wrong.append("%s: the engine's %s has sha256 %s, the reference was made with %s"
-                         % (e["family"], f.name, got, e["sha256"]))
+    wrong = wrong_fonts(fonts_dir, refs["fonts"])
     assert not wrong, (
         "the reference was measured with other font files than the engine's bundle, so it "
         "compares nothing; rebuild refs.json from the bundled files:\n  " + "\n  ".join(wrong))
 
     pin = _pin(refs)
-    server = _serve(fonts_dir, refs["fonts"])
+    page = (DATA / "index.html").read_bytes()
+    server = _serve(fonts_dir, refs["fonts"], {"/": page, "/index.html": page})
     try:
         url = "http://127.0.0.1:%d/" % server.server_address[1]
         with InvisiblePlaywright(seed=21, binary_path=firefox_binary, headless=True,
