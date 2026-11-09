@@ -33,7 +33,7 @@ def _drop(user_js: Path, names) -> int:
     variants are other prefs and stay). Returns how many lines went."""
     kept, dropped = [], 0
     for line in user_js.read_text(encoding="utf-8").splitlines():
-        m = re.match(r'user_pref\(("(?:[^"\]|\.)*"),', line)
+        m = re.match(r'user_pref\(("(?:[^"\\]|\\.)*"),', line)
         if m and json.loads(m.group(1)) in names:
             dropped += 1
         else:
