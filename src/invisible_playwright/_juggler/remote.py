@@ -67,7 +67,7 @@ from urllib.parse import parse_qs, urlsplit
 from . import wire
 from .dispatcher import ProtocolException
 from .server import (BrowserDispatcher, BrowserTypeDispatcher, JugglerServer,
-                     LocalUtilsDispatcher)
+                     LocalUtilsDispatcher, RefusingDispatcher)
 from .transport import _error_payload
 
 #: The client whose call a worker thread is answering.
@@ -180,6 +180,39 @@ class SharedBrowserType(BrowserTypeDispatcher):
     browser_class = SharedBrowserDispatcher
 
 
+class UnservedBrowserType(RefusingDispatcher):
+    """chromium and webkit: in the Playwright initializer because the protocol requires every
+    browser type there (a client's constructor reads all three and does not check for a missing
+    one), and every call on them refuses with the reason. Only firefox is served."""
+
+    TYPE = "BrowserType"
+    REASON = "this server serves one browser, the firefox engine, and not %s"
+
+    def __init__(self, server: Any, name: str) -> None:
+        super().__init__(server, None, {"executablePath": "", "name": name})
+        self.REASON = self.REASON % name
+
+
+class UnservedAndroid(RefusingDispatcher):
+    """Required by the 1.62 Playwright initializer; Android is outside what is served."""
+
+    TYPE = "Android"
+    REASON = "Android devices are not served"
+
+    def __init__(self, server: Any) -> None:
+        super().__init__(server, None, {})
+
+
+class UnservedElectron(RefusingDispatcher):
+    """Required by the 1.62 Playwright initializer; Electron is outside what is served."""
+
+    TYPE = "Electron"
+    REASON = "Electron is not served"
+
+    def __init__(self, server: Any) -> None:
+        super().__init__(server, None, {})
+
+
 class RemoteEndpoint:
     """The WebSocket side: serves an already-launched browser's registry.
 
@@ -215,6 +248,12 @@ class RemoteEndpoint:
         self._start_error: Optional[BaseException] = None
         self._lock = threading.Lock()
         self._closed = False
+        #: The rest of what the Playwright initializer must name (spec 1.62: chromium,
+        #: firefox, webkit, android, electron are all required), created once.
+        self.chromium = UnservedBrowserType(server, "chromium")
+        self.webkit = UnservedBrowserType(server, "webkit")
+        self.android = UnservedAndroid(server)
+        self.electron = UnservedElectron(server)
         server.endpoint = self
 
     # ── where it listens ────────────────────────────────────────────────────
@@ -409,7 +448,8 @@ class RemoteEndpoint:
         """The announce a launched server makes to a client, to it alone and
         in the order that names nothing the client has not seen."""
         client.initialized = True
-        for obj in (self.browser_type, self._utils(), self.browser):
+        for obj in (self.browser_type, self.chromium, self.webkit, self.android,
+                    self.electron, self._utils(), self.browser):
             parent = obj.parent.guid if obj.parent is not None else self.server.root_guid
             client.post_message({"guid": parent, "method": "__create__",
                                  "params": {"type": obj.TYPE, "guid": obj.guid,
@@ -426,7 +466,11 @@ class RemoteEndpoint:
         raise ProtocolException("this server has no LocalUtils")
 
     def _playwright_initializer(self) -> Dict:
-        return {"firefox": self.browser_type.channel,
+        return {"chromium": self.chromium.channel,
+                "firefox": self.browser_type.channel,
+                "webkit": self.webkit.channel,
+                "android": self.android.channel,
+                "electron": self.electron.channel,
                 "utils": self._utils().channel,
                 "preLaunchedBrowser": self.browser.channel}
 

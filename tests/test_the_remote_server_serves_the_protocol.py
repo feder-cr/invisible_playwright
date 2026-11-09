@@ -103,7 +103,8 @@ def test_initialize_creates_the_launch_server_objects(served):
     before, reply = run(go())
     created = [(m["params"]["type"], m["params"]["guid"]) for m in before
                if m["method"] == "__create__"]
-    assert [t for t, _ in created] == ["BrowserType", "LocalUtils", "Browser", "Playwright"]
+    assert [t for t, _ in created] == ["BrowserType"] * 3 + ["Android", "Electron", "LocalUtils",
+                                                              "Browser", "Playwright"]
     assert reply["result"] == {"playwright": {"guid": "Playwright"}}
     playwright = before[-1]["params"]["initializer"]
     assert playwright["preLaunchedBrowser"] == {"guid": served.browser.guid}
@@ -239,3 +240,52 @@ def test_a_client_without_a_page_number_gets_one(served):
     run(go())
     numbers = [p["pageNumber"] for _, p in served.browser.seen]
     assert numbers == [0, 1]
+
+
+#: The `Playwright` initializer of protocol 1.62 (packages/protocol/spec/playwright.yml): the
+#: field -> the type it names; required unless it is in OPTIONAL. A client built on it reads every
+#: required one at construction and does not check for a missing one (playwright-go's
+#: newPlaywright panics: "fromChannel: expected *channel, got <nil>").
+SPEC_162_INITIALIZER = {"chromium": "BrowserType", "firefox": "BrowserType", "webkit": "BrowserType",
+                        "android": "Android", "electron": "Electron", "utils": "LocalUtils",
+                        "preLaunchedBrowser": "Browser", "preConnectedAndroidDevice": "AndroidDevice",
+                        "socksSupport": "SocksSupport"}
+OPTIONAL = {"utils", "preLaunchedBrowser", "preConnectedAndroidDevice", "socksSupport"}
+
+
+def test_the_playwright_initializer_is_the_one_of_spec_162(served):
+    """Known-bad: the initializer with firefox, utils and preLaunchedBrowser only."""
+    async def go():
+        async with connect(served.ws_endpoint) as ws:
+            before, _ = await call(ws, 1, "", "initialize", {"sdkLanguage": "javascript"})
+            return before
+    before = run(go())
+    types = {m["params"]["guid"]: m["params"]["type"] for m in before if m["method"] == "__create__"}
+    order = [m["params"]["guid"] for m in before if m["method"] == "__create__"]
+    initializer = before[-1]["params"]["initializer"]
+    assert before[-1]["params"]["type"] == "Playwright"
+    for field, kind in SPEC_162_INITIALIZER.items():
+        if field not in initializer:
+            assert field in OPTIONAL, "required field %s is missing" % field
+            continue
+        guid = initializer[field]["guid"]
+        assert types[guid] == kind, (field, types[guid])
+        assert order.index(guid) < len(order) - 1, "%s is announced after Playwright" % field
+    assert set(initializer) <= set(SPEC_162_INITIALIZER)
+
+
+def test_chromium_and_webkit_are_real_browser_types_that_refuse_with_a_reason(served):
+    async def go():
+        async with connect(served.ws_endpoint) as ws:
+            before, _ = await call(ws, 1, "", "initialize", {"sdkLanguage": "javascript"})
+            initializer = before[-1]["params"]["initializer"]
+            out = {}
+            for n, name in enumerate(("chromium", "webkit"), start=2):
+                _, reply = await call(ws, n, initializer[name]["guid"], "launch", {})
+                out[name] = reply
+            return out
+    out = run(go())
+    for name, reply in out.items():
+        assert "error" in reply
+        assert name in reply["error"]["error"]["message"]
+        assert "not" in reply["error"]["error"]["message"]
