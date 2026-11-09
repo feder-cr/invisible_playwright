@@ -24,6 +24,7 @@ is not visible. The two browser tests need ANGLE's D3D translation: Windows only
 from __future__ import annotations
 
 import json
+import math
 import random
 import struct
 import sys
@@ -66,7 +67,13 @@ def _round_f32(fr: Fraction) -> float:
 
 
 def _fma(a: float, b: float, c: float) -> float:
-    return _round_f32(Fraction(a) * Fraction(b) + Fraction(c))
+    """Fused multiply-add, one rounding, with IEEE's sign of a zero result: a zero sum is -0
+    only when the product and c are both -0 (a cancellation gives +0)."""
+    exact = Fraction(a) * Fraction(b) + Fraction(c)
+    if exact == 0:
+        both_negative_zero = (a == 0 or b == 0) and c == 0 and             math.copysign(1.0, a) * math.copysign(1.0, b) < 0 and math.copysign(1.0, c) < 0
+        return -0.0 if both_negative_zero else 0.0
+    return _round_f32(exact)
 
 
 def nv_dot(a: list[float], b: list[float]) -> float:
@@ -84,6 +91,13 @@ def _vectors(seed: int) -> list[list[float]]:
     for _ in range(N):
         rows.append([_f32(rng.choice((-1.0, 1.0)) * rng.uniform(0.25, 4.0) * 2.0 ** rng.randint(-6, 6))
                      for _ in range(8)])
+    # The last rows are zeros of both signs: a page tells -0 from +0 (1/x, Object.is), and a chain whose
+    # product and running sum are both -0 stays -0 (a dot of zeros with signs).
+    zeros = (0.0, -0.0)
+    for i in range(min(64, N)):
+        z = [zeros[(i >> j) & 1] for j in range(4)]
+        w = [rng.choice((-1.0, 1.0)) * rng.choice((0.0, 1.0, 2.0)) for _ in range(4)]
+        rows[N - 1 - i] = [z[0], z[1], z[2], z[3], w[0], w[1], w[2], w[3]]
     return rows
 
 
@@ -155,7 +169,7 @@ def _mismatches(firefox_binary, alu_class: int, k: int) -> list[tuple[int, int, 
     for i, row in enumerate(rows):
         got = px[4 * i] | px[4 * i + 1] << 8 | px[4 * i + 2] << 16 | px[4 * i + 3] << 24
         want = _bits(nv_dot(row[:k], row[4:4 + k]))
-        if got != want and not (got & 0x7FFFFFFF == 0 and want & 0x7FFFFFFF == 0):
+        if got != want:
             bad.append((i, got, want))
     return bad
 
@@ -169,6 +183,15 @@ def test_the_model_is_one_fma_chain():
     # 1 + 2^-11, so the chain leaves 2^-11 after adding -1 (the exact value is 2^-11 + 2^-24).
     x = _f32(1.0 + 2.0 ** -12)
     assert nv_dot([x, 1.0], [x, -1.0]) == 2.0 ** -11
+
+
+def test_the_model_keeps_the_sign_of_a_zero_sum():
+    """An fma whose product and addend are both -0 is -0; a cancellation is +0."""
+    assert _bits(_fma(0.0, -1.0, -0.0)) == 0x80000000
+    assert _bits(_fma(-0.0, 1.0, -0.0)) == 0x80000000
+    assert _bits(_fma(0.0, 1.0, -0.0)) == 0
+    assert _bits(_fma(1.5, 2.0, -3.0)) == 0
+    assert _bits(nv_dot([0.0, 0.0], [-1.0, -1.0])) == 0x80000000
 
 
 @pytest.mark.e2e
