@@ -117,6 +117,9 @@ async (frameUs) => {
         result.frames.push({timestamp: frame.timestamp, duration: frame.duration});
         frame.close();
       },
+      // A decoder error also rejects the flush below with the same
+      // exception, so this only needs to record it for the assertions;
+      // flush()'s own second .then() handler is what unblocks the await.
       error: (e) => result.errors.push(String(e)),
     });
     decoder.configure(config);
@@ -128,7 +131,9 @@ async (frameUs) => {
         data: au,
       }));
     });
-    decoder.flush().then(() => { decoder.close(); resolve(); });
+    decoder.flush().then(
+        () => { decoder.close(); resolve(); },
+        (e) => { result.errors.push(String(e)); resolve(); });
   });
   return result;
 }
@@ -170,9 +175,6 @@ def test_webcodecs_h264_bframe_pts_matches_retail_order(firefox_binary, engine_a
                 extra_prefs={
                     "dom.media.webcodecs.enabled": True,
                     "media.ffvpx.enabled": True,
-                    # Scope of the fix: the software CreateImage() path only.
-                    "media.gpu-process-decoder": False,
-                    "media.rdd-process.enabled": False,
                 },
             ) as browser:
                 page = browser.new_page()
