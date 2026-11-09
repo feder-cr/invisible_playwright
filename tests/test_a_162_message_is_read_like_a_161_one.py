@@ -126,7 +126,6 @@ def test_an_element_handle_takes_the_timeout_from_the_metadata_too(world):
 
 
 @pytest.mark.parametrize("guid,method,params,why", [
-    ("page@1", "screencastFrameAck", {"frameId": 4}, "screencastFrameAck"),
     ("page@1", "screenshot", {"type": "webp"}, "webp"),
     ("frame@1", "waitForFunction",
      {"expression": "e => e", "selector": "a"}, "selector"),
@@ -155,3 +154,14 @@ def test_virtual_credentials_refuse_and_their_absence_does_not(method, params):
         variants.to_internal(
             method, {"credentials": nothing,
                      "storageState": {"credentials": nothing}}, {})
+
+
+def test_a_screencast_frame_ack_is_accepted_and_does_nothing(world):
+    """A 1.62 client acknowledges every screencast frame; the server already acknowledged it to the
+    engine, so the ack is answered, not refused. Known-bad: variants refusing it, or the Page without
+    the method (`has no method 'screencastFrameAck'`)."""
+    server, seen = world
+    before = len(seen)
+    assert server.handle({"guid": "page@1", "method": "screencastFrameAck",
+                          "params": {"frameId": 4}}) is None
+    assert len(seen) == before

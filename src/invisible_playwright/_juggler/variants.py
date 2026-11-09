@@ -37,9 +37,11 @@ What each 1.62 addition becomes here:
     setStorageState and a context's `storageState`: REFUSED when asked for or
     given; WebAuthn is outside the perimeter (see `perimeter.py`). `False`,
     `None` and an empty list are not a request and pass.
-  * `Page.screencastFrameAck`: REFUSED. This server acknowledges a frame to
-    the engine itself as soon as it has relayed it, so there is no frame held
-    back for the client to release.
+  * `Page.screencastFrameAck`: ACCEPTED AND DOES NOTHING (`PageDispatcher`
+    answers it with `op_noop`). This server acknowledges a frame to the engine
+    itself as soon as it has relayed it, so there is no frame held back for the
+    client to release; a client that acknowledges every frame, as 1.62's does,
+    must not be failed for that.
   * `Frame.drop`: already answered by `FrameDispatcher.op_drop`, which refuses
     it with its own reason (the engine has no command for it).
 """
@@ -77,10 +79,6 @@ def to_internal(method: Optional[str], params: Dict, metadata: Dict) -> Dict:
         if wanted is not None:
             out["timeout"] = wanted
 
-    if method == "screencastFrameAck":
-        _refuse("screencastFrameAck is not served: this server acknowledges "
-                "each screencast frame to the engine itself as soon as it has "
-                "relayed it, so the client has no frame to release")
     if method in ("screenshot", "expectScreenshot") and out.get("type") == "webp":
         _refuse("a webp screenshot is not available: the engine captures PNG "
                 "and JPEG only, and a PNG sent as webp would be a file that is "

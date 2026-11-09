@@ -2293,6 +2293,7 @@ class RouteDispatcher(Dispatcher):
 class PageDispatcher(Dispatcher):
     TYPE = "Page"
     METHODS = {
+        "screencastFrameAck": "op_noop",
         "mouseMove": "op_mouse_move",
         "mouseDown": "op_mouse_down",
         "mouseUp": "op_mouse_up",
