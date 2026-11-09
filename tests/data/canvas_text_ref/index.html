@@ -11,6 +11,7 @@
 @font-face{font-family:"Consolas";src:url("bundle/consola7_00.ttf") format("truetype");font-weight:400;font-style:normal}
 @font-face{font-family:"Calibri";src:url("bundle/calibri6_26.ttf") format("truetype");font-weight:400;font-style:normal}
 @font-face{font-family:"Bahnschrift";src:url("bundle/bahnschrift2_07.ttf") format("truetype");font-weight:300 700;font-stretch:75% 100%;font-style:normal}
+@font-face{font-family:"Segoe UI Variable";src:url("bundle/seguivar2_03.ttf") format("truetype");font-weight:300 700;font-style:normal}
 @font-face{font-family:"Twemoji Mozilla";src:url("bundle/TwemojiMozilla.ttf") format("truetype");font-weight:400;font-style:normal}
 body{margin:16px;background:#fff;color:#000;font:13px sans-serif}
 </style>
@@ -80,6 +81,12 @@ for (const f of ["Arial", "Segoe UI"]) for (const s of [255, 256, 257, 400]) for
 for (const w of [300, 400, 700]) for (const st of ["condensed", "normal"]) for (const s of [16, 33])
   add({family: "Bahnschrift", size: s, weight: w, stretch: st});
 
+// 6) the variable face Segoe UI Variable (wght 300-700, opsz 5-36): weight 300, 400 and 700 at four
+//    sizes. font-optical-sizing is auto, so opsz follows the size; the weight reaches the face
+//    through font-weight, as canvas has no font-variation-settings
+for (const w of [300, 400, 700]) for (const s of [9, 12.5, 16, 33])
+  add({family: "Segoe UI Variable", size: s, weight: w});
+
 const fontCss = sp => [sp.style, sp.weight, sp.stretch, sp.size + "px", '"' + sp.family + '"'].filter(Boolean).join(" ");
 const hex = buf => [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, "0")).join("");
 
@@ -127,7 +134,8 @@ async function drawCase(sp) {
   try {
     const LOADS = ['16px "Arial"', '16px "Segoe UI"', '16px "Times New Roman"', '16px "Consolas"',
                    '16px "Calibri"', '300 condensed 16px "Bahnschrift"', '300 normal 16px "Bahnschrift"',
-                   '400 normal 16px "Bahnschrift"', '700 normal 16px "Bahnschrift"', '16px "Twemoji Mozilla"'];
+                   '400 normal 16px "Bahnschrift"', '700 normal 16px "Bahnschrift"', '300 16px "Segoe UI Variable"',
+                   '400 16px "Segoe UI Variable"', '700 16px "Segoe UI Variable"', '16px "Twemoji Mozilla"'];
     window.FONTS = {};
     for (const q of LOADS) {
       const r = await document.fonts.load(q);

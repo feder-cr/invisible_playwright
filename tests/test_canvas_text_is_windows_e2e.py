@@ -4,7 +4,7 @@ Retail Firefox on Windows draws canvas text with Skia over DirectWrite. The engi
 with Skia over idwr (DirectWrite 10.0.26100.9711 in portable C) from firefox-60, so the
 same page gives the same RGBA bytes on Windows, on Debian 12 and on Ubuntu 24.04.
 
-tests/data/canvas_text_ref/index.html draws 330 cases, in groups (the ``gruppo`` field of
+tests/data/canvas_text_ref/index.html draws 342 cases, in groups (the ``gruppo`` field of
 each case in refs.json):
 
   0_base                       211  Arial, Segoe UI, Times New Roman, Consolas and Calibri at 9,
@@ -18,6 +18,9 @@ each case in refs.json):
   3_emoji_colr0                 12  COLR v0 emoji, Twemoji Mozilla, alpha true and false
   4_soglie                      20  255, 256, 257, 300 and 400 px, fillText and strokeText
   5_variabile_bahnschrift       12  font-weight 300/400/700 by font-stretch 75%/100%
+  6_variabile_seguivar          12  Segoe UI Variable, font-weight 300/400/700 at 9, 12.5, 16 and
+                                    33 px (opsz follows the size): the instance the scaled font
+                                    asks of idwr, on every OS
 
 Each canvas is read back with getImageData and its RGBA bytes are hashed with SHA-256. The
 fonts are @font-face webfonts: the files of the engine's own ``fonts`` directory, served by
@@ -26,7 +29,7 @@ tests/data/canvas_text_ref/refs.json holds the hashes retail Firefox 159.0 on Wi
 the same page and the same bundled files (gfx.canvas.accelerated off, white background), and
 the ClearType state of that machine, which the test declares as the persona (system text
 quality 5). Its ``fonts`` entries carry the sha256 of each file, which must be the engine's
-bundled one (Arial 05c7da5fe195...; Twemoji Mozilla and Bahnschrift too): a reference made with
+bundled one (Arial 05c7da5fe195...; Twemoji Mozilla, Bahnschrift and Segoe UI Variable too): a reference made with
 other font files compares nothing. The file is built by scripts/build_canvas_text_refs.py from
 the two measurements.
 

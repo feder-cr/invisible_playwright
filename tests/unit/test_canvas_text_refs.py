@@ -15,7 +15,7 @@ SCRIPT = ROOT / "scripts" / "build_canvas_text_refs.py"
 
 GROUPS = {"0_base": 211, "1_alpha_false": 25, "2a_rot_alpha_true_controllo": 25,
           "2b_rot_alpha_false": 25, "3_emoji_colr0": 12, "4_soglie": 20,
-          "5_variabile_bahnschrift": 12}
+          "5_variabile_bahnschrift": 12, "6_variabile_seguivar": 12}
 
 
 def _builder():
@@ -32,7 +32,7 @@ def _refs():
 def test_the_merged_reference_has_every_case_once_in_its_group():
     refs = _refs()
     cases = refs["cases"]
-    assert refs["case_count"] == len(cases) == sum(GROUPS.values()) == 330
+    assert refs["case_count"] == len(cases) == sum(GROUPS.values()) == 342
     assert refs["groups"] == GROUPS
     got = {}
     for cid, c in cases.items():
@@ -47,7 +47,7 @@ def test_the_merged_reference_has_every_case_once_in_its_group():
 def test_every_font_the_page_loads_is_named_with_its_hash():
     refs = _refs()
     files = {f["bundle_file"]: f for f in refs["fonts"]}
-    assert {"TwemojiMozilla.ttf", "bahnschrift2_07.ttf"} <= set(files)
+    assert {"TwemojiMozilla.ttf", "bahnschrift2_07.ttf", "seguivar2_03.ttf"} <= set(files)
     assert all(re.fullmatch(r"[0-9a-f]{64}", f["sha256"]) for f in files.values())
     page = PAGE.read_text(encoding="utf-8")
     assert set(re.findall(r'url\("bundle/([^"]+)"\)', page)) == set(files)
@@ -93,3 +93,16 @@ def test_two_measurements_of_different_machines_are_refused():
     b, e = _two(firefox={"v": 2})
     with pytest.raises(m.MergeError, match="firefox"):
         m.merge(b, e)
+
+
+def test_the_variable_cases_have_three_distinct_weights_at_every_size():
+    """A reference whose three weights hash alike proves nothing about the axes."""
+    cases = _refs()["cases"]
+    for group, family in (("5_variabile_bahnschrift", "Bahnschrift"),
+                          ("6_variabile_seguivar", "Segoe UI Variable")):
+        by = {}
+        for c in cases.values():
+            if c["gruppo"] == group:
+                by.setdefault((c["size"], c["stretch"]), {})[c["weight"]] = c["sha256"]
+        assert by and all(len(w) == 3 and len(set(w.values())) == 3 for w in by.values()), family
+        assert all(c["family"] == family for c in cases.values() if c["gruppo"] == group)
