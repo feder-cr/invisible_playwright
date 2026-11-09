@@ -11,8 +11,10 @@ that reading cannot show you.
 
 - `goto`, `click`, `fill`, `title`, `content` and `querySelector` are sent to
   the **Frame**, not the Page. The Page owns almost nothing.
-- `mouseMove` IS sent to the Page - and in a humanised session it arrives
-  nineteen times for one click, because the cursor travels.
+- `mouseMove` IS sent to the Page. It used to arrive nineteen times for one
+  click in a humanised session, because the in-process client's cursor
+  travelled; the walk is the server's now (`pointer.py`), so a click arrives
+  once, from every client, and the page still sees the walk.
 - `BrowserContext` is created with three children already alive - `Debugger`,
   `Tracing`, `APIRequestContext` - and each is announced BEFORE the context that
   names it, then re-parented with `__adopt__`.
@@ -41,6 +43,7 @@ from invisible_core.juggler import connection as juggler
 from invisible_core.juggler.actions import Actions
 from invisible_core.juggler.deadline import Deadline
 from . import dialogs
+from .pointer import Pointer
 from .dispatcher import (Dispatcher, ExpectNotMet, ProtocolException,
                          Server, current_call)
 from invisible_core.juggler.injected import (ContextDestroyed, EvaluationError,
@@ -218,6 +221,15 @@ SESSION_SEED_PREF = "invisible.server.session_seed"
 #: a cap of its own would be a second answer to a question the caller answered,
 #: and would show up as a drag that ignores a budget every click obeys.
 MOTION_BUDGET_PREF = "invisible.server.motion_budget_ms"
+
+#: WHETHER THIS SERVER DRAWS THE POINTER'S WALK (`pointer.py`): true when the
+#: launcher chose the Python generator (`_cursor.resolve_cursor_engine`). It
+#: travels like the seed, for the same reason: the choice is made once, by the
+#: caller's `humanize=` and the environment, and this server answering it by
+#: itself would be a second answer. False with a seed present is a session whose
+#: pointer is the engine's own (`binary`) or nobody's (`off`): drawing a path
+#: here as well would humanise twice.
+POINTER_PREF = "invisible.server.pointer"
 #: The persona's keyboards, as Windows writes its input profiles (LANGID:KLID
 #: joined by semicolons, the language's first), decided by the core from the
 #: session's language AND country (`keyboard.profiles_for`). Server-only, like
@@ -243,9 +255,16 @@ def take_session_motion(prefs: Dict) -> tuple:
     rest = dict(prefs)
     seed = rest.pop(SESSION_SEED_PREF, None)
     budget_ms = rest.pop(MOTION_BUDGET_PREF, None)
+    rest.pop(POINTER_PREF, None)
     return (rest,
             (None if seed is None else int(seed)),
             (None if budget_ms is None else int(budget_ms) / 1000.0))
+
+
+def session_draws_pointer(prefs: Dict) -> bool:
+    """Did the launcher ask this server to draw the pointer's walk? Read from
+    the prefs BEFORE `take_session_motion` takes the key out."""
+    return bool(prefs.get(POINTER_PREF))
 
 
 def _launch_environment(named) -> Dict[str, str]:
@@ -545,9 +564,11 @@ class ElementHandleDispatcher(Dispatcher):
     def op_check_hit_target(self, params: Dict) -> Any:
         """Would an event at this MAIN-FRAME point land on this element?
 
-        ⛔ NOT A PLAYWRIGHT METHOD: the humanised cursor (`_cursor._hits`) is
-        its only caller, asking about the off-centre point it is about to aim
-        at. The point is in the space `boundingBox` answers in, and the answer
+        ⛔ NOT A PLAYWRIGHT METHOD, and the product no longer calls it: the
+        server's own pointer (`pointer.py`) asks `Actions.hit_target` directly
+        about the off-centre point it is about to aim at. It stays for whoever
+        wants to ask the same question of a handle, and for the tests that pin
+        the answer. The point is in the space `boundingBox` answers in, and the answer
         is the one the action's own check gives (`Actions.hit_target`): the
         same frame shift, the same shadow-aware test. A second hit test here
         would be a second definition of where a click lands.
@@ -568,9 +589,10 @@ class ElementHandleDispatcher(Dispatcher):
         is the sane way to write a probe - simply took the wrong branch in
         silence.
 
-        ⛔ THE COST, MEASURED. The humanised cursor asks the element whether an
-        off-centre point actually lands on it (`_cursor._hits`, which passes
-        `{x, y}` as exactly this argument). With `arg` dropped the check threw
+        ⛔ THE COST, MEASURED. The humanised cursor (then the client's, asking
+        through `_hits`; the server's pointer asks the action's own hit test
+        now) asked the element whether an off-centre point actually lands on
+        it, passing `{x, y}` as exactly this argument. With `arg` dropped the check threw
         every single time, was caught, and answered False - so the landing
         override was never applied and EVERY click fell on the exact geometric
         centre of its element. That is the tell `_landing_override`'s own
@@ -1244,12 +1266,32 @@ class FrameDispatcher(Dispatcher):
         lifecycle.wait_for_action_signals(main, since, deadline.left(floor=0.05))
         return result
 
+    def _by_hand(self, params: Dict, frame_id: str, selector: str,
+                 run: Callable[[Any, Any], Any]) -> Any:
+        """Run a pointer action with the hand of the session in front of it.
+
+        ⛔ THE WALK ONTO THE ELEMENT IS DRAWN HERE, once, for every client: it
+        used to be the in-process client's, so a client that was not ours sent
+        one `Frame.click` and the page saw one `mousemove` (`pointer.py`).
+        `run(position, timeout)` is the plain action; with no hand (humanising
+        off, the engine's own expansion) it is all that happens, with the
+        caller's own arguments.
+        """
+        hand = self.page.pointer
+        if hand is None or not hand.active:
+            return run(self._position(params), self._timeout(params))
+        return hand.act(frame_id, selector, self._position(params),
+                        self._timeout(params), run,
+                        trial=self._act_opts(params)["trial"])
+
     def op_click(self, params: Dict) -> Any:
         frame_id, selector = self.enter_frames(params["selector"])
-        self._waiting_after(params, lambda: self.actions.click(
-            selector, timeout=self._timeout(params), frame_id=frame_id,
-            **self._act_opts(params), position=self._position(params),
-            **self._pointer(params)))
+        self._waiting_after(params, lambda: self._by_hand(
+            params, frame_id, selector,
+            lambda position, timeout: self.actions.click(
+                selector, timeout=timeout, frame_id=frame_id,
+                **self._act_opts(params), position=position,
+                **self._pointer(params))))
         return None
 
     def op_dblclick(self, params: Dict) -> Any:
@@ -1257,16 +1299,19 @@ class FrameDispatcher(Dispatcher):
         pointer = self._pointer(params)
         # dblclick sets its own clickCount; the caller's is not a second one.
         pointer.pop("clicks", None)
-        self.actions.dblclick(selector, timeout=self._timeout(params),
-                                   frame_id=frame_id, **self._act_opts(params),
-                                   position=self._position(params), **pointer)
+        self._by_hand(params, frame_id, selector,
+                      lambda position, timeout: self.actions.dblclick(
+                          selector, timeout=timeout, frame_id=frame_id,
+                          **self._act_opts(params), position=position,
+                          **pointer))
         return None
 
     def op_hover(self, params: Dict) -> Any:
         frame_id, selector = self.enter_frames(params["selector"])
-        self.actions.hover(selector, timeout=self._timeout(params),
-                                frame_id=frame_id, **self._act_opts(params),
-                                position=self._position(params))
+        self._by_hand(params, frame_id, selector,
+                      lambda position, timeout: self.actions.hover(
+                          selector, timeout=timeout, frame_id=frame_id,
+                          **self._act_opts(params), position=position))
         return None
 
     def op_fill(self, params: Dict) -> Any:
@@ -1278,16 +1323,18 @@ class FrameDispatcher(Dispatcher):
 
     def op_check(self, params: Dict) -> Any:
         frame_id, selector = self.enter_frames(params["selector"])
-        self.actions.check(selector, timeout=self._timeout(params),
-                                frame_id=frame_id, **self._act_opts(params),
-                                position=self._position(params))
+        self._by_hand(params, frame_id, selector,
+                      lambda position, timeout: self.actions.check(
+                          selector, timeout=timeout, frame_id=frame_id,
+                          **self._act_opts(params), position=position))
         return None
 
     def op_uncheck(self, params: Dict) -> Any:
         frame_id, selector = self.enter_frames(params["selector"])
-        self.actions.uncheck(selector, timeout=self._timeout(params),
-                                  frame_id=frame_id, **self._act_opts(params),
-                                  position=self._position(params))
+        self._by_hand(params, frame_id, selector,
+                      lambda position, timeout: self.actions.uncheck(
+                          selector, timeout=timeout, frame_id=frame_id,
+                          **self._act_opts(params), position=position))
         return None
 
     def op_focus(self, params: Dict) -> Any:
@@ -1349,9 +1396,10 @@ class FrameDispatcher(Dispatcher):
 
     def op_tap(self, params: Dict) -> Any:
         frame_id, selector = self.enter_frames(params["selector"])
-        self.actions.tap(selector, timeout=self._timeout(params),
-                              frame_id=frame_id, **self._act_opts(params),
-                              position=self._position(params))
+        self._by_hand(params, frame_id, selector,
+                      lambda position, timeout: self.actions.tap(
+                          selector, timeout=timeout, frame_id=frame_id,
+                          **self._act_opts(params), position=position))
         return None
 
     def op_dispatch_event(self, params: Dict) -> Any:
@@ -2323,6 +2371,9 @@ class RouteDispatcher(Dispatcher):
 # ── page ────────────────────────────────────────────────────────────────────
 class PageDispatcher(Dispatcher):
     TYPE = "Page"
+    #: No hand until `_build` gives it one: a page without it acts as the
+    #: caller wrote.
+    pointer: Optional[Pointer] = None
     METHODS = {
         "screencastFrameAck": "op_noop",
         "mouseMove": "op_mouse_move",
@@ -2445,6 +2496,18 @@ class PageDispatcher(Dispatcher):
         self.injected.install()
         self.actions = context.browser.actions_for_page(
             session, self.lifecycle, self.injected, self.number)
+        #: The viewport as the client was told it (the initializer's, then
+        #: `setViewportSize`): the hand plans inside it.
+        self.viewport_size = context.options.get("viewport") or {
+            "width": 1280, "height": 720}
+        #: ⛔ THE HAND, built where the page's number and the session's seed
+        #: meet: one stream per page, the seed the client's cursor drew from
+        #: (`_cursor.page_motion_seed`). See `pointer.py`.
+        self.pointer = Pointer(
+            self.actions, self.injected, self.number,
+            context.browser.session_seed, context.browser.motion_budget_s,
+            lambda: self.viewport_size,
+            draws=context.browser.pointer_draws)
         # ⛔ THE EVENTS THIS PAGE ALREADY MISSED, handed over now that the two
         # things that need them exist. `Page.frameAttached` and the
         # `Runtime.executionContextCreated` pair are sent by the browser BEFORE
@@ -2489,11 +2552,11 @@ class PageDispatcher(Dispatcher):
         # ⛔ The Frame is created BEFORE the Page and adopted after: the Page
         # initializer has to name a mainFrame the client can already resolve.
         self.frame = FrameDispatcher(server, self, self.main_frame_id)
-        viewport = context.options.get("viewport") or {"width": 1280,
-                                                       "height": 720}
-        # `pageNumber` is ours, not Playwright's: the cursor reads it
-        # (`_cursor._cursor_for_page`), so client and server draw one page's
-        # rhythms under one number.
+        viewport = self.viewport_size
+        # `pageNumber` is ours, not Playwright's: the number the page's
+        # rhythms are drawn under (`pointer.py` and the actions' nonce read it
+        # from `self.number`), told to the client so that it can name the page
+        # the way the server does.
         initializer = {"mainFrame": self.frame.channel,
                        "viewportSize": viewport, "isClosed": False,
                        "pageNumber": self.number}
@@ -3152,8 +3215,15 @@ class PageDispatcher(Dispatcher):
 
     # ── pointer and keyboard ──────────────────────────────────────────
     def op_mouse_move(self, params: Dict) -> Any:
-        self.actions.move(params["x"], params["y"],
-                          steps=params.get("steps") or 1)
+        # ⛔ AN EXPLICIT MOVE IS THE CALLER'S: it is walked only when the
+        # in-process client says so (`humanise`, see `_cursor._wrap_mouse_move`),
+        # which is how it has always moved its own pointer. A client that does
+        # not say so - a Go, Node or stock Python Playwright - gets exactly the
+        # point it named, and the server adds nothing to it.
+        steps = params.get("steps") or 1
+        if params.get("humanise") is True and steps <= 1 and self.pointer:
+            self.pointer.move(params["x"], params["y"])
+        self.actions.move(params["x"], params["y"], steps=steps)
         return None
 
     def op_mouse_down(self, params: Dict) -> Any:
@@ -3167,12 +3237,24 @@ class PageDispatcher(Dispatcher):
         return None
 
     def op_mouse_click(self, params: Dict) -> Any:
-        self.actions.click_at(params["x"], params["y"],
-                              button=_button(params.get("button")),
-                              clicks=params.get("clickCount") or 1)
+        # The stroke to the point, then the click: the walk is the hand's
+        # (`Pointer.click_at`), as `Mouse._click` used to make it on the client.
+        def click() -> Any:
+            return self.actions.click_at(
+                params["x"], params["y"],
+                button=_button(params.get("button")),
+                clicks=params.get("clickCount") or 1)
+
+        if self.pointer is None:
+            click()
+        else:
+            self.pointer.click_at(params["x"], params["y"], click)
         return None
 
     def op_mouse_wheel(self, params: Dict) -> Any:
+        if self.pointer is not None and self.pointer.wheel(
+                params["deltaX"], params["deltaY"]):
+            return None
         self.actions.wheel(params["deltaX"], params["deltaY"])
         return None
 
@@ -3207,6 +3289,8 @@ class PageDispatcher(Dispatcher):
     def op_set_viewport_size(self, params: Dict) -> Any:
         self.send("Page.setViewportSize", only_set(
             {"viewportSize": params.get("viewportSize")}))
+        if params.get("viewportSize"):
+            self.viewport_size = params["viewportSize"]
         return None
 
     def op_emulate_media(self, params: Dict) -> Any:
@@ -4109,8 +4193,12 @@ class BrowserDispatcher(Dispatcher):
                  conn: Any, version: str, session_seed: Any = None,
                  motion_budget_s: Any = None,
                  service_workers_enabled: bool = True,
-                 layout: str = "us") -> None:
+                 layout: str = "us", pointer_draws: bool = False) -> None:
         self.conn = conn
+        #: Whether this browser's pages walk the pointer onto their targets
+        #: (`pointer.py`): the launcher chose the Python generator. Off for a
+        #: browser built without saying so, which acts as the caller wrote.
+        self.pointer_draws = pointer_draws
         #: The keyboards the persona types on, from the session's language
         #: (`keyboard.profiles_for`, LANGID:KLID joined by semicolons): one set per
         #: session, whatever a context later says its language is.
@@ -5023,6 +5111,8 @@ class BrowserTypeDispatcher(Dispatcher):
         # means "the patched binary reads this", and a reader who found a
         # typing key under it would go looking in C++ for something that is
         # answered in Python.
+        pointer_draws = session_draws_pointer(
+            params.get("firefoxUserPrefs") or {})
         prefs, session_seed, motion_budget_s = take_session_motion(
             params.get("firefoxUserPrefs") or {})
         # The keyboard the session decided, out of the prefs before the
@@ -5083,7 +5173,7 @@ class BrowserTypeDispatcher(Dispatcher):
                 # The persona's keyboard: the one a Windows install gives the
                 # session's language in its country (German in Switzerland
                 # types on the Swiss keyboard).
-                layout=keyboard_layout)
+                layout=keyboard_layout, pointer_draws=pointer_draws)
         except BaseException:
             conn.close()
             raise

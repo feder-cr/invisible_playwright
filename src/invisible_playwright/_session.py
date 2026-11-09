@@ -26,7 +26,7 @@ from ._cursor import (ENGINE_BINARY,
                       enable_for as _enable_cursor_engine,
                       max_seconds_for as _cursor_max_seconds)
 from ._engine import resolve_executable
-from ._juggler.server import MOTION_BUDGET_PREF, SESSION_SEED_PREF
+from ._juggler.server import MOTION_BUDGET_PREF, POINTER_PREF, SESSION_SEED_PREF
 from typing import Any, Dict, Optional
 
 from invisible_core import compose_session_prefs, context_geometry, make_virtual_display
@@ -217,16 +217,21 @@ def build_prefs(
     # It follows `humanize`, like the cursor: a caller who turned human motion
     # off asked for a machine, and giving them a hand on the keyboard anyway
     # would be a second answer to a question they already answered.
-    # ⛔ AND THE MOTION BUDGET RIDES WITH IT, under exactly the same condition,
-    # for the one pointer movement the client cannot wrap: the travel of a drag,
-    # which happens with the button already down and whose far end is only
-    # resolved after the press. That movement is generated inside the server,
-    # so without this the caller's `humanize=<n>` would cap every click and be
-    # ignored by every drag.
+    # ⛔ AND THE MOTION BUDGET RIDES WITH IT, under exactly the same condition:
+    # it caps the walk the server draws before every pointer action
+    # (`_juggler/pointer.py`) and the travel of a drag, which happens with the
+    # button already down and whose far end is only resolved after the press.
+    # Both are generated inside the server, so the caller's `humanize=<n>` caps
+    # every click and every drag, whichever client sent them.
     #
     # The condition is shared and not merely similar: the server draws a path
     # only when it has the seed, so a budget without one would cap a movement
     # nobody is making.
+    #
+    # ⛔ AND WHO DRAWS THE WALK TRAVELS TOO (`POINTER_PREF`): with the seed
+    # alone the server could not tell the Python generator from the engine's own
+    # expansion or from `INVPW_CURSOR_ENGINE=off`, and a walk drawn on top of
+    # either would humanise twice.
     #
     # Milliseconds, and an int: Gecko has no float pref type, and `1.0` written
     # as a number arrives with the right value and the wrong type - the defect
@@ -235,6 +240,7 @@ def build_prefs(
     # with the language and country (invisible_core.prefs._apply_locale).
     if session_seed is not None and humanize:
         prefs[SESSION_SEED_PREF] = int(session_seed)
+        prefs[POINTER_PREF] = cursor_engine == ENGINE_PYTHON
         prefs[MOTION_BUDGET_PREF] = int(round(
             _cursor_max_seconds(humanize) * 1000.0))
     return prefs

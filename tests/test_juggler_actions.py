@@ -7,8 +7,10 @@ It does not break - it breaks one time in twenty.
 The client is `invisible_core.juggler` and its tests without a browser are
 the core's (`tests/test_juggler_actions.py` there). These need the engine,
 which is where this package's e2e job is, and every one runs TWICE: with the
-pointer approach drawn by the client (this package's mode, where `_cursor`
-walks the cursor first) and by the engine (`engine_approach=True`, the mode
+plain approach (this package's mode: the server's pointer, `_juggler/
+pointer.py`, walks onto the element before calling the action, which these
+tests, building `Actions` directly, do not exercise) and by the engine
+(`engine_approach=True`, the mode
 invisible-selenium and invisible-puppeteer drive the same client in). Those
 two packages had a copy of these tests each; one place now covers both modes.
 """
