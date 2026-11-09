@@ -36,7 +36,7 @@ import itertools
 import threading
 from typing import Any, Callable, Dict, List, Optional
 
-from . import perimeter
+from . import perimeter, variants
 # One class for a target that is gone, raised here for a disposed object and
 # by the connection for a closed pipe. Defined there, the lower layer.
 from invisible_core.juggler.connection import TargetClosedError  # noqa: F401 - re-exported on purpose
@@ -370,6 +370,10 @@ class Server:
                 "no object %r to answer %r: it was never created"
                 % (guid, method))
         metadata = message.get("metadata") or {}
+        # ⛔ THE VERSIONS OF THE PROTOCOL ARE FOLDED HERE, once, before any
+        # operation reads a parameter: see `variants.py`. A refusal of a
+        # command this server does not serve is raised from there.
+        params = variants.to_internal(method, params, metadata)
         token = _CURRENT_CALL.set(CallLog(metadata.get("title") or method or ""))
         try:
             return obj.call(method, params)
