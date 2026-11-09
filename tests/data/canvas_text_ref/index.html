@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>canvas text ref</title>
+<style>
+@font-face{font-family:"Arial";src:url("bundle/arial7_04.ttf") format("truetype");font-weight:400;font-style:normal}
+@font-face{font-family:"Segoe UI";src:url("bundle/segoeui5_67.ttf") format("truetype");font-weight:400;font-style:normal}
+@font-face{font-family:"Times New Roman";src:url("bundle/times7_11.ttf") format("truetype");font-weight:400;font-style:normal}
+@font-face{font-family:"Consolas";src:url("bundle/consola7_00.ttf") format("truetype");font-weight:400;font-style:normal}
+@font-face{font-family:"Calibri";src:url("bundle/calibri6_26.ttf") format("truetype");font-weight:400;font-style:normal}
+@font-face{font-family:"Bahnschrift";src:url("bundle/bahnschrift2_07.ttf") format("truetype");font-weight:300 700;font-stretch:75% 100%;font-style:normal}
+@font-face{font-family:"Segoe UI Variable";src:url("bundle/seguivar2_03.ttf") format("truetype");font-weight:300 700;font-style:normal}
+@font-face{font-family:"Twemoji Mozilla";src:url("bundle/TwemojiMozilla.ttf") format("truetype");font-weight:400;font-style:normal}
+body{margin:16px;background:#fff;color:#000;font:13px sans-serif}
+</style>
+</head>
+<body>
+<p id="status">loading fonts</p>
+<script>
+// Canvas 2D text reference page. Every case draws TEXT (or EMOJI) on a white canvas, reads the
+// pixels back with getImageData and hashes the RGBA bytes with SHA-256. Fonts are loaded
+// before anything is measured or drawn. The case ids and the drawing code are the ones retail
+// Firefox 159.0 on Windows ran to write refs.json, so the hashes compare.
+const FAMILIES5 = ["Arial", "Segoe UI", "Times New Roman", "Consolas", "Calibri"];
+const SIZES6 = [9, 12.5, 16, 33, 72, 300];
+const SIZES5 = [9, 12.5, 16, 33, 72];
+const TEXT = "Hamburgefonstiv 0123";
+const EMOJI = "\u{1F600}\u{1F389}\u{1F41F}";
+const ROT = "rot15-scale1.5x2";
+const TRANSFORMS = ["none", ROT];
+
+const SPECS = [];
+const SEEN = new Set();
+function add(sp) {
+  sp.style = sp.style || "normal";
+  sp.weight = sp.weight || "normal";
+  sp.stretch = sp.stretch || "";
+  sp.op = sp.op || "fill";
+  sp.transform = sp.transform || "none";
+  sp.alpha = sp.alpha !== false;
+  sp.text = sp.text || TEXT;
+  let id = [sp.family, sp.size, sp.transform, sp.style, sp.weight, sp.op].join("|");
+  if (sp.stretch) id += "|stretch=" + sp.stretch;
+  if (!sp.alpha) id += "|alpha=false";
+  if (sp.text !== TEXT) id += "|text=emoji";
+  if (SEEN.has(id)) throw new Error("duplicate case id: " + id);
+  SEEN.add(id);
+  sp.id = id;
+  SPECS.push(sp);
+}
+
+// 0) base: fillText and strokeText, with and without a transform; synthetic italic and bold
+//    on a regular face (fillText). Default canvas (alpha: true).
+for (const family of FAMILIES5) for (const size of SIZES6) for (const transform of TRANSFORMS) for (const op of ["fill", "stroke"])
+  add({family, size, transform, op});
+for (const family of FAMILIES5) for (const size of SIZES6) for (const transform of TRANSFORMS) for (const syn of ["italic", "bold"])
+  add({family, size, transform, style: syn === "italic" ? "italic" : "normal", weight: syn === "bold" ? "bold" : "normal"});
+
+// 1) getContext("2d", {alpha: false}): an opaque canvas, where LCD text is possible
+for (const f of FAMILIES5) for (const s of SIZES5)
+  add({family: f, size: s, alpha: false});
+
+// 2) rotate(15deg) scale(1.5, 2) on an opaque canvas. The same cases with alpha: true are in
+//    the base above (group 2a of the reference), so they are not drawn twice.
+for (const f of FAMILIES5) for (const s of SIZES5)
+  add({family: f, size: s, transform: ROT, alpha: false});
+
+// 3) COLR v0 emoji (Twemoji Mozilla), the one COLR v0 face of the bundle
+for (const s of [16, 33, 72]) for (const alpha of [true, false]) for (const transform of TRANSFORMS)
+  add({family: "Twemoji Mozilla", size: s, transform, alpha, text: EMOJI});
+
+// 4) past the glyph-size thresholds (255, 256, 257, 400 px; 300 px is in the base): fillText
+//    and strokeText, Arial and Segoe UI
+for (const f of ["Arial", "Segoe UI"]) for (const s of [255, 256, 257, 400]) for (const op of ["fill", "stroke"])
+  add({family: f, size: s, op});
+
+// 5) the variable face Bahnschrift: weight (300, 400, 700) by stretch (75% = condensed, 100% = normal);
+//    canvas has no font-variation-settings, so the axes are reached through font-weight and font-stretch
+for (const w of [300, 400, 700]) for (const st of ["condensed", "normal"]) for (const s of [16, 33])
+  add({family: "Bahnschrift", size: s, weight: w, stretch: st});
+
+// 6) the variable face Segoe UI Variable (wght 300-700, opsz 5-36): weight 300, 400 and 700 at four
+//    sizes. font-optical-sizing is auto, so opsz follows the size; the weight reaches the face
+//    through font-weight, as canvas has no font-variation-settings
+for (const w of [300, 400, 700]) for (const s of [9, 12.5, 16, 33])
+  add({family: "Segoe UI Variable", size: s, weight: w});
+
+const fontCss = sp => [sp.style, sp.weight, sp.stretch, sp.size + "px", '"' + sp.family + '"'].filter(Boolean).join(" ");
+const hex = buf => [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, "0")).join("");
+
+function measure(sp) {
+  const ctx = document.createElement("canvas").getContext("2d");
+  ctx.font = fontCss(sp);
+  return ctx.measureText(sp.text).width;
+}
+
+async function drawCase(sp) {
+  const m = measure(sp), S = sp.size;
+  const W = Math.ceil(1.6 * m + 3 * S) + 80;
+  const H = Math.ceil(4 * S + 0.42 * m) + 80;
+  const c = document.createElement("canvas");
+  c.width = W; c.height = H;
+  const ctx = c.getContext("2d", {alpha: sp.alpha, willReadFrequently: true});
+  ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "#000"; ctx.strokeStyle = "#000"; ctx.lineWidth = 1;
+  ctx.font = fontCss(sp);
+  ctx.textAlign = "start"; ctx.textBaseline = "alphabetic";
+  const y0 = Math.ceil(2.5 * S) + 40;
+  let x = 40, y = y0;
+  if (sp.transform !== "none") {
+    ctx.translate(40, y0);
+    ctx.rotate(15 * Math.PI / 180);
+    ctx.scale(1.5, 2);
+    x = 0; y = 0;
+  }
+  if (sp.op === "stroke") ctx.strokeText(sp.text, x, y); else ctx.fillText(sp.text, x, y);
+  const readback = ctx.font;
+  let img = ctx.getImageData(0, 0, W, H);
+  const digest = await crypto.subtle.digest("SHA-256", img.data.buffer);
+  // The largest cases are 7727 x 3373 (100 MB of RGBA): release the canvas and its readback
+  // before the next case, so that the page never holds more than one at a time.
+  img = null;
+  c.width = 0; c.height = 0;
+  return {id: sp.id, family: sp.family, size: sp.size, transform: sp.transform,
+          style: sp.style, weight: String(sp.weight), stretch: sp.stretch || "normal", op: sp.op,
+          alpha: sp.alpha, text: sp.text === TEXT ? "TEXT" : "EMOJI", font_readback: readback,
+          width: W, height: H, measured_width: m, sha256: hex(digest)};
+}
+
+(async () => {
+  const st = document.getElementById("status");
+  try {
+    const LOADS = ['16px "Arial"', '16px "Segoe UI"', '16px "Times New Roman"', '16px "Consolas"',
+                   '16px "Calibri"', '300 condensed 16px "Bahnschrift"', '300 normal 16px "Bahnschrift"',
+                   '400 normal 16px "Bahnschrift"', '700 normal 16px "Bahnschrift"', '300 16px "Segoe UI Variable"',
+                   '400 16px "Segoe UI Variable"', '700 16px "Segoe UI Variable"', '16px "Twemoji Mozilla"'];
+    window.FONTS = {};
+    for (const q of LOADS) {
+      const r = await document.fonts.load(q);
+      window.FONTS[q] = r.map(x => x.status);
+      if (!r.length || r.some(x => x.status !== "loaded")) throw new Error("font not loaded: " + q);
+    }
+    window.R = {};
+    for (const sp of SPECS) {
+      window.R[sp.id] = await drawCase(sp);
+      window.PROGRESS = Object.keys(window.R).length;
+      st.textContent = `cases: ${window.PROGRESS}/${SPECS.length}`;
+    }
+    window.CASE_COUNT = SPECS.length;
+    st.textContent = `done: ${SPECS.length} cases`;
+    window.DONE = true;
+  } catch (e) {
+    window.ERR = String(e);
+    st.textContent = "error: " + e;
+  }
+})();
+</script>
+</body>
+</html>
