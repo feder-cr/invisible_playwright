@@ -6,6 +6,21 @@ humanised pointer, computed with the CLIENT-SIDE code of commit 5d9ad70
 
 Run against the OLD tree only:
     PYTHONPATH=<worktree at 5d9ad70>/src python gen_golden.py > pointer_golden.json
+
+REVISION 1 (feat/rt-dblmove): the `explicit_pointer` session, the only one with
+a `Mouse.click`, no longer carries the duplicate the client's `Mouse._click`
+made. That click moved to the point (`move`) and `click_at` then moved there
+again as its own approach: two `mousemove` with the same coordinates at the same
+instant before the press, which no mouse reports and a page can count. The
+server now sends the stroke and lets `Actions.click_at` make the one move onto
+the point (`Pointer.click_at`). Only that session changes (one `mousemove`
+fewer; the per-event `latency` draws follow the event ordinal, so the ones
+after it are the draws of the same ordinals); the other three sessions are
+byte-for-byte what the client made at 5d9ad70. Regenerate that session with
+the CURRENT tree, never by hand:
+    PYTHONPATH=<this tree>/src python tests/data/pointer_golden_origin.py --revise-mouse-click
+It refuses to write unless the new session is the old one minus exactly one
+repeated mousemove on the click point.
 """
 import asyncio
 import json
@@ -262,7 +277,85 @@ SCENARIOS = {
         ]},
 }
 
+# ── revision 1: the server's own run of the Mouse.click session ──────────────
+
+def _line(obj):
+    return json.dumps(obj, separators=(", ", ": "))
+
+
+def dump_golden(g):
+    """The file's layout: one line per event, so a diff shows events."""
+    out = ["{", ' "_origin": ' + _line(g["_origin"]) + ",", ' "scenarios": {']
+    names = list(g["scenarios"])
+    for n, name in enumerate(names):
+        sc = g["scenarios"][name]
+        out.append("  %s: {" % json.dumps(name))
+        out.append('   "spec": ' + _line(sc["spec"]) + ",")
+        out.append('   "engine_events": [')
+        evs = sc["engine_events"]
+        for i, e in enumerate(evs):
+            out.append("    " + _line(e) + ("," if i < len(evs) - 1 else ""))
+        out.append("   ]")
+        out.append("  }" + ("," if n < len(names) - 1 else ""))
+    out += [" }", "}"]
+    return "\r\n".join(out) + "\r\n"
+
+
+def revise_mouse_click(path):
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parents[2]
+    sys.path.insert(0, str(root))
+    from invisible_playwright._juggler import pointer as pointer_mod
+    import tests.test_pointer_server as T
+
+    gp = pathlib.Path(path)
+    with open(gp, newline="", encoding="utf-8") as fh:
+        text = fh.read()
+    g = json.loads(text)
+    assert dump_golden(g) == text, \
+        "the writer does not reproduce the file: refusing to rewrite it"
+    name = "explicit_pointer"
+    spec = g["scenarios"][name]["spec"]
+    old = g["scenarios"][name]["engine_events"]
+
+    clock = T.VirtualClock()
+    pointer_mod._CLOCK = clock
+    core_actions.time = SimpleNamespace(
+        sleep=clock.sleep, monotonic=time.monotonic,
+        perf_counter=time.perf_counter)
+    page = T.build_page(clock, T._boxes_of(name), seed=spec["seed"],
+                        number=spec["number"], budget=spec["budget"])
+    T.play(page, clock, spec["ops"])
+    new = json.loads(json.dumps(page.log))
+
+    def shape(evs):  # the latency is a draw per event ordinal, not an event
+        return [{k: v for k, v in e.items() if k != "latency"} for e in evs]
+    point = tuple(spec["ops"][2][1:3])  # the mouse_click op
+    dup = [i for i in range(1, len(old))
+           if old[i]["m"] == old[i - 1]["m"] == "Page.dispatchMouseEvent"
+           and old[i]["type"] == old[i - 1]["type"] == "mousemove"
+           and (old[i]["x"], old[i]["y"]) == (old[i - 1]["x"], old[i - 1]["y"])
+           == point]
+    assert len(dup) == 1, "expected the one repeated move on the click point"
+    assert shape(new) == shape(old[:dup[0]] + old[dup[0] + 1:]), \
+        "the session differs from the old one by more than that move"
+    g["scenarios"][name]["engine_events"] = new
+    g["_origin"]["revisions"] = [{
+        "what": "explicit_pointer: the Mouse.click no longer repeats its mousemove on the click point",
+        "why": "Pointer.click_at sent the endpoint as a move and Actions.click_at moved onto it again before the press; the server now lets click_at make the one move",
+        "change": "one mousemove fewer (same x, y, t as its twin); the other sessions are untouched",
+        "generator": "tests/data/pointer_golden_origin.py --revise-mouse-click, run against feat/rt-dblmove",
+    }]
+    gp.write_text(dump_golden(g), encoding="utf-8", newline="")
+
+
 if __name__ == "__main__":
+    if "--revise-mouse-click" in sys.argv:
+        import pathlib
+        i = sys.argv.index("--revise-mouse-click")
+        revise_mouse_click(sys.argv[i + 1] if len(sys.argv) > i + 1 else
+                           pathlib.Path(__file__).with_name("pointer_golden.json"))
+        sys.exit(0)
     out = {name: {"spec": spec, "engine_events": scenario(spec)}
            for name, spec in SCENARIOS.items()}
     json.dump(out, sys.stdout, indent=1)

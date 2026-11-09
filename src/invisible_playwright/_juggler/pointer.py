@@ -750,14 +750,26 @@ class Pointer:
         hand.last_event_at = _CLOCK.now()
 
     def click_at(self, x: float, y: float, run: Callable[[], Any]) -> Any:
-        """`Mouse.click`: the stroke, the exact endpoint, then the click `run`
-        makes. The endpoint goes out as its own move first, as it always did
-        when the stroke was the client's (`Mouse._click` called `move`)."""
-        if self.hand is not None:
-            self.travel(x, y)
-            self.actions.move(x, y)
+        """`Mouse.click`: the stroke, then the click `run` makes.
+
+        ⛔ THE ENDPOINT IS EMITTED ONCE. The stroke stops short of it
+        (`travel`), and `run` is `Actions.click_at`, whose own approach is the
+        one `mousemove` onto the exact point before the press. This used to send
+        the endpoint as a move of its own first (as the client's `Mouse._click`
+        did), so the engine got two `mousemove` with the same coordinates at the
+        same instant: no mouse reports that, and a page can count it. A hand
+        arrives at the button in one last motion and presses; so the last
+        waypoint is the click's own approach, and nothing else lands on the
+        point before the press. Every transport comes here (`op_mouse_click`),
+        so the sequence is one.
+        """
+        if self.hand is None:
+            return run()
+        self.travel(x, y)
+        try:
+            return run()
+        finally:
             self.hand.synced = getattr(self.actions, "position", None)
-        return run()
 
     def wheel(self, dx: float, dy: float) -> bool:
         """`Mouse.wheel` as a burst of detents with the hand on the mouse.
