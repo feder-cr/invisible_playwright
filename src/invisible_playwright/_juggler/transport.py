@@ -86,19 +86,6 @@ def _translate_exception(failure: BaseException) -> BaseException:
     return parse_error(_error_payload(failure))
 
 
-def _settle_result(future: asyncio.Future, result: Any) -> None:
-    """⛔ Guarded: a future the caller already cancelled must not be resolved
-    again - `asyncio.Future.set_result` on a cancelled future raises, and this
-    runs on the loop where that exception would have nowhere useful to go."""
-    if not future.done():
-        future.set_result(result)
-
-
-def _settle_exception(future: asyncio.Future, failure: BaseException) -> None:
-    if not future.done():
-        future.set_exception(failure)
-
-
 class InProcessTransport(Transport):
     """A `Transport` whose other end is a Python object, not a subprocess."""
 
@@ -115,85 +102,6 @@ class InProcessTransport(Transport):
         self._stopped_future: asyncio.Future = loop.create_future()
         self._threads: list = []
         server.attach(self)
-
-    # ── the fused-type escape hatch ──────────────────────────────────────────
-    def bind_impl_objects(self, objects: Dict[str, Any],
-                          deliver_event: Any) -> None:
-        """Give the server a live view of the CLIENT's guid registry, and its
-        way to deliver an event under the correct execution context.
-
-        ⛔ THE ONLY BRIDGE BETWEEN THE TWO GRAPHS. `objects` is a REFERENCE,
-        not a copy: the client mutates it in place as it creates and disposes
-        things, so this always sees the CURRENT state with nothing to go
-        stale. It exists because a FUSED type - one with no `__create__` and no
-        guid of its own - still needs to reach the live impl-side object a
-        SIBLING guid corresponds to (a Dialog needs its Page's twin, to find
-        the BrowserContext to notify).
-
-        ⛔ AND `deliver_event` IS NOT OPTIONAL EITHER, found by an actual
-        dialog hanging rather than by the unit suite. `Connection.dispatch`
-        wraps every wire event in an `EventGreenlet` under the sync facade, so
-        a handler that calls an async method (`dialog.accept()`) can suspend
-        into it and resume. A fused type delivers its event directly, never
-        through `dispatch`, so without this it never gets that wrapping - and
-        the handler hangs with no exception, because it suspended into a fiber
-        with nobody on the other end of the switch. Dialog is the first user
-        of both, 2026-08-29.
-        """
-        self._server.bind_twins(objects, deliver_event)
-
-    def run_blocking(self, fn: Any, *args: Any) -> asyncio.Future:
-        """Run `fn(*args)` on this transport's OWN worker pool; return an
-        awaitable that resolves on the LOOP once it is done.
-
-        ⛔ THE SAME POOL AS EVERY CHANNEL MESSAGE, on purpose: a fused type's
-        blocking call and a channel-routed call must never be able to starve
-        each other by running on separate pools with separate limits. `_work`
-        below accepts a plain callable exactly as it accepts a message dict,
-        from the SAME queue, serviced by the SAME four threads.
-
-        ⛔ AND THE EXCEPTION IS TRANSLATED, not passed through raw. `fn` runs
-        `_juggler` code and can raise `_juggler.dispatcher.TargetClosedError` -
-        a DIFFERENT CLASS than `_pw._impl._errors.TargetClosedError` with the
-        SAME NAME. A fused type's own exception handling
-        (`is_target_closed_error`) checks the FORK's class by `isinstance`, so
-        a raw `_juggler` exception reaching it would look like an ordinary
-        error and never be swallowed - reproducing, through this new path, the
-        exact regression fixed on 2026-08-29 in `Page.close()`. The
-        translation below goes through `parse_error`, the same one the
-        message-envelope path already uses: not a second way of doing it, the
-        one way, reused.
-        """
-        future: asyncio.Future = self._loop.create_future()
-
-        def job() -> None:
-            try:
-                result = fn(*args)
-            except Exception as failure:
-                translated = _translate_exception(failure)
-                self._loop.call_soon_threadsafe(_settle_exception, future,
-                                                translated)
-            else:
-                self._loop.call_soon_threadsafe(_settle_result, future, result)
-
-        self._queue.put(job)
-        return future
-
-    def call_soon(self, fn: Any, *args: Any) -> None:
-        """Hand a call to the LOOP thread, fire-and-forget - the
-        construction half of what `run_blocking` does for a call whose
-        RESULT matters. A fused type's incoming EVENT (a dialog that just
-        opened, built on the connection's read-loop thread) needs this to
-        reach the code that must run on the asyncio loop, exactly like every
-        message this transport already delivers via `emit_message` below -
-        just carrying a real object instead of a wire message.
-        """
-        if self._stopped.is_set():
-            return
-        try:
-            self._loop.call_soon_threadsafe(fn, *args)
-        except RuntimeError:
-            pass  # the loop is already closed; nobody is left to receive it
 
     # ── the five methods the seam declares ──────────────────────────────────
     async def connect(self) -> None:
@@ -243,13 +151,6 @@ class InProcessTransport(Transport):
             item = self._queue.get()
             if item is None:
                 return
-            # ⛔ A PLAIN CALLABLE IS A JOB FROM `run_blocking`, and a dict is a
-            # channel message: the same queue, the same four threads, told
-            # apart by shape rather than by a second queue that would split
-            # the pool in two.
-            if callable(item):
-                item()
-                continue
             message = item
             try:
                 result = self._server.handle(message)

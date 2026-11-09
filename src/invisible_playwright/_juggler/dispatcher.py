@@ -207,48 +207,10 @@ class Server:
         self._on_shutdown: list = []
         #: What `shutdown` runs after every hook. See `after_shutdown`.
         self._after_shutdown: list = []
-        #: guid -> the live impl-side object for it, or None until a
-        #: transport binds it. See `bind_twins`.
-        self._twins: Optional[Dict[str, Any]] = None
-        #: The client's `Connection.deliver_event`, or None until bound. See
-        #: `bind_twins` and `deliver`.
-        self._deliver_event: Any = None
 
     # ── plumbing ────────────────────────────────────────────────────────────
     def attach(self, transport: Any) -> None:
         self._transport = transport
-
-    def bind_twins(self, objects: Dict[str, Any], deliver_event: Any) -> None:
-        """Give this server a live view of the client's guid -> object
-        registry, and its event-delivery entry point. See
-        `InProcessTransport.bind_impl_objects`, which calls this - the
-        docstring for WHY lives there, next to its one caller."""
-        self._twins = objects
-        self._deliver_event = deliver_event
-
-    def twin(self, guid: str) -> Any:
-        """The live impl-side object for a guid this server already created,
-        or None if nothing is bound yet or the guid is unknown."""
-        return (self._twins or {}).get(guid)
-
-    def deliver(self, fn: Any, *args: Any) -> None:
-        """Call `fn(*args)` as an event, under the client's own rules for
-        what that means (see `Connection.deliver_event`). MUST be called from
-        the asyncio loop thread - use `call_soon` to get there first."""
-        self._deliver_event(fn, *args)
-
-    def run_blocking(self, fn: Any, *args: Any) -> Any:
-        """A fused dispatcher's way to run a blocking call off the loop.
-        Delegates to the transport, which owns the worker pool; see
-        `InProcessTransport.run_blocking` for why this exists and what it
-        guards against."""
-        return self._transport.run_blocking(fn, *args)
-
-    def call_soon(self, fn: Any, *args: Any) -> None:
-        """A fused dispatcher's way to hand an EVENT to the asyncio loop from
-        the connection's read-loop thread. See
-        `InProcessTransport.call_soon`."""
-        self._transport.call_soon(fn, *args)
 
     def send_up(self, message: Dict) -> None:
         if self._transport is not None:

@@ -65,25 +65,6 @@ EXPECTED_DIFFERENCES = {
     # this line is where to start.
     ("ElementHandle", "event", "previewUpdated"),
     ("JSHandle", "event", "previewUpdated"),
-    # ⛔ `Dialog` FUSED on 2026-08-29: no `__create__`, no channel, no
-    # `BrowserContext.dialog` wire event - see `_pw/_impl/_dialog.py`. The
-    # driver still allocates a real channel object for it (parented under
-    # `Page`, with `type`/`message`/`defaultValue`/`page` in its initializer)
-    # and announces it with a `dialog` event on `BrowserContext`; this server
-    # builds the same object directly, on the connection's read-loop thread,
-    # and hands it straight to the listener through the twin bridge in
-    # `InProcessTransport.bind_impl_objects`. The three lines below were
-    # measured EMPTY before this fusion - `capture_protocol.py`'s scripted
-    # session did not open a dialog at all, so a `PARITY` verdict for this
-    # type would have been vacuous, not a confirmation. It now clicks a
-    # button that calls `alert()` and accepts it, so the gap below is a
-    # measured, argued difference, not an unexercised one.
-    ("Dialog", "initializer", "type"),
-    ("Dialog", "initializer", "message"),
-    ("Dialog", "initializer", "defaultValue"),
-    ("Dialog", "initializer", "page"),
-    ("Dialog", "parent", "Page"),
-    ("BrowserContext", "event", "dialog"),
 }
 
 
