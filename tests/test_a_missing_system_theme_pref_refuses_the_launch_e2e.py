@@ -54,7 +54,10 @@ def _launch(firefox_binary, drop):
             assert _drop(Path(profile_dir) / "user.js", {drop}) == 1, (
                 "%s is not declared by this core, so there is nothing to remove" % drop)
         return conn.launch(firefox_binary, profile_dir, headless=True,
-                           env=plan.env, ready_timeout=60.0), profile_dir
+                           # A refusal ends in an abort on purpose, and the crash reporter would open
+                           # a window on the desktop of whoever runs the test.
+                           env=dict(plan.env, MOZ_CRASHREPORTER_DISABLE="1"),
+                           ready_timeout=60.0), profile_dir
     except BaseException:
         shutil.rmtree(profile_dir, ignore_errors=True)
         raise
