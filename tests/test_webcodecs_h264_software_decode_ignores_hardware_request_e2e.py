@@ -13,9 +13,10 @@ read the host. dom/media/webcodecs/DecoderTemplate.cpp's
 (``gfx::StealthEngineActive()``): always software (libyuv, fixed Firefox
 code), never the driver's own blit.
 
-This is firefox-60 checklist goal 6b: "Frame di WebCodecs letti dalla pagina
-mai convertiti dal VideoProcessor della GPU dell'host" - "col motore acceso si
-resta sul percorso libyuv; e2e sull'hash di copyTo uguale al retail software".
+This is firefox-60 checklist goal 6b: frames a page reads through WebCodecs
+must never be converted by the host's GPU VideoProcessor; with the engine on
+it stays on the libyuv path, verified by an e2e on the copyTo hash matching
+retail's software path.
 
 Same stream as test_webcodecs_h264_bframe_pts_order_e2e.py (the 96-frame 1080p
 clip, has_b_frames 2, vendored at
