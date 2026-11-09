@@ -3218,15 +3218,29 @@ class PageDispatcher(Dispatcher):
         raising anything.
         """
         out: Dict[str, Any] = {}
+        reset = False
         for ours, theirs in (("colorScheme", "colorScheme"),
                              ("reducedMotion", "reducedMotion"),
                              ("forcedColors", "forcedColors"),
                              ("contrast", "contrast"),
                              ("media", "type")):
             value = params.get(ours)
-            if value is not None:
-                out[theirs] = value
-        if not out:
+            if value is None:
+                continue
+            # ⛔ "no-override" IS THE CALLER TAKING A FEATURE BACK, NOT A VALUE.
+            # Playwright's `emulateMedia({colorScheme: null})` arrives so, and
+            # the engine's enum has no such member: it refuses it by name. What
+            # it means is "nothing imposed", which for the engine is the field
+            # left out (the call replaces the page's whole emulation) or, for
+            # the medium, the empty type. The scheme then goes back to what the
+            # persona declared, never to the host.
+            if value == NO_OVERRIDE:
+                reset = True
+                if ours == "media":
+                    out[theirs] = ""
+                continue
+            out[theirs] = value
+        if not out and not reset:
             return None
         self.send("Page.setEmulatedMedia", out)
         return None
@@ -4080,6 +4094,12 @@ class BrowserContextDispatcher(Dispatcher):
         return None
 
 
+# The value Playwright's client sends for "this option is not overridden".
+NO_OVERRIDE = "no-override"
+# The context options whose enum the engine does not extend with it.
+NO_OVERRIDE_OPTIONS = ("colorScheme", "reducedMotion", "forcedColors")
+
+
 class BrowserDispatcher(Dispatcher):
     TYPE = "Browser"
     METHODS = {"newContext": "op_new_context", "close": "op_close",
@@ -4652,6 +4672,17 @@ class BrowserDispatcher(Dispatcher):
         for name, command, field in self.ENGINE_OPTIONS:
             value = params.get(name)
             if value in (None, ""):
+                continue
+            # ⛔ "no-override" IS NOT A SCHEME, A MOTION OR A COLOUR MODE. The Go
+            # client (and `new_context(color_scheme=None)` in the Python one)
+            # sends it for a context that asks for nothing, and Playwright's own
+            # server reads it as "no override". Passing it on made the engine
+            # refuse the whole context (`Expected <root>.colorScheme to be one
+            # of [dark, light, no-preference]`). Nothing is sent: the context
+            # keeps the persona's declaration (`ui.systemUsesDarkTheme`), which
+            # is what a context with no override is for. An explicit "dark",
+            # "light" or "no-preference" still goes out, as before.
+            if name in NO_OVERRIDE_OPTIONS and value == NO_OVERRIDE:
                 continue
             if name == "locale":
                 # ⛔ THE ENGINE TAKES A LANGUAGE LIST, NOT A TAG. The context's
