@@ -1,0 +1,151 @@
+{
+ "fonts": {
+  "menu": {
+   "family": "Segoe UI",
+   "size": "12px",
+   "weight": "400",
+   "style": "normal",
+   "stretch": "100%"
+  },
+  "caption": {
+   "family": "Segoe UI",
+   "size": "12px",
+   "weight": "400",
+   "style": "normal",
+   "stretch": "100%"
+  },
+  "icon": {
+   "family": "Segoe UI",
+   "size": "12px",
+   "weight": "400",
+   "style": "normal",
+   "stretch": "100%"
+  },
+  "message-box": {
+   "family": "Segoe UI",
+   "size": "12px",
+   "weight": "400",
+   "style": "normal",
+   "stretch": "100%"
+  },
+  "small-caption": {
+   "family": "Segoe UI",
+   "size": "12px",
+   "weight": "400",
+   "style": "normal",
+   "stretch": "100%"
+  },
+  "status-bar": {
+   "family": "Segoe UI",
+   "size": "12px",
+   "weight": "400",
+   "style": "normal",
+   "stretch": "100%"
+  },
+  "system-ui": {
+   "family": "system-ui",
+   "size": "16px",
+   "weight": "400",
+   "style": "normal",
+   "stretch": "100%"
+  }
+ },
+ "light": {
+  "Canvas": "rgb(255, 255, 255)",
+  "CanvasText": "rgb(0, 0, 0)",
+  "LinkText": "rgb(0, 0, 238)",
+  "VisitedText": "rgb(85, 26, 139)",
+  "ActiveText": "rgb(238, 0, 0)",
+  "ButtonFace": "rgb(233, 233, 237)",
+  "ButtonText": "rgb(0, 0, 0)",
+  "ButtonBorder": "rgb(129, 127, 132)",
+  "Field": "rgb(255, 255, 255)",
+  "FieldText": "rgb(0, 0, 0)",
+  "GrayText": "rgb(109, 109, 109)",
+  "Highlight": "rgb(0, 120, 212)",
+  "HighlightText": "rgb(255, 255, 255)",
+  "Mark": "rgb(255, 255, 0)",
+  "MarkText": "rgb(0, 0, 0)",
+  "SelectedItem": "rgb(0, 120, 212)",
+  "SelectedItemText": "rgb(255, 255, 255)",
+  "AccentColor": "rgb(0, 96, 223)",
+  "AccentColorText": "rgb(255, 255, 255)",
+  "ActiveBorder": "rgb(129, 127, 132)",
+  "ActiveCaption": "rgb(255, 255, 255)",
+  "AppWorkspace": "rgb(255, 255, 255)",
+  "Background": "rgb(255, 255, 255)",
+  "ButtonHighlight": "rgb(233, 233, 237)",
+  "ButtonShadow": "rgb(233, 233, 237)",
+  "CaptionText": "rgb(0, 0, 0)",
+  "InactiveBorder": "rgb(129, 127, 132)",
+  "InactiveCaption": "rgb(255, 255, 255)",
+  "InactiveCaptionText": "rgb(109, 109, 109)",
+  "InfoBackground": "rgb(255, 255, 255)",
+  "InfoText": "rgb(0, 0, 0)",
+  "Menu": "rgb(255, 255, 255)",
+  "MenuText": "rgb(0, 0, 0)",
+  "Scrollbar": "rgb(255, 255, 255)",
+  "ThreeDDarkShadow": "rgb(129, 127, 132)",
+  "ThreeDFace": "rgb(233, 233, 237)",
+  "ThreeDHighlight": "rgb(129, 127, 132)",
+  "ThreeDLightShadow": "rgb(129, 127, 132)",
+  "ThreeDShadow": "rgb(129, 127, 132)",
+  "Window": "rgb(255, 255, 255)",
+  "WindowFrame": "rgb(129, 127, 132)",
+  "WindowText": "rgb(0, 0, 0)"
+ },
+ "dark": {
+  "Canvas": "rgb(28, 27, 34)",
+  "CanvasText": "rgb(251, 251, 254)",
+  "LinkText": "rgb(0, 202, 219)",
+  "VisitedText": "rgb(255, 173, 255)",
+  "ActiveText": "rgb(255, 102, 102)",
+  "ButtonFace": "rgb(43, 42, 51)",
+  "ButtonText": "rgb(251, 251, 254)",
+  "ButtonBorder": "rgb(148, 146, 151)",
+  "Field": "rgb(43, 42, 51)",
+  "FieldText": "rgb(251, 251, 254)",
+  "GrayText": "rgb(117, 116, 122)",
+  "Highlight": "rgba(0, 221, 255, 0.306)",
+  "HighlightText": "rgb(0, 0, 0)",
+  "Mark": "rgb(255, 255, 0)",
+  "MarkText": "rgb(0, 0, 0)",
+  "SelectedItem": "rgb(0, 221, 255)",
+  "SelectedItemText": "rgb(43, 42, 51)",
+  "AccentColor": "rgb(0, 96, 223)",
+  "AccentColorText": "rgb(255, 255, 255)",
+  "ActiveBorder": "rgb(57, 57, 57)",
+  "ActiveCaption": "rgb(28, 27, 34)",
+  "AppWorkspace": "rgb(28, 27, 34)",
+  "Background": "rgb(28, 27, 34)",
+  "ButtonHighlight": "rgb(43, 42, 51)",
+  "ButtonShadow": "rgb(43, 42, 51)",
+  "CaptionText": "rgb(251, 251, 254)",
+  "InactiveBorder": "rgb(57, 57, 57)",
+  "InactiveCaption": "rgb(28, 27, 34)",
+  "InactiveCaptionText": "rgb(251, 251, 254)",
+  "InfoBackground": "rgb(28, 27, 34)",
+  "InfoText": "rgb(251, 251, 254)",
+  "Menu": "rgb(43, 42, 51)",
+  "MenuText": "rgb(251, 251, 254)",
+  "Scrollbar": "rgb(28, 27, 34)",
+  "ThreeDDarkShadow": "rgb(34, 33, 40)",
+  "ThreeDFace": "rgb(43, 42, 51)",
+  "ThreeDHighlight": "rgb(148, 146, 151)",
+  "ThreeDLightShadow": "rgb(148, 146, 151)",
+  "ThreeDShadow": "rgb(148, 146, 151)",
+  "Window": "rgb(28, 27, 34)",
+  "WindowFrame": "rgb(117, 116, 122)",
+  "WindowText": "rgb(251, 251, 254)"
+ },
+ "selection": {
+  "light": {
+   "color": "rgb(0, 0, 0)",
+   "bg": "rgba(0, 0, 0, 0)"
+  },
+  "dark": {
+   "color": "rgb(0, 0, 0)",
+   "bg": "rgba(0, 0, 0, 0)"
+  }
+ }
+}
