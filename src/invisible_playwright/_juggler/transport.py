@@ -53,6 +53,8 @@ from typing import Any, Dict, Optional
 from invisible_playwright._pw._impl._helper import parse_error
 from invisible_playwright._pw._impl._transport import Transport
 
+from . import wire
+
 
 def _error_payload(failure: BaseException) -> Dict[str, str]:
     """The `{name, message, stack}` shape both an error REPLY and a
@@ -302,6 +304,43 @@ class InProcessTransport(Transport):
             out["log"] = list(log)
         self.emit_message(out)
 
+class JsonWireTransport(InProcessTransport):
+    """`InProcessTransport` with the wire between the two ends: every message crosses as the
+    JSON text a socket would carry, in both directions.
+
+    ⛔ THIS IS THE CHECK, NOT THE SOCKET. The remote transport (`remote.py`) sends the same
+    text over a WebSocket; this class sends it between two Python objects, so the whole
+    existing suite can run on it with no network and no second process, and any value that
+    JSON would change or lose (`wire.py`) fails here, at the line that built it, naming the
+    path inside the message.
+
+    A client message that is not JSON raises from `send` to its caller. A server REPLY that
+    is not JSON becomes an error reply for the same id (so the call that caused it fails
+    with the path in its message); a server EVENT that is not JSON cannot be answered, so it
+    is dropped and recorded in `wire_errors`, which a test asserts empty.
+    """
+
+    def __init__(self, loop: asyncio.AbstractEventLoop, server: Any) -> None:
+        super().__init__(loop, server)
+        self.wire_errors: list = []
+
+    def send(self, message: Dict) -> None:
+        super().send(wire.round_trip(message))
+
+    def emit_message(self, message: Dict) -> None:
+        try:
+            carried = wire.round_trip(message)
+        except wire.WireError as problem:
+            self.wire_errors.append(problem)
+            msg_id = message.get("id") if isinstance(message, dict) else None
+            if msg_id is not None and "error" not in message:
+                super().emit_message({"id": msg_id, "error": {"error": {
+                    "name": "Error", "message": "the reply is not JSON: %s" % problem,
+                    "stack": ""}}})
+            return
+        super().emit_message(carried)
+
+
 # ── choosing one ────────────────────────────────────────────────────────────
 #
 # ⛔ THIS WAS A MODULE OF ITS OWN UNTIL 2026-08-29, and what it chose between
@@ -320,6 +359,9 @@ class InProcessTransport(Transport):
 # shell, and "unknown transport" would tell them nothing about what happened.
 
 CHOICE_ENV = "INVPW_TRANSPORT"
+#: `json` puts the wire between the client and the server (`JsonWireTransport`), as it is
+#: for a remote client. Off by default: local use passes the dicts as it always did.
+WIRE_ENV = "INVPW_WIRE"
 DRIVER = "driver"
 JUGGLER = "juggler"
 
@@ -342,4 +384,6 @@ def make_transport(loop: asyncio.AbstractEventLoop) -> "InProcessTransport":
             "INVPW_DRIVER_TREE at it. Both `judge_both_transports.py` and "
             "`diff_protocol.py` read that variable." % CHOICE_ENV)
     from .server import JugglerServer
+    if (os.environ.get(WIRE_ENV) or "").strip().lower() == "json":
+        return JsonWireTransport(loop, JugglerServer())
     return InProcessTransport(loop, JugglerServer())
