@@ -1,6 +1,7 @@
-"""Fontconfig reads nothing of the host (e2e, Linux): no process of the browser,
-parent or content, opens, stats or probes the host's fontconfig
-configuration or its font directories.
+"""Fontconfig reads nothing of the host (e2e, Linux): no process of the browser opens
+the host's fontconfig configuration or its font files, and no content process looks at
+them at all (open, stat, access, readlink). The parent's own existence probes (lstat,
+stat, access, readlink) are not reads: see ``judge``.
 
 The engine runs fontconfig on an empty configuration installed before the
 first ``FcInit()`` (``StealthFcEmptyConfig``, nsLookAndFeel and the platform
@@ -8,9 +9,16 @@ font list); the fonts are the bundle's. The engine's own gtest only looks at
 the final state, so it would also pass if the host's configuration had been
 loaded first, by GTK, Pango or anything else, and replaced afterwards. What
 sees the order is the system calls themselves: the browser runs under
-``strace -f`` and a page with text is drawn, and a single look at
+``strace -f`` and a page with text is drawn, and one ``open`` of
 ``/etc/fonts``, ``~/.config/fontconfig``, ``$FONTCONFIG_FILE`` or
-``/usr/share/fonts`` by any process fails the test.
+``/usr/share/fonts`` by any process, or one ``stat`` there by a content process, fails
+the test.
+
+Why the parent's existence probes pass: the parent builds the permissions of the content
+sandbox (SandboxBrokerPolicyFactory::InitContentPolicy) and, for each path a content
+process may be given, asks whether it exists (``lstat``, ``stat``). It opens nothing and
+no byte of those files enters the process; a page cannot see the call. Fontconfig that
+read the host would ``open`` its configuration, and that is what fails.
 
 strace runs through a stand-in tree: a temporary directory with a link to
 every file of the engine's directory, where the executable is a script that
@@ -156,6 +164,33 @@ def _host_lookups(log: Path, real_binary: str) -> dict:
     return dict(found)
 
 
+# What a call does to a path. An existence probe is the question "is it there": no byte is read.
+_OPENS = ("open", "openat", "openat2", "creat")
+
+
+def _call_of(line: str) -> str:
+    m = _LINE.match(line)
+    return m.group(2) if m else ""
+
+
+def judge(found: dict) -> dict:
+    """The part of ``_host_lookups``' result that fails the test.
+
+    - any process that OPENS a host fontconfig or font path (an open that fails with ENOENT
+      too: it is fontconfig trying to read its configuration);
+    - a content process that does anything at all there (stat, access, readlink included):
+      content has no reason to look, and it is the process a page runs in.
+
+    The parent's existence probes (stat, lstat, newfstatat, statx, access, faccessat, readlink)
+    are ignored, for the reason in the module's docstring."""
+    bad = {}
+    for who, hits in found.items():
+        kept = list(hits) if who == "content" else [h for h in hits if _call_of(h) in _OPENS]
+        if kept:
+            bad[who] = kept
+    return bad
+
+
 def _kill_group(pidfile: Path) -> None:
     """Kill the stand-in's process group: strace, the browser and its children.
 
@@ -254,7 +289,7 @@ def test_no_process_reads_the_host_fontconfig(firefox_binary, tmp_path, engine_a
     text = log.read_text(errors="replace")
     assert "-contentproc" in text, (
         "strace saw no content process, so the test could not judge one")
-    found = _host_lookups(log, real)
+    found = judge(_host_lookups(log, real))
     report = []
     for who, hits in sorted(found.items()):
         pids = sorted({int(h.split()[0]) for h in hits})
@@ -269,5 +304,5 @@ def test_no_process_reads_the_host_fontconfig(firefox_binary, tmp_path, engine_a
         report += ["  " + n for n in names[:12]]
         report += ["  " + h[:240] for h in hits[:4]]
     assert not found, (
-        "the browser looked at the host's fontconfig (%s):\n%s"
+        "the browser opened the host's fontconfig, or a content process looked at it (%s):\n%s"
         % (", ".join(_host_font_paths()), "\n".join(report)))
