@@ -351,21 +351,44 @@ def test_audio_offline_context_deterministic(page):
 @pytest.mark.e2e
 def test_webgl_getParameter_deterministic(page):
     """WebGL parameters must not drift across reads."""
-    ok = _ev(page, """() => {
+    res = _ev(page, """() => {
+        const norm = v => (ArrayBuffer.isView(v) ? Array.from(v) : v);
         const c = document.createElement('canvas');
         const gl = c.getContext('webgl');
-        if (!gl) return false;
+        if (!gl) {
+            return {ok: false, reason: 'gl null',
+                    webgl2: !!c.getContext('webgl2')};
+        }
+        if (gl.isContextLost()) {
+            return {ok: false, reason: 'context lost'};
+        }
+        const names = ['MAX_TEXTURE_SIZE', 'MAX_VIEWPORT_DIMS',
+                       'MAX_RENDERBUFFER_SIZE', 'MAX_VERTEX_ATTRIBS'];
         const params = [gl.MAX_TEXTURE_SIZE, gl.MAX_VIEWPORT_DIMS,
-                       gl.MAX_RENDERBUFFER_SIZE, gl.MAX_VERTEX_ATTRIBS];
-        const ref = JSON.stringify(params.map(p => gl.getParameter(p)));
+                        gl.MAX_RENDERBUFFER_SIZE, gl.MAX_VERTEX_ATTRIBS];
+        const read = () => params.map(p => norm(gl.getParameter(p)));
+        const ref = read();
+        const refJson = JSON.stringify(ref);
         for (let i = 0; i < 50; i++) {
-            if (JSON.stringify(params.map(p => gl.getParameter(p))) !== ref) {
-                return false;
+            const cur = read();
+            if (JSON.stringify(cur) !== refJson) {
+                if (gl.isContextLost()) {
+                    return {ok: false, reason: 'context lost', round: i + 1};
+                }
+                const k = cur.findIndex(
+                    (v, j) => JSON.stringify(v) !== JSON.stringify(ref[j]));
+                return {ok: false, reason: 'drift', round: i + 1,
+                        param: names[k], first: cur[k], ref: ref[k]};
             }
         }
-        return true;
+        return {ok: true};
     }""")
-    assert ok
+    assert res["ok"], (
+        f"WebGL getParameter check failed: reason={res.get('reason')!r} "
+        f"webgl2={res.get('webgl2')!r} round={res.get('round')!r} "
+        f"param={res.get('param')!r} first={res.get('first')!r} "
+        f"ref={res.get('ref')!r}"
+    )
 
 
 # ===========================================================================
