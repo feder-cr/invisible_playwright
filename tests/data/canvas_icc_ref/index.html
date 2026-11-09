@@ -1,0 +1,102 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>canvas colour readback probe</title>
+<body>
+<script>
+"use strict";
+// Reads, from a page served on localhost, the bytes the canvas 2D hands back after a tagged image is
+// drawn (drawImage, createImageBitmap) and after fillRect with CSS colour functions. Result: window.R.
+const hex = (u8) => Array.from(u8, (b) => b.toString(16).padStart(2, "0")).join("");
+async function sha(u8) { return hex(new Uint8Array(await crypto.subtle.digest("SHA-256", u8))); }
+
+async function readCanvas(c) {
+  const ctx = c.getContext("2d");
+  const d = ctx.getImageData(0, 0, c.width, c.height).data;
+  const u8 = new Uint8Array(d.buffer, d.byteOffset, d.byteLength);
+  return { sha256: await sha(u8), rgba_hex: hex(u8) };
+}
+
+function loadImage(url) {
+  return new Promise((res, rej) => {
+    const i = new Image();
+    i.onload = () => res(i);
+    i.onerror = () => rej(new Error("image load failed " + url));
+    i.src = url;
+  });
+}
+
+async function drawProbe(draw, size) {
+  const c = document.createElement("canvas");
+  c.width = size; c.height = size;
+  const ctx = c.getContext("2d");
+  ctx.clearRect(0, 0, size, size);
+  await draw(ctx, size);
+  return readCanvas(c);
+}
+
+const FILLS = [
+  "color(srgb 1 0 0)", "color(srgb 0.2 0.8 0.4)",
+  "color(display-p3 1 0 0)", "color(display-p3 0 1 0)", "color(display-p3 0.2 0.8 0.4)", "color(display-p3 0.5 0.5 0.5)",
+  "color(a98-rgb 0.2 0.8 0.4)", "color(prophoto-rgb 0.2 0.8 0.4)", "color(rec2020 0.2 0.8 0.4)",
+  "color(xyz-d65 0.2 0.3 0.4)", "color(xyz-d50 0.2 0.3 0.4)",
+  "color-mix(in oklab, red 30%, blue)", "color-mix(in srgb, red 30%, blue)", "color-mix(in display-p3, color(display-p3 1 0 0) 30%, blue)",
+  "color-mix(in oklch, #336699 40%, #cc9933)", "oklab(0.6 0.1 -0.1)", "oklch(0.7 0.15 150)", "lab(60 40 -30)", "lch(60 40 200)",
+  "hsl(200 60% 40%)", "#336699", "rgba(51,102,153,0.5)",
+];
+
+async function run() {
+  const R = { env: {}, images: {}, fills: {}, canvas_colorspace: {} };
+  const mq = (q) => { try { return matchMedia(q).matches; } catch (e) { return "error"; } };
+  R.env = {
+    "color-gamut:srgb": mq("(color-gamut: srgb)"), "color-gamut:p3": mq("(color-gamut: p3)"), "color-gamut:rec2020": mq("(color-gamut: rec2020)"),
+    "dynamic-range:high": mq("(dynamic-range: high)"), "video-dynamic-range:high": mq("(video-dynamic-range: high)"),
+    "prefers-color-scheme:dark": mq("(prefers-color-scheme: dark)"),
+    colorDepth: screen.colorDepth, pixelDepth: screen.pixelDepth, devicePixelRatio: window.devicePixelRatio,
+  };
+  const list = await (await fetch("images.json")).json();
+  for (const it of list) {
+    const out = { tag: it.tag };
+    try {
+      const img = await loadImage(it.file);
+      out.natural = [img.naturalWidth, img.naturalHeight];
+      out.drawImage = await drawProbe((ctx) => ctx.drawImage(img, 0, 0), 16);
+      out.drawImage_scaled32 = await drawProbe((ctx) => ctx.drawImage(img, 0, 0, 32, 32), 32);
+      const blob = await (await fetch(it.file)).blob();
+      for (const csc of ["default", "none"]) {
+        try {
+          const bmp = await createImageBitmap(blob, { colorSpaceConversion: csc });
+          out["bitmap_" + csc] = await drawProbe((ctx) => ctx.drawImage(bmp, 0, 0), 16);
+          bmp.close();
+        } catch (e) { out["bitmap_" + csc] = { error: String(e) }; }
+      }
+    } catch (e) { out.error = String(e); }
+    R.images[it.id] = out;
+  }
+  for (const f of FILLS) {
+    try {
+      const c = document.createElement("canvas"); c.width = 16; c.height = 16;
+      const ctx = c.getContext("2d");
+      ctx.fillStyle = "#010203"; ctx.fillStyle = f;
+      if (ctx.fillStyle === "#010203") { R.fills[f] = { unsupported: true }; continue; }
+      ctx.fillRect(0, 0, 16, 16);
+      const r = await readCanvas(c);
+      R.fills[f] = { sha256: r.sha256, rgba: r.rgba_hex.slice(0, 8), fillStyle_readback: ctx.fillStyle };
+    } catch (e) { R.fills[f] = { error: String(e) }; }
+  }
+  // canvas with colorSpace option and putImageData/getImageData colorSpace
+  try {
+    const c = document.createElement("canvas"); c.width = 16; c.height = 16;
+    const ctx = c.getContext("2d", { colorSpace: "display-p3" });
+    const attrs = ctx.getContextAttributes ? ctx.getContextAttributes() : null;
+    R.canvas_colorspace.attributes = attrs ? { colorSpace: attrs.colorSpace } : "no getContextAttributes";
+    R.canvas_colorspace.ctx_colorSpace = ctx.colorSpace === undefined ? "undefined" : ctx.colorSpace;
+    ctx.fillStyle = "color(display-p3 1 0 0)"; ctx.fillRect(0, 0, 16, 16);
+    const r = await readCanvas(c);
+    R.canvas_colorspace.p3_fill_p3_canvas = { sha256: r.sha256, rgba: r.rgba_hex.slice(0, 8) };
+  } catch (e) { R.canvas_colorspace.error = String(e); }
+  window.R = R;
+  window.DONE = true;
+}
+run().catch((e) => { window.ERR = String(e && e.stack || e); });
+</script>
+</body>
