@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import re
 import shutil
+import sys
 import tempfile
 from pathlib import Path
 
@@ -63,7 +64,14 @@ def _launch(firefox_binary, drop):
         raise
 
 
+# Linux only: on Windows the engine takes these from the Windows toolkit as retail does
+# (StealthVerifySystemTheme in widget/StealthSystemFonts.cpp returns unless MOZ_WIDGET_GTK), so a
+# missing ui.* pref does not refuse there (candidate 42673795394's Windows gate: DID NOT RAISE).
+ON_WINDOWS = sys.platform == "win32"
+
+
 @pytest.mark.e2e
+@pytest.mark.skipif(ON_WINDOWS, reason="the system theme is declared, and its absence refused, on Linux only")
 @pytest.mark.parametrize("pref", MISSING)
 def test_a_missing_pref_refuses_the_launch(firefox_binary, engine_at_least, pref):
     engine_at_least("firefox-60")
