@@ -3777,12 +3777,13 @@ class StreamDispatcher(Dispatcher):
         self._file.close()
         return None
 
-    def dispose(self, reason: Optional[str] = None) -> None:
+    def released(self) -> None:
+        """⛔ ALSO WHEN A PARENT'S DISPOSE FORGETS IT (`Dispatcher.dispose`
+        does not call `dispose` on a descendant): the file stayed open."""
         try:
             self._file.close()
         except Exception:
             pass
-        super().dispose(reason)
 
 
 class ArtifactDispatcher(Dispatcher):
@@ -3816,6 +3817,12 @@ class ArtifactDispatcher(Dispatcher):
     def report_finished(self, error: Optional[str]) -> None:
         self.error = error
         self.finished.set()
+
+    def released(self) -> None:
+        """⛔ THE BROWSER'S INDEX BY UUID LET GO TOO: it kept every download of
+        every context for the life of the browser, the path and the Event
+        with it."""
+        self.parent.browser._artifacts.pop(self.uuid, None)
 
     def _wait(self) -> None:
         while not self.finished.wait(0.2):
@@ -3914,6 +3921,14 @@ class BrowserContextDispatcher(Dispatcher):
         })
         for child in (debugger, request_context, tracing):
             self.emit("__adopt__", {"guid": child.guid})
+            # ⛔ ADOPTED ON THE WIRE, AND ADOPTED HERE TOO. They were announced
+            # under the browser (the client needs a parent it already knows) and
+            # adopted by the context, and `dispose` forgets a subtree by walking
+            # `parent`: left at the browser, the three outlived every context
+            # that made them, three registry entries per context for the life of
+            # the browser (measured at 500 contexts: 1,500). The page does the
+            # same with its main frame. The wire does not change.
+            child.parent = self
         self.pages: List[PageDispatcher] = []
         self.intercepting = False
         #: The caller's context-level init scripts, in order. The engine's
@@ -3924,6 +3939,15 @@ class BrowserContextDispatcher(Dispatcher):
     def conn(self) -> "juggler.Connection":
         return self.browser.conn
 
+    def released(self) -> None:
+        """⛔ THE BROWSER'S LIST LET GO TOO. Every way a context ends passes
+        here, and `browser.contexts` kept each one - with its options, its
+        owner (the connection that made it, and through it the socket) and
+        its init scripts - for the life of the browser."""
+        try:
+            self.browser.contexts.remove(self)
+        except ValueError:
+            pass
 
     def op_context_init_script(self, params: Dict) -> Any:
         """The same, for every page of this context - present and future.

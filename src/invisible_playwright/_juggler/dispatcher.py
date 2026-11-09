@@ -157,9 +157,17 @@ class Dispatcher:
         self.server.send_up({"guid": self.guid, "method": "__dispose__",
                              "params": params})
         self.server.unregister(self)
+        self.released()
         for child in self.server.descendants_of(self):
             child.disposed = True
             self.server.unregister(child)
+            child.released()
+
+    def released(self) -> None:
+        """The object has left the registry, by its own `dispose` or by an
+        ancestor's cascade (which does not call `dispose` on a descendant):
+        where it lets go of what OTHER objects hold of it - an index, a list,
+        a file. Runs once."""
 
     # ── routing ─────────────────────────────────────────────────────────────
     def call(self, method: str, params: Dict) -> Any:

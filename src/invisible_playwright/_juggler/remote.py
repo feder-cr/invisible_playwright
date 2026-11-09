@@ -53,6 +53,7 @@ LIMITS OF THIS FIRST VERSION, said instead of hidden.
 from __future__ import annotations
 
 import asyncio
+import collections
 import contextvars
 import itertools
 import json
@@ -236,7 +237,9 @@ class RemoteEndpoint:
         self.context_defaults = dict(context_defaults or {})
         self.context_options_override = context_options_override
         self.clients: List[RemoteClient] = []
-        self.wire_errors: List[Exception] = []
+        #: The last few: each one holds its traceback, and a client that keeps
+        #: asking for what is not JSON must not grow it for the life of the browser.
+        self.wire_errors: "collections.deque" = collections.deque(maxlen=32)
         self.port: Optional[int] = None
         self._pages = itertools.count(0)
         self._jobs: "queue.Queue" = queue.Queue()
