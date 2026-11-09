@@ -55,3 +55,18 @@ def test_drop_leaves_a_pref_that_is_not_there_alone(tmp_path):
     user_js = tmp_path / "user.js"
     user_js.write_text(_line("a.b", 1) + NEWLINE, encoding="utf-8")
     assert _helper()(user_js, {"c.d"}) == 0
+
+
+def test_the_refusal_is_not_expected_on_windows(monkeypatch):
+    """Windows does not refuse a missing ui.* pref (the engine returns unless it is GTK), so the e2e that
+    expects a refusal must skip there: candidate 42673795394's Windows gate ran it and got DID NOT RAISE
+    three times. Known-bad input: the test without the skip mark."""
+    monkeypatch.setattr("sys.platform", "win32")
+    spec = importlib.util.spec_from_file_location("theme_refusal_e2e_win", E2E)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    marks = module.test_a_missing_pref_refuses_the_launch.pytestmark
+    skips = [m for m in marks if m.name == "skipif"]
+    assert skips and skips[0].args[0] is True
+    control = getattr(module.test_every_pref_declared_the_launch_succeeds, "pytestmark", [])
+    assert not [m for m in control if m.name == "skipif"], "the control launch must still run on Windows"
