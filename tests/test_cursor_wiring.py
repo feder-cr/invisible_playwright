@@ -2,17 +2,21 @@
 
 Nothing here launches a browser. Every property the wiring is responsible for
 is checkable on plain objects: which prefs a session sends, which engine it
-picks, that the session seed reaches the generator, that the same seed
-produces the same first waypoint, and that the public constructor did not
-change shape while all of this was added.
+picks, that the session seed reaches the generator of the page's hand on the
+server, that the same seed produces the same first waypoint, and that the
+public constructor did not change shape while all of this was added.
 
 The motion generator itself is stubbed. That is deliberate: these tests are
 about the plumbing, and they must keep failing loudly for plumbing reasons
 even while the generator is being tuned.
+
+WHERE THE HAND IS. The walk of the pointer is drawn by the SERVER
+(`_juggler/pointer.py`); the client keeps one wrapper, on an explicit
+`Mouse.move`. What the server draws, against the golden of what the client used
+to send, is in `test_pointer_server.py`.
 """
 from __future__ import annotations
 
-import asyncio
 import ast
 import inspect
 import math
@@ -23,8 +27,11 @@ import warnings
 import pytest
 
 from invisible_playwright import _cursor
+from invisible_playwright._juggler import pointer as pointer_mod
 from invisible_playwright.launcher import InvisiblePlaywright
 from invisible_playwright.async_api import InvisiblePlaywright as AsyncInvisiblePlaywright
+
+from _pointer_fakes import BOX, VirtualClock, make_pointer, use_clock
 
 
 # ── a stub generator standing in for _motion ────────────────────────────────
@@ -55,32 +62,17 @@ class _StubMotionModule:
     MotionProfile = _StubProfile
 
 
-class _VirtualTimer:
+@pytest.fixture(autouse=True)
+def virtual_clock(monkeypatch):
     """A clock that only advances when something sleeps.
 
     Every test in this file is about plumbing, not about timing, and plumbing
     assertions must not be at the mercy of what the machine running them was
-    doing at the time. The dispatcher drops waypoints it cannot deliver on
-    time; against a clock that never falls behind, nothing is dropped and the
-    behaviour is exactly reproducible. Delivered timing is measured separately,
-    against a real clock, in test_cursor_dispatch.py.
-    """
-
-    def __init__(self) -> None:
-        self.t = 0.0
-
-    def now(self):
-        return self.t
-
-    async def sleep(self, seconds):
-        self.t += max(0.0, seconds)
-
-
-@pytest.fixture(autouse=True)
-def virtual_clock(monkeypatch):
-    timer = _VirtualTimer()
-    monkeypatch.setattr(_cursor, "_TIMER", timer)
-    return timer
+    doing at the time. Delivered timing is measured separately, against a real
+    clock, in test_cursor_dispatch.py."""
+    clock = VirtualClock()
+    use_clock(monkeypatch, clock)
+    return clock
 
 
 @pytest.fixture(autouse=True)
@@ -106,78 +98,16 @@ def no_motion(monkeypatch):
     monkeypatch.delenv(_cursor.ENGINE_ENV, raising=False)
 
 
-# ── fake Playwright implementation objects ──────────────────────────────────
-
-class _FakeMouse:
-    def __init__(self, page):
-        self._page = page
-
-    async def move(self, x, y, steps=None):
-        self._page.moves.append((round(x, 4), round(y, 4)))
-
-    async def wheel(self, delta_x, delta_y):
-        self._page.wheels.append((delta_x, delta_y))
-
-
-class _FakeContext:
-    def __init__(self, browser=None):
-        self._browser = browser
-
-
-class _FakePage:
-    def __init__(self, context, width=1280, height=720, number=0):
-        self._browser_context = context
-        # The page's number in the session, as the server's initializer
-        # carries it (`_cursor.page_number`).
-        self._initializer = {"pageNumber": number}
-        self._viewport_size = {"width": width, "height": height}
-        self.moves = []
-        self.wheels = []
-        self.mouse = _FakeMouse(self)
-
-
 class _FakeBrowser:
     pass
 
 
-# A 100x40 control at (400, 300): centre exactly (450, 320).
-_BOX = {"x": 400.0, "y": 300.0, "width": 100.0, "height": 40.0}
-
-
-class _HitChannel:
-    """The handle's wire. `checkHitTarget` is the only call the cursor makes
-    on it; the real server answers whether the point lands on the element."""
-
-    def __init__(self, hits=True):
-        self.hits = hits
-        self.sent = []
-
-    async def send(self, method, timeout_calculator=None, params=None, **kwargs):
-        self.sent.append((method, params))
-        return self.hits
-
-
-class _FakeHandle:
-    def __init__(self, hits=True):
-        self._channel = _HitChannel(hits)
-
-    async def bounding_box(self):
-        return dict(_BOX)
-
-    async def dispose(self):
-        pass
-
-
-async def _fake_move(mouse, x, y):
-    await mouse.move(x, y)
-
-
-def _landing_of(kwargs):
-    """Absolute point the action was told to act on."""
-    pos = kwargs.get("position")
-    if not pos:
-        return (_BOX["x"] + _BOX["width"] / 2.0, _BOX["y"] + _BOX["height"] / 2.0)
-    return (_BOX["x"] + pos["x"], _BOX["y"] + pos["y"])
+def _landing_of(position):
+    """Absolute point the action was told to act on: `position` is an offset
+    from the box's top-left, or None for the centre."""
+    if not position:
+        return (BOX["x"] + BOX["width"] / 2.0, BOX["y"] + BOX["height"] / 2.0)
+    return (BOX["x"] + position["x"], BOX["y"] + position["y"])
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -330,13 +260,12 @@ def test_maxtime_is_never_set_without_the_toggle():
 
 @pytest.mark.unit
 def test_session_seed_reaches_the_generator(stub_motion):
-    browser = _FakeBrowser()
-    assert _cursor.enable_for(browser, seed=12345, max_seconds=1.25) is True
-    page = _FakePage(_FakeContext(browser))
-    cursor = _cursor._cursor_for_page(page)
-    assert cursor is not None
-    assert cursor._profile.seed == _cursor.page_motion_seed(12345, 0)
-    assert cursor._profile.max_seconds == 1.25
+    """The seed and the cap the server was given, and the page's number, reach
+    the generator of that page's hand."""
+    _, pointer = make_pointer(seed=12345, max_seconds=1.25, number=0)
+    assert pointer.active
+    assert pointer.hand._profile.seed == _cursor.page_motion_seed(12345, 0)
+    assert pointer.hand._profile.max_seconds == 1.25
 
 
 @pytest.mark.unit
@@ -357,6 +286,36 @@ def test_the_launcher_hands_over_its_own_seed(stub_motion, monkeypatch):
 
 
 @pytest.mark.unit
+def test_the_seed_and_who_draws_travel_to_the_server_in_the_prefs(stub_motion):
+    """The server draws the walk only when the launcher chose the Python
+    generator; with the engine's own expansion (`binary`) or none (`off`) the
+    same seed and budget arrive and the server must stay out of the way."""
+    from invisible_playwright._juggler.server import (
+        MOTION_BUDGET_PREF, POINTER_PREF, SESSION_SEED_PREF,
+        session_draws_pointer)
+    from invisible_playwright._session import build_prefs
+    from invisible_core import generate_profile
+
+    for engine, draws in ((_cursor.ENGINE_PYTHON, True),
+                          (_cursor.ENGINE_BINARY, False),
+                          (_cursor.ENGINE_OFF, False)):
+        prefs = build_prefs(
+            profile=generate_profile(seed=42), locale="en-US", timezone="UTC",
+            extra_prefs=None, virtual_display=False, cursor_engine=engine,
+            humanize=2.0, show_cursor=None, session_seed=42)
+        assert prefs[SESSION_SEED_PREF] == 42
+        assert prefs[MOTION_BUDGET_PREF] == 2000
+        assert session_draws_pointer(prefs) is draws, engine
+    # humanize off: nothing travels at all
+    prefs = build_prefs(
+        profile=generate_profile(seed=42), locale="en-US", timezone="UTC",
+        extra_prefs=None, virtual_display=False,
+        cursor_engine=_cursor.ENGINE_OFF, humanize=False, show_cursor=None,
+        session_seed=42)
+    assert SESSION_SEED_PREF not in prefs and POINTER_PREF not in prefs
+
+
+@pytest.mark.unit
 def test_binary_engine_arms_nothing(stub_motion, monkeypatch):
     """Under the escape hatch our side must stay completely out of the way."""
     called = []
@@ -371,31 +330,25 @@ def test_binary_engine_arms_nothing(stub_motion, monkeypatch):
 
 @pytest.mark.unit
 def test_each_page_gets_its_own_stream(stub_motion):
-    browser = _FakeBrowser()
-    _cursor.enable_for(browser, seed=999, max_seconds=1.0)
-    ctx = _FakeContext(browser)
-    a = _cursor._cursor_for_page(_FakePage(ctx, number=0))
-    b = _cursor._cursor_for_page(_FakePage(ctx, number=1))
-    assert a.seed != b.seed, "two tabs sharing one stream would couple their paths"
-    assert a.seed == _cursor.page_motion_seed(999, 0)
-    assert b.seed == _cursor.page_motion_seed(999, 1)
+    _, a = make_pointer(seed=999, max_seconds=1.0, number=0)
+    _, b = make_pointer(seed=999, max_seconds=1.0, number=1)
+    assert a.hand.seed != b.hand.seed, "two tabs sharing one stream would couple their paths"
+    assert a.hand.seed == _cursor.page_motion_seed(999, 0)
+    assert b.hand.seed == _cursor.page_motion_seed(999, 1)
 
 
 @pytest.mark.unit
 def test_a_page_moved_first_keeps_the_number_the_server_gave_it(stub_motion):
-    """[B237], second half. Known-bad, before: the cursor counted pages at
-    their FIRST MOVEMENT, so a script that opened p0 and p1 and moved on p1
-    first gave p1 ordinal 0 here while the server, numbering at creation,
-    gave it 1 - one page, two numbers, two layers drawing apart. Now the
-    cursor reads the number the server put in the page's initializer."""
-    browser = _FakeBrowser()
-    _cursor.enable_for(browser, seed=999, max_seconds=1.0)
-    ctx = _FakeContext(browser)
-    p0, p1 = _FakePage(ctx, number=0), _FakePage(ctx, number=1)
-    second = _cursor._cursor_for_page(p1)
-    first = _cursor._cursor_for_page(p0)
-    assert second.seed == _cursor.page_motion_seed(999, 1)
-    assert first.seed == _cursor.page_motion_seed(999, 0)
+    """[B237]. Known-bad, before: the cursor counted pages at their FIRST
+    MOVEMENT, so a script that opened p0 and p1 and moved on p1 first gave p1
+    ordinal 0 there while the server, numbering at creation, gave it 1 - one
+    page, two numbers, two layers drawing apart. The hand is born with the
+    page and takes its number (`PageDispatcher.number`), so the order of the
+    movements cannot matter: there is nothing to count."""
+    p1 = make_pointer(seed=999, max_seconds=1.0, number=1)[1]
+    p0 = make_pointer(seed=999, max_seconds=1.0, number=0)[1]
+    assert p1.hand.seed == _cursor.page_motion_seed(999, 1)
+    assert p0.hand.seed == _cursor.page_motion_seed(999, 0)
 
 
 @pytest.mark.unit
@@ -435,31 +388,70 @@ def test_page_motion_seed_is_stable_and_in_range():
 
 
 @pytest.mark.unit
-def test_an_unregistered_page_is_left_alone(stub_motion):
-    """A plain Playwright browser in the same process must find nothing: the
-    wrappers are installed on the class, so this is what keeps them inert."""
-    page = _FakePage(_FakeContext(_FakeBrowser()))
-    assert _cursor._cursor_for_page(page) is None
+def test_a_session_without_a_seed_or_that_does_not_draw_has_no_hand(stub_motion):
+    """A plain page of a session that turned humanising off, or whose pointer
+    is the engine's own, finds no hand: the action is the caller's."""
+    assert not make_pointer(seed=None)[1].active
+    assert not make_pointer(seed=5, draws=False)[1].active
+    assert not make_pointer(seed=5, max_seconds=None)[1].active
+
+
+@pytest.mark.unit
+def test_an_unarmed_page_of_the_client_sends_the_plain_move(stub_motion):
+    """The one wrapper the client still has marks an explicit `mouse.move`
+    `humanise` - only for a page whose session armed the engine. A plain
+    Playwright browser in the same process, or a page of a session that did
+    not, sends the move as the caller wrote it."""
+    import asyncio
+
+    sent = []
+
+    class _Channel:
+        _object = None
+
+        async def send(self, method, timeout_calculator, params):
+            sent.append((method, params))
+
+    async def original(self, x, y, steps=None):
+        sent.append(("original", (x, y, steps)))
+
+    channel = _Channel()
+    mouse = type("M", (), {"_channel": channel})()
+    wrapped = _cursor._wrap_mouse_move(original)
+
+    class _Ctx:
+        _browser = None
+
+    page = type("P", (), {})()
+    page._browser_context = _Ctx()
+    channel._object = page
+
+    asyncio.run(wrapped(mouse, 5.0, 6.0))
+    assert sent == [("original", (5.0, 6.0, None))]
+
+    browser = _FakeBrowser()
+    page._browser_context._browser = browser
+    assert _cursor.enable_for(browser, seed=3, max_seconds=1.0)
+    sent.clear()
+    asyncio.run(wrapped(mouse, 5.0, 6.0))
+    assert sent == [("mouseMove", {"x": 5.0, "y": 6.0, "humanise": True})]
+    sent.clear()
+    asyncio.run(wrapped(mouse, 5.0, 6.0, steps=7))   # the caller's own steps
+    assert sent == [("original", (5.0, 6.0, 7))]
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 3. The same seed produces the same first waypoint
 # ═══════════════════════════════════════════════════════════════════════════
 
-def _drive(page, cursor, to_x, to_y):
-    async def raw(x, y):
-        await page.mouse.move(x, y)
-
-    asyncio.run(_cursor._travel(cursor, page, to_x, to_y, raw))
+def _drive(page, pointer, to_x, to_y):
+    pointer._travel(to_x, to_y)
     return page.moves
 
 
 def _fresh_session_moves(seed):
-    browser = _FakeBrowser()
-    _cursor.enable_for(browser, seed=seed, max_seconds=1.0)
-    page = _FakePage(_FakeContext(browser))
-    cursor = _cursor._cursor_for_page(page)
-    return _drive(page, cursor, 900.0, 500.0)
+    page, pointer = make_pointer(seed=seed, max_seconds=1.0)
+    return _drive(page, pointer, 900.0, 500.0)
 
 
 @pytest.mark.unit
@@ -481,13 +473,11 @@ def test_the_start_point_is_seeded_and_is_not_the_origin(stub_motion):
     """A cursor sitting at the top-left corner at the start of every session
     of every install is exactly the kind of shared constant this change is
     removing."""
-    browser = _FakeBrowser()
-    _cursor.enable_for(browser, seed=31337, max_seconds=1.0)
-    cursor = _cursor._cursor_for_page(_FakePage(_FakeContext(browser)))
-    start = cursor.start_point(1280, 720)
+    _, pointer = make_pointer(seed=31337, max_seconds=1.0)
+    start = pointer.hand.start_point(1280, 720)
     assert start != (0.0, 0.0)
     assert 0 < start[0] < 1280 and 0 < start[1] < 720
-    assert start == cursor.start_point(1280, 720)
+    assert start == pointer.hand.start_point(1280, 720)
 
 
 @pytest.mark.unit
@@ -498,20 +488,15 @@ def test_a_page_with_no_viewport_still_does_not_start_at_the_origin(stub_motion)
     report a size, so every session of every install departed from the same
     corner - and said nothing about it.
     """
-    browser = _FakeBrowser()
-    _cursor.enable_for(browser, seed=31337, max_seconds=1.0)
-    page = _FakePage(_FakeContext(browser))
-    page._viewport_size = None
-    cursor = _cursor._cursor_for_page(page)
+    page, pointer = make_pointer(seed=31337, max_seconds=1.0)
+    page.viewport_size = None
     with pytest.warns(RuntimeWarning, match="no viewport size"):
-        start = cursor.start_point(None, None)
+        start = pointer.hand.start_point(None, None)
     assert start != (0.0, 0.0)
     assert 0 < start[0] < 1280 and 0 < start[1] < 720
     # ...seeded, so two installs still do not agree
-    other = _FakeBrowser()
-    _cursor.enable_for(other, seed=4242, max_seconds=1.0)
-    assert _cursor._cursor_for_page(
-        _FakePage(_FakeContext(other))).start_point(None, None) != start
+    assert make_pointer(seed=4242, max_seconds=1.0)[1].hand.start_point(
+        None, None) != start
 
 
 @pytest.mark.unit
@@ -527,16 +512,14 @@ def test_a_generator_whose_start_point_is_broken_says_so_once(stub_motion, monke
             return []
 
     monkeypatch.setattr(_StubMotionModule, "MotionProfile", _BadStart, raising=False)
-    browser = _FakeBrowser()
-    _cursor.enable_for(browser, seed=5, max_seconds=1.0)
-    cursor = _cursor._cursor_for_page(_FakePage(_FakeContext(browser)))
+    _, pointer = make_pointer(seed=5, max_seconds=1.0)
     with pytest.warns(RuntimeWarning, match="start_point"):
-        first = cursor.start_point(1280, 720)
+        first = pointer.hand.start_point(1280, 720)
     assert first != (0.0, 0.0)
     # ...and exactly once: a warning per click would be its own breakage.
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        cursor.start_point(1280, 720)
+        pointer.hand.start_point(1280, 720)
     assert caught == []
 
 
@@ -557,11 +540,8 @@ def test_waypoints_stay_inside_the_viewport(stub_motion, monkeypatch):
             return [(-500.0, -400.0, 0.0), (99999.0, 88888.0, 0.0), (tx, ty, 0.0)]
 
     monkeypatch.setattr(_StubMotionModule, "MotionProfile", _Wild, raising=False)
-    browser = _FakeBrowser()
-    _cursor.enable_for(browser, seed=5, max_seconds=1.0)
-    page = _FakePage(_FakeContext(browser), width=800, height=600)
-    cursor = _cursor._cursor_for_page(page)
-    moves = _drive(page, cursor, 400.0, 300.0)
+    page, pointer = make_pointer(seed=5, max_seconds=1.0, width=800, height=600)
+    moves = _drive(page, pointer, 400.0, 300.0)
     assert moves, "clamping must not swallow the whole path"
     for x, y in moves:
         assert 0 <= x <= 799 and 0 <= y <= 599, f"{(x, y)} escaped the viewport"
@@ -587,11 +567,8 @@ def test_the_endpoint_is_never_pre_empted(stub_motion, monkeypatch):
             return [(300.0, 200.0, 0.02)] * 5 + [(tx, ty, 0.02)] * 4
 
     monkeypatch.setattr(_StubMotionModule, "MotionProfile", _Stuttering, raising=False)
-    browser = _FakeBrowser()
-    _cursor.enable_for(browser, seed=6, max_seconds=1.0)
-    page = _FakePage(_FakeContext(browser))
-    cursor = _cursor._cursor_for_page(page)
-    moves = _drive(page, cursor, 640.0, 360.0)
+    page, pointer = make_pointer(seed=6, max_seconds=1.0)
+    moves = _drive(page, pointer, 640.0, 360.0)
     assert (640.0, 360.0) not in moves, "the endpoint is the caller's to emit, once"
     assert moves == [(300.0, 200.0)] * 5
 
@@ -610,11 +587,8 @@ def test_waypoints_that_share_one_instant_become_one_event(stub_motion, monkeypa
                     (302.0, 202.0, 0.0), (tx, ty, 0.05)]
 
     monkeypatch.setattr(_StubMotionModule, "MotionProfile", _AllAtOnce, raising=False)
-    browser = _FakeBrowser()
-    _cursor.enable_for(browser, seed=61, max_seconds=1.0)
-    page = _FakePage(_FakeContext(browser))
-    cursor = _cursor._cursor_for_page(page)
-    moves = _drive(page, cursor, 640.0, 360.0)
+    page, pointer = make_pointer(seed=61, max_seconds=1.0)
+    moves = _drive(page, pointer, 640.0, 360.0)
     assert moves == [(302.0, 202.0)], moves
 
 
@@ -628,19 +602,17 @@ def test_a_broken_generator_never_breaks_an_action(stub_motion, monkeypatch):
             raise RuntimeError("generator exploded")
 
     monkeypatch.setattr(_StubMotionModule, "MotionProfile", _Broken, raising=False)
-    browser = _FakeBrowser()
-    _cursor.enable_for(browser, seed=7, max_seconds=1.0)
-    page = _FakePage(_FakeContext(browser))
-    cursor = _cursor._cursor_for_page(page)
-    assert _drive(page, cursor, 100.0, 100.0) == []
-    assert (cursor.x, cursor.y) == (100.0, 100.0)
+    page, pointer = make_pointer(seed=7, max_seconds=1.0)
+    with pytest.warns(RuntimeWarning, match="generator raised"):
+        assert _drive(page, pointer, 100.0, 100.0) == []
+    assert (pointer.hand.x, pointer.hand.y) == (100.0, 100.0)
 
 
 @pytest.mark.unit
 def test_two_tuple_waypoints_are_accepted_and_paced(stub_motion):
-    out = _cursor._normalise_waypoints([(1, 2), (3, 4)], 1.0)
+    out = pointer_mod._normalise_waypoints([(1, 2), (3, 4)], 1.0)
     assert out == [(1.0, 2.0, 0.5), (3.0, 4.0, 0.5)]
-    out = _cursor._normalise_waypoints([(1, 2, 0.01)], 1.0)
+    out = pointer_mod._normalise_waypoints([(1, 2, 0.01)], 1.0)
     assert out == [(1.0, 2.0, 0.01)]
 
 
@@ -649,12 +621,10 @@ def test_two_tuple_waypoints_are_accepted_and_paced(stub_motion):
 # ═══════════════════════════════════════════════════════════════════════════
 
 def _real_session_moves(seed, max_seconds=1.5, width=1280, height=720):
-    browser = _FakeBrowser()
-    assert _cursor.enable_for(browser, seed=seed, max_seconds=max_seconds) is True
-    page = _FakePage(_FakeContext(browser), width=width, height=height)
-    cursor = _cursor._cursor_for_page(page)
-    assert cursor is not None
-    return _drive(page, cursor, 900.0, 500.0)
+    page, pointer = make_pointer(seed=seed, max_seconds=max_seconds,
+                                 width=width, height=height)
+    assert pointer.active
+    return _drive(page, pointer, 900.0, 500.0)
 
 
 @pytest.mark.unit
@@ -689,76 +659,67 @@ def test_the_humanize_cap_is_honoured_end_to_end():
     motion = _motion.CursorMotion(4242)
     raw = motion.path(10.0, 10.0, 1200.0, 680.0)
     for cap in (0.3, 1.5):
-        paced = _cursor._normalise_waypoints(raw, cap)
+        paced = pointer_mod._normalise_waypoints(raw, cap)
         assert sum(d for _, _, d in paced) <= cap + 1e-9
     # ...and a generous cap must not stretch a short movement to fill it.
-    short = _cursor._normalise_waypoints(motion.path(10.0, 10.0, 40.0, 30.0), 10.0)
+    short = pointer_mod._normalise_waypoints(motion.path(10.0, 10.0, 40.0, 30.0), 10.0)
     assert sum(d for _, _, d in short) < 10.0
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 6. The mechanism itself: the funnel we hook must still be the funnel
+# 6. The mechanism itself: where the server's hand is reached from
 # ═══════════════════════════════════════════════════════════════════════════
 
 @pytest.mark.unit
-def test_the_wrappers_accept_the_arguments_the_bindings_actually_pass():
+def test_the_client_wraps_only_the_explicit_move():
+    """The client does not walk any more: `Frame` and `Mouse.click/wheel` are the
+    plain protocol calls, and the server draws the rest. A wrapper that came
+    back on one of them would humanise twice."""
+    from invisible_playwright._pw._impl._frame import Frame
+    from invisible_playwright._pw._impl._input import Mouse
+
+    assert _cursor._ensure_patched() is True
+    assert getattr(Mouse.move, _cursor._MARKER, False)
+    for name in ("_click", "dblclick", "hover", "tap", "check", "uncheck"):
+        assert not getattr(getattr(Frame, name), _cursor._MARKER, False), name
+    for name in ("_click", "wheel", "click", "dblclick", "down", "up"):
+        assert not getattr(getattr(Mouse, name), _cursor._MARKER, False), name
+
+
+@pytest.mark.unit
+def test_the_wrapper_accepts_the_arguments_the_bindings_actually_pass():
     """Both generated API layers call the implementation entirely by keyword -
-    ``move(x=, y=, steps=)``, ``wheel(deltaX=, deltaY=)``, ``_click(selector=,
-    ...)``. A wrapper that renames one of those parameters does not shadow the
-    method, it raises TypeError on every call to it, and no amount of testing
-    the wrapper positionally would show it."""
+    ``move(x=, y=, steps=)``. A wrapper that renames one of those parameters
+    does not shadow the method, it raises TypeError on every call to it, and no
+    amount of testing the wrapper positionally would show it."""
     from invisible_playwright._pw._impl._input import Mouse
 
     assert _cursor._ensure_patched() is True
-    for name in ("move", "wheel"):
-        bound = getattr(Mouse, name)
-        assert getattr(bound, _cursor._MARKER, False), f"Mouse.{name} not wrapped"
-        original = inspect.signature(
-            _cursor._ORIGINAL_MOUSE_MOVE if name == "move"
-            else _cursor._ORIGINAL_MOUSE_WHEEL
-        ).parameters
-        assert list(inspect.signature(bound).parameters) == list(original), name
+    original = inspect.signature(
+        Mouse.move.__wrapped__ if hasattr(Mouse.move, "__wrapped__")
+        else Mouse.move).parameters
+    assert list(original) == ["self", "x", "y", "steps"]
 
 
 @pytest.mark.unit
-def test_the_hooked_funnel_still_exists():
-    """If the bindings rename these, the wrappers land on nothing and every
-    session silently teleports again. Cheap to check, expensive to miss."""
-    from invisible_playwright._pw._impl._frame import Frame
+def test_the_funnel_the_server_reads_still_exists():
+    """The explicit move is the one thing the client marks; if the bindings
+    rename it the mark lands on nothing and every session's own moves teleport."""
     from invisible_playwright._pw._impl._input import Mouse
 
-    for name in _cursor._FRAME_ACTIONS:
-        assert callable(getattr(Frame, name, None)), f"Frame.{name} is gone"
     assert callable(getattr(Mouse, "move", None))
+    assert '"mouseMove"' in inspect.getsource(_cursor._wrap_mouse_move(Mouse.move))
 
 
 @pytest.mark.unit
-def test_page_frame_and_locator_all_funnel_through_the_hook():
-    """The whole no-new-API claim rests on this: page.click, frame.click and
-    locator.click must all reach Frame._click, or wrapping one of them would
-    leave the other two teleporting."""
-    from invisible_playwright._pw._impl._locator import Locator
-    from invisible_playwright._pw._impl._page import Page
+def test_the_wrapper_is_installed_exactly_once():
+    from invisible_playwright._pw._impl._input import Mouse
 
     assert _cursor._ensure_patched() is True
-    assert "_main_frame._click(" in inspect.getsource(Page.click)
-    assert "self._frame._click(" in inspect.getsource(Locator.click)
-    assert "_main_frame.hover(" in inspect.getsource(Page.hover)
-    assert "self._frame.hover(" in inspect.getsource(Locator.hover)
-    # And the hooked coroutine really is the one that talks to the browser.
-    assert 'send("click"' in inspect.getsource(_cursor._ORIGINAL_FRAME_ACTIONS["_click"])
-    assert 'send("hover"' in inspect.getsource(_cursor._ORIGINAL_FRAME_ACTIONS["hover"])
-
-
-@pytest.mark.unit
-def test_wrappers_are_installed_exactly_once():
-    from invisible_playwright._pw._impl._frame import Frame
-
+    first = Mouse.move
     assert _cursor._ensure_patched() is True
-    first = Frame._click
-    assert _cursor._ensure_patched() is True
-    assert Frame._click is first, "re-arming must not stack a second wrapper"
-    assert getattr(Frame._click, _cursor._MARKER, False) is True
+    assert Mouse.move is first, "re-arming must not stack a second wrapper"
+    assert getattr(Mouse.move, _cursor._MARKER, False) is True
 
 
 @pytest.mark.unit
@@ -772,36 +733,22 @@ def test_the_whole_approach_runs_before_the_action(stub_motion, monkeypatch):
     already on the target, before the action is even entered - so the only
     event inside the checked window is the action's own move.
     """
-    browser = _FakeBrowser()
-    _cursor.enable_for(browser, seed=99, max_seconds=1.0)
-    page = _FakePage(_FakeContext(browser))
-
-    async def fake_move(mouse, x, y):
-        await mouse.move(x, y)
-
-    monkeypatch.setattr(_cursor, "_ORIGINAL_MOUSE_MOVE", fake_move)
-
-    class _FakeFrame:
-        _page = page
-
-        async def query_selector(self, selector):
-            return _FakeHandle()
-
+    page, pointer = make_pointer(seed=99, max_seconds=1.0)
     observed = {}
 
-    async def original(self, *args, **kwargs):
+    def run(position, timeout):
         observed["moves_before_action"] = list(page.moves)
-        observed["kwargs"] = kwargs
+        observed["position"] = position
+        observed["timeout"] = timeout
 
-    wrapped = _cursor._wrap_frame_action(original)
-    asyncio.run(wrapped(_FakeFrame(), "#buy"))
+    pointer.act("main", "#buy", None, 30.0, run)
 
     moves = observed["moves_before_action"]
     assert len(moves) > 1, "the pointer must actually travel, not jump"
     # The pointer is standing ON the element when the action starts, and the
     # last hop onto the click point is the action's own move - the single event
     # the hit-target check gets to see.
-    landing = _landing_of(observed["kwargs"])
+    landing = _landing_of(observed["position"])
     assert 400.0 <= moves[-1][0] <= 500.0 and 300.0 <= moves[-1][1] <= 340.0
     assert 0 < math.hypot(moves[-1][0] - landing[0],
                           moves[-1][1] - landing[1]) < 25.0
@@ -810,31 +757,21 @@ def test_the_whole_approach_runs_before_the_action(stub_motion, monkeypatch):
 
 
 @pytest.mark.unit
-def test_the_action_is_told_to_click_off_the_geometric_centre(stub_motion, monkeypatch):
+def test_the_action_is_told_to_click_off_the_geometric_centre(stub_motion):
     """B3: ``box.x + width/2, box.y + height/2`` is an exact number that every
     install produces for every element-targeted action, and it is readable from
     a single event. The action itself has to be aimed somewhere else."""
-    monkeypatch.setattr(_cursor, "_ORIGINAL_MOUSE_MOVE", _fake_move)
     seen = []
     for seed in range(24):
-        browser = _FakeBrowser()
-        _cursor.enable_for(browser, seed=seed, max_seconds=1.0)
-        page = _FakePage(_FakeContext(browser))
-
-        class _FakeFrame:
-            _page = page
-
-            async def query_selector(self, selector):
-                return _FakeHandle()
-
+        page, pointer = make_pointer(seed=seed, max_seconds=1.0)
         captured = {}
-
-        async def original(self, *args, **kwargs):
-            captured.update(kwargs)
-
-        asyncio.run(_cursor._wrap_frame_action(original)(_FakeFrame(), "#buy"))
-        assert "position" in captured, "the action still aims at the centre"
-        seen.append(_landing_of(captured))
+        pointer.act("main", "#buy", None, 30.0,
+                    lambda position, timeout: captured.update(
+                        position=position, timeout=timeout))
+        assert captured["position"] is not None, "the action still aims at the centre"
+        # the first attempt is bounded, so the caller's own call is reachable
+        assert captured["timeout"] == 5.0
+        seen.append(_landing_of(captured["position"]))
 
     centre = (450.0, 320.0)
     assert centre not in seen
@@ -844,192 +781,107 @@ def test_the_action_is_told_to_click_off_the_geometric_centre(stub_motion, monke
 
 
 @pytest.mark.unit
-def test_two_actions_of_one_session_do_not_land_on_the_same_pixel(stub_motion, monkeypatch):
-    monkeypatch.setattr(_cursor, "_ORIGINAL_MOUSE_MOVE", _fake_move)
-    browser = _FakeBrowser()
-    _cursor.enable_for(browser, seed=7, max_seconds=1.0)
-    page = _FakePage(_FakeContext(browser))
-
-    class _FakeFrame:
-        _page = page
-
-        async def query_selector(self, selector):
-            return _FakeHandle()
-
+def test_two_actions_of_one_session_do_not_land_on_the_same_pixel(stub_motion):
+    page, pointer = make_pointer(seed=7, max_seconds=1.0)
     seen = []
     for _ in range(8):
         captured = {}
-
-        async def original(self, *args, **kwargs):
-            captured.update(kwargs)
-
-        asyncio.run(_cursor._wrap_frame_action(original)(_FakeFrame(), "#buy"))
-        seen.append(_landing_of(captured))
+        pointer.act("main", "#buy", None, 30.0,
+                    lambda position, timeout: captured.update(position=position))
+        seen.append(_landing_of(captured["position"]))
     assert len(set(seen)) >= 7, seen
 
 
 @pytest.mark.unit
-def test_a_caller_supplied_position_is_never_overridden(stub_motion, monkeypatch):
+def test_a_caller_supplied_position_is_never_overridden(stub_motion):
     """The caller asked to click a specific pixel. That is not ours to move."""
-    monkeypatch.setattr(_cursor, "_ORIGINAL_MOUSE_MOVE", _fake_move)
-    browser = _FakeBrowser()
-    _cursor.enable_for(browser, seed=11, max_seconds=1.0)
-    page = _FakePage(_FakeContext(browser))
-
-    class _FakeFrame:
-        _page = page
-
-        async def query_selector(self, selector):
-            return _FakeHandle()
-
+    page, pointer = make_pointer(seed=11, max_seconds=1.0)
     captured = {}
-
-    async def original(self, *args, **kwargs):
-        captured.update(kwargs)
-
-    asyncio.run(_cursor._wrap_frame_action(original)(
-        _FakeFrame(), "#buy", position={"x": 3.0, "y": 4.0}))
+    pointer.act("main", "#buy", {"x": 3.0, "y": 4.0}, 30.0,
+                lambda position, timeout: captured.update(
+                    position=position, timeout=timeout))
     assert captured["position"] == {"x": 3.0, "y": 4.0}
-    assert "timeout" not in captured
+    assert captured["timeout"] == 30.0
     # ...and the pointer still walked there.
     assert page.moves and page.moves[-1] != (450.0, 320.0)
 
 
 @pytest.mark.unit
-def test_a_point_that_does_not_hit_the_element_is_not_used(stub_motion, monkeypatch):
+def test_a_point_that_does_not_hit_the_element_is_not_used(stub_motion):
     """A bounding box is not the element: an inline link wrapping two lines has
     points inside its box that belong to the page behind it. Handing one of
     those to the action would turn a working click into a hit-target failure,
     so a point we chose is checked before it is used."""
-    monkeypatch.setattr(_cursor, "_ORIGINAL_MOUSE_MOVE", _fake_move)
-    browser = _FakeBrowser()
-    _cursor.enable_for(browser, seed=13, max_seconds=1.0)
-    page = _FakePage(_FakeContext(browser))
-
-    class _FakeFrame:
-        _page = page
-
-        async def query_selector(self, selector):
-            return _FakeHandle(hits=False)
-
+    page, pointer = make_pointer(seed=13, max_seconds=1.0, hits=False)
     captured = {}
-
-    async def original(self, *args, **kwargs):
-        captured.update(kwargs)
-
-    asyncio.run(_cursor._wrap_frame_action(original)(_FakeFrame(), "#buy"))
-    assert "position" not in captured, "an unverified point reached the action"
+    pointer.act("main", "#buy", None, 30.0,
+                lambda position, timeout: captured.update(position=position))
+    assert captured["position"] is None, "an unverified point reached the action"
 
 
 @pytest.mark.unit
-def test_the_landing_is_checked_by_the_server_in_the_box_s_own_space(
+def test_the_landing_is_checked_by_the_actions_own_hit_test_in_the_boxs_space(
         stub_motion, monkeypatch):
-    """The off-centre point goes to the server's `checkHitTarget` as it is, in
-    the main-frame space `bounding_box` answers in: the server shifts it into
-    the element's frame with the same arithmetic its own pre-commit check uses.
-    The cursor used to ask `document.elementFromPoint` itself, at those
+    """The off-centre point goes to `Actions.hit_target` as it is, in the
+    main-frame space the box was read in, with the frame the element is in: it
+    shifts it into that frame with the same arithmetic its own pre-commit check
+    uses. The cursor used to ask `document.elementFromPoint` itself, at those
     main-frame coordinates, inside the element's document - wrong in every
     nested frame and in every shadow root, so the landing always fell back to
     the exact centre."""
-    from types import SimpleNamespace
-    from unittest.mock import AsyncMock
-
-    handle = _FakeHandle()
-    frame = SimpleNamespace(query_selector=AsyncMock(return_value=handle))
-    cursor = SimpleNamespace(rng=lambda name: None)
-    monkeypatch.setattr(_cursor, "landing_point",
+    page, pointer = make_pointer(seed=13, max_seconds=1.0)
+    monkeypatch.setattr(pointer_mod, "landing_point",
                         lambda *args, **kwargs: (410.0, 312.0))
-
-    aim = asyncio.run(_cursor._choose_landing(frame, cursor, "#buy", (), {}))
-    assert handle._channel.sent == [
-        ("checkHitTarget", {"point": {"x": 410.0, "y": 312.0}})]
-    assert aim.override["position"] == {"x": 10.0, "y": 12.0}
+    aim = pointer._choose_landing("frame-7", "#buy", None)
+    assert page.hit_asked == [("frame-7", "el", (410.0, 312.0))]
+    assert aim.override == {"x": 10.0, "y": 12.0}
+    assert page.disposed == ["el"], "the probe's handle must be released"
 
 
 @pytest.mark.unit
-def test_a_landing_that_is_not_actionable_retries_the_caller_s_own_call(
-        stub_motion, monkeypatch):
+def test_a_landing_that_is_not_actionable_retries_the_caller_s_own_call(stub_motion):
     """The invariant that outranks every stealth property in this module:
     aiming must never turn a call that would have succeeded into one that
     fails."""
-    from invisible_playwright._pw._impl._errors import TimeoutError as PWTimeout
-
-    monkeypatch.setattr(_cursor, "_ORIGINAL_MOUSE_MOVE", _fake_move)
-    browser = _FakeBrowser()
-    _cursor.enable_for(browser, seed=17, max_seconds=1.0)
-    page = _FakePage(_FakeContext(browser))
-
-    class _FakeFrame:
-        _page = page
-
-        async def query_selector(self, selector):
-            return _FakeHandle()
-
+    page, pointer = make_pointer(seed=17, max_seconds=1.0)
     calls = []
 
-    async def original(self, *args, **kwargs):
-        calls.append(kwargs)
-        if "position" in kwargs:
-            raise PWTimeout("hit target check failed")
+    def run(position, timeout):
+        calls.append((position, timeout))
+        if position is not None:
+            raise TimeoutError("hit target check failed")
         return "clicked"
 
     with pytest.warns(RuntimeWarning, match="off-centre"):
-        result = asyncio.run(
-            _cursor._wrap_frame_action(original)(_FakeFrame(), "#buy"))
+        result = pointer.act("main", "#buy", None, 30.0, run)
     assert result == "clicked"
     assert len(calls) == 2
-    assert "position" not in calls[1] and "timeout" not in calls[1]
+    assert calls[0][0] is not None and calls[0][1] == 5.0
+    # the caller's own call, with what is left of the caller's time
+    assert calls[1][0] is None and 24.0 < calls[1][1] <= 30.0
 
 
 @pytest.mark.unit
 def test_landing_can_be_switched_off(stub_motion, monkeypatch):
     monkeypatch.setenv(_cursor.LANDING_ENV, "off")
-    monkeypatch.setattr(_cursor, "_ORIGINAL_MOUSE_MOVE", _fake_move)
-    browser = _FakeBrowser()
-    _cursor.enable_for(browser, seed=19, max_seconds=1.0)
-    page = _FakePage(_FakeContext(browser))
-
-    class _FakeFrame:
-        _page = page
-
-        async def query_selector(self, selector):
-            return _FakeHandle()
-
+    page, pointer = make_pointer(seed=19, max_seconds=1.0)
     captured = {}
-
-    async def original(self, *args, **kwargs):
-        captured.update(kwargs)
-
-    asyncio.run(_cursor._wrap_frame_action(original)(_FakeFrame(), "#buy"))
-    assert captured == {}
+    pointer.act("main", "#buy", None, 30.0,
+                lambda position, timeout: captured.update(
+                    position=position, timeout=timeout))
+    assert captured == {"position": None, "timeout": 30.0}
     assert page.moves, "the pointer still travels; only the aim is left alone"
 
 
 @pytest.mark.unit
-def test_an_offscreen_target_is_left_to_the_action(stub_motion, monkeypatch):
+def test_an_offscreen_target_is_left_to_the_action(stub_motion):
     """The action is about to scroll; aiming at where the element used to be
     would send waypoints out of the viewport, which parks the pointer at the
     origin. Skipping is strictly better than that."""
-    browser = _FakeBrowser()
-    _cursor.enable_for(browser, seed=100, max_seconds=1.0)
-    page = _FakePage(_FakeContext(browser), width=800, height=600)
-
-    async def fake_move(mouse, x, y):
-        await mouse.move(x, y)
-
-    monkeypatch.setattr(_cursor, "_ORIGINAL_MOUSE_MOVE", fake_move)
-
-    class _Offscreen(_FakeHandle):
-        async def bounding_box(self):
-            return {"x": 100.0, "y": 2400.0, "width": 80.0, "height": 30.0}
-
-    class _FakeFrame:
-        _page = page
-
-        async def query_selector(self, selector):
-            return _Offscreen()
-
-    assert asyncio.run(_cursor._approach(_FakeFrame(), ("#deep",), {})) is None
+    page, pointer = make_pointer(
+        seed=100, max_seconds=1.0, width=800, height=600,
+        box={"x": 100.0, "y": 2400.0, "width": 80.0, "height": 30.0})
+    assert pointer.approach("main", "#deep", None) is None
     assert page.moves == []
 
 
@@ -1037,23 +889,28 @@ def test_an_offscreen_target_is_left_to_the_action(stub_motion, monkeypatch):
 def test_a_missing_element_never_adds_a_wait_or_an_error(stub_motion):
     """Aiming is a hint. If the element is not there yet we give up silently and
     let the action do its own waiting and raise its own errors."""
-    browser = _FakeBrowser()
-    _cursor.enable_for(browser, seed=101, max_seconds=1.0)
-    page = _FakePage(_FakeContext(browser))
+    page, pointer = make_pointer(seed=101, max_seconds=1.0, box=None)
+    assert pointer.approach("main", "#later", None) is None
+    assert page.moves == []
+    assert page.queried == [("main", "#later")]
 
-    class _FakeFrame:
-        _page = page
 
-        async def query_selector(self, selector):
-            return None
+@pytest.mark.unit
+def test_a_probe_the_page_cannot_answer_is_a_missing_element(stub_motion):
+    """The frame navigated or the selector is not one: not an error of ours."""
+    from invisible_core.juggler.injected import ContextDestroyed
 
-    asyncio.run(_cursor._approach(_FakeFrame(), ("#later",), {}))
+    page, pointer = make_pointer(seed=101, max_seconds=1.0)
+
+    def gone(*a, **k):
+        raise ContextDestroyed("navigated")
+    page.injected.query_selector = gone
+    assert pointer.approach("main", "#x", None) is None
     assert page.moves == []
 
 
 @pytest.mark.unit
-def test_a_skipped_waypoint_does_not_shorten_the_movement(stub_motion, monkeypatch,
-                                                          virtual_clock):
+def test_a_skipped_waypoint_does_not_shorten_the_movement(stub_motion, monkeypatch):
     """Dropping a waypoint must not shorten the movement.
 
     Under the previous dispatcher this was arithmetic on an owed pause handed
@@ -1070,36 +927,35 @@ def test_a_skipped_waypoint_does_not_shorten_the_movement(stub_motion, monkeypat
             return [(300.0, 200.0, 0.05)] * 4 + [(tx, ty, 0.05)]
 
     monkeypatch.setattr(_StubMotionModule, "MotionProfile", _Stuttering, raising=False)
-    browser = _FakeBrowser()
-    _cursor.enable_for(browser, seed=102, max_seconds=1.0)
-    page = _FakePage(_FakeContext(browser))
-    cursor = _cursor._cursor_for_page(page)
+    page, pointer = make_pointer(seed=102, max_seconds=1.0)
 
-    async def raw(x, y):
-        await page.mouse.move(x, y)
-
-    t0 = virtual_clock.now()
-    asyncio.run(_cursor._travel(cursor, page, 640.0, 360.0, raw))
+    t0 = pointer_mod._CLOCK.now()
+    pointer._travel(640.0, 360.0)
     # 5 waypoints x 50 ms = 250 ms of schedule. The endpoint belongs to the
     # caller and is not sent here, but its deadline is still waited out, so the
     # movement takes the whole 250 ms rather than 200.
     assert page.moves == [(300.0, 200.0)] * 4
-    assert virtual_clock.now() - t0 == pytest.approx(0.25)
+    assert pointer_mod._CLOCK.now() - t0 == pytest.approx(0.25)
 
 
 @pytest.mark.unit
 def test_a_trial_run_does_not_move_the_pointer(stub_motion):
     """trial=True asks for the actionability checks without the action, so a
     real pointer would not move either."""
-    browser = _FakeBrowser()
-    _cursor.enable_for(browser, seed=8, max_seconds=1.0)
-    page = _FakePage(_FakeContext(browser))
-
-    class _FakeFrame:
-        _page = page
-
-    asyncio.run(_cursor._approach(_FakeFrame(), ("#b",), {"trial": True}))
+    page, pointer = make_pointer(seed=8, max_seconds=1.0)
+    assert pointer.approach("main", "#b", None, trial=True) is None
     assert page.moves == []
+
+
+@pytest.mark.unit
+def test_the_hand_stands_where_the_pointer_was_left(stub_motion):
+    """Whatever else moved the pointer - an explicit `mouse.move`, the click an
+    action ends with - is where the next walk starts, because the server's own
+    record of it (`Actions.position`) is what the hand reads."""
+    page, pointer = make_pointer(seed=8, max_seconds=1.0)
+    assert pointer._here() == pointer.hand.start_point(1280, 720)  # never moved
+    page.actions.position = (640.0, 360.0)   # another writer moved it
+    assert pointer._here() == (640.0, 360.0)
 
 
 # ═══════════════════════════════════════════════════════════════════════════

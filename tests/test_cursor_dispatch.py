@@ -3,129 +3,38 @@
 The other cursor test file asks whether the plumbing is connected. This one
 asks whether the schedule survives contact with a real machine, and whether
 the behaviour planner - which for a while was 1000 lines that nothing in the
-package imported - is now driving events.
+package imported - is now driving events. The pointer it drives is the
+SERVER's (`_juggler/pointer.py`), the one every client's actions arrive at.
 
 Nothing here launches a browser. Two clocks are used:
 
   * a VIRTUAL clock, which advances only when something sleeps, for every
     property that is about the plan rather than about the platform. It makes
     those tests exact and instant.
-  * the REAL clock, for the three assertions that are specifically about
-    delivery. Windows quantises a short sleep to the system timer, so this is
-    the only way to see the thing the dispatcher exists to fix. They are kept
-    short on purpose (a couple of seconds in total).
+  * the REAL clock, for the assertions that are specifically about delivery.
+    Windows quantises a short sleep to the system timer, so this is the only
+    way to see the thing the dispatcher exists to fix. They are kept short on
+    purpose (a couple of seconds in total).
 
 The measured "before" numbers quoted below come from running the same paths
-through the previous dispatcher - one ``asyncio.sleep(dt)`` per waypoint,
-relative delays - on this machine.
+through the previous dispatcher - one ``sleep(dt)`` per waypoint, relative
+delays - on this machine.
 """
 from __future__ import annotations
 
-import asyncio
-import statistics
 import time
 
 import pytest
 
-from invisible_core.juggler import _behaviour, _motion
+from invisible_core.juggler import Ev, MIN_EVENT_INTERVAL_MS, fit_timeline
+from invisible_core.juggler import _motion
 
 from invisible_playwright import _cursor
+from invisible_playwright._juggler import pointer as pointer_mod
+
+from _pointer_fakes import BOX, LateClock, VirtualClock, make_pointer, use_clock
 
 pytestmark = pytest.mark.unit
-
-
-# ── clocks ──────────────────────────────────────────────────────────────────
-
-class VirtualTimer:
-    def __init__(self) -> None:
-        self.t = 0.0
-
-    def now(self) -> float:
-        return self.t
-
-    async def sleep(self, seconds: float) -> None:
-        self.t += max(0.0, seconds)
-
-
-class LateTimer(VirtualTimer):
-    """A platform that always oversleeps by a fixed amount.
-
-    This is Windows with its default 15.6 ms timer tick, in a form that can be
-    asserted on exactly. It is the condition the old dispatcher turned into a
-    1.5x stretch of every movement, because it slept for each gap in turn and
-    so added the overshoot once per waypoint.
-    """
-
-    def __init__(self, overshoot: float = 0.006) -> None:
-        super().__init__()
-        self.overshoot = overshoot
-
-    async def sleep(self, seconds: float) -> None:
-        self.t += max(0.0, seconds) + self.overshoot
-
-
-# ── fakes ───────────────────────────────────────────────────────────────────
-
-class _FakeMouse:
-    def __init__(self, page):
-        self._channel = type("_Ch", (), {"_object": page})()
-        self._page = page
-
-    async def move(self, x, y, steps=None):
-        self._page.moves.append((x, y))
-
-    async def wheel(self, dx, dy):
-        self._page.wheels.append((dx, dy))
-
-
-class _FakeContext:
-    def __init__(self, browser=None):
-        self._browser = browser
-
-
-class _FakeBrowser:
-    pass
-
-
-class _FakePage:
-    def __init__(self, context, width=1280, height=720, number=0):
-        self._browser_context = context
-        # The page's number in the session, as the server's initializer
-        # carries it (`_cursor.page_number`).
-        self._initializer = {"pageNumber": number}
-        self._viewport_size = {"width": width, "height": height}
-        self.moves = []
-        self.wheels = []
-        self.mouse = _FakeMouse(self)
-
-
-_BOX = {"x": 500.0, "y": 300.0, "width": 140.0, "height": 44.0}
-
-
-class _FakeChannel:
-    async def send(self, method, timeout_calculator=None, params=None, **kwargs):
-        # `checkHitTarget`: the server says the point lands on the element.
-        return True
-
-
-class _FakeHandle:
-    _channel = _FakeChannel()
-
-    async def bounding_box(self):
-        return dict(_BOX)
-
-    async def dispose(self):
-        pass
-
-
-def _frame(page):
-    class _FakeFrame:
-        _page = page
-
-        async def query_selector(self, selector):
-            return _FakeHandle()
-
-    return _FakeFrame()
 
 
 @pytest.fixture(autouse=True)
@@ -135,26 +44,9 @@ def quiet():
     _cursor._reset_warnings()
 
 
-@pytest.fixture
-def cursor_page(monkeypatch):
-    async def fake_move(mouse, x, y):
-        await mouse.move(x, y)
-
-    # Arm first: installing the wrappers is what captures the real
-    # Mouse.move, so patching before that would be undone by it.
-    _cursor._ensure_patched()
-    monkeypatch.setattr(_cursor, "_ORIGINAL_MOUSE_MOVE", fake_move)
+@pytest.fixture(autouse=True)
+def landing_on(monkeypatch):
     monkeypatch.delenv(_cursor.LANDING_ENV, raising=False)
-
-    def build(seed=4242, max_seconds=1.5):
-        browser = _FakeBrowser()
-        assert _cursor.enable_for(browser, seed=seed, max_seconds=max_seconds)
-        page = _FakePage(_FakeContext(browser))
-        cursor = _cursor._cursor_for_page(page)
-        assert cursor is not None
-        return page, cursor
-
-    return build
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -166,12 +58,10 @@ def _path(seed=42, frm=(120.0, 640.0), to=(980.0, 200.0)):
 
 
 def _events(path):
-    return _cursor._fit_timeline(
-        [_cursor._Ev(wp.t_ms, wp.x, wp.y) for wp in path[1:]], 0.0
-    )
+    return fit_timeline([Ev(wp.t_ms, wp.x, wp.y) for wp in path[1:]], 0.0)
 
 
-def test_lateness_does_not_accumulate():
+def test_lateness_does_not_accumulate(monkeypatch):
     """The defect, stated exactly.
 
     A platform that oversleeps by 6 ms on every wait used to add 6 ms to every
@@ -182,13 +72,11 @@ def test_lateness_does_not_accumulate():
     path = _path()
     evs = _events(path)
     planned_ms = evs[-1].t_ms
-    timer = LateTimer(0.006)
+    clock = LateClock(0.006)
+    use_clock(monkeypatch, clock)
     sink = []
 
-    async def emit(x, y):
-        sink.append(timer.now())
-
-    asyncio.run(_cursor._dispatch(evs, emit, timer=timer))
+    pointer_mod._drive(evs, lambda x, y: sink.append(clock.now()))
 
     delivered_ms = (sink[-1] - sink[0]) * 1000.0
     naive_ms = planned_ms + 6.0 * len(evs)
@@ -202,17 +90,15 @@ def test_lateness_does_not_accumulate():
     assert len(sink) == len(evs)
 
 
-def test_a_platform_too_slow_for_the_plan_pays_in_waypoints():
+def test_a_platform_too_slow_for_the_plan_pays_in_waypoints(monkeypatch):
     """When the machine cannot deliver the planned density, the plan loses
     events and keeps its timing - not the other way round."""
     evs = _events(_path())
-    timer = LateTimer(0.03)
+    clock = LateClock(0.03)
+    use_clock(monkeypatch, clock)
     sink = []
 
-    async def emit(x, y):
-        sink.append(timer.now())
-
-    asyncio.run(_cursor._dispatch(evs, emit, timer=timer))
+    pointer_mod._drive(evs, lambda x, y: sink.append(clock.now()))
     assert len(sink) < len(evs) * 0.75, (
         "%d of %d waypoints survived a platform three times too slow"
         % (len(sink), len(evs))
@@ -221,31 +107,25 @@ def test_a_platform_too_slow_for_the_plan_pays_in_waypoints():
     assert delivered_ms <= evs[-1].t_ms + 40.0, delivered_ms
 
 
-def test_no_two_events_are_delivered_in_the_same_instant():
+def test_no_two_events_are_delivered_in_the_same_instant(monkeypatch):
     """Catching up must not turn into an event rate no device produces."""
-    timer = LateTimer(0.011)
+    clock = LateClock(0.011)
+    use_clock(monkeypatch, clock)
     evs = _events(_path())
     sink = []
-
-    async def emit(x, y):
-        sink.append(timer.now())
-
-    asyncio.run(_cursor._dispatch(evs, emit, timer=timer))
+    pointer_mod._drive(evs, lambda x, y: sink.append(clock.now()))
     gaps = [(sink[i] - sink[i - 1]) * 1000.0 for i in range(1, len(sink))]
-    assert min(gaps) >= _cursor.MIN_EVENT_INTERVAL_MS - 1e-6, min(gaps)
+    assert min(gaps) >= MIN_EVENT_INTERVAL_MS - 1e-6, min(gaps)
 
 
-def test_a_dropped_waypoint_is_the_one_that_was_superseded():
+def test_a_dropped_waypoint_is_the_one_that_was_superseded(monkeypatch):
     """What survives is the plan's own timeline, sampled coarsely - not a
     prefix of it and not a rescaled copy of it."""
-    timer = LateTimer(0.02)
+    clock = LateClock(0.02)
+    use_clock(monkeypatch, clock)
     evs = _events(_path())
     sink = []
-
-    async def emit(x, y):
-        sink.append((timer.now(), x, y))
-
-    asyncio.run(_cursor._dispatch(evs, emit, timer=timer))
+    pointer_mod._drive(evs, lambda x, y: sink.append((clock.now(), x, y)))
     assert (sink[-1][1], sink[-1][2]) == (evs[-1].x, evs[-1].y), (
         "the endpoint of a movement is never dropped"
     )
@@ -273,16 +153,12 @@ def test_delivered_timing_on_a_real_clock(seed):
     evs = _events(path)
     planned_span = evs[-1].t_ms - evs[0].t_ms
 
-    async def run(dispatch):
+    def run(dispatch):
         sink = []
-
-        async def emit(x, y):
-            sink.append(time.perf_counter())
-
-        await dispatch(evs, emit)
+        dispatch(evs, lambda x, y: sink.append(time.perf_counter()))
         return sink
 
-    async def naive(events, emit):
+    def naive(events, emit):
         """The dispatcher this replaced: sleep the gap, once per waypoint.
 
         Its error is O(n) - every sleep contributes its own quantisation, and
@@ -294,9 +170,9 @@ def test_delivered_timing_on_a_real_clock(seed):
         for e in events:
             gap = (e.t_ms - prev) / 1000.0
             if gap > 0:
-                await asyncio.sleep(gap)
+                time.sleep(gap)
             prev = e.t_ms
-            await emit(e.x, e.y)
+            emit(e.x, e.y)
 
     # INTERLEAVED, not measured against a constant. A bound like "within 1.20x
     # of plan" is a statement about the machine, not about the code: this test
@@ -305,13 +181,9 @@ def test_delivered_timing_on_a_real_clock(seed):
     # BOTH dispatchers, so comparing them back to back on the same busy machine
     # is the only form that measures the change instead of the moment. Same
     # rule the project applies to every other A/B.
-    async def both():
-        a = await run(_cursor._dispatch)   # A
-        b = await run(naive)               # B
-        c = await run(_cursor._dispatch)   # A again, so a drifting machine shows up
-        return a, b, c
-
-    a, b, c = asyncio.run(both())
+    a = run(pointer_mod._drive)   # A
+    b = run(naive)                # B
+    c = run(pointer_mod._drive)   # A again, so a drifting machine shows up
 
     def span_ms(sink):
         return (sink[-1] - sink[0]) * 1000.0
@@ -333,7 +205,7 @@ def test_delivered_timing_on_a_real_clock(seed):
     # And a floor that does not depend on the clock at all: the schedule must
     # never be compressed below what a device could report.
     delivered = [(a[i] - a[i - 1]) * 1000.0 for i in range(1, len(a))]
-    assert min(delivered) >= _cursor.MIN_EVENT_INTERVAL_MS - 1.0
+    assert min(delivered) >= MIN_EVENT_INTERVAL_MS - 1.0
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -347,12 +219,12 @@ def test_the_time_cap_drops_waypoints_instead_of_speeding_them_up(cap):
     every 0.55 ms, i.e. 1800 Hz. No mouse reports that and no browser emits
     it."""
     raw = _motion.CursorMotion(4242).path(10.0, 10.0, 1200.0, 680.0)
-    paced = _cursor._normalise_waypoints(raw, cap)
+    paced = pointer_mod._normalise_waypoints(raw, cap)
     assert paced, "the cap must not swallow the whole movement"
     total = sum(d for _, _, d in paced)
     assert total <= cap + 1e-9
     gaps = [d for _, _, d in paced[1:]]
-    assert min(gaps) * 1000.0 >= _cursor.MIN_EVENT_INTERVAL_MS - 1e-9, (
+    assert min(gaps) * 1000.0 >= MIN_EVENT_INTERVAL_MS - 1e-9, (
         "%.3f ms between events is %.0f Hz" % (min(gaps) * 1000.0,
                                                1.0 / max(min(gaps), 1e-9))
     )
@@ -360,22 +232,22 @@ def test_the_time_cap_drops_waypoints_instead_of_speeding_them_up(cap):
 
 def test_a_tighter_cap_means_strictly_fewer_events():
     raw = _motion.CursorMotion(99).path(10.0, 10.0, 1200.0, 680.0)
-    counts = [len(_cursor._normalise_waypoints(raw, cap))
+    counts = [len(pointer_mod._normalise_waypoints(raw, cap))
               for cap in (0.05, 0.15, 0.5, 2.0)]
     assert counts[0] < counts[1] < counts[2] <= counts[3]
 
 
-def test_the_cap_bounds_a_whole_action_not_each_stroke(cursor_page, monkeypatch):
+def test_the_cap_bounds_a_whole_action_not_each_stroke(monkeypatch):
     """An approach is several strokes plus whatever fidget precedes it. The
     budget the caller asked for is for the action, not for each piece of it."""
-    timer = VirtualTimer()
-    monkeypatch.setattr(_cursor, "_TIMER", timer)
-    page, cursor = cursor_page(seed=5, max_seconds=0.3)
-    cursor.last_event_at = timer.now()
-    timer.t += 9.0  # a long think, so the fidget is in play too
-    t0 = timer.now()
-    asyncio.run(_cursor._approach(_frame(page), ("#buy",), {}, timer=timer))
-    assert timer.now() - t0 <= 0.3 + 1e-6, timer.now() - t0
+    clock = VirtualClock()
+    use_clock(monkeypatch, clock)
+    page, pointer = make_pointer(seed=5, max_seconds=0.3)
+    pointer.hand.last_event_at = clock.now()
+    clock.t += 9.0  # a long think, so the fidget is in play too
+    t0 = clock.now()
+    pointer.approach("main", "#buy", None)
+    assert clock.now() - t0 <= 0.3 + 1e-6, clock.now() - t0
     assert page.moves
 
 
@@ -383,19 +255,18 @@ def test_the_cap_bounds_a_whole_action_not_each_stroke(cursor_page, monkeypatch)
 # 3. B1 - the macro layer is actually driving events
 # ═══════════════════════════════════════════════════════════════════════════
 
-def test_an_approach_is_more_than_one_stroke(cursor_page, monkeypatch):
+def test_an_approach_is_more_than_one_stroke(monkeypatch):
     """Overshoot and correction, from ``_behaviour.plan_approach``. Without it
     every approach is a single monotone glide, which is a shape as recognisable
     as any constant."""
-    timer = VirtualTimer()
-    monkeypatch.setattr(_cursor, "_TIMER", timer)
+    use_clock(monkeypatch, VirtualClock())
     reversals = 0
     for seed in range(30):
-        page, cursor = cursor_page(seed=seed)
-        asyncio.run(_cursor._approach(_frame(page), ("#buy",), {}, timer=timer))
+        page, pointer = make_pointer(seed=seed)
+        pointer.approach("main", "#buy", None)
         pts = page.moves
         assert len(pts) > 3
-        target = (_BOX["x"] + _BOX["width"] / 2.0, _BOX["y"] + _BOX["height"] / 2.0)
+        target = (BOX["x"] + BOX["width"] / 2.0, BOX["y"] + BOX["height"] / 2.0)
         d = [((x - target[0]) ** 2 + (y - target[1]) ** 2) ** 0.5 for x, y in pts]
         # a corrective submovement shows up as distance-to-target going back up
         if any(d[i] > d[i - 1] + 0.5 for i in range(len(d) // 2, len(d))):
@@ -405,66 +276,64 @@ def test_an_approach_is_more_than_one_stroke(cursor_page, monkeypatch):
     )
 
 
-def test_nothing_fidgets_between_two_back_to_back_actions(cursor_page, monkeypatch):
+def test_nothing_fidgets_between_two_back_to_back_actions(monkeypatch):
     """Two calls in a row are one piece of work. Inserting idle motion between
     them would be both a lie and a delay on a caller who asked for neither."""
-    timer = VirtualTimer()
-    monkeypatch.setattr(_cursor, "_TIMER", timer)
-    page, cursor = cursor_page(seed=3)
-    cursor.last_event_at = timer.now()
-    assert _cursor._plan_fidget(cursor, page, timer) == []
-    timer.t += 0.2
-    assert _cursor._plan_fidget(cursor, page, timer) == []
+    clock = VirtualClock()
+    use_clock(monkeypatch, clock)
+    page, pointer = make_pointer(seed=3)
+    pointer.hand.last_event_at = clock.now()
+    assert pointer._plan_fidget() == []
+    clock.t += 0.2
+    assert pointer._plan_fidget() == []
 
 
-def test_a_long_pause_produces_motion_the_caller_never_asked_for(cursor_page,
-                                                                 monkeypatch):
+def test_a_long_pause_produces_motion_the_caller_never_asked_for(monkeypatch):
     """The point of the whole macro layer: a pointer that is motionless except
     for the second it takes to slide onto the next control is measurably a
     pointer that exists in order to click."""
-    timer = VirtualTimer()
-    monkeypatch.setattr(_cursor, "_TIMER", timer)
+    clock = VirtualClock()
+    use_clock(monkeypatch, clock)
     found = 0
     for seed in range(20):
-        page, cursor = cursor_page(seed=seed)
-        cursor.last_event_at = timer.now()
-        timer.t += 12.0
-        steps = _cursor._plan_fidget(cursor, page, timer)
+        page, pointer = make_pointer(seed=seed)
+        pointer.hand.last_event_at = clock.now()
+        clock.t += 12.0
+        steps = pointer._plan_fidget()
         if steps:
             found += 1
             assert all(s.kind != "wait" for s in steps)
     assert found >= 16, "only %d/20 sessions fidgeted after a 12 s pause" % found
 
 
-def test_the_fidget_is_bounded_by_its_share_of_the_budget(cursor_page,
-                                                          monkeypatch):
-    timer = VirtualTimer()
-    monkeypatch.setattr(_cursor, "_TIMER", timer)
+def test_the_fidget_is_bounded_by_its_share_of_the_budget(monkeypatch):
+    clock = VirtualClock()
+    use_clock(monkeypatch, clock)
     for seed in range(25):
-        page, cursor = cursor_page(seed=seed, max_seconds=1.0)
-        cursor.last_event_at = timer.now()
-        timer.t += 30.0
-        steps = _cursor._plan_fidget(cursor, page, timer)
+        page, pointer = make_pointer(seed=seed, max_seconds=1.0)
+        pointer.hand.last_event_at = clock.now()
+        clock.t += 30.0
+        steps = pointer._plan_fidget()
         spent = sum(s.delay_ms for s in steps[1:])
-        assert spent <= 1000.0 * _cursor._IDLE_BUDGET_FRAC + 1.0, spent
+        assert spent <= 1000.0 * pointer_mod._IDLE_BUDGET_FRAC + 1.0, spent
 
 
-def test_some_bursts_end_nowhere_near_a_control(cursor_page, monkeypatch):
+def test_some_bursts_end_nowhere_near_a_control(monkeypatch):
     """If every movement of a session terminates on a clickable element then
     the set of endpoints is a signature on its own."""
-    timer = VirtualTimer()
-    monkeypatch.setattr(_cursor, "_TIMER", timer)
+    clock = VirtualClock()
+    use_clock(monkeypatch, clock)
     off_control = 0
     for seed in range(30):
-        page, cursor = cursor_page(seed=seed)
-        cursor.last_event_at = timer.now()
-        timer.t += 8.0
-        steps = _cursor._plan_fidget(cursor, page, timer)
+        page, pointer = make_pointer(seed=seed)
+        pointer.hand.last_event_at = clock.now()
+        clock.t += 8.0
+        steps = pointer._plan_fidget()
         if not steps:
             continue
         x, y = steps[-1].x, steps[-1].y
-        inside = (_BOX["x"] <= x <= _BOX["x"] + _BOX["width"]
-                  and _BOX["y"] <= y <= _BOX["y"] + _BOX["height"])
+        inside = (BOX["x"] <= x <= BOX["x"] + BOX["width"]
+                  and BOX["y"] <= y <= BOX["y"] + BOX["height"])
         if not inside:
             off_control += 1
     assert off_control >= 20, off_control
@@ -474,53 +343,44 @@ def test_some_bursts_end_nowhere_near_a_control(cursor_page, monkeypatch):
 # 4. B1 - the wheel
 # ═══════════════════════════════════════════════════════════════════════════
 
-def _wheel(page, dx, dy, timer):
-    async def original(mouse, deltaX, deltaY):
-        page.wheels.append((deltaX, deltaY))
-
-    wrapped = _cursor._wrap_mouse_wheel(original)
-    # By keyword, exactly as both generated API layers call it. Positionally
-    # this would pass whatever the parameters were called.
-    asyncio.run(wrapped(page.mouse, deltaX=dx, deltaY=dy))
+def _wheel(page, pointer, dx, dy):
+    """What `PageDispatcher.op_mouse_wheel` does with it."""
+    if not pointer.wheel(dx, dy):
+        page.actions.wheel(dx, dy)
 
 
-def test_a_scroll_becomes_detents_with_a_hand_on_the_mouse(cursor_page,
-                                                           monkeypatch):
-    timer = VirtualTimer()
-    monkeypatch.setattr(_cursor, "_TIMER", timer)
-    page, cursor = cursor_page(seed=8)
-    _wheel(page, 0.0, 900.0, timer)
+def test_a_scroll_becomes_detents_with_a_hand_on_the_mouse(monkeypatch):
+    use_clock(monkeypatch, VirtualClock())
+    page, pointer = make_pointer(seed=8)
+    _wheel(page, pointer, 0.0, 900.0)
     assert len(page.wheels) >= 5, page.wheels
     assert page.moves, "the pointer held perfectly still while the wheel turned"
 
 
-def test_a_scroll_still_scrolls_exactly_what_it_was_asked_to(cursor_page,
-                                                              monkeypatch):
+def test_a_scroll_still_scrolls_exactly_what_it_was_asked_to(monkeypatch):
     """A scroll that lands somewhere else is a broken call, not a subtle one."""
-    timer = VirtualTimer()
-    monkeypatch.setattr(_cursor, "_TIMER", timer)
+    use_clock(monkeypatch, VirtualClock())
     for dx, dy in [(0.0, 900.0), (0.0, -640.0), (300.0, 300.0), (0.0, 37.0)]:
-        page, cursor = cursor_page(seed=8)
-        _wheel(page, dx, dy, timer)
+        page, pointer = make_pointer(seed=8)
+        _wheel(page, pointer, dx, dy)
         assert sum(w[0] for w in page.wheels) == pytest.approx(dx)
         assert sum(w[1] for w in page.wheels) == pytest.approx(dy)
 
 
-def test_a_short_scroll_is_left_alone(cursor_page, monkeypatch):
-    timer = VirtualTimer()
-    monkeypatch.setattr(_cursor, "_TIMER", timer)
-    page, cursor = cursor_page(seed=8)
-    _wheel(page, 0.0, 40.0, timer)
+def test_a_short_scroll_is_left_alone(monkeypatch):
+    use_clock(monkeypatch, VirtualClock())
+    page, pointer = make_pointer(seed=8)
+    _wheel(page, pointer, 0.0, 40.0)
     assert page.wheels == [(0.0, 40.0)]
 
 
-def test_the_scroll_burst_respects_the_budget(cursor_page, monkeypatch):
-    timer = VirtualTimer()
-    monkeypatch.setattr(_cursor, "_TIMER", timer)
-    page, cursor = cursor_page(seed=8, max_seconds=0.5)
-    t0 = timer.now()
-    _wheel(page, 0.0, 4000.0, timer)
-    assert timer.now() - t0 <= 0.5 + 1e-6
+def test_the_scroll_burst_respects_the_budget(monkeypatch):
+    clock = VirtualClock()
+    use_clock(monkeypatch, clock)
+    page, pointer = make_pointer(seed=8, max_seconds=0.5)
+    t0 = clock.now()
+    _wheel(page, pointer, 0.0, 4000.0)
+    assert clock.now() - t0 <= 0.5 + 1e-6
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -528,22 +388,13 @@ def test_the_scroll_burst_respects_the_budget(cursor_page, monkeypatch):
 # ═══════════════════════════════════════════════════════════════════════════
 
 def _session(seed, monkeypatch):
-    timer = VirtualTimer()
-    monkeypatch.setattr(_cursor, "_TIMER", timer)
-
-    async def fake_move(mouse, x, y):
-        await mouse.move(x, y)
-
-    _cursor._ensure_patched()
-    monkeypatch.setattr(_cursor, "_ORIGINAL_MOUSE_MOVE", fake_move)
-    browser = _FakeBrowser()
-    _cursor.enable_for(browser, seed=seed, max_seconds=1.5)
-    page = _FakePage(_FakeContext(browser))
-    cursor = _cursor._cursor_for_page(page)
+    clock = VirtualClock()
+    use_clock(monkeypatch, clock)
+    page, pointer = make_pointer(seed=seed, max_seconds=1.5)
     for _ in range(3):
-        cursor.last_event_at = timer.now()
-        timer.t += 6.0
-        asyncio.run(_cursor._approach(_frame(page), ("#buy",), {}, timer=timer))
+        pointer.hand.last_event_at = clock.now()
+        clock.t += 6.0
+        pointer.approach("main", "#buy", None)
     return page.moves
 
 
