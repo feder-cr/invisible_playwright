@@ -65,7 +65,7 @@ import time
 from typing import Any, Callable, Dict, List, Optional
 from urllib.parse import parse_qs, urlsplit
 
-from . import wire
+from . import memprobe, wire
 from .dispatcher import ProtocolException
 from .server import (BrowserDispatcher, BrowserTypeDispatcher, JugglerServer,
                      LocalUtilsDispatcher, RefusingDispatcher)
@@ -137,6 +137,17 @@ class RemoteClient:
                 await self.ws.send(text)
             except Exception:
                 return
+            trim = self.endpoint.trim
+            if trim is not None and len(text) >= memprobe.TRIM_BYTES:
+                del text  # the reply's text goes back to the allocator first
+                self._trim(trim)
+
+    @staticmethod
+    def _trim(trim: Callable[[], None]) -> None:
+        try:
+            trim()
+        except Exception:
+            pass
 
     def stop_pump(self) -> None:
         self.alive = False
@@ -161,6 +172,11 @@ class _SharedServer(JugglerServer):
     def send_up(self, message: Dict) -> None:
         if self.endpoint is not None:
             self.endpoint.route(message)
+
+    def unregister(self, obj: Any) -> None:
+        super().unregister(obj)
+        if obj.TYPE == "BrowserContext" and self.endpoint is not None:
+            self.endpoint.context_closed()
 
 
 class SharedBrowserDispatcher(BrowserDispatcher):
@@ -251,6 +267,9 @@ class RemoteEndpoint:
         self._start_error: Optional[BaseException] = None
         self._lock = threading.Lock()
         self._closed = False
+        #: The two opt-in switches (`memprobe.py`): None unless the environment asks.
+        self.probe = memprobe.probe_from_env(self)
+        self.trim = memprobe.trimmer_from_env()
         #: The rest of what the Playwright initializer must name (spec 1.62: chromium,
         #: firefox, webkit, android, electron are all required), created once.
         self.chromium = UnservedBrowserType(server, "chromium")
@@ -282,6 +301,15 @@ class RemoteEndpoint:
         if self._start_error is not None:
             self.close()
             raise self._start_error
+        if self.probe is not None:
+            self.probe.start()
+
+    def context_closed(self) -> None:
+        """A context left the registry: the probe takes a line, the allocator a trim."""
+        if self.probe is not None:
+            self.probe.write("context_closed")
+        if self.trim is not None:
+            RemoteClient._trim(self.trim)
 
     def _serve(self) -> None:
         loop = asyncio.new_event_loop()
@@ -542,6 +570,8 @@ class RemoteEndpoint:
             if self._closed:
                 return
             self._closed = True
+        if self.probe is not None:
+            self.probe.stop()
         loop, stop = self._loop, self._stop
         if loop is not None and stop is not None:
             try:
