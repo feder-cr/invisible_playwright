@@ -116,3 +116,56 @@ def test_the_golden_mouse_click_session_has_one_move_on_its_point():
     on_point = [e for e in events[:i] if e["type"] == "mousemove"
                 and (e["x"], e["y"]) == (120.0, 60.0)]
     assert len(on_point) == 1
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# The other end: a stroke that starts where the pointer already stands
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _zero_displacement_moves(events):
+    """A `mousemove` onto the very point the previous mouse event was at."""
+    return [(i, e["x"], e["y"]) for i, e in enumerate(events)
+            if i and e["type"] == "mousemove"
+            and (e["x"], e["y"]) == (events[i - 1]["x"], events[i - 1]["y"])]
+
+
+@pytest.mark.parametrize("pause", [0.0, 0.2, 5.0])
+@pytest.mark.parametrize("then", ["mouseClick", "mouseMove"])
+def test_a_stroke_from_standstill_does_not_repeat_the_point_it_stands_on(
+        clock, pause, then):
+    page = build_page(clock, _boxes_of("x"), seed=31337, number=2, budget=1.5)
+    page.call("mouseMove", {"x": 800.0, "y": 500.0, "humanise": True})
+    clock.t += pause
+    params = {"x": 120.0, "y": 60.0}
+    if then == "mouseMove":
+        params["humanise"] = True
+    page.call(then, params)
+    events = _mouse_events(page.log)
+    assert _repeated_moves(events) == []
+    assert _zero_displacement_moves(events) == []
+    # the walk still departs from there and the page still got the stroke
+    assert len([e for e in events if e["type"] == "mousemove"]) > 10
+
+
+def test_a_second_click_does_not_open_with_a_move_onto_the_press(clock):
+    page = build_page(clock, _boxes_of("x"), seed=4242, number=0, budget=1.5)
+    page.call("mouseClick", {"x": 120.0, "y": 60.0})
+    clock.t += 0.3
+    page.call("mouseClick", {"x": 640.0, "y": 360.0})
+    assert _zero_displacement_moves(_mouse_events(page.log)) == []
+
+
+def test_the_first_ever_stroke_still_starts_with_its_first_waypoint(clock):
+    """The page has been told nothing yet: the seeded start point is a real
+    first move for it, not a repeat."""
+    page = build_page(clock, _boxes_of("x"), seed=4242, number=0, budget=1.5)
+    page.call("mouseMove", {"x": 800.0, "y": 500.0, "humanise": True})
+    first = _mouse_events(page.log)[0]
+    assert (first["x"], first["y"]) != (0.0, 0.0)
+    assert first["t"] == 0.0
+
+
+def test_no_golden_session_has_a_zero_displacement_mousemove():
+    for name, sc in GOLDEN.items():
+        events = _mouse_events(sc["engine_events"])
+        assert _zero_displacement_moves(events) == [], name

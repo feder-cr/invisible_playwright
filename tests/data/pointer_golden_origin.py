@@ -21,6 +21,17 @@ the CURRENT tree, never by hand:
     PYTHONPATH=<this tree>/src python tests/data/pointer_golden_origin.py --revise-mouse-click
 It refuses to write unless the new session is the old one minus exactly one
 repeated mousemove on the click point.
+
+REVISION 2 (feat/rt-dblmove): the same session had a second repeat, at the
+START of the stroke of the `Mouse.click` that follows the explicit move and a
+pause: the stroke's first waypoint is its start point, and the engine had
+already been told the pointer stood on that pixel. `Pointer._travel` now does
+not send a first waypoint that coincides with the position the engine knows.
+Again one `mousemove` fewer in `explicit_pointer` only (t, x, y and type of
+every other event unchanged; the latency draws follow the event ordinal); the
+other three sessions are identical event for event, and the generator checks
+that before it writes:
+    PYTHONPATH=<this tree>/src python tests/data/pointer_golden_origin.py --revise-standstill
 """
 import asyncio
 import json
@@ -301,12 +312,35 @@ def dump_golden(g):
     return "\r\n".join(out) + "\r\n"
 
 
-def revise_mouse_click(path):
+def _server_session(spec, name):
+    """What the engine receives from the CURRENT server for one session."""
+    from invisible_playwright._juggler import pointer as pointer_mod
+    import tests.test_pointer_server as T
+
+    clock = T.VirtualClock()
+    pointer_mod._CLOCK = clock
+    core_actions.time = SimpleNamespace(
+        sleep=clock.sleep, monotonic=time.monotonic,
+        perf_counter=time.perf_counter)
+    page = T.build_page(clock, T._boxes_of(name), seed=spec["seed"],
+                        number=spec["number"], budget=spec["budget"],
+                        hits=spec.get("hits", "all"))
+    T.play(page, clock, spec["ops"])
+    return json.loads(json.dumps(page.log))
+
+
+def _shape(evs):  # the latency is a draw per event ordinal, not an event
+    return [{k: v for k, v in e.items() if k != "latency"} for e in evs]
+
+
+def _revise(path, is_dup, revision):
+    """Rewrite `explicit_pointer` from the current server, refusing unless it
+    is the file's session minus EXACTLY the one event `is_dup` names (same
+    t, x, y and type everywhere else), and every other session is what the
+    file already holds, event for event, latency included."""
     import pathlib
     root = pathlib.Path(__file__).resolve().parents[2]
     sys.path.insert(0, str(root))
-    from invisible_playwright._juggler import pointer as pointer_mod
-    import tests.test_pointer_server as T
 
     gp = pathlib.Path(path)
     with open(gp, newline="", encoding="utf-8") as fh:
@@ -315,47 +349,63 @@ def revise_mouse_click(path):
     assert dump_golden(g) == text, \
         "the writer does not reproduce the file: refusing to rewrite it"
     name = "explicit_pointer"
-    spec = g["scenarios"][name]["spec"]
     old = g["scenarios"][name]["engine_events"]
-
-    clock = T.VirtualClock()
-    pointer_mod._CLOCK = clock
-    core_actions.time = SimpleNamespace(
-        sleep=clock.sleep, monotonic=time.monotonic,
-        perf_counter=time.perf_counter)
-    page = T.build_page(clock, T._boxes_of(name), seed=spec["seed"],
-                        number=spec["number"], budget=spec["budget"])
-    T.play(page, clock, spec["ops"])
-    new = json.loads(json.dumps(page.log))
-
-    def shape(evs):  # the latency is a draw per event ordinal, not an event
-        return [{k: v for k, v in e.items() if k != "latency"} for e in evs]
-    point = tuple(spec["ops"][2][1:3])  # the mouse_click op
-    dup = [i for i in range(1, len(old))
-           if old[i]["m"] == old[i - 1]["m"] == "Page.dispatchMouseEvent"
-           and old[i]["type"] == old[i - 1]["type"] == "mousemove"
-           and (old[i]["x"], old[i]["y"]) == (old[i - 1]["x"], old[i - 1]["y"])
-           == point]
-    assert len(dup) == 1, "expected the one repeated move on the click point"
-    assert shape(new) == shape(old[:dup[0]] + old[dup[0] + 1:]), \
-        "the session differs from the old one by more than that move"
+    dup = [i for i in range(1, len(old)) if is_dup(g["scenarios"][name]["spec"], old, i)]
+    assert len(dup) == 1, "expected exactly one such event, found %r" % dup
+    for other, sc in g["scenarios"].items():
+        if other != name:
+            assert _server_session(sc["spec"], other) == sc["engine_events"], \
+                "session %s is not what the file holds: refusing" % other
+    new = _server_session(g["scenarios"][name]["spec"], name)
+    assert _shape(new) == _shape(old[:dup[0]] + old[dup[0] + 1:]), \
+        "the session differs from the old one by more than that event"
     g["scenarios"][name]["engine_events"] = new
-    g["_origin"]["revisions"] = [{
+    g["_origin"].setdefault("revisions", []).append(revision)
+    with open(gp, "w", newline="", encoding="utf-8") as fh:
+        fh.write(dump_golden(g))
+
+
+def _same_point_as_before(old, i, point=None):
+    a, b = old[i - 1], old[i]
+    return (a["m"] == b["m"] == "Page.dispatchMouseEvent"
+            and a["type"] == b["type"] == "mousemove"
+            and (a["x"], a["y"]) == (b["x"], b["y"])
+            and (point is None or (b["x"], b["y"]) == point))
+
+
+def revise_mouse_click(path):
+    _revise(path,
+            lambda spec, old, i: _same_point_as_before(
+                old, i, tuple(spec["ops"][2][1:3])),
+            {
         "what": "explicit_pointer: the Mouse.click no longer repeats its mousemove on the click point",
         "why": "Pointer.click_at sent the endpoint as a move and Actions.click_at moved onto it again before the press; the server now lets click_at make the one move",
         "change": "one mousemove fewer (same x, y, t as its twin); the other sessions are untouched",
         "generator": "tests/data/pointer_golden_origin.py --revise-mouse-click, run against feat/rt-dblmove",
-    }]
-    gp.write_text(dump_golden(g), encoding="utf-8", newline="")
+    })
+
+
+def revise_standstill(path):
+    _revise(path,
+            lambda spec, old, i: _same_point_as_before(
+                old, i, tuple(spec["ops"][0][1:3])),
+            {
+        "what": "explicit_pointer: a stroke from standstill no longer opens with a mousemove on the point it stands on",
+        "why": "the first waypoint of a stroke is its start; Pointer._travel sent it although the engine had already been told the pointer was on that pixel (a zero-displacement move no mouse reports)",
+        "change": "one mousemove fewer (the repeat of (800, 500) after the wait); t, x, y and type of every other event are unchanged, the latency draws follow the event ordinal; the other three sessions are identical event for event",
+        "generator": "tests/data/pointer_golden_origin.py --revise-standstill, run against feat/rt-dblmove",
+    })
 
 
 if __name__ == "__main__":
-    if "--revise-mouse-click" in sys.argv:
-        import pathlib
-        i = sys.argv.index("--revise-mouse-click")
-        revise_mouse_click(sys.argv[i + 1] if len(sys.argv) > i + 1 else
-                           pathlib.Path(__file__).with_name("pointer_golden.json"))
-        sys.exit(0)
+    import pathlib
+    for flag, fn in (("--revise-mouse-click", revise_mouse_click),
+                     ("--revise-standstill", revise_standstill)):
+        if flag in sys.argv:
+            i = sys.argv.index(flag)
+            fn(sys.argv[i + 1] if len(sys.argv) > i + 1 else
+               pathlib.Path(__file__).with_name("pointer_golden.json"))
+            sys.exit(0)
     out = {name: {"spec": spec, "engine_events": scenario(spec)}
            for name, spec in SCENARIOS.items()}
     json.dump(out, sys.stdout, indent=1)

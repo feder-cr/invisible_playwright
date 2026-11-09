@@ -724,12 +724,27 @@ class Pointer:
         evs: List[_Ev] = []
         t = 0.0
         end_key = (round(to_x), round(to_y))
+        # ⛔ THE FIRST WAYPOINT OF A STROKE IS WHERE IT STARTS. When the engine
+        # has already been told the pointer is on that pixel (a move that
+        # stopped there, then a pause), sending it again is a zero-displacement
+        # `mousemove` that no mouse reports; the stroke begins at its first
+        # real step. A pointer the engine has never been told about (the
+        # page's first movement, from the seeded start point) is not "there"
+        # for the page, so its first waypoint is a real move and goes out.
+        known = getattr(self.actions, "position", None)
+        at_start = (None if known is None
+                    else (round(known[0]), round(known[1])))
         for px, py, delay in waypoints:
             t += delay * 1000.0
             cx, cy = _clamp(px, py, w, h)
+            if (not evs and at_start is not None
+                    and (round(cx), round(cy)) == at_start
+                    and (round(hand.x), round(hand.y)) == at_start):
+                continue  # still standing on the start pixel: nothing moved
             # Never pre-empt the endpoint - it is the caller's to emit, once.
             #
-            # Nothing else here filters the stream. Whether two consecutive
+            # Nothing else here filters the stream (the start waypoint above is not
+            # a repeat of a shape, it is the position itself). Whether two consecutive
             # events may share a device pixel is a question about the SHAPE of
             # a path, and the shape belongs to the generator: a dispatcher that
             # silently removed every repeat would make "the duplicate fraction
