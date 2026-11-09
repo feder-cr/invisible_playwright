@@ -1,0 +1,929 @@
+{
+ "test_page": "index.html",
+ "black_page": "../canvas_text_ref/index.html",
+ "text": "Hamburgefonstiv 0123",
+ "firefox": {
+  "version": "159.0",
+  "buildid": "20261022150525",
+  "browser_version_capability": "159.0",
+  "exe_sha256": "d8b5ed82fcd9c0f159dc86dc1c4526ceae981c4d9651f21908b6de90d0a56d85",
+  "os": "Windows_NT",
+  "os_version": "10.0"
+ },
+ "canvas": {
+  "gfx.canvas.accelerated": false,
+  "pref_read_back": false
+ },
+ "cleartype": {
+  "FontSmoothing": "2",
+  "FontSmoothingType": "0x2"
+ },
+ "fonts": [
+  {
+   "family": "Arial",
+   "bundle_file": "arial7_04.ttf",
+   "sha256": "05c7da5fe195e04d76bbe4f22b7829ebc142f957066449f68d59afbb2d446b33",
+   "version": "Version 7.04",
+   "psname": "ArialMT",
+   "names": {
+    "1": "Arial",
+    "2": "Normal",
+    "4": "Arial",
+    "5": "Version 7.04",
+    "6": "ArialMT"
+   },
+   "list_entry": "f|arial7_04.ttf|0|400|400|100|100|normal|ArialMT|2048|1854|434|67|1062|1467|-217|150|530|102"
+  }
+ ],
+ "capture": {
+  "date": "2026-11-09",
+  "origin": "retail Firefox 159.0 (build 20261022150525, firefox.exe sha256 d8b5ed82fcd9c0f159dc86dc1c4526ceae981c4d9651f21908b6de90d0a56d85) on Windows, headless, canvases read back with getImageData; bytes saved by the measuring harness: colors/retail (the 14 coloured cases) and keys/<gamma>_<contrast>/retail (39 cases per key) of the win-asset analysis of 2026-11-09",
+  "colors_prefs": {
+   "gfx.canvas.accelerated": false
+  },
+  "keys_prefs": {
+   "gfx.canvas.accelerated": false,
+   "gfx.font_rendering.cleartype_params.gamma": "<gamma>",
+   "gfx.font_rendering.cleartype_params.enhanced_contrast": "<contrast>",
+   "gfx.font_rendering.cleartype_params.cleartype_level": 100,
+   "gfx.font_rendering.cleartype_params.pixel_structure": 1,
+   "gfx.font_rendering.cleartype_params.rendering_mode": 0
+  }
+ },
+ "colors": {
+  "count": 14,
+  "cases": {
+   "black|16": {
+    "id": "black|16",
+    "name": "black",
+    "fg": "#000000",
+    "bg": "#ffffff",
+    "size": 16,
+    "width": 420,
+    "height": 160,
+    "sha256": "938b7381139ef4f5d5bd0ca3f12d58f11224981f494afa869e92a2f22d7e7181"
+   },
+   "black|33": {
+    "id": "black|33",
+    "name": "black",
+    "fg": "#000000",
+    "bg": "#ffffff",
+    "size": 33,
+    "width": 420,
+    "height": 160,
+    "sha256": "d201f011ff0da51760a7dbd6f8b1a415173b278dd861edd19f1e240273661d21"
+   },
+   "teal|16": {
+    "id": "teal|16",
+    "name": "teal",
+    "fg": "#006699",
+    "bg": "#ffffff",
+    "size": 16,
+    "width": 420,
+    "height": 160,
+    "sha256": "8746ee921e50c0b8b08d8448faaa2bdc6c71e9268621bd71c0fcf24fd5495ae7"
+   },
+   "teal|33": {
+    "id": "teal|33",
+    "name": "teal",
+    "fg": "#006699",
+    "bg": "#ffffff",
+    "size": 33,
+    "width": 420,
+    "height": 160,
+    "sha256": "2b3df9671621de69a4e8415db76825bb2e18ddd122778521a8ddbc79e899dd71"
+   },
+   "limealpha|16": {
+    "id": "limealpha|16",
+    "name": "limealpha",
+    "fg": "rgba(102,204,0,0.2)",
+    "bg": "#ffffff",
+    "size": 16,
+    "width": 420,
+    "height": 160,
+    "sha256": "2f3cac50d2b3cfdda020841414a171c06b9d42c671b1688e744ccda1587ae74e"
+   },
+   "limealpha|33": {
+    "id": "limealpha|33",
+    "name": "limealpha",
+    "fg": "rgba(102,204,0,0.2)",
+    "bg": "#ffffff",
+    "size": 33,
+    "width": 420,
+    "height": 160,
+    "sha256": "4de189802d53988a14c12696b7304b5c46c43b77478b43c5174011b547e3cd71"
+   },
+   "grey|16": {
+    "id": "grey|16",
+    "name": "grey",
+    "fg": "#888888",
+    "bg": "#ffffff",
+    "size": 16,
+    "width": 420,
+    "height": 160,
+    "sha256": "117520b0392502751ddab388c91e9713153a58a71c2df5ca948e78b3471c3f0d"
+   },
+   "grey|33": {
+    "id": "grey|33",
+    "name": "grey",
+    "fg": "#888888",
+    "bg": "#ffffff",
+    "size": 33,
+    "width": 420,
+    "height": 160,
+    "sha256": "a20325721477839253b47e912d6ca2faca57b678dfd0684a53d2039c71b18f7d"
+   },
+   "white_on_black|16": {
+    "id": "white_on_black|16",
+    "name": "white_on_black",
+    "fg": "#ffffff",
+    "bg": "#000000",
+    "size": 16,
+    "width": 420,
+    "height": 160,
+    "sha256": "72e1b06edb977634bd70fcd9edd921a4332b526097ebb51e876eceb429cf5194"
+   },
+   "white_on_black|33": {
+    "id": "white_on_black|33",
+    "name": "white_on_black",
+    "fg": "#ffffff",
+    "bg": "#000000",
+    "size": 33,
+    "width": 420,
+    "height": 160,
+    "sha256": "5b84dd2f3a04210bb86a375e0c0d531fc1c7d90e0d50e97d19940981bee77dfc"
+   },
+   "red|16": {
+    "id": "red|16",
+    "name": "red",
+    "fg": "#ff0000",
+    "bg": "#ffffff",
+    "size": 16,
+    "width": 420,
+    "height": 160,
+    "sha256": "ac0c3b25f7d973e6c77251b100130e5d2df749def5502a84c98c28645540c594"
+   },
+   "red|33": {
+    "id": "red|33",
+    "name": "red",
+    "fg": "#ff0000",
+    "bg": "#ffffff",
+    "size": 33,
+    "width": 420,
+    "height": 160,
+    "sha256": "8a0a7f5461dccf8b1e87bf37c0b58333995a61ea73464c11575f40d3750e8d7e"
+   },
+   "white_on_blue|16": {
+    "id": "white_on_blue|16",
+    "name": "white_on_blue",
+    "fg": "#ffffff",
+    "bg": "#0000ff",
+    "size": 16,
+    "width": 420,
+    "height": 160,
+    "sha256": "7d3fc588aec100214021ced202515a3c51799a75540e507b1c68eadbdf5ebb80"
+   },
+   "white_on_blue|33": {
+    "id": "white_on_blue|33",
+    "name": "white_on_blue",
+    "fg": "#ffffff",
+    "bg": "#0000ff",
+    "size": 33,
+    "width": 420,
+    "height": 160,
+    "sha256": "9b90b082b3ec5a6242f60f89d198017d0dc84d4082b26f6de7fa01b9b8929436"
+   }
+  }
+ },
+ "keys": {
+  "1800_100": {
+   "gamma": 1800,
+   "contrast": 100,
+   "count": 39,
+   "black": {
+    "Arial|12.5|none|normal|normal|fill": {
+     "id": "Arial|12.5|none|normal|normal|fill",
+     "width": 319,
+     "height": 183,
+     "sha256": "ee3a8e3dfea9159a8497979695e096057fa49f2577fe6bf638e41d1fecec67ea"
+    },
+    "Arial|16|none|normal|normal|fill": {
+     "id": "Arial|16|none|normal|normal|fill",
+     "width": 386,
+     "height": 212,
+     "sha256": "98cd2b38609078580d7cb7eda232967ee28ad53ba6159ae59298cf1c7137c164"
+    },
+    "Arial|16|none|normal|normal|stroke": {
+     "id": "Arial|16|none|normal|normal|stroke",
+     "width": 386,
+     "height": 212,
+     "sha256": "1e6571d8a74938a478548455619639476ac1d5fe556361aa227059f9a5383cc8"
+    },
+    "Arial|33|none|normal|normal|fill": {
+     "id": "Arial|33|none|normal|normal|fill",
+     "width": 711,
+     "height": 352,
+     "sha256": "77d3ad98366467e10e0a7a30ec89615435d500684bd6ae14e077be083e0fd1b4"
+    },
+    "Arial|33|rot15-scale1.5x2|normal|normal|fill": {
+     "id": "Arial|33|rot15-scale1.5x2|normal|normal|fill",
+     "width": 711,
+     "height": 352,
+     "sha256": "268661170dbf65b4087095d6572a9e5eb47df3aba92de4497ab9305ddc25969a"
+    },
+    "Arial|33|rot15-scale1.5x2|normal|normal|fill|alpha=false": {
+     "id": "Arial|33|rot15-scale1.5x2|normal|normal|fill|alpha=false",
+     "width": 711,
+     "height": 352,
+     "sha256": "56bdb525c665af5aed8eb887d5fef9bc2cf96dc04c580f847e3ac2d7adb7facf"
+    },
+    "Arial|72|none|normal|normal|fill": {
+     "id": "Arial|72|none|normal|normal|fill",
+     "width": 1456,
+     "height": 673,
+     "sha256": "cde0d587e27ae735ab3f4d48ab9db9e4ab67b428a47725e80889b05fc585cb19"
+    },
+    "Arial|72|none|normal|normal|fill|alpha=false": {
+     "id": "Arial|72|none|normal|normal|fill|alpha=false",
+     "width": 1456,
+     "height": 673,
+     "sha256": "8f3002ed06eb19f56b436404bf270b89ef1f773c403a682d0197bb8c86193b09"
+    },
+    "Arial|72|none|normal|normal|stroke": {
+     "id": "Arial|72|none|normal|normal|stroke",
+     "width": 1456,
+     "height": 673,
+     "sha256": "dcfd4e18ea49e2939fc9ed4b0125d3537129ef9db16a307bbace4ee0e404db3e"
+    },
+    "Arial|9|none|normal|normal|fill": {
+     "id": "Arial|9|none|normal|normal|fill",
+     "width": 252,
+     "height": 155,
+     "sha256": "3e7800055997f8c1a66b8e6743079abc1f8861a7805097be20910e23d2a94f96"
+    },
+    "Calibri|12.5|none|normal|normal|fill": {
+     "id": "Calibri|12.5|none|normal|normal|fill",
+     "width": 302,
+     "height": 179,
+     "sha256": "d2ffbf661f27e331c065dfaa75d9ac211e422cdd33ec7100ad440e880d9609ea"
+    },
+    "Calibri|16|none|normal|normal|fill": {
+     "id": "Calibri|16|none|normal|normal|fill",
+     "width": 364,
+     "height": 206,
+     "sha256": "e92b7be795a3f9c6fff81923bd19332ed197e0d4c9a435eec3007503277731f4"
+    },
+    "Calibri|33|none|normal|normal|fill": {
+     "id": "Calibri|33|none|normal|normal|fill",
+     "width": 666,
+     "height": 340,
+     "sha256": "51da20ad1f3cff06c7e3f03112f697c430cafe5b0ec1a02d7b81d73226389fa8"
+    },
+    "Calibri|9|none|normal|normal|fill": {
+     "id": "Calibri|9|none|normal|normal|fill",
+     "width": 240,
+     "height": 151,
+     "sha256": "196f471dd173d75c7eda41f9d87caa3a6321d43b2df3cf176581f82257169aad"
+    },
+    "Consolas|12.5|none|normal|normal|fill": {
+     "id": "Consolas|12.5|none|normal|normal|fill",
+     "width": 338,
+     "height": 188,
+     "sha256": "94e60dca493f234bea874e7a962855d2a708f00cc35f4e266c0d5f98f998b905"
+    },
+    "Consolas|16|none|normal|normal|fill": {
+     "id": "Consolas|16|none|normal|normal|fill",
+     "width": 410,
+     "height": 218,
+     "sha256": "50e756f75be97db95df3cb2d46511ec95a1afa2ba5d9cdb2cd73123a65bcb0e4"
+    },
+    "Consolas|33|none|normal|normal|fill": {
+     "id": "Consolas|33|none|normal|normal|fill",
+     "width": 760,
+     "height": 365,
+     "sha256": "f0ab5cc32841bb964b06cad8cc960a6ce7b2ff1f893b61d40f2ade0fa1a3da57"
+    },
+    "Consolas|9|none|normal|normal|fill": {
+     "id": "Consolas|9|none|normal|normal|fill",
+     "width": 266,
+     "height": 158,
+     "sha256": "fe35c05a55d67fa9be55edc4a3c26ec1b02ae0554c3927df65d63d7f314ba5cb"
+    },
+    "Segoe UI|12.5|none|normal|normal|fill": {
+     "id": "Segoe UI|12.5|none|normal|normal|fill",
+     "width": 319,
+     "height": 183,
+     "sha256": "2b0e2121a7cecb95627884b225686516823ecf907cdac3d16de2c9d9448e7cb4"
+    },
+    "Segoe UI|16|none|normal|normal|fill": {
+     "id": "Segoe UI|16|none|normal|normal|fill",
+     "width": 386,
+     "height": 212,
+     "sha256": "e2da2ca50b4a3714b344fc909f06cc21d8e70985c87fba10d02105302b050f03"
+    },
+    "Segoe UI|33|none|normal|normal|fill": {
+     "id": "Segoe UI|33|none|normal|normal|fill",
+     "width": 711,
+     "height": 352,
+     "sha256": "051b495e0c4c7c29ded7b83f54aaa0eca0d072c0f3b299c8429828394a614499"
+    },
+    "Segoe UI|9|none|normal|normal|fill": {
+     "id": "Segoe UI|9|none|normal|normal|fill",
+     "width": 253,
+     "height": 155,
+     "sha256": "498ab34b34191205b46cce4edbd08c539c07734be633f17998dc4cc3e613360c"
+    },
+    "Times New Roman|16|none|normal|normal|fill": {
+     "id": "Times New Roman|16|none|normal|normal|fill",
+     "width": 365,
+     "height": 207,
+     "sha256": "3060970fff10250556c1dedda06e0602ba74f8cd62319cc4c07d79c764d0d198"
+    },
+    "Twemoji Mozilla|33|none|normal|normal|fill|alpha=false|text=emoji": {
+     "id": "Twemoji Mozilla|33|none|normal|normal|fill|alpha=false|text=emoji",
+     "width": 338,
+     "height": 254,
+     "sha256": "b17a096d51b6b7226984188e54627a496863aeab998bb9f1adc9e816c8b6a64b"
+    },
+    "Twemoji Mozilla|33|none|normal|normal|fill|text=emoji": {
+     "id": "Twemoji Mozilla|33|none|normal|normal|fill|text=emoji",
+     "width": 338,
+     "height": 254,
+     "sha256": "b17a096d51b6b7226984188e54627a496863aeab998bb9f1adc9e816c8b6a64b"
+    }
+   },
+   "colors": {
+    "black|16": {
+     "id": "black|16",
+     "width": 420,
+     "height": 160,
+     "sha256": "938b7381139ef4f5d5bd0ca3f12d58f11224981f494afa869e92a2f22d7e7181"
+    },
+    "black|33": {
+     "id": "black|33",
+     "width": 420,
+     "height": 160,
+     "sha256": "d201f011ff0da51760a7dbd6f8b1a415173b278dd861edd19f1e240273661d21"
+    },
+    "teal|16": {
+     "id": "teal|16",
+     "width": 420,
+     "height": 160,
+     "sha256": "8746ee921e50c0b8b08d8448faaa2bdc6c71e9268621bd71c0fcf24fd5495ae7"
+    },
+    "teal|33": {
+     "id": "teal|33",
+     "width": 420,
+     "height": 160,
+     "sha256": "2b3df9671621de69a4e8415db76825bb2e18ddd122778521a8ddbc79e899dd71"
+    },
+    "limealpha|16": {
+     "id": "limealpha|16",
+     "width": 420,
+     "height": 160,
+     "sha256": "2f3cac50d2b3cfdda020841414a171c06b9d42c671b1688e744ccda1587ae74e"
+    },
+    "limealpha|33": {
+     "id": "limealpha|33",
+     "width": 420,
+     "height": 160,
+     "sha256": "4de189802d53988a14c12696b7304b5c46c43b77478b43c5174011b547e3cd71"
+    },
+    "grey|16": {
+     "id": "grey|16",
+     "width": 420,
+     "height": 160,
+     "sha256": "117520b0392502751ddab388c91e9713153a58a71c2df5ca948e78b3471c3f0d"
+    },
+    "grey|33": {
+     "id": "grey|33",
+     "width": 420,
+     "height": 160,
+     "sha256": "a20325721477839253b47e912d6ca2faca57b678dfd0684a53d2039c71b18f7d"
+    },
+    "white_on_black|16": {
+     "id": "white_on_black|16",
+     "width": 420,
+     "height": 160,
+     "sha256": "72e1b06edb977634bd70fcd9edd921a4332b526097ebb51e876eceb429cf5194"
+    },
+    "white_on_black|33": {
+     "id": "white_on_black|33",
+     "width": 420,
+     "height": 160,
+     "sha256": "5b84dd2f3a04210bb86a375e0c0d531fc1c7d90e0d50e97d19940981bee77dfc"
+    },
+    "red|16": {
+     "id": "red|16",
+     "width": 420,
+     "height": 160,
+     "sha256": "ac0c3b25f7d973e6c77251b100130e5d2df749def5502a84c98c28645540c594"
+    },
+    "red|33": {
+     "id": "red|33",
+     "width": 420,
+     "height": 160,
+     "sha256": "8a0a7f5461dccf8b1e87bf37c0b58333995a61ea73464c11575f40d3750e8d7e"
+    },
+    "white_on_blue|16": {
+     "id": "white_on_blue|16",
+     "width": 420,
+     "height": 160,
+     "sha256": "7d3fc588aec100214021ced202515a3c51799a75540e507b1c68eadbdf5ebb80"
+    },
+    "white_on_blue|33": {
+     "id": "white_on_blue|33",
+     "width": 420,
+     "height": 160,
+     "sha256": "9b90b082b3ec5a6242f60f89d198017d0dc84d4082b26f6de7fa01b9b8929436"
+    }
+   }
+  },
+  "1400_50": {
+   "gamma": 1400,
+   "contrast": 50,
+   "count": 39,
+   "black": {
+    "Arial|12.5|none|normal|normal|fill": {
+     "id": "Arial|12.5|none|normal|normal|fill",
+     "width": 319,
+     "height": 183,
+     "sha256": "14c99d061e0f4a4c53418e9364cfbebb263637ff271eb88ce0174ec7f580a8d1"
+    },
+    "Arial|16|none|normal|normal|fill": {
+     "id": "Arial|16|none|normal|normal|fill",
+     "width": 386,
+     "height": 212,
+     "sha256": "460090856e361a9d1c8b8e508f1389bb18d6ed4bcbcb54de0a41def27df66c60"
+    },
+    "Arial|16|none|normal|normal|stroke": {
+     "id": "Arial|16|none|normal|normal|stroke",
+     "width": 386,
+     "height": 212,
+     "sha256": "d430dc9d241cbcf3163cf3c84819e296695b271ce5e4c0cbb81ff5e52fb7f888"
+    },
+    "Arial|33|none|normal|normal|fill": {
+     "id": "Arial|33|none|normal|normal|fill",
+     "width": 711,
+     "height": 352,
+     "sha256": "133696ab25926088783d52f37a1e0b38b6c05d89b5f8be9ba526a6d40b3ac9cc"
+    },
+    "Arial|33|rot15-scale1.5x2|normal|normal|fill": {
+     "id": "Arial|33|rot15-scale1.5x2|normal|normal|fill",
+     "width": 711,
+     "height": 352,
+     "sha256": "60be668ad5c98d4f6c1a882c991ac2bf716c370e7ddad2fc33727382729540e1"
+    },
+    "Arial|33|rot15-scale1.5x2|normal|normal|fill|alpha=false": {
+     "id": "Arial|33|rot15-scale1.5x2|normal|normal|fill|alpha=false",
+     "width": 711,
+     "height": 352,
+     "sha256": "a6d3ed8f876b2549de27d495a18275a8d1d57aabb12b366a5ea010f64ff2a487"
+    },
+    "Arial|72|none|normal|normal|fill": {
+     "id": "Arial|72|none|normal|normal|fill",
+     "width": 1456,
+     "height": 673,
+     "sha256": "e94fec8095a60639e7f032a83010c67d2cb903c564963a7502736424b031cfd1"
+    },
+    "Arial|72|none|normal|normal|fill|alpha=false": {
+     "id": "Arial|72|none|normal|normal|fill|alpha=false",
+     "width": 1456,
+     "height": 673,
+     "sha256": "7e99bff1907801acadcbac04269a7d12ffb3bd7f51866dfc530160150b323042"
+    },
+    "Arial|72|none|normal|normal|stroke": {
+     "id": "Arial|72|none|normal|normal|stroke",
+     "width": 1456,
+     "height": 673,
+     "sha256": "2f6e77afccf808b8093d8401eff74063579e20878aa92b9dee79e9772bb9557a"
+    },
+    "Arial|9|none|normal|normal|fill": {
+     "id": "Arial|9|none|normal|normal|fill",
+     "width": 252,
+     "height": 155,
+     "sha256": "f6f0f83c38699bac16c911ffb08bb4d65bcd2eb310af96999c86ed1a3849b1c1"
+    },
+    "Calibri|12.5|none|normal|normal|fill": {
+     "id": "Calibri|12.5|none|normal|normal|fill",
+     "width": 302,
+     "height": 179,
+     "sha256": "9245eea21c147ff68d9939442dd706a543c5d330aac23bf8b3d98763c6b4be49"
+    },
+    "Calibri|16|none|normal|normal|fill": {
+     "id": "Calibri|16|none|normal|normal|fill",
+     "width": 364,
+     "height": 206,
+     "sha256": "99267623a24e50c9b8780c9164466c3e87eeba0f1121e3a967388b2270c1f4e0"
+    },
+    "Calibri|33|none|normal|normal|fill": {
+     "id": "Calibri|33|none|normal|normal|fill",
+     "width": 666,
+     "height": 340,
+     "sha256": "015bb14578ca98863179cf6cf8f081141895919caa5b40bbbeb5850d6daf1dd6"
+    },
+    "Calibri|9|none|normal|normal|fill": {
+     "id": "Calibri|9|none|normal|normal|fill",
+     "width": 240,
+     "height": 151,
+     "sha256": "3032e62b1f242f40a929515e8c7c0795df490ee8689b7ff8edb5576cb281039f"
+    },
+    "Consolas|12.5|none|normal|normal|fill": {
+     "id": "Consolas|12.5|none|normal|normal|fill",
+     "width": 338,
+     "height": 188,
+     "sha256": "940e7b60291c65c0478370523b110ba443a154bb9adbfeb6a8f2f05aa5bf64f9"
+    },
+    "Consolas|16|none|normal|normal|fill": {
+     "id": "Consolas|16|none|normal|normal|fill",
+     "width": 410,
+     "height": 218,
+     "sha256": "627d72ba3944f9f7d75f7656022c3e2721d40c7c58bb54066231ed87be12997c"
+    },
+    "Consolas|33|none|normal|normal|fill": {
+     "id": "Consolas|33|none|normal|normal|fill",
+     "width": 760,
+     "height": 365,
+     "sha256": "75658b28d60aa33498c7beab0672416a0e1aa1e90ea1a5baec103b687725552a"
+    },
+    "Consolas|9|none|normal|normal|fill": {
+     "id": "Consolas|9|none|normal|normal|fill",
+     "width": 266,
+     "height": 158,
+     "sha256": "5a9fa9c242e44227bbb68d45b58324c7e16d3a4b36c7e97a0113b945c72147d9"
+    },
+    "Segoe UI|12.5|none|normal|normal|fill": {
+     "id": "Segoe UI|12.5|none|normal|normal|fill",
+     "width": 319,
+     "height": 183,
+     "sha256": "659a72b345f342f4bd4d4a7cdd444f68e802302d199ac59ba619441414a3cf5a"
+    },
+    "Segoe UI|16|none|normal|normal|fill": {
+     "id": "Segoe UI|16|none|normal|normal|fill",
+     "width": 386,
+     "height": 212,
+     "sha256": "7ed00e70c9ad30aa78faa09a0781197a4fe511af65f72e14b6b65ec8081d8ffd"
+    },
+    "Segoe UI|33|none|normal|normal|fill": {
+     "id": "Segoe UI|33|none|normal|normal|fill",
+     "width": 711,
+     "height": 352,
+     "sha256": "85598e54157f9c74091a92cd86653e6f4b10956c47aa63791ea4f799a41e0cda"
+    },
+    "Segoe UI|9|none|normal|normal|fill": {
+     "id": "Segoe UI|9|none|normal|normal|fill",
+     "width": 253,
+     "height": 155,
+     "sha256": "ba4e8c10825da7b2ca987a159345da51bd15892465a7e4102cd8ea28cf6861a1"
+    },
+    "Times New Roman|16|none|normal|normal|fill": {
+     "id": "Times New Roman|16|none|normal|normal|fill",
+     "width": 365,
+     "height": 207,
+     "sha256": "05f8cc92764a333044b3ea5ff03f8cfc52616670c2ac89b351a1a94bd0ac3316"
+    },
+    "Twemoji Mozilla|33|none|normal|normal|fill|alpha=false|text=emoji": {
+     "id": "Twemoji Mozilla|33|none|normal|normal|fill|alpha=false|text=emoji",
+     "width": 338,
+     "height": 254,
+     "sha256": "09d0464c8a0da0cdde22392a6e02df35f02ba67c7e89ff415f37302630b076df"
+    },
+    "Twemoji Mozilla|33|none|normal|normal|fill|text=emoji": {
+     "id": "Twemoji Mozilla|33|none|normal|normal|fill|text=emoji",
+     "width": 338,
+     "height": 254,
+     "sha256": "09d0464c8a0da0cdde22392a6e02df35f02ba67c7e89ff415f37302630b076df"
+    }
+   },
+   "colors": {
+    "black|16": {
+     "id": "black|16",
+     "width": 420,
+     "height": 160,
+     "sha256": "52ad1861583860289040685f6d12360e17707b94a0e518c5484cffd4e022e4bb"
+    },
+    "black|33": {
+     "id": "black|33",
+     "width": 420,
+     "height": 160,
+     "sha256": "980ea0631ee5813905f894ebfbca8ce859402b3eeb11cc3069c265d594610f84"
+    },
+    "teal|16": {
+     "id": "teal|16",
+     "width": 420,
+     "height": 160,
+     "sha256": "019ef31ba5e38bba0e0ed00c1f7872d1f752d4faef964220728b703689b8e0ea"
+    },
+    "teal|33": {
+     "id": "teal|33",
+     "width": 420,
+     "height": 160,
+     "sha256": "3a46c08e48f0adb86e68d95a211eb61ac2f9dcc9a6279913b1d9698f50a33fb1"
+    },
+    "limealpha|16": {
+     "id": "limealpha|16",
+     "width": 420,
+     "height": 160,
+     "sha256": "10e296a606b3c506a4d9046dfc593d901d49e6eaaa5803d18ff51d8e49dd10ac"
+    },
+    "limealpha|33": {
+     "id": "limealpha|33",
+     "width": 420,
+     "height": 160,
+     "sha256": "40e733728a6aae4ab7e78993ad2e2eb8689b8761f3698dc1054bf6d0615da30f"
+    },
+    "grey|16": {
+     "id": "grey|16",
+     "width": 420,
+     "height": 160,
+     "sha256": "a6b24c09f8364adf1190ae3c33d6c8b575d179cc6c2de98a342cd321c82dffe7"
+    },
+    "grey|33": {
+     "id": "grey|33",
+     "width": 420,
+     "height": 160,
+     "sha256": "fd6f0d41ebb37ceff9ae9d476f297293be36279bed196d66a13708298322d3ff"
+    },
+    "white_on_black|16": {
+     "id": "white_on_black|16",
+     "width": 420,
+     "height": 160,
+     "sha256": "acc160da81e8cddd293c5bce6a0d24f382cb778c4df90488ad21e3cc0177099c"
+    },
+    "white_on_black|33": {
+     "id": "white_on_black|33",
+     "width": 420,
+     "height": 160,
+     "sha256": "2b457056b9add984d1f09f3194b116399d6f1313cb7b5c006adb59662d8011c1"
+    },
+    "red|16": {
+     "id": "red|16",
+     "width": 420,
+     "height": 160,
+     "sha256": "bbafe01fa867809ef60b23de34292b6130e018f06cecb5dc4036fde01ad8524c"
+    },
+    "red|33": {
+     "id": "red|33",
+     "width": 420,
+     "height": 160,
+     "sha256": "00c7c3b8114a536a2e305b9c995456501553c158a572288a6382c7addcd6ab9f"
+    },
+    "white_on_blue|16": {
+     "id": "white_on_blue|16",
+     "width": 420,
+     "height": 160,
+     "sha256": "2114b54a0da2799c310357e1f3e88255228bd6b10277b5bb4c28be9dd0e8309f"
+    },
+    "white_on_blue|33": {
+     "id": "white_on_blue|33",
+     "width": 420,
+     "height": 160,
+     "sha256": "42df0d6244b32216364af6dbfaba48a44ef3689a28786529715372688e1da443"
+    }
+   }
+  },
+  "2200_0": {
+   "gamma": 2200,
+   "contrast": 0,
+   "count": 39,
+   "black": {
+    "Arial|12.5|none|normal|normal|fill": {
+     "id": "Arial|12.5|none|normal|normal|fill",
+     "width": 319,
+     "height": 183,
+     "sha256": "bc41b0f4665d48690f6acaf86575e90045da6eeeb1e21c1d71cee9eb0fdadf97"
+    },
+    "Arial|16|none|normal|normal|fill": {
+     "id": "Arial|16|none|normal|normal|fill",
+     "width": 386,
+     "height": 212,
+     "sha256": "494f8937cfabe6df194df5942b4a1a7dc11de5e891784bd743467714cc905bb2"
+    },
+    "Arial|16|none|normal|normal|stroke": {
+     "id": "Arial|16|none|normal|normal|stroke",
+     "width": 386,
+     "height": 212,
+     "sha256": "c59f1864698754e5f010baa4b2af1c65e9e74d6bdf6d84cafada9bae1fbeeb6f"
+    },
+    "Arial|33|none|normal|normal|fill": {
+     "id": "Arial|33|none|normal|normal|fill",
+     "width": 711,
+     "height": 352,
+     "sha256": "46753d78e39d6d7d472e805e46b062256705d2622ad1a0441b34b622e20fbe30"
+    },
+    "Arial|33|rot15-scale1.5x2|normal|normal|fill": {
+     "id": "Arial|33|rot15-scale1.5x2|normal|normal|fill",
+     "width": 711,
+     "height": 352,
+     "sha256": "dc2d1220bfc481f561e0ee1c1093f9a2e7484a137e1fa4a7054e88a8cde8efee"
+    },
+    "Arial|33|rot15-scale1.5x2|normal|normal|fill|alpha=false": {
+     "id": "Arial|33|rot15-scale1.5x2|normal|normal|fill|alpha=false",
+     "width": 711,
+     "height": 352,
+     "sha256": "d766613d927d0402f64875a3f84d730c05e8334f04d538550669eb60a6f7c90b"
+    },
+    "Arial|72|none|normal|normal|fill": {
+     "id": "Arial|72|none|normal|normal|fill",
+     "width": 1456,
+     "height": 673,
+     "sha256": "bff75224bc88dad497d360779bd999a2c327651e68a29df0332a025f27414b60"
+    },
+    "Arial|72|none|normal|normal|fill|alpha=false": {
+     "id": "Arial|72|none|normal|normal|fill|alpha=false",
+     "width": 1456,
+     "height": 673,
+     "sha256": "3b1d63436b498024c8fa5dd191aaec66a720920f4f5cbebcec4fb10cafbad543"
+    },
+    "Arial|72|none|normal|normal|stroke": {
+     "id": "Arial|72|none|normal|normal|stroke",
+     "width": 1456,
+     "height": 673,
+     "sha256": "44fd511bb9097a9344524a9ce88a2832767b93310274790de08ca68a76da971d"
+    },
+    "Arial|9|none|normal|normal|fill": {
+     "id": "Arial|9|none|normal|normal|fill",
+     "width": 252,
+     "height": 155,
+     "sha256": "7f1c0a53a28d5d1928788db178742643435c6576e0df291b6d68688d306ebeb1"
+    },
+    "Calibri|12.5|none|normal|normal|fill": {
+     "id": "Calibri|12.5|none|normal|normal|fill",
+     "width": 302,
+     "height": 179,
+     "sha256": "c6834082d739490f9486ff17e13b07d97c47bf823e14864d18ae752db88193ed"
+    },
+    "Calibri|16|none|normal|normal|fill": {
+     "id": "Calibri|16|none|normal|normal|fill",
+     "width": 364,
+     "height": 206,
+     "sha256": "48d1d575a8e73c17c89b57bcadaf94a21d66956ab3406c81d0462a3d5f1e7f42"
+    },
+    "Calibri|33|none|normal|normal|fill": {
+     "id": "Calibri|33|none|normal|normal|fill",
+     "width": 666,
+     "height": 340,
+     "sha256": "823a7c1037ba76cee297b77e26de62d698bd8f8055fbdde556949248c01eb5c4"
+    },
+    "Calibri|9|none|normal|normal|fill": {
+     "id": "Calibri|9|none|normal|normal|fill",
+     "width": 240,
+     "height": 151,
+     "sha256": "d22432b47834f0426de5e2bcfa199e39f54db75e5cd503aa7175fa125f52a9c4"
+    },
+    "Consolas|12.5|none|normal|normal|fill": {
+     "id": "Consolas|12.5|none|normal|normal|fill",
+     "width": 338,
+     "height": 188,
+     "sha256": "2038306771f3c80c528cceca6a5045367dfb2789e0fac6c3b063a1979262ff82"
+    },
+    "Consolas|16|none|normal|normal|fill": {
+     "id": "Consolas|16|none|normal|normal|fill",
+     "width": 410,
+     "height": 218,
+     "sha256": "8e4d6ffa72d864c811647613554a9e9f044c949688566e84847be8d544b0c57b"
+    },
+    "Consolas|33|none|normal|normal|fill": {
+     "id": "Consolas|33|none|normal|normal|fill",
+     "width": 760,
+     "height": 365,
+     "sha256": "d79a5a9f2134bbbeb509fac67eaedddbba88a71a901ebc498c9e3c2b0f42178b"
+    },
+    "Consolas|9|none|normal|normal|fill": {
+     "id": "Consolas|9|none|normal|normal|fill",
+     "width": 266,
+     "height": 158,
+     "sha256": "9d76f6b720d844f961d74c8779849f701a10b6b088cb8f6b73d1ac181a01179e"
+    },
+    "Segoe UI|12.5|none|normal|normal|fill": {
+     "id": "Segoe UI|12.5|none|normal|normal|fill",
+     "width": 319,
+     "height": 183,
+     "sha256": "6f05277c4eea92d7d1ca86471bcf47f42172d9ab43d11e784c14650b86b7f744"
+    },
+    "Segoe UI|16|none|normal|normal|fill": {
+     "id": "Segoe UI|16|none|normal|normal|fill",
+     "width": 386,
+     "height": 212,
+     "sha256": "7fed78964672e26bfc878ab65910c9c59abf57af85f8d01af330f0d8e6a890e4"
+    },
+    "Segoe UI|33|none|normal|normal|fill": {
+     "id": "Segoe UI|33|none|normal|normal|fill",
+     "width": 711,
+     "height": 352,
+     "sha256": "af8d02cec31673a205a5a389f478e8270474bd025936cd11fd01478a706da04b"
+    },
+    "Segoe UI|9|none|normal|normal|fill": {
+     "id": "Segoe UI|9|none|normal|normal|fill",
+     "width": 253,
+     "height": 155,
+     "sha256": "5bc7924b646811c83d2a6f31bb02236ccae08abdc39c98f574c41c6211ee0413"
+    },
+    "Times New Roman|16|none|normal|normal|fill": {
+     "id": "Times New Roman|16|none|normal|normal|fill",
+     "width": 365,
+     "height": 207,
+     "sha256": "cfff39b7d31293c20e44353c76ed717424e375ad59f98a74b800f24c5934316b"
+    },
+    "Twemoji Mozilla|33|none|normal|normal|fill|alpha=false|text=emoji": {
+     "id": "Twemoji Mozilla|33|none|normal|normal|fill|alpha=false|text=emoji",
+     "width": 338,
+     "height": 254,
+     "sha256": "4aac8af7051ea57f30eeb0a18bc56e1f73d74c1751df3a45a78c874eb0a4a5f2"
+    },
+    "Twemoji Mozilla|33|none|normal|normal|fill|text=emoji": {
+     "id": "Twemoji Mozilla|33|none|normal|normal|fill|text=emoji",
+     "width": 338,
+     "height": 254,
+     "sha256": "4aac8af7051ea57f30eeb0a18bc56e1f73d74c1751df3a45a78c874eb0a4a5f2"
+    }
+   },
+   "colors": {
+    "black|16": {
+     "id": "black|16",
+     "width": 420,
+     "height": 160,
+     "sha256": "77d5557ee05bc85c9ecd875517422c0516ac9d979933fc4c50a00c2a85c4a8a1"
+    },
+    "black|33": {
+     "id": "black|33",
+     "width": 420,
+     "height": 160,
+     "sha256": "580a367613617a17978fe64bc2514e0c34414fbbfdbfea4a81f6f41a9048fd02"
+    },
+    "teal|16": {
+     "id": "teal|16",
+     "width": 420,
+     "height": 160,
+     "sha256": "226470fa83fe2039c31e073cb620c1aadd4c0c615be2e40b53905c2132554ef5"
+    },
+    "teal|33": {
+     "id": "teal|33",
+     "width": 420,
+     "height": 160,
+     "sha256": "20ee0972b2582b55c1532bbc98fd00550ae6af110bc92ac65f09ae7a5e4c1ae0"
+    },
+    "limealpha|16": {
+     "id": "limealpha|16",
+     "width": 420,
+     "height": 160,
+     "sha256": "8674bbefa9ce1106172929a986f6a98b37a1394d13c537c4d4388a7600816ef7"
+    },
+    "limealpha|33": {
+     "id": "limealpha|33",
+     "width": 420,
+     "height": 160,
+     "sha256": "643b28b21d276d940d892b5fb393f845e3bb74a87b388b609d057d5901fe9469"
+    },
+    "grey|16": {
+     "id": "grey|16",
+     "width": 420,
+     "height": 160,
+     "sha256": "022631fc03d1610531248ef4a927231ec6e23194e1e1f4afa89c4c3948cd0629"
+    },
+    "grey|33": {
+     "id": "grey|33",
+     "width": 420,
+     "height": 160,
+     "sha256": "df655c2f29a1dc0c478fe57f9bbc5201f465d56b77de99504cb775bc519df987"
+    },
+    "white_on_black|16": {
+     "id": "white_on_black|16",
+     "width": 420,
+     "height": 160,
+     "sha256": "5b80cc5864ab3e7b53fae364eaf9328938f2170312201ec0e27a0c42bfd02bd9"
+    },
+    "white_on_black|33": {
+     "id": "white_on_black|33",
+     "width": 420,
+     "height": 160,
+     "sha256": "7abbe06b0ae934fde081a8e9e7abdba2c74268a4703b3fd14ec91165ba9e0643"
+    },
+    "red|16": {
+     "id": "red|16",
+     "width": 420,
+     "height": 160,
+     "sha256": "11d2b4bbd971feb10b866a8aed895b944c68c3094eab90f4fbe1c4e75cdbfe84"
+    },
+    "red|33": {
+     "id": "red|33",
+     "width": 420,
+     "height": 160,
+     "sha256": "b4ff984d6faf7c7a7c17c5bd347dfd243196fbcd55ce2754b05b684b775edaed"
+    },
+    "white_on_blue|16": {
+     "id": "white_on_blue|16",
+     "width": 420,
+     "height": 160,
+     "sha256": "806b730875ad3b0223aa3acb435fbc5490a7240e5e4e0f1df4d9422001232ae5"
+    },
+    "white_on_blue|33": {
+     "id": "white_on_blue|33",
+     "width": 420,
+     "height": 160,
+     "sha256": "46035656360248005c49c9bd0e9db1ac47223689b96993ccb2370c82e7f726f2"
+    }
+   }
+  }
+ }
+}

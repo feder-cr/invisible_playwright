@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>canvas text colours ref</title>
+<style>@font-face{font-family:"Arial";src:url("bundle/arial7_04.ttf") format("truetype")}</style>
+</head>
+<body>
+<script>
+// Canvas 2D coloured text reference page. Seven colour pairs (text, background) by two sizes:
+// each case fills a 420 x 160 canvas with the background, draws TEXT in the text colour with
+// fillText, reads the pixels back with getImageData and hashes the RGBA bytes with SHA-256.
+// The case id is "<name>|<size>". The drawing code is the one retail Firefox 159.0 on Windows
+// ran to write refs.json, so the hashes compare.
+const COLORS = [["black", "#000000", "#ffffff"], ["teal", "#006699", "#ffffff"],
+                ["limealpha", "rgba(102,204,0,0.2)", "#ffffff"], ["grey", "#888888", "#ffffff"],
+                ["white_on_black", "#ffffff", "#000000"], ["red", "#ff0000", "#ffffff"],
+                ["white_on_blue", "#ffffff", "#0000ff"]];
+const SIZES = [16, 33];
+(async () => {
+  try {
+    await document.fonts.load('16px "Arial"');
+    window.R = {};
+    for (const [name, fg, bg] of COLORS) for (const S of SIZES) {
+      const W = 420, H = 160, c = document.createElement("canvas");
+      c.width = W; c.height = H;
+      const ctx = c.getContext("2d", {willReadFrequently: true});
+      ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = fg; ctx.font = S + 'px "Arial"'; ctx.textBaseline = "alphabetic";
+      ctx.fillText("Hamburgefonstiv 0123", 20, 90);
+      const img = ctx.getImageData(0, 0, W, H);
+      const id = name + "|" + S;
+      const d = await crypto.subtle.digest("SHA-256", img.data.buffer);
+      window.R[id] = {sha256: [...new Uint8Array(d)].map(b => b.toString(16).padStart(2, "0")).join("")};
+    }
+    window.DONE = true;
+  } catch (e) { window.ERR = String(e); }
+})();
+</script>
+</body>
+</html>
