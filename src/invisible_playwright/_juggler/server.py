@@ -4884,6 +4884,10 @@ class BrowserDispatcher(Dispatcher):
 
 class BrowserTypeDispatcher(Dispatcher):
     TYPE = "BrowserType"
+    #: The class `launch` builds; None means `BrowserDispatcher`. A subclass
+    #: names its own: `remote.py` serves ONE browser to many clients, and its
+    #: `close` must not end the browser.
+    browser_class: Any = None
     METHODS = {"launch": "op_launch",
         "launchPersistentContext": "op_launch_persistent",
                }
@@ -5040,7 +5044,7 @@ class BrowserTypeDispatcher(Dispatcher):
         # nobody will close before the server shuts down.
         try:
             version = read_version(executable)
-            browser = BrowserDispatcher(
+            browser = (self.browser_class or BrowserDispatcher)(
                 self.server, self, conn, version, session_seed=session_seed,
                 motion_budget_s=motion_budget_s,
                 service_workers_enabled=prefs.get(
