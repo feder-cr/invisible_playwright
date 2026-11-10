@@ -2806,10 +2806,12 @@ class PageDispatcher(Dispatcher):
             child.emit("loadstate", {"add": "commit"})
             # ⛔ Only the main frame counts, and the collection runs on a thread
             # of its own (`navgc.py`): this is the reader thread, under the
-            # lifecycle's lock, and a blocking send from here would deadlock.
+            # lifecycle's lock, and a blocking send from here would deadlock. It is
+            # sent with THIS page's session (`self.send`): without one the browser-level
+            # handler answers that it does not implement Heap.collectGarbage.
             nav_gc = self.server.nav_gc
             if nav_gc is not None and self._is_main_frame(child):
-                nav_gc.note_main_frame_commit()
+                nav_gc.note_main_frame_commit(self.send)
 
     def _is_main_frame(self, child: "FrameDispatcher") -> bool:
         return child is self.frame
@@ -3487,8 +3489,10 @@ class PageDispatcher(Dispatcher):
         """⛔ `Heap.collectGarbage` really does collect, and it is SLOW - it was
         once used as a "bare command" to measure transport latency and reported
         26,8 ms of browser work as if it were ours. It is the right command
-        here, and the wrong one to benchmark with."""
-        self.conn.send("Heap.collectGarbage", {}, timeout=None)
+        here, and the wrong one to benchmark with. Sent with this page's session
+        (`self.send`): Juggler answers it from its PAGE handler, and the browser-level
+        connection (`self.conn`) gets 'Handler for does not implement method'."""
+        self.send("Heap.collectGarbage", {}, timeout=None)
         return None
 
     def op_add_script_tag(self, params: Dict) -> Any:

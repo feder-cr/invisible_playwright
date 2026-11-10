@@ -271,7 +271,7 @@ class RemoteEndpoint:
         self.probe = memprobe.probe_from_env(self)
         self.trim = memprobe.trimmer_from_env()
         #: A collection every N main-frame navigations (`navgc.py`): None unless asked.
-        self.nav_gc = navgc.from_env(self._browser_send)
+        self.nav_gc = navgc.from_env()
         server.nav_gc = self.nav_gc
         #: The rest of what the Playwright initializer must name (spec 1.62: chromium,
         #: firefox, webkit, android, electron are all required), created once.
@@ -280,9 +280,6 @@ class RemoteEndpoint:
         self.android = UnservedAndroid(server)
         self.electron = UnservedElectron(server)
         server.endpoint = self
-
-    def _browser_send(self, method: str, params: Dict, timeout: Optional[float] = None) -> Any:
-        return self.browser.conn.send(method, params, timeout=timeout)
 
     # ── where it listens ────────────────────────────────────────────────────
     @property

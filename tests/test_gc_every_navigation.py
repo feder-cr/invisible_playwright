@@ -147,7 +147,27 @@ def test_a_closed_page_does_not_count():
     assert server.nav_gc.commits == 0
 
 
-def test_the_endpoint_builds_it_once_from_the_environment_and_sends_to_the_browser(monkeypatch):
+def test_a_collection_is_sent_with_the_session_of_the_page_that_committed():
+    # Juggler answers Heap.collectGarbage from its PAGE handler: sent with the browser's connection it fails
+    # with 'Handler for does not implement method "Heap.collectGarbage"' (measured on the engine).
+    server = JugglerServer()
+    server.nav_gc = navgc.NavigationGc(1)
+    page = make_page(server)
+    page.send = Mock()
+    page._on_lifecycle("commit", "main", "https://a.test/")
+    server.nav_gc.join(5)
+    page.send.assert_called_once_with("Heap.collectGarbage", {}, timeout=navgc.TIMEOUT_S)
+    assert (server.nav_gc.started, server.nav_gc.failed) == (1, 0)
+
+
+def test_no_session_to_send_with_is_a_counted_failure_not_an_error():
+    gc = navgc.NavigationGc(1)
+    gc.note_main_frame_commit()
+    gc.join(5)
+    assert (gc.started, gc.failed) == (1, 1)
+
+
+def test_the_endpoint_builds_it_once_from_the_environment(monkeypatch):
     from invisible_playwright._juggler import remote
 
     def endpoint():
@@ -163,6 +183,15 @@ def test_the_endpoint_builds_it_once_from_the_environment_and_sends_to_the_brows
     monkeypatch.setenv(navgc.ENV, "1")
     ep, server, browser = endpoint()
     assert ep.nav_gc is not None and server.nav_gc is ep.nav_gc
-    ep.nav_gc.note_main_frame_commit()
-    ep.nav_gc.join(5)
-    browser.conn.send.assert_called_once_with("Heap.collectGarbage", {}, timeout=navgc.TIMEOUT_S)
+    browser.conn.send.assert_not_called()  # the browser-level handler cannot take the command
+
+
+def test_page_request_gc_is_sent_with_the_page_session_not_the_browser_connection():
+    # Same defect as the option's first version: page.request_gc() failed on the engine with
+    # 'Handler for does not implement method "Heap.collectGarbage"' because it used the browser connection.
+    page = make_page(JugglerServer())
+    page.send = Mock()
+    page.context.browser = SimpleNamespace(conn=Mock())
+    assert page.op_request_gc({}) is None
+    page.send.assert_called_once_with("Heap.collectGarbage", {}, timeout=None)
+    page.context.browser.conn.send.assert_not_called()

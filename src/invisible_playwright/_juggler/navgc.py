@@ -32,9 +32,12 @@ ENV = "INVPW_GC_EVERY_NAV"
 
 
 class NavigationGc:
-    """`send(method, params, timeout)` is the browser's blocking command call."""
+    """`send(method, params, timeout)` is a blocking command call of a PAGE session: Juggler answers
+    `Heap.collectGarbage` from its page handler, and the browser-level handler refuses it ("does not
+    implement method"). So the page that committed hands its own `send` to `note_main_frame_commit`; the one
+    given here is only the default of a caller that has none."""
 
-    def __init__(self, every: int, send: Callable[..., Any]) -> None:
+    def __init__(self, every: int, send: Optional[Callable[..., Any]] = None) -> None:
         self.every = every
         self._send = send
         self._lock = threading.Lock()
@@ -44,7 +47,7 @@ class NavigationGc:
         self.skipped = 0
         self.failed = 0
 
-    def note_main_frame_commit(self) -> None:
+    def note_main_frame_commit(self, send: Optional[Callable[..., Any]] = None) -> None:
         with self._lock:
             self.commits += 1
             if self.commits % self.every:
@@ -52,7 +55,7 @@ class NavigationGc:
             if self._running is not None:
                 self.skipped += 1
                 return
-            thread = threading.Thread(target=self._collect, daemon=True,
+            thread = threading.Thread(target=self._collect, args=(send or self._send,), daemon=True,
                                       name="invpw-nav-gc")
             self._running = thread
             self.started += 1
@@ -63,9 +66,11 @@ class NavigationGc:
                 self._running = None
                 self.failed += 1
 
-    def _collect(self) -> None:
+    def _collect(self, send: Optional[Callable[..., Any]]) -> None:
         try:
-            self._send("Heap.collectGarbage", {}, timeout=TIMEOUT_S)
+            if send is None:
+                raise RuntimeError("no page session to send the collection with")
+            send("Heap.collectGarbage", {}, timeout=TIMEOUT_S)
         except BaseException as exc:  # a collection never takes anything down
             with self._lock:
                 self.failed += 1
@@ -82,7 +87,7 @@ class NavigationGc:
             thread.join(timeout)
 
 
-def from_env(send: Callable[..., Any],
+def from_env(send: Optional[Callable[..., Any]] = None,
              environ: Optional[Dict[str, str]] = None) -> Optional[NavigationGc]:
     environ = os.environ if environ is None else environ
     try:
