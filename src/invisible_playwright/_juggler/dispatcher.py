@@ -35,6 +35,7 @@ import contextvars
 import itertools
 import os
 import threading
+import time
 from typing import Any, Callable, Dict, List, Optional
 
 from . import perimeter, variants
@@ -51,9 +52,21 @@ from invisible_core.juggler.connection import TargetClosedError  # noqa: F401 - 
 #: bucket is disposed with `__dispose__` {reason: "gc"}, which a client reads as "collected
 #: to prevent unbounded heap growth". ONE VALUE PER TYPE, here, so it can be lowered in one
 #: place; `INVPW_GC_LIMITS="Request=1000,Response=1000"` lowers some without editing code
-#: ("default=N" changes the default). Nothing here differs from Playwright's numbers.
+#: ("default=N" changes the default).
+#:
+#: TWO DIFFERENCES FROM PLAYWRIGHT, and the only two. (1) Request, Response and Route are
+#: 2000, not 10000: a context that lives through a hundred navigations of real pages
+#: (~100 subresources each, ~200 objects per navigation) held 18,000 of them, and with real
+#: headers that is 190 MB of process (measured on a real browser, 95 navigations, one
+#: context, objects already light) against 70 MB with 2000. A client reads a request in the
+#: callback of its event (the Go client keeps none beyond it) and 2000 is ten navigations.
+#: (2) An object younger than GC_MIN_AGE_S is never collected, so what a client was just
+#: handed is valid for the length of any callback however fast the bucket fills: Playwright
+#: collects the oldest tenth whatever its age.
 GC_LIMIT_DEFAULT = 10000
-GC_LIMITS: Dict[str, int] = {"JSHandle": 100000, "ElementHandle": 100000}
+GC_LIMITS: Dict[str, int] = {"JSHandle": 100000, "ElementHandle": 100000,
+                             "Request": 2000, "Response": 2000, "Route": 2000}
+GC_MIN_AGE_S = 10.0
 
 
 def gc_limits_from_env(environ: Optional[Dict[str, str]] = None) -> Dict[str, int]:
@@ -252,6 +265,7 @@ class Server:
         #: bucket -> the guids of its live objects, oldest first (a dict keeps the order).
         self._buckets: Dict[str, Dict[str, None]] = {}
         self.gc_limits = gc_limits_from_env()
+        self.gc_min_age = GC_MIN_AGE_S
         self._lock = threading.Lock()
         self._transport: Any = None
         #: Guid "" is the Root the client creates on its own side. Nothing is
@@ -275,6 +289,7 @@ class Server:
             return "%s@%d" % (type_name.lower(), next(counter))
 
     def register(self, obj: Dispatcher) -> None:
+        obj._born = time.monotonic()
         bucket = obj._gc_bucket = getattr(obj, "TYPE", "Unknown")
         if hasattr(obj, "gc_bucket"):
             bucket = obj._gc_bucket = obj.gc_bucket()
@@ -332,7 +347,15 @@ class Server:
             if not members or len(members) <= limit:
                 return
             oldest = list(itertools.islice(members, max(1, limit // 10)))
-            victims = [self._objects[g] for g in oldest if g in self._objects]
+            young = time.monotonic() - self.gc_min_age
+            victims = []
+            for guid in oldest:
+                obj = self._objects.get(guid)
+                if obj is None:
+                    continue
+                if obj._born > young:
+                    break  # the bucket is in birth order: the rest are younger
+                victims.append(obj)
         self.dispose_many(victims, "gc")
 
     def dispose_many(self, victims: list, reason: Optional[str]) -> None:

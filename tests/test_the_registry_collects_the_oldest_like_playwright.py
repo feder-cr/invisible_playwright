@@ -82,6 +82,8 @@ def served():
     LocalUtilsDispatcher(server)
     browser = FakeBrowser(server, browser_type, {"version": "firefox/1", "name": "firefox",
                                                  "browserName": "firefox"})
+    # Playwright's rule has no age: these tests are about it. The age is below.
+    server.gc_min_age = 0.0
     endpoint = remote.RemoteEndpoint(server, browser_type, browser)
     endpoint.start()
     yield endpoint
@@ -116,7 +118,10 @@ def disposed_in(messages):
 
 def test_the_limits_are_playwrights_and_one_per_type():
     assert dispatcher.GC_LIMIT_DEFAULT == 10000
-    assert dispatcher.GC_LIMITS == {"JSHandle": 100000, "ElementHandle": 100000}
+    # Playwright's, plus the three network types lowered (see the comment on GC_LIMITS)
+    assert {k: v for k, v in dispatcher.GC_LIMITS.items() if v != 2000} == {
+        "JSHandle": 100000, "ElementHandle": 100000}
+    assert {k for k, v in dispatcher.GC_LIMITS.items() if v == 2000} == {"Request", "Response", "Route"}
     limits = dispatcher.gc_limits_from_env({"INVPW_GC_LIMITS": "Request=1000, Response=500,default=7,bad"})
     assert limits["Request"] == 1000 and limits["Response"] == 500 and limits["default"] == 7
     assert limits["JSHandle"] == 100000
@@ -208,3 +213,29 @@ def test_main_frames_and_frames_are_counted_apart(served):
              if o.TYPE == "Frame"]
     assert kinds.count("MainFrame") == 10 and kinds.count("ChildFrame") == 10
 
+
+
+def test_what_a_client_was_just_handed_stays_valid_however_fast_the_bucket_fills(served):
+    """The Go client uses a request inside the callback of its event. Past the limit the
+    oldest tenth goes, but none younger than GC_MIN_AGE_S: the first request is still
+    answered after 60 more were made over a limit of 20; once it is old enough it goes.
+    Known-bad: collecting the oldest tenth whatever its age answers `target closed`."""
+    served.server.gc_limits["Request"] = 20
+    served.server.gc_min_age = 30.0
+
+    async def go():
+        ws, ctx = await session(served)
+        before, made = await call(ws, 3, ctx, "make", {"kind": "Request", "count": 60})
+        guids = made["result"]["guids"]
+        _, held = await call(ws, 4, guids[0], "ping")
+        grown = sum(1 for o in served.server._objects.values() if o.TYPE == "Request")
+        served.server.gc_min_age = 0.0
+        before2, _ = await call(ws, 5, ctx, "make", {"kind": "Request", "count": 1})
+        _, gone = await call(ws, 6, guids[0], "ping")
+        await ws.close()
+        return before, held, grown, before2, gone
+    before, held, grown, before2, gone = run(go())
+    assert disposed_in(before) == [] and held["result"] == {"ok": True}
+    assert grown == 60                          # over the limit, and nothing is lost
+    assert [p for _, p in disposed_in(before2)][:1] == [{"reason": "gc"}]
+    assert "closed" in gone["error"]["error"]["message"].lower()
