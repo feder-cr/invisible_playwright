@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import contextvars
 import itertools
+import os
 import threading
 from typing import Any, Callable, Dict, List, Optional
 
@@ -42,6 +43,31 @@ from . import perimeter, variants
 from invisible_core.juggler.connection import TargetClosedError  # noqa: F401 - re-exported on purpose
 
 
+
+
+#: HOW MANY DISPATCHERS OF ONE BUCKET THE REGISTRY KEEPS, AS PLAYWRIGHT'S SERVER DOES
+#: (1.62, `dispatchers/dispatcher.ts` `maxDispatchersForBucket`): a bucket is the object's
+#: type - a Frame is 'MainFrame' or 'Frame' - and past its limit the oldest tenth of the
+#: bucket is disposed with `__dispose__` {reason: "gc"}, which a client reads as "collected
+#: to prevent unbounded heap growth". ONE VALUE PER TYPE, here, so it can be lowered in one
+#: place; `INVPW_GC_LIMITS="Request=1000,Response=1000"` lowers some without editing code
+#: ("default=N" changes the default). Nothing here differs from Playwright's numbers.
+GC_LIMIT_DEFAULT = 10000
+GC_LIMITS: Dict[str, int] = {"JSHandle": 100000, "ElementHandle": 100000}
+
+
+def gc_limits_from_env(environ: Optional[Dict[str, str]] = None) -> Dict[str, int]:
+    """`GC_LIMITS` with the default under "default", and what `INVPW_GC_LIMITS` overrides."""
+    environ = os.environ if environ is None else environ
+    limits = dict(GC_LIMITS)
+    limits["default"] = GC_LIMIT_DEFAULT
+    for item in (environ.get("INVPW_GC_LIMITS") or "").split(","):
+        name, _, value = item.partition("=")
+        try:
+            limits[name.strip()] = max(1, int(value))
+        except ValueError:
+            continue
+    return limits
 
 
 class ProtocolException(Exception):
@@ -120,6 +146,12 @@ class Dispatcher:
         server.register(self)
         # ⛔ Announced BEFORE anyone can name it. See the module docstring.
         server.announce(self)
+        # And only then, as Playwright does: past the limit of its bucket the oldest are let go.
+        server.collect_stale(self._gc_bucket)
+
+    def gc_bucket(self) -> str:
+        """The bucket this object is counted in (`GC_LIMITS`): its type."""
+        return self.TYPE
 
     # ── what the protocol needs ─────────────────────────────────────────────
     @property
@@ -128,7 +160,11 @@ class Dispatcher:
         return {"guid": self.guid}
 
     def emit(self, method: str, params: Optional[Dict] = None) -> None:
-        """Fire a protocol event on this object."""
+        """Fire a protocol event on this object. One that is already disposed says
+        nothing: the client has dropped the guid, and naming it is an error there
+        (Playwright's server ignores it too, outside its own tests)."""
+        if self.disposed:
+            return
         self.server.send_up({"guid": self.guid, "method": method,
                              "params": params or {}})
 
@@ -207,6 +243,9 @@ class Server:
         #: already in flight behind it.
         self._disposed: Dict[str, None] = {}
         self._counters: Dict[str, itertools.count] = {}
+        #: bucket -> the guids of its live objects, oldest first (a dict keeps the order).
+        self._buckets: Dict[str, Dict[str, None]] = {}
+        self.gc_limits = gc_limits_from_env()
         self._lock = threading.Lock()
         self._transport: Any = None
         #: Guid "" is the Root the client creates on its own side. Nothing is
@@ -230,8 +269,12 @@ class Server:
             return "%s@%d" % (type_name.lower(), next(counter))
 
     def register(self, obj: Dispatcher) -> None:
+        bucket = obj._gc_bucket = getattr(obj, "TYPE", "Unknown")
+        if hasattr(obj, "gc_bucket"):
+            bucket = obj._gc_bucket = obj.gc_bucket()
         with self._lock:
             self._objects[obj.guid] = obj
+            self._buckets.setdefault(bucket, {})[obj.guid] = None
 
     #: How many disposed guids are remembered. Large enough for any burst of
     #: in-flight calls, small enough to be free.
@@ -240,6 +283,9 @@ class Server:
     def unregister(self, obj: Dispatcher) -> None:
         with self._lock:
             self._objects.pop(obj.guid, None)
+            members = self._buckets.get(getattr(obj, "_gc_bucket", None))
+            if members is not None:
+                members.pop(obj.guid, None)
             self._disposed[obj.guid] = None
             while len(self._disposed) > self.DISPOSED_MEMORY:
                 self._disposed.pop(next(iter(self._disposed)))
@@ -266,6 +312,55 @@ class Server:
                 seen.add(id(walker))
                 walker = walker.parent
         return out
+
+    def gc_limit(self, bucket: str) -> int:
+        return self.gc_limits.get(bucket, self.gc_limits["default"])
+
+    def collect_stale(self, bucket: str) -> None:
+        """Playwright's `maybeDisposeStaleDispatchers`: a bucket past its limit loses its
+        oldest tenth, each with `__dispose__` {reason: "gc"} and the whole subtree silently
+        (a client drops the children of a disposed object by itself)."""
+        limit = self.gc_limit(bucket)
+        with self._lock:
+            members = self._buckets.get(bucket)
+            if not members or len(members) <= limit:
+                return
+            oldest = list(itertools.islice(members, max(1, limit // 10)))
+            victims = [self._objects[g] for g in oldest if g in self._objects]
+        self.dispose_many(victims, "gc")
+
+    def dispose_many(self, victims: list, reason: Optional[str]) -> None:
+        """Dispose objects and their subtrees with ONE walk of the registry (a walk per
+        object would be quadratic in a bucket of thousands). A victim under another victim
+        is dropped by the cascade and says nothing of its own: the client would have no
+        guid for it."""
+        ids = {id(v) for v in victims}
+        params = {"reason": reason} if reason else {}
+        for victim in victims:
+            walker, covered = victim.parent, False
+            while walker is not None:
+                if id(walker) in ids:
+                    covered = True
+                    break
+                walker = walker.parent
+            if covered or victim.disposed:
+                continue
+            victim.disposed = True
+            self.send_up({"guid": victim.guid, "method": "__dispose__", "params": params})
+            self.unregister(victim)
+            victim.released()
+        with self._lock:
+            everything = list(self._objects.values())
+        for candidate in everything:
+            walker, seen = candidate.parent, set()
+            while walker is not None and id(walker) not in seen:
+                if id(walker) in ids:
+                    candidate.disposed = True
+                    self.unregister(candidate)
+                    candidate.released()
+                    break
+                seen.add(id(walker))
+                walker = walker.parent
 
     def announce(self, obj: Dispatcher) -> None:
         """Emit `__create__` for a new object, parented where the client can

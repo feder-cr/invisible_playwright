@@ -890,6 +890,10 @@ class FrameDispatcher(Dispatcher):
         "addStyleTag": "op_add_style_tag",
     }
 
+    def gc_bucket(self) -> str:
+        """Playwright counts the main frame and the others apart (`frameDispatcher.ts`)."""
+        return "MainFrame" if getattr(self, "parent_frame", None) is None else "Frame"
+
     def __init__(self, server, page: "PageDispatcher", frame_id: str,
                  url: str = "about:blank", name: str = "",
                  load_states: Optional[List[str]] = None,
@@ -2908,14 +2912,15 @@ class PageDispatcher(Dispatcher):
                 self._offer_route(request)
         elif method == "Network.responseReceived":
             request = self._requests.get(params.get("requestId"))
-            if request is not None:
+            # A request the registry already collected (`GC_LIMITS`) is not named again.
+            if request is not None and not request.disposed:
                 response = ResponseDispatcher(self.server, request, params)
                 request.response = response
                 self.context.emit("response", {"response": response.channel,
                                                "page": self.channel})
         elif method == "Network.requestFinished":
             request = self._requests.pop(params.get("requestId"), None)
-            if request is not None:
+            if request is not None and not request.disposed:
                 if request.response is not None:
                     request.response.protocol_version = (
                         params.get("protocolVersion") or "")
@@ -2928,7 +2933,7 @@ class PageDispatcher(Dispatcher):
                 })
         elif method == "Network.requestFailed":
             request = self._requests.pop(params.get("requestId"), None)
-            if request is not None:
+            if request is not None and not request.disposed:
                 request.failure = params.get("errorCode") or "failed"
                 self.context.emit("requestFailed", {
                     "request": request.channel,
@@ -3058,7 +3063,7 @@ class PageDispatcher(Dispatcher):
         if frame_id == self.frame.frame_id:
             return self.frame
         existing = self._frames.get(frame_id)
-        if existing is not None:
+        if existing is not None and not existing.disposed:
             return existing
         frame = self.lifecycle.frame(frame_id)
         parent_id = getattr(frame, "parent", None)
