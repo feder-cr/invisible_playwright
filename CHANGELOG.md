@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.50.0] - 2026-11-11
+
 <!-- Both entries below wait for the firefox-62 build that proves them (the changelog records a fix only once a build has shown it). -->
 
 ### Changed
