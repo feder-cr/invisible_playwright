@@ -172,7 +172,6 @@ would be the signal. They are pinnable for A/B work, not for realism.
 | `font.dialog_family` | str | `"MS Shell Dlg 2"` | The family of the form-control fonts, `-moz-button`, `-moz-field` and `-moz-list`, which is not the shell font: Windows Firefox builds them from the message font under the name "MS Shell Dlg 2", and a page reads it with one `getComputedStyle(input).fontFamily`. |
 | `font.ui_size` | str | `"12"` | **A string, not an int.** Gecko reads this pref through `Preferences::GetFloat`, which parses the value from its text form; an int is not rejected, it is ignored, and the UI silently falls back to 16px. |
 | `font.monospace_size` | int | `13` | Default monospace size. Firefox ships 13 on Windows and 12 in its Unix block, and the gap is directly readable as the width of the `monospace` generic at the default size. |
-| `font.alpha_ladder` | tuple of int | `(0, 18, 35, ..., 255)` | The distinct alpha levels a Windows rasteriser leaves on an antialiased glyph edge, ascending, first `0` and last `255` so a fully transparent or fully opaque pixel never moves. Canvas readback snaps onto these. An empty tuple disables the snap, which is what you want when measuring what the unsnapped edge looks like. |
 | `font.manifest` | str | *(the bundled manifest)* | The whole font manifest the engine parses: families, per-face vertical metrics, the alias table, the coverage ladder and the per-script fallback lists. Pin it to hand the engine a different font surface without rebuilding it. An empty string tells the engine to use the copy in its own directory. |
 | `font.cleartype_gamma` | int | `2200` | DirectWrite's text gamma, x1000. One of six values the engine used to read from `IDWriteRenderingParams`, i.e. from the machine's own ClearType settings, which differ per monitor and per user. |
 | `font.cleartype_contrast` | int | `100` | Enhanced contrast level, x100. |
@@ -202,7 +201,6 @@ defaults, and they are not sampled.
 | `desktop.document_colors` | int | `0` | When the page's colours give way to the system's: `0`, the Windows default, only under a high-contrast theme. |
 | `desktop.select_styling` | bool | `True` | A page may style a `<select>`'s popup, as on Windows. |
 | `desktop.word_select_eats_space` | bool | `True` | A double click selects the word and the space after it, as on Windows; a page reads it with `getSelection()` after a real double click. |
-| `desktop.srgb_output` | bool | `True` | Tagged images are converted to sRGB instead of the host monitor's colour profile, which a small canvas reads back. |
 | `desktop.os_client_certs` | bool | `False` | Whether the operating system's personal certificates answer a server that asks for one. Off: the persona has none. |
 | `desktop.theme_accent` | bool | `False` | Whether the page-visible `AccentColor` follows the desktop theme's accent; on Windows it does not. |
 | `desktop.hour_cycle` | int | `0` | The clock format, `0` meaning the locale decides, as on Windows; otherwise the host's 12/24-hour setting changes every `toLocaleTimeString()`. |
