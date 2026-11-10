@@ -194,8 +194,8 @@ def firefox_binary():
 # so a property only the newer engine promises must not run on the older one.
 #
 # The engine is read from the seal the process runs under, the same one that
-# checks the launch: `active_seal().tag`. Only the number counts: `firefox-61`
-# and `firefox-61-candidate` are both 60. A tag with no number (`local`, or
+# checks the launch: `active_seal().tag`. Only the number counts: `firefox-62`
+# and `firefox-62-candidate` are both 62. A tag with no number (`local`, or
 # anything else) does not say which engine it is, so the test does not skip and
 # does not run: it fails and says why. A candidate is sealed as
 # `firefox-N-candidate` by the gate.
@@ -226,7 +226,7 @@ def _skip_unless_engine_at_least(minimum, tag):
 
 @pytest.fixture(scope="session")
 def engine_at_least():
-    """``engine_at_least("firefox-61")``: skip the test unless the engine in
+    """``engine_at_least("firefox-62")``: skip the test unless the engine in
     use is that release or a later one (see above for how it is read). A seal
     whose tag has no number (``local``, anything but firefox-N or
     firefox-N-candidate) makes the test FAIL, saying so: it neither skips nor

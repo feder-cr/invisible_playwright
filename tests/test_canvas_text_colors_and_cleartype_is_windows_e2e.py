@@ -9,7 +9,7 @@ reach, each with the hashes retail Firefox 159.0 on Windows gave for the same pa
   coloured text   tests/data/canvas_text_ref_colors/index.html draws Arial 16 and 33 px, fillText,
                   of seven colour pairs (black, teal, rgba(102,204,0,0.2) on white, grey, white on
                   black, red, white on blue): 14 cases, with the seed's configuration. An
-                  engine that quantises its A8 text masks to 17 levels (a hook, which firefox-61
+                  engine that quantises its A8 text masks to 17 levels (a hook, which firefox-62
                   removes) moves a coloured edge pixel by a few units, and black on white hides
                   it: 12 of the 14 differ on such an engine.
   ClearType keys  gamma/contrast 1800/100 (the seed's), 1400/50 and 2200/0: 39 cases for each,
@@ -104,7 +104,7 @@ def _want(cases):
 @pytest.mark.e2e
 @pytest.mark.timeout(600, method="thread")
 def test_coloured_text_is_what_retail_windows_draws(firefox_binary, engine_at_least):
-    engine_at_least("firefox-61")
+    engine_at_least("firefox-62")
     refs = _refs()
     assert refs["colors"]["count"] == len(refs["colors"]["cases"]) == 14
     got = _launch(firefox_binary, refs, None, {})
@@ -128,7 +128,7 @@ def _keys():
 @pytest.mark.parametrize("tag", _keys())
 def test_text_under_a_cleartype_key_is_what_retail_windows_draws(
         tag, firefox_binary, engine_at_least):
-    engine_at_least("firefox-61")
+    engine_at_least("firefox-62")
     refs = _refs()
     k = refs["keys"][tag]
     want_black, want_colors = _want(k["black"]), _want(k["colors"])

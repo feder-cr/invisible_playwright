@@ -312,7 +312,7 @@ def _describe(failures: list, worst: int = 8) -> str:
 
 
 def test_blending_is_done_unquantized_and_rounded_once(firefox_binary, engine_at_least):
-    engine_at_least("firefox-61")
+    engine_at_least("firefox-62")
     if not sys.platform.startswith("linux"):
         pytest.skip("Windows: objective 5. On Windows the blend is done by the host's Direct3D 11 (WARP on a runner "
                     "without a GPU, which rounds up to 2 off), until ANGLE's translator does it; the Mesa patch fixes "
