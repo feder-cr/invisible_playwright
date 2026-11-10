@@ -344,6 +344,30 @@ def _remote_value(remote: Dict) -> Any:
 #: Calls what the caller's script produced with the receivers, then the
 #: argument: Playwright's utility script calls `result(...args)` on what
 #: `eval` produced.
+
+# The names a page and a caller use for a permission (`grant_permissions(["geolocation"])`, the ones of
+# `navigator.permissions`) are not the names the engine keeps them under (`geo`, `desktop-notification`): the
+# engine's permission manager knows a grant only by its own name, and a name it does not know is stored as
+# nothing, so the page is still asked, or refused, as if nothing had been granted. This is the table of the
+# Playwright client for this browser (playwright-core `ffBrowser.js`, `doGrantPermissions`), and a name outside
+# it is an error there as it is here: a grant that does nothing, in silence, is worse than a refusal.
+_WEB_PERMISSION_TO_ENGINE = {
+    "geolocation": "geo",
+    "persistent-storage": "persistent-storage",
+    "push": "push",
+    "notifications": "desktop-notification",
+    "screen-wake-lock": "screen-wake-lock",
+}
+
+
+def _engine_permissions(permissions) -> List[str]:
+    engine_names = []
+    for permission in permissions:
+        if permission not in _WEB_PERMISSION_TO_ENGINE:
+            raise ProtocolException("Unknown permission: %s" % (permission,))
+        engine_names.append(_WEB_PERMISSION_TO_ENGINE[permission])
+    return engine_names
+
 _CALL = "(f, ...a) => f(...a)"
 #: Reads a caller's object by value, from the reference that holds it.
 _READ = "o => o"
@@ -4211,8 +4235,8 @@ class BrowserContextDispatcher(Dispatcher):
 
     def op_grant_permissions(self, params: Dict) -> Any:
         self._browser_send("Browser.grantPermissions",
-                           {"origin": params.get("origin") or "",
-                            "permissions": params.get("permissions") or []})
+                           {"origin": params.get("origin") or "*",
+                            "permissions": _engine_permissions(params.get("permissions") or [])})
         return None
 
     def op_clear_permissions(self, params: Dict) -> Any:
@@ -4972,7 +4996,7 @@ class BrowserDispatcher(Dispatcher):
             # accident that works until somebody tightens that condition.
             self._context_send("Browser.grantPermissions",
                            {"browserContextId": context_id, "origin": "*",
-                            "permissions": permissions})
+                            "permissions": _engine_permissions(permissions)})
         viewport = params.get("viewport")
         if viewport:
             # ⛔ `screen` is a SEPARATE option from `viewport` and rides in
