@@ -69,6 +69,12 @@ def _watchdog_open():
     return _watchdog_handle
 
 
+def pytest_configure(config):
+    # The run stops at the first refusal of the engine (tests/engine_refusal.py).
+    from engine_refusal import StopAtTheFirstRefusal
+    config.pluginmanager.register(StopAtTheFirstRefusal(config), "engine-refusal-stop")
+
+
 def pytest_runtest_setup(item):
     if item.get_closest_marker("e2e") is None:
         return
