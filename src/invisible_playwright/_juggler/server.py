@@ -4109,6 +4109,12 @@ class BrowserContextDispatcher(Dispatcher):
             self.browser.require_interception("context.route()")
         self._browser_send("Browser.setRequestInterception",
                            {"enabled": wanted})
+        # ⛔ THE CACHE GOES OFF WITH THE FIRST ROUTE AND BACK ON WITH THE LAST,
+        # as upstream does: `ffBrowser.ts` `doUpdateRequestInterception` sends
+        # `Browser.setCacheDisabled` with the same flag, for the same context.
+        # Without it a routed session fills the engine's cache2 on disk.
+        self._browser_send("Browser.setCacheDisabled",
+                           {"cacheDisabled": wanted})
         self.intercepting = wanted
         return None
 
