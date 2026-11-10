@@ -5,10 +5,10 @@ tag (an iCCP chunk, cICP, gAMA + cHRM, an sRGB chunk, a JPEG APP2 profile) from 
 to the output profile with qcms, and the output profile is the monitor's: on a stock Windows
 that is "sRGB Color Space Profile.icm", which qcms does not take for sRGB, so the bytes
 getImageData returns for drawImage and createImageBitmap change by a few units. The engine
-declares that profile (it never reads the host's) and converts like retail from firefox-61.
+declares that profile (it never reads the host's) and converts like retail from firefox-62.
 Until firefox-59 it skipped the conversion (force_srgb): 27 of the 72 probes below differ
 there, and this test fails on such an engine, naming each of them. It is gated on
-firefox-61 only so that those releases skip it instead of failing the run.
+firefox-62 only so that those releases skip it instead of failing the run.
 
 tests/data/canvas_icc_ref/index.html, a page served on localhost, measures 72 probes:
 
@@ -113,7 +113,7 @@ def _serve(imgs, listing):
 @pytest.mark.e2e
 @pytest.mark.timeout(300, method="thread")
 def test_tagged_images_read_back_as_retail_windows_reads_them(firefox_binary, engine_at_least):
-    engine_at_least("firefox-61")
+    engine_at_least("firefox-62")
     refs_path = DATA / "refs.json"
     if not refs_path.is_file():
         pytest.fail("tests/data/canvas_icc_ref/refs.json is missing: it is the reference "
