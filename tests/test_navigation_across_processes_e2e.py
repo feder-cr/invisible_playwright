@@ -11,6 +11,8 @@ navigation. What the client must still see, whatever the process:
   * a goto whose response is half there when the next one starts is replaced the same way (the swap has happened);
   * an iframe whose load is refused ends its load (the events a waiter needs) and its replacement error page is a
     navigation of its own; an iframe removed while it loads is aborted, then detached;
+  * an iframe that goes to another site (its src changes) ends with the new address in the frame list: the process
+    it leaves cuts its load (NS_BINDING_ABORTED, its docShell being destroyed), which is not the navigation's abort;
   * a frame in another process is committed with the name of its <iframe> (the embedder reads it).
 
 Prefs: strategy 1 (`fission.webContentIsolationStrategy = 1`, `fission.autostart`) for this file only, as the bench
@@ -170,3 +172,24 @@ def test_an_iframe_removed_while_it_loads_is_aborted_then_gone(firefox_binary, s
 
     urls = _run(firefox_binary, scenario)
     assert len(urls) == 1 and urls[0].startswith("http://a.test:"), urls
+
+
+def test_an_iframe_whose_src_goes_to_another_site_shows_the_new_address(firefox_binary, sites):
+    async def scenario(page):
+        await page.goto(sites["at"]("a.test", "/plain"))
+        await page.evaluate(
+            "(u) => { const f = document.createElement('iframe'); f.id = 'f'; f.src = u; document.body.appendChild(f); }",
+            sites["at"]("b.test", "/first"))
+        await page.wait_for_timeout(1500)
+        before = [f.url for f in page.frames]
+        await page.evaluate("(u) => { document.getElementById('f').src = u; }", sites["at"]("c.test", "/second"))
+        deadline = time.monotonic() + 8
+        while time.monotonic() < deadline and not any(f.url.endswith("/second") for f in page.frames):
+            await page.wait_for_timeout(100)
+        return before, [(f.url, f.name) for f in page.frames]
+
+    before, after = _run(firefox_binary, scenario)
+    assert before[1].startswith("http://b.test:") and before[1].endswith("/first"), before
+    assert len(after) == 2, after
+    assert after[1][0].startswith("http://c.test:") and after[1][0].endswith("/second"), after
+    assert after[1][1] == "f", after            # still the frame of its <iframe>
