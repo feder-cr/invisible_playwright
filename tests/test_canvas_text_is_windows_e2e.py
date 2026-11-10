@@ -1,7 +1,7 @@
 """Canvas 2D text is drawn as retail Firefox on Windows draws it, on every OS.
 
 Retail Firefox on Windows draws canvas text with Skia over DirectWrite. The engine draws it
-with Skia over idwr (DirectWrite 10.0.26100.9711 in portable C) from firefox-60, so the
+with Skia over idwr (DirectWrite 10.0.26100.9711 in portable C) from firefox-61, so the
 same page gives the same RGBA bytes on Windows, on Debian 12 and on Ubuntu 24.04.
 
 tests/data/canvas_text_ref/index.html draws 342 cases, in groups (the ``gruppo`` field of
@@ -58,7 +58,7 @@ from invisible_playwright import InvisiblePlaywright
 @pytest.mark.e2e
 @pytest.mark.timeout(1800, method="thread")
 def test_canvas_text_is_what_retail_windows_draws(firefox_binary, engine_at_least):
-    engine_at_least("firefox-60")
+    engine_at_least("firefox-61")
     refs_path = DATA / "refs.json"
     if not refs_path.is_file():
         pytest.fail("tests/data/canvas_text_ref/refs.json is missing: it is the reference "

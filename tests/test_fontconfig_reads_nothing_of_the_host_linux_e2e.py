@@ -265,7 +265,7 @@ def test_a_killed_stand_in_leaves_neither_strace_nor_the_browser(firefox_binary,
 
 
 def test_no_process_reads_the_host_fontconfig(firefox_binary, tmp_path, engine_at_least):
-    engine_at_least("firefox-60")
+    engine_at_least("firefox-61")
     from invisible_playwright import InvisiblePlaywright
 
     _require_strace_can_trace(tmp_path)
