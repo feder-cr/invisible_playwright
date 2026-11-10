@@ -251,14 +251,21 @@ def test_the_trim_is_on_by_default_after_a_big_reply_and_at_a_context_close(clea
                 made = await call(ws, 2, endpoint.browser.guid, "newContext", {})
                 guid = json.loads(made[-1])["result"]["context"]["guid"]
                 await call(ws, 3, guid, "big", {"size": 10})
-                small = len(libc.calls)
                 await call(ws, 4, guid, "big", {"size": 200000})
+                # The writer trims AFTER it has sent the reply, so the client can hold the
+                # reply before the trim has run: wait for it, as the close below is waited
+                # for. (A fixed read here failed on a slow runner.) The writer is one
+                # sequence, so once the big reply's trim has run the small reply's decision
+                # has long been taken: one call in all means the small one did not trim.
+                deadline = time.time() + 5
+                while not libc.calls and time.time() < deadline:
+                    await asyncio.sleep(0.01)
                 big = len(libc.calls)
                 await call(ws, 5, guid, "close")
-                return small, big
-        small, big = run(go())
-        assert small == 0, "a small reply must not trim"
-        assert big >= 1 and set(libc.calls) == {0}
+                return big
+        big = run(go())
+        assert big == 1, "a small reply must not trim, and a big one trims once"
+        assert set(libc.calls) == {0}
         deadline = time.time() + 5
         while len(libc.calls) <= big and time.time() < deadline:
             time.sleep(0.01)
