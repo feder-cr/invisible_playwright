@@ -16,11 +16,16 @@ What is checked, with a browser served by `launch_server` and a client connected
 """
 from __future__ import annotations
 
+import asyncio
+import json
 import threading
 
 import pytest
 
-from _servers import LocalServer
+pytest.importorskip("websockets")
+from websockets.asyncio.client import connect  # noqa: E402
+
+from _servers import LocalServer  # noqa: E402
 
 pytestmark = pytest.mark.e2e
 
@@ -59,24 +64,68 @@ def _launch(firefox_binary):
                          seed=4261, binary_path=firefox_binary, launch_timeout_ms=180_000)
 
 
+class _Client:
+    """The few calls of Playwright's protocol these tests need, over the served WebSocket (the vendored client has
+    no `connect`, and the installed Playwright is not imported here)."""
+
+    def __init__(self, ws):
+        self.ws, self.objects, self.counter = ws, {}, 0
+
+    async def call(self, guid, method, params=None):
+        self.counter += 1
+        await self.ws.send(json.dumps({"id": self.counter, "guid": guid, "method": method,
+                                       "params": params or {}, "metadata": {}}))
+        while True:
+            message = json.loads(await self.ws.recv())
+            if message.get("method") == "__create__":
+                self.objects[message["params"]["guid"]] = message["params"]
+            if message.get("id") == self.counter:
+                assert "error" not in message, message
+                return message.get("result")
+
+    async def start(self):
+        await self.call("", "initialize", {"sdkLanguage": "python"})
+        browser = [g for g, o in self.objects.items() if o["type"] == "Browser"][0]
+        self.context = (await self.call(browser, "newContext", {}))["context"]["guid"]
+        self.page = (await self.call(self.context, "newPage", {}))["page"]["guid"]
+        self.frame = self.objects[self.page]["initializer"]["mainFrame"]["guid"]
+
+    async def goto(self, url):
+        await self.call(self.frame, "goto", {"url": url, "waitUntil": "load", "timeout": 30000})
+
+    async def back(self):
+        await self.call(self.page, "goBack", {"waitUntil": "load", "timeout": 30000})
+
+    async def title(self):
+        return (await self.call(self.frame, "title"))["value"]
+
+    async def last_pageshow(self):
+        result = await self.call(self.frame, "evaluateExpression", {
+            "expression": "window.shows[window.shows.length - 1]", "isFunction": False,
+            "arg": {"value": {"v": "undefined"}, "handles": []}})
+        return result["value"]["b"]
+
+
 def test_the_option_sends_minimize_memory_and_the_engine_takes_it(firefox_binary, engine_at_least, monkeypatch):
     engine_at_least(ENGINE_WITH_THE_COMMAND)
-    from playwright.sync_api import sync_playwright
-
     monkeypatch.setenv("INVPW_GC_EVERY_NAV", "2")
     monkeypatch.setenv("INVPW_GC_MODE", "minimize")
     server, base = _serve()
     launched = _launch(firefox_binary)
+
+    async def drive(nav_gc):
+        async with connect(launched.ws_endpoint, max_size=None) as ws:
+            client = _Client(ws)
+            await client.start()
+            for i in range(6):
+                await client.goto("%s/p%d" % (base, i))
+                await asyncio.get_running_loop().run_in_executor(None, nav_gc.join, 60)
+            await client.call(client.context, "close")
+
     try:
         nav_gc = launched._endpoint.nav_gc
         assert nav_gc is not None and nav_gc.mode == "minimize"
-        with sync_playwright() as p:
-            browser = p.firefox.connect(launched.ws_endpoint)
-            page = browser.new_context().new_page()
-            for i in range(6):
-                page.goto("%s/p%d" % (base, i), wait_until="load", timeout=30_000)
-                nav_gc.join(60)
-            browser.close()
+        asyncio.run(drive(nav_gc))
         assert nav_gc.commits >= 6 and nav_gc.started >= 3
         assert nav_gc.failed == 0, "the engine refused a round"
         assert (nav_gc.effective_mode, nav_gc.fell_back) == ("minimize", 0), "the engine has no such command"
@@ -87,28 +136,31 @@ def test_the_option_sends_minimize_memory_and_the_engine_takes_it(firefox_binary
 
 def _restored_from_bfcache(firefox_binary, minimize, monkeypatch):
     """Load A, leave for B, optionally minimize, go back: the `persisted` of the last pageshow of A."""
-    from playwright.sync_api import sync_playwright
-
     monkeypatch.delenv("INVPW_GC_EVERY_NAV", raising=False)
     server, base = _serve()
     launched = _launch(firefox_binary)
-    try:
-        with sync_playwright() as p:
-            browser = p.firefox.connect(launched.ws_endpoint)
-            page = browser.new_context().new_page()
-            page.goto(base + "/a", wait_until="load", timeout=30_000)
-            page.goto(base + "/b", wait_until="load", timeout=30_000)
-            page.wait_for_timeout(500)
+
+    async def drive():
+        async with connect(launched.ws_endpoint, max_size=None) as ws:
+            client = _Client(ws)
+            await client.start()
+            await client.goto(base + "/a")
+            await client.goto(base + "/b")
+            await asyncio.sleep(0.5)
             if minimize:
                 dispatcher = launched._endpoint.browser.contexts[-1].pages[-1]
-                dispatcher.send("Heap.minimizeMemory", {}, timeout=120)
-                page.wait_for_timeout(500)
-            page.go_back(wait_until="load", timeout=30_000)
-            page.wait_for_timeout(500)
-            assert page.title() == "a"
-            persisted = page.evaluate("window.shows[window.shows.length - 1]")
-            browser.close()
-        return persisted
+                await asyncio.get_running_loop().run_in_executor(
+                    None, lambda: dispatcher.send("Heap.minimizeMemory", {}, timeout=120))
+                await asyncio.sleep(0.5)
+            await client.back()
+            await asyncio.sleep(0.5)
+            assert await client.title() == "a"
+            persisted = await client.last_pageshow()
+            await client.call(client.context, "close")
+            return persisted
+
+    try:
+        return asyncio.run(drive())
     finally:
         launched.close()
         server.shutdown()
