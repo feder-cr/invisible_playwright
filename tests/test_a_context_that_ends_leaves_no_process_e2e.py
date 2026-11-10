@@ -7,8 +7,10 @@ four such contexts left four more processes (8 web content processes at the end 
 BrowserContext now waits a few seconds for the processes of its container once its pages are gone, and kills the
 ones that stay.
 
-The test closes three such contexts in a row and counts the web content processes under the engine after each:
-the count after the third must not be above the count after the first (on the old engine it is two higher).
+The test closes five such contexts in a row and counts the web content processes under the engine after each.
+The first context may add ONE process that is not the leak (the engine starts a spare content process when the
+first page takes one, and Linux keeps it), so the count after the fifth must not be above the count after the
+SECOND: a flat line from there on (on the old engine every context adds one: [4, 5, 6, 7, 8]).
 
 The engine that does it is not published when this file is written: `engine_at_least` makes the test wait for
 it, and on an older engine it is skipped, never passed.
@@ -117,7 +119,7 @@ def test_closed_contexts_with_a_never_stopping_service_worker_leave_no_process(f
         async with connect(launched.ws_endpoint, max_size=None) as ws:
             client = _Client(ws)
             await client.start()
-            for i in range(3):
+            for i in range(5):
                 context, frame = await client.new_page()
                 await client.call(frame, "goto", {"url": "%s/?i=%d" % (base, i), "waitUntil": "load", "timeout": 30000})
                 await asyncio.sleep(1.0)               # the worker is registered, its install loop is running
@@ -138,4 +140,4 @@ def test_closed_contexts_with_a_never_stopping_service_worker_leave_no_process(f
     finally:
         launched.close()
         server.shutdown()
-    assert counts[2] <= counts[0], "web content processes after each closed context: %r" % (counts,)
+    assert counts[4] <= counts[1], "web content processes after each closed context: %r" % (counts,)
