@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.48.1] - 2026-11-10
+
+### Added
+- `launch_server`, `launch_server_async` and `RemoteServer` are importable from
+  `invisible_playwright`, and the README's "Serving one browser to many clients" has a
+  complete example: a server, and a Playwright for Python client that connects to its
+  `ws_endpoint`.
+
+### Changed
+- invisible-core 59.60.0, which this version pins. The browser never opens its crash
+  reporter: the launch environment carries `MOZ_CRASHREPORTER_DISABLE=1`, so an engine that
+  refuses a launch no longer leaves a "Crash Reporter" window on a Windows desktop.
+- The e2e run stops at the first refusal of the engine instead of launching the browser for
+  every test (a change to the test suite, not to the package).
+
 ## [0.48.0] - 2026-11-10
 
 ### Added

@@ -127,8 +127,37 @@ Schemes supported: `socks5`, `socks4`, `http`, `https`. DNS is routed through th
 
 ### Serving one browser to many clients
 
-`launch_server()` serves one browser on a WebSocket to any Playwright client. On Linux, set
-`MALLOC_ARENA_MAX=2` in the environment of the process that runs it (glibc keeps a memory
+`launch_server()` serves one browser on a WebSocket to any Playwright client. Install the
+extra that carries the WebSocket library with `uv add "invisible-playwright[remote]"`.
+
+```python
+# server.py
+from invisible_playwright import launch_server
+
+with launch_server(seed=42, headless=True) as server:
+    print(server.ws_endpoint)          # ws://127.0.0.1:<port>/<secret>
+    input("serving, press Enter to stop")
+```
+
+```python
+# client.py: any Playwright client; this one is Playwright for Python (uv add playwright)
+import sys
+from playwright.sync_api import sync_playwright
+
+with sync_playwright() as p:
+    browser = p.firefox.connect(sys.argv[1])      # the address the server printed
+    page = browser.new_page()
+    page.goto("https://example.com")
+    print(page.title())
+    browser.close()                               # ends this client; the server's browser keeps running
+```
+
+The server listens on `127.0.0.1` with a random secret path; `host=`, `port=` and `path=` choose
+another address. A client in another language (Node, Java, .NET, Go) connects to the same
+address with the `connect` call of its own Playwright. The browser belongs to the server and
+ends with `server.close()` (or with the `with` block).
+
+On Linux, set `MALLOC_ARENA_MAX=2` in the environment of the process that runs it (glibc keeps a memory
 arena per thread otherwise); the server already hands freed memory back with `malloc_trim`
 (`INVPW_MALLOC_TRIM=0` turns that off).
 
