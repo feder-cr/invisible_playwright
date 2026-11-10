@@ -104,9 +104,11 @@ def _frames(page):
 @pytest.mark.parametrize("selector,has_frame", [
     ("#payment", True), ("#obj", True), ("#emb", True), ("#empty", False), ("#plain", False),
 ])
-def test_content_frame_of_each_embedding_element(oop_page, selector, has_frame):
+def test_content_frame_of_each_embedding_element(oop_page, selector, has_frame, engine_at_least):
     """Step 0 of the step 4 spec: `browsingContext` of the element reads in the
     engine for <iframe>, <object> and <embed>, and is empty for the rest."""
+    if selector == "#emb":  # an <embed> of another process has no frame on firefox-61
+        engine_at_least("firefox-62")
     handle = oop_page.query_selector(selector)
     try:
         frame = handle.content_frame()
@@ -135,7 +137,8 @@ def test_main_frame_has_no_element(oop_page):
 
 
 @pytest.mark.e2e
-def test_a_removed_iframe_is_detached(oop_page):
+def test_a_removed_iframe_is_detached(oop_page, engine_at_least):
+    engine_at_least("firefox-62")
     payment, _ = _frames(oop_page)
     oop_page.evaluate("document.querySelector('#payment').remove()")
     with pytest.raises(Exception, match="detached"):

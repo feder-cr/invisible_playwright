@@ -233,8 +233,9 @@ def test_same_site_other_port_stays_in_process(page, cross_site_loop, engine_dir
 # ── 3 .. 10: what the product does not do yet ──────────────────────────────────
 
 @pytest.mark.e2e
-def test_frame_list_has_real_urls(page, cross_site_loop):
+def test_frame_list_has_real_urls(page, cross_site_loop, engine_at_least):
     """Red until step 3: the frame of another process is listed with an empty url (a placeholder)."""
+    engine_at_least("firefox-62")
     page.goto(cross_site_loop["top"], wait_until="load")
     wait_for(page, lambda: len(page.frames) >= 3)
     urls = sorted(frame.url for frame in page.frames)
@@ -242,8 +243,9 @@ def test_frame_list_has_real_urls(page, cross_site_loop):
 
 
 @pytest.mark.e2e
-def test_frame_evaluate_in_oop_iframe(page, cross_site_loop):
+def test_frame_evaluate_in_oop_iframe(page, cross_site_loop, engine_at_least):
     """Red until steps 2a + 1a + 1b: no execution context exists for a frame of another process."""
+    engine_at_least("firefox-62")
     page.goto(cross_site_loop["top"], wait_until="load")
     wait_for(page, lambda: len(page.frames) >= 2)
     assert len(page.frames) >= 2
@@ -252,8 +254,9 @@ def test_frame_evaluate_in_oop_iframe(page, cross_site_loop):
 
 
 @pytest.mark.e2e
-def test_nested_a_b_a_parent_chain(page, cross_site_loop):
+def test_nested_a_b_a_parent_chain(page, cross_site_loop, engine_at_least):
     """Red until steps 2a + 1b: a placeholder has no parent chain."""
+    engine_at_least("firefox-62")
     page.goto(cross_site_loop["top"], wait_until="load")
     wait_for(page, lambda: len(page.frames) >= 3)
     top = page.main_frame
@@ -265,8 +268,9 @@ def test_nested_a_b_a_parent_chain(page, cross_site_loop):
 
 
 @pytest.mark.e2e
-def test_content_frame_resolves(page, cross_site_loop):
+def test_content_frame_resolves(page, cross_site_loop, engine_at_least):
     """Red until step 4: the element of an iframe whose document is in another process has no frame."""
+    engine_at_least("firefox-62")
     page.goto(cross_site_loop["top"], wait_until="load")
     owner = page.query_selector("#b")
     try:
@@ -278,8 +282,9 @@ def test_content_frame_resolves(page, cross_site_loop):
 
 
 @pytest.mark.e2e
-def test_click_in_oop_iframe_by_selector(page, cross_site_loop):
+def test_click_in_oop_iframe_by_selector(page, cross_site_loop, engine_at_least):
     """Red until steps 5 + 6: a trusted click reaches the leaf, two frames down, in the process of the top."""
+    engine_at_least("firefox-62")
     page.goto(cross_site_loop["top"], wait_until="load")
     page.frame_locator("#b").frame_locator("#a").locator("#ok").click()
     assert wait_for(page, lambda: any(r["path"] == "/report/clicked" and r["query"]["isTrusted"] == ["true"]
@@ -287,8 +292,9 @@ def test_click_in_oop_iframe_by_selector(page, cross_site_loop):
 
 
 @pytest.mark.e2e
-def test_init_script_reaches_oop_frame_first(page, cross_site_loop):
+def test_init_script_reaches_oop_frame_first(page, cross_site_loop, engine_at_least):
     """Red until step 1a: an init script runs in the frame of another process before the page's own scripts."""
+    engine_at_least("firefox-62")
     page.add_init_script("(window.__o = window.__o || []).push('init')")
     page.goto(cross_site_loop["top"], wait_until="load")
     assert wait_for(page, lambda: len([r for r in cross_site_loop["reports"] if r["path"] == "/report/loaded"]) >= 3)
@@ -298,9 +304,10 @@ def test_init_script_reaches_oop_frame_first(page, cross_site_loop):
 
 
 @pytest.mark.e2e
-def test_named_world_declared_after_oop_iframe(page, cross_site_loop, events):
+def test_named_world_declared_after_oop_iframe(page, cross_site_loop, events, engine_at_least):
     """Red until steps 1a + 2b: the utility world the client declares exists in every frame, the other
     process's included (today the declaration to a frame without a docShell is lost without a word)."""
+    engine_at_least("firefox-62")
     from invisible_core.juggler.injected import UTILITY_WORLD
 
     page.goto(cross_site_loop["top"], wait_until="load")
@@ -319,8 +326,9 @@ def test_named_world_declared_after_oop_iframe(page, cross_site_loop, events):
 
 
 @pytest.mark.e2e
-def test_console_from_oop_frame_reaches_client(page, cross_site_loop):
+def test_console_from_oop_frame_reaches_client(page, cross_site_loop, engine_at_least):
     """Red until step 1a: a console message of a frame of another process arrives."""
+    engine_at_least("firefox-62")
     messages = []
     page.on("console", lambda message: messages.append(message.text))
     page.goto(cross_site_loop["top"], wait_until="load")
@@ -357,9 +365,10 @@ def test_oop_frames_are_listed_again_after_the_top_comes_back_from_the_cache(pag
 
 
 @pytest.mark.e2e
-def test_oop_frame_has_its_url_and_answers_after_the_top_comes_back_from_the_cache(page, cross_site_loop):
+def test_oop_frame_has_its_url_and_answers_after_the_top_comes_back_from_the_cache(page, cross_site_loop, engine_at_least):
     """Red until steps 2b + 3: the restored frames come back with their url (the parent's registry of navigations)
     and with their execution contexts (announced again by the mux)."""
+    engine_at_least("firefox-62")
     page.goto(cross_site_loop["top"], wait_until="load")
     assert wait_for(page, lambda: len(page.frames) >= 3)
     page.goto(cross_site_loop["plain"], wait_until="load")
@@ -370,11 +379,12 @@ def test_oop_frame_has_its_url_and_answers_after_the_top_comes_back_from_the_cac
 
 
 @pytest.mark.e2e
-def test_removed_oop_frame_leaves_the_frame_list_and_the_page_answers(page, cross_site_loop):
+def test_removed_oop_frame_leaves_the_frame_list_and_the_page_answers(page, cross_site_loop, engine_at_least):
     """Red until PageHandler listens to the FrameLifecycle through helper.on: its own emitter calls a listener with
     the event name first, so `{frameId}` was read from a string and the frame was never detached. The frame of
     another process that is removed from the DOM must leave `page.frames`, and the commands that go to every
     process (init scripts) must not wait for the one that is gone."""
+    engine_at_least("firefox-62")
     page.goto(cross_site_loop["top"], wait_until="load")
     assert wait_for(page, lambda: len(page.frames) >= 3)
     page.evaluate("document.getElementById('b').remove()")
