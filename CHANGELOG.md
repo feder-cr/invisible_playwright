@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.49.1] - 2026-11-10
+
+### Changed
+- Engine firefox-61 through invisible-core 61.62.0, which this version pins: firefox-60 plus four
+  fixes. A context that ends no longer leaves a content process behind when a service worker
+  that never stops keeps it alive (the engine kills the processes of the container that stay);
+  the shared font resources of a closed window leave WebRender's pool with it; `Page.screenshot`
+  empties its canvas on every way out; `Page.setEmulatedMedia` names the media features it
+  refuses, in English.
+- A context route turns the context's cache off while it is active, as Playwright does.
+
+### Fixed
+- `page.request_gc()` works on a served browser. It sent the engine's `Heap.collectGarbage` on the
+  browser-level connection, whose handler does not have it, so every call failed with
+  `Handler for does not implement method "Heap.collectGarbage"`; it is now sent with the session
+  of the page, as the engine answers it.
+
 ## [0.49.0] - 2026-11-10
 
 ### Changed

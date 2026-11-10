@@ -3478,8 +3478,10 @@ class PageDispatcher(Dispatcher):
         """⛔ `Heap.collectGarbage` really does collect, and it is SLOW - it was
         once used as a "bare command" to measure transport latency and reported
         26,8 ms of browser work as if it were ours. It is the right command
-        here, and the wrong one to benchmark with."""
-        self.conn.send("Heap.collectGarbage", {}, timeout=None)
+        here, and the wrong one to benchmark with. Sent with this page's session
+        (`self.send`): Juggler answers it from its PAGE handler, and the browser-level
+        connection (`self.conn`) gets 'Handler for does not implement method'."""
+        self.send("Heap.collectGarbage", {}, timeout=None)
         return None
 
     def op_add_script_tag(self, params: Dict) -> Any:
@@ -4109,6 +4111,12 @@ class BrowserContextDispatcher(Dispatcher):
             self.browser.require_interception("context.route()")
         self._browser_send("Browser.setRequestInterception",
                            {"enabled": wanted})
+        # ⛔ THE CACHE GOES OFF WITH THE FIRST ROUTE AND BACK ON WITH THE LAST,
+        # as upstream does: `ffBrowser.ts` `doUpdateRequestInterception` sends
+        # `Browser.setCacheDisabled` with the same flag, for the same context.
+        # Without it a routed session fills the engine's cache2 on disk.
+        self._browser_send("Browser.setCacheDisabled",
+                           {"cacheDisabled": wanted})
         self.intercepting = wanted
         return None
 
