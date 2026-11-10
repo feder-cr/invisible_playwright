@@ -30,8 +30,10 @@ from __future__ import annotations
 
 import base64
 import contextlib
+import json
 import os
 import pathlib
+import sys
 import tempfile
 import threading
 import time
@@ -2065,6 +2067,47 @@ class DialogDispatcher(Dispatcher):
         return None
 
 
+def _pack_headers(entries: List[Dict[str, str]]) -> tuple:
+    """Headers kept as a tuple of (name, value) pairs, names and short values interned.
+
+    ⛔ A LIST OF DICTS PER MESSAGE WAS 3.6 KB PER REQUEST AND 4.9 KB PER RESPONSE (measured
+    on a real browser, ten headers each): a dict costs more than the two strings it holds,
+    and every response of a site repeats the same names and most of the same values. The
+    registry keeps a request and its response for as long as the context lives, so a
+    session of a hundred navigations held them by the thousand. The list of dicts the
+    protocol wants is rebuilt when it is asked for (`_unpack_headers`)."""
+    out = []
+    for entry in entries:
+        name, value = entry["name"], entry["value"]
+        out.append((sys.intern(name),
+                    sys.intern(value) if len(value) <= 256 else value))
+    return tuple(out)
+
+
+def _unpack_headers(pairs: tuple) -> List[Dict[str, str]]:
+    return [{"name": name, "value": value} for name, value in pairs]
+
+
+#: Certificates as the engine reports them, one object per distinct certificate: every
+#: response of a host carries the same chain, a few KB, and each kept its own copy.
+_DETAILS: Dict[str, Any] = {}
+
+
+def _shared_details(details: Any) -> Any:
+    if not details:
+        return None
+    try:
+        key = json.dumps(details, sort_keys=True)
+    except (TypeError, ValueError):
+        return details
+    shared = _DETAILS.get(key)
+    if shared is None:
+        if len(_DETAILS) >= 256:
+            _DETAILS.pop(next(iter(_DETAILS)))
+        shared = _DETAILS[key] = details
+    return shared
+
+
 class RequestDispatcher(Dispatcher):
     TYPE = "Request"
     METHODS = {
@@ -2087,7 +2130,7 @@ class RequestDispatcher(Dispatcher):
         #: sends it on somewhere else (`continued_at`). Its response is that
         #: URL's, as Playwright's server has it.
         self.url = params.get("url") or ""
-        self.raw_headers = _headers_array(params.get("headers"))
+        self._headers = _pack_headers(_headers_array(params.get("headers")))
         self.response: Optional["ResponseDispatcher"] = None
         #: Filled by `Network.requestFailed`. ⛔ None until it fails: an
         #: empty string would say "failed for no reason", which is a different
@@ -2097,7 +2140,7 @@ class RequestDispatcher(Dispatcher):
         super().__init__(server, page, {
             "url": self.url,
             "method": params.get("method") or "GET",
-            "headers": self.raw_headers,
+            "headers": _unpack_headers(self._headers),
             # ⛔ OMITTED WHEN ABSENT, never sent as null. The client reads
             # `initializer.get("postData")` and base64-decodes anything that is
             # not None, so a null is harmless today and a raw string would be
@@ -2119,6 +2162,22 @@ class RequestDispatcher(Dispatcher):
             "resourceType": _resource_type(params),
             "frame": page.frame_for(frame_id).channel,
         })
+
+    @property
+    def raw_headers(self) -> List[Dict[str, str]]:
+        return _unpack_headers(self._headers)
+
+    def announced(self) -> None:
+        """⛔ THE ANNOUNCEMENT CARRIED THEM AND NOTHING READS THEM AGAIN: the client takes
+        a request's headers and POST body (up to 10 MB) from the `__create__`, and the
+        server answers `rawRequestHeaders` from `_headers`. A NEW dict, not a pop: the
+        message that went up may still be waiting in a queue, and it holds the old one."""
+        self.initializer = {k: v for k, v in self.initializer.items()
+                            if k not in ("headers", "postData")}
+
+    def released(self) -> None:
+        self._headers = ()
+        self.response = None
 
     def continued_at(self, url: str) -> None:
         """A route sent this request on to `url`.
@@ -2163,13 +2222,13 @@ class ResponseDispatcher(Dispatcher):
     def __init__(self, server, request: RequestDispatcher,
                  params: Dict) -> None:
         self.request = request
-        self.raw_headers = _headers_array(params.get("headers"))
+        self._headers = _pack_headers(_headers_array(params.get("headers")))
         self.protocol_version = params.get("protocolVersion") or ""
-        self.remote = {"ipAddress": params.get("remoteIPAddress") or "",
-                       "port": params.get("remotePort") or 0}
+        self._remote = (sys.intern(params.get("remoteIPAddress") or ""),
+                        params.get("remotePort") or 0)
         # The certificate the engine read off the channel, or None for a
         # response that did not come over TLS.
-        self.security_details = params.get("securityDetails") or None
+        self.security_details = _shared_details(params.get("securityDetails"))
         # ⛔ The parent is the REQUEST, which is where the driver puts it.
         # Unlike the ElementHandle case this one is not load-bearing today -
         # `_network.py` reads its request from the INITIALIZER, not from the
@@ -2180,7 +2239,7 @@ class ResponseDispatcher(Dispatcher):
             "url": request.url,
             "status": params.get("status") or 0,
             "statusText": params.get("statusText") or "",
-            "headers": self.raw_headers,
+            "headers": _unpack_headers(self._headers),
             "request": request.channel,
             "fromServiceWorker": bool(params.get("fromServiceWorker")),
             # ⛔ EVERY timing field is mandatory and -1 means "did not happen".
@@ -2191,6 +2250,24 @@ class ResponseDispatcher(Dispatcher):
                        "secureConnectionStart": -1, "connectEnd": -1,
                        "requestStart": -1, "responseStart": -1},
         })
+
+    @property
+    def raw_headers(self) -> List[Dict[str, str]]:
+        return _unpack_headers(self._headers)
+
+    @property
+    def remote(self) -> Dict[str, Any]:
+        return {"ipAddress": self._remote[0], "port": self._remote[1]}
+
+    def announced(self) -> None:
+        """The client took the headers and the timing from the `__create__` (a new dict,
+        not a pop: see `RequestDispatcher.announced`)."""
+        self.initializer = {k: v for k, v in self.initializer.items()
+                            if k not in ("headers", "timing")}
+
+    def released(self) -> None:
+        self._headers = ()
+        self.security_details = None
 
     def op_body(self, params: Dict) -> Any:
         """The response body, base64, straight from the engine.

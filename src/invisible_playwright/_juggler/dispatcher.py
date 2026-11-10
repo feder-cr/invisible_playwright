@@ -146,8 +146,14 @@ class Dispatcher:
         server.register(self)
         # ⛔ Announced BEFORE anyone can name it. See the module docstring.
         server.announce(self)
+        self.announced()
         # And only then, as Playwright does: past the limit of its bucket the oldest are let go.
         server.collect_stale(self._gc_bucket)
+
+    def announced(self) -> None:
+        """The `__create__` has gone: where an object lets go of what only the
+        announcement needed (a leaf's headers, a POST body). Runs once, from
+        the constructor."""
 
     def gc_bucket(self) -> str:
         """The bucket this object is counted in (`GC_LIMITS`): its type."""
