@@ -68,6 +68,7 @@ from invisible_core import BINARY_VERSION, FIREFOX_UPSTREAM_VERSION
 from invisible_core import GeoTimezoneError, resolve_session_timezone
 from invisible_core import ensure_binary, ensure_geoip_mmdb
 from .launcher import InvisiblePlaywright
+from ._juggler.remote import RemoteServer, launch_server, launch_server_async
 
 # `__version__` describes the CODE that is about to run; the install record is
 # a different fact and keeps a name that says so, the way `invisible_core` does.
@@ -79,6 +80,9 @@ from ._version import __install_record_version__, __version__
 
 __all__ = [
     "InvisiblePlaywright",
+    "launch_server",
+    "launch_server_async",
+    "RemoteServer",
     "ensure_binary",
     "ensure_geoip_mmdb",
     "get_default_stealth_prefs",
