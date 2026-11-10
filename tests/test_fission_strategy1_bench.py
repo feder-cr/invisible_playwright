@@ -164,12 +164,14 @@ def page(browser):
     return page
 
 
-def wait_for(predicate, seconds=8.0):
+def wait_for(page, predicate, seconds=8.0):
+    """Until `predicate()`, with the client's events being read: the sync client takes the engine's events
+    only inside its own calls, so a plain sleep would never see a frame arrive."""
     end = time.time() + seconds
     while time.time() < end:
         if predicate():
             return True
-        time.sleep(0.1)
+        page.wait_for_timeout(100)
     return predicate()
 
 
@@ -204,7 +206,7 @@ def test_cross_site_iframe_gets_its_own_process(page, cross_site_loop, engine_di
     page.goto(cross_site_loop["plain"])
     before = quiet(engine_dir)
     page.goto(cross_site_loop["top"], wait_until="load")
-    assert wait_for(lambda: any(r["path"] == "/report/loaded" and r["host"] == "a.test" and
+    assert wait_for(page, lambda: any(r["path"] == "/report/loaded" and r["host"] == "a.test" and
                                 r["query"]["path"] == ["/leaf"] for r in cross_site_loop["reports"]))
     after = quiet(engine_dir)
     assert len(after - before) >= 1, "no new content process: before %s, after %s" % (sorted(before), sorted(after))
@@ -216,7 +218,7 @@ def test_same_site_other_port_stays_in_process(page, cross_site_loop, engine_dir
     page.goto(cross_site_loop["plain"])
     before = quiet(engine_dir)
     page.goto(cross_site_loop["same_site"], wait_until="load")
-    assert wait_for(lambda: any(r["path"] == "/report/loaded" for r in cross_site_loop["reports"]))
+    assert wait_for(page, lambda: any(r["path"] == "/report/loaded" for r in cross_site_loop["reports"]))
     after = quiet(engine_dir)
     assert not (after - before), "a same-site frame started a process: %s" % sorted(after - before)
 
@@ -227,7 +229,7 @@ def test_same_site_other_port_stays_in_process(page, cross_site_loop, engine_dir
 def test_frame_list_has_real_urls(page, cross_site_loop):
     """Red until step 3: the frame of another process is listed with an empty url (a placeholder)."""
     page.goto(cross_site_loop["top"], wait_until="load")
-    wait_for(lambda: len(page.frames) >= 3)
+    wait_for(page, lambda: len(page.frames) >= 3)
     urls = sorted(frame.url for frame in page.frames)
     assert urls == sorted([cross_site_loop["top"], cross_site_loop["mid"], cross_site_loop["leaf"]])
 
@@ -236,7 +238,7 @@ def test_frame_list_has_real_urls(page, cross_site_loop):
 def test_frame_evaluate_in_oop_iframe(page, cross_site_loop):
     """Red until steps 2a + 1a + 1b: no execution context exists for a frame of another process."""
     page.goto(cross_site_loop["top"], wait_until="load")
-    wait_for(lambda: len(page.frames) >= 2)
+    wait_for(page, lambda: len(page.frames) >= 2)
     assert len(page.frames) >= 2
     mid = page.frames[1]
     assert mid.evaluate("location.origin") == cross_site_loop["origin_mid"]
@@ -246,7 +248,7 @@ def test_frame_evaluate_in_oop_iframe(page, cross_site_loop):
 def test_nested_a_b_a_parent_chain(page, cross_site_loop):
     """Red until steps 2a + 1b: a placeholder has no parent chain."""
     page.goto(cross_site_loop["top"], wait_until="load")
-    wait_for(lambda: len(page.frames) >= 3)
+    wait_for(page, lambda: len(page.frames) >= 3)
     top = page.main_frame
     mid = next((f for f in page.frames if f.url == cross_site_loop["mid"]), None)
     leaf = next((f for f in page.frames if f.url == cross_site_loop["leaf"]), None)
@@ -273,7 +275,7 @@ def test_click_in_oop_iframe_by_selector(page, cross_site_loop):
     """Red until steps 5 + 6: a trusted click reaches the leaf, two frames down, in the process of the top."""
     page.goto(cross_site_loop["top"], wait_until="load")
     page.frame_locator("#b").frame_locator("#a").locator("#ok").click()
-    assert wait_for(lambda: any(r["path"] == "/report/clicked" and r["query"]["isTrusted"] == ["true"]
+    assert wait_for(page, lambda: any(r["path"] == "/report/clicked" and r["query"]["isTrusted"] == ["true"]
                                 for r in cross_site_loop["reports"]))
 
 
@@ -282,7 +284,7 @@ def test_init_script_reaches_oop_frame_first(page, cross_site_loop):
     """Red until step 1a: an init script runs in the frame of another process before the page's own scripts."""
     page.add_init_script("(window.__o = window.__o || []).push('init')")
     page.goto(cross_site_loop["top"], wait_until="load")
-    assert wait_for(lambda: len([r for r in cross_site_loop["reports"] if r["path"] == "/report/loaded"]) >= 3)
+    assert wait_for(page, lambda: len([r for r in cross_site_loop["reports"] if r["path"] == "/report/loaded"]) >= 3)
     orders = {r["query"]["path"][0]: json.loads(r["query"]["order"][0])
               for r in cross_site_loop["reports"] if r["path"] == "/report/loaded"}
     assert orders == {"/top": ["init", "page"], "/mid": ["init", "page"], "/leaf": ["init", "page"]}
@@ -295,8 +297,8 @@ def test_named_world_declared_after_oop_iframe(page, cross_site_loop, events):
     from invisible_core.juggler.injected import UTILITY_WORLD
 
     page.goto(cross_site_loop["top"], wait_until="load")
-    wait_for(lambda: len(page.frames) >= 3)
-    time.sleep(1.0)
+    wait_for(page, lambda: len(page.frames) >= 3)
+    page.wait_for_timeout(1000)
     created = [e["params"] for e in events if e["method"] == "Runtime.executionContextCreated"]
     default = {c["auxData"]["frameId"] for c in created if not c["auxData"].get("name")}
     utility = {c["auxData"]["frameId"] for c in created if c["auxData"].get("name") == UTILITY_WORLD}
@@ -315,4 +317,51 @@ def test_console_from_oop_frame_reaches_client(page, cross_site_loop):
     messages = []
     page.on("console", lambda message: messages.append(message.text))
     page.goto(cross_site_loop["top"], wait_until="load")
-    assert wait_for(lambda: any("/mid on b.test" in text for text in messages)), messages
+    assert wait_for(page, lambda: any("/mid on b.test" in text for text in messages)), messages
+
+
+# ── what step 1 adds to the bench ──────────────────────────────────────────────
+
+@pytest.mark.e2e
+def test_a_context_of_the_top_survives_an_oop_frame_coming_and_going(page, cross_site_loop):
+    """A guard, green on every engine: the `cleared` of one process must not take the contexts of another with it.
+    A handle held on the top is read after a frame of another process has come and gone."""
+    page.goto(cross_site_loop["plain"], wait_until="load")
+    body = page.evaluate_handle("document.body")
+    page.evaluate("""url => new Promise(resolve => {
+        const f = document.createElement('iframe'); f.id = 'x'; f.src = url; f.onload = resolve; document.body.appendChild(f);
+    })""", cross_site_loop["mid"])
+    wait_for(page, lambda: len(page.frames) >= 2)
+    assert body.evaluate("b => b.tagName") == "BODY"
+    page.evaluate("document.getElementById('x').remove()")
+    assert body.evaluate("b => b.tagName") == "BODY"
+
+
+@pytest.mark.e2e
+def test_oop_frame_still_answers_after_the_top_comes_back_from_the_cache(page, cross_site_loop):
+    """Red until the frames of other processes are announced again for a document restored from the back-forward
+    cache: the content process no longer announces them (step 1b), so the parent's FrameLifecycle must, when the
+    page handler forgets the frames below the restored document (PageHandler._forgetFramesBelow)."""
+    page.goto(cross_site_loop["top"], wait_until="load")
+    wait_for(page, lambda: len(page.frames) >= 2)
+    page.goto(cross_site_loop["plain"], wait_until="load")
+    page.go_back(wait_until="load")
+    assert wait_for(page, lambda: any(f.url == cross_site_loop["mid"] for f in page.frames))
+    mid = next(f for f in page.frames if f.url == cross_site_loop["mid"])
+    assert mid.evaluate("1") == 1
+
+
+@pytest.mark.e2e
+def test_removed_oop_frame_leaves_the_frame_list_and_the_page_answers(page, cross_site_loop):
+    """Red until PageHandler listens to the FrameLifecycle through helper.on: its own emitter calls a listener with
+    the event name first, so `{frameId}` was read from a string and the frame was never detached. The frame of
+    another process that is removed from the DOM must leave `page.frames`, and the commands that go to every
+    process (init scripts, extra headers) must not wait for the one that is gone."""
+    page.goto(cross_site_loop["top"], wait_until="load")
+    assert wait_for(page, lambda: len(page.frames) >= 3)
+    page.evaluate("document.getElementById('b').remove()")
+    assert wait_for(page, lambda: len(page.frames) == 1), [f.url for f in page.frames]
+    page.add_init_script("window.__after = 1")
+    page.set_extra_http_headers({"x-bench": "1"})
+    page.goto(cross_site_loop["plain"], wait_until="load")
+    assert page.evaluate("window.__after") == 1
