@@ -100,9 +100,16 @@ def cross_site_loop():
                                     "<script>ok.addEventListener('click', e => fetch('/report/clicked?isTrusted=' + e.isTrusted))</script>" + report)
     routes["/same-site"] = lambda host: ("<!doctype html><title>same-site</title>"
                                          '<iframe id="s" src="%s" width="300" height="100"></iframe>' % at("a.test", "/leaf"))
+    # an iframe nested past the depth Firefox allows (nsFrameLoader::DepthTooGreat, 10), all of one origin
+    for n in range(0, 14):
+        routes["/deep%d" % n] = (lambda n: lambda host: "<!doctype html><title>deep%d</title><iframe id=\"f\" src=\"%s\"></iframe>" % (n, at(host, "/deep%d" % (n + 1))))(n)
+    # a page that reports each time it is shown, and whether it came out of the back-forward cache
+    routes["/shown"] = lambda host: ("<!doctype html><title>shown</title><script>addEventListener('pageshow', e => "
+                                     "fetch('/report/pageshow?persisted=' + e.persisted + '&top=' + (window === top)))</script>")
+    routes["/top-shown"] = lambda host: ('<!doctype html><title>top-shown</title><iframe id="b" src="%s"></iframe>' % at("b.test", "/shown"))
     routes["/plain"] = lambda host: "<!doctype html><title>plain</title><p>plain"
     try:
-        yield {"top": at("a.test", "/top"), "mid": at("b.test", "/mid"), "leaf": at("a.test", "/leaf"),
+        yield {"top": at("a.test", "/top"), "deep": at("a.test", "/deep0"), "top_shown": at("a.test", "/top-shown"), "mid": at("b.test", "/mid"), "leaf": at("a.test", "/leaf"),
                "same_site": at("a.test", "/same-site"), "plain": at("a.test", "/plain"),
                "reports": reports, "origin_mid": "http://b.test:%d" % port, "origin_top": "http://a.test:%d" % port}
     finally:
@@ -375,3 +382,31 @@ def test_removed_oop_frame_leaves_the_frame_list_and_the_page_answers(page, cros
     page.add_init_script("window.__after = 1")
     page.goto(cross_site_loop["plain"], wait_until="load")
     assert page.evaluate("window.__after") == 1
+
+
+@pytest.mark.e2e
+def test_content_frame_of_an_iframe_nested_too_deep_is_none(page, cross_site_loop):
+    """Red until step 8: past the depth Firefox allows (10) an <iframe> has a browsing context that loads
+    nothing and `element.browsingContext` does not apply the depth check, so the element named a frame with no
+    document. `contentWindow` is null there, and the client expects no content frame."""
+    page.goto(cross_site_loop["deep"], wait_until="load")
+    assert wait_for(page, lambda: len(page.frames) >= 10)
+    page.wait_for_timeout(1500)
+    last = page.frames[-1]
+    owner = last.frame_element()
+    try:
+        assert owner.content_frame() is None
+    finally:
+        owner.dispose()
+
+
+@pytest.mark.e2e
+def test_oop_frame_comes_out_of_the_back_forward_cache_with_the_top(page, cross_site_loop):
+    """What the engine does, not the product: the document of a frame in another process is shown again, persisted,
+    when the top comes back from the cache (step 8.3 relies on it)."""
+    page.goto(cross_site_loop["top_shown"], wait_until="load")
+    assert wait_for(page, lambda: any(r["path"] == "/report/pageshow" for r in cross_site_loop["reports"]))
+    page.goto(cross_site_loop["plain"], wait_until="load")
+    page.go_back(wait_until="load")
+    assert wait_for(page, lambda: any(r["path"] == "/report/pageshow" and r["query"]["persisted"] == ["true"] and
+                                      r["query"]["top"] == ["false"] for r in cross_site_loop["reports"])),         cross_site_loop["reports"]
