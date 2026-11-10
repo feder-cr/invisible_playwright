@@ -6,23 +6,35 @@ consent iframe was completely unreachable from Playwright in 0.1.7 -
 threw cross-origin SOP errors, and ``frame_locator().click()`` timed
 out.
 
-Root cause was a missing pref. FF150 ships with
-``fission.webContentIsolationStrategy=1`` (IsolateEverything), which
-site-isolates cross-origin iframes into separate webIsolated content
-processes even when ``fission.autostart=False``. The Juggler code paths
-inherited from the FF146 era assume same-process iframes. The wrapper's
-``_BASELINE`` now pins the pref to 0 (IsolateNothing).
+Root cause was that the Juggler code paths inherited from the FF146 era
+assumed same-process iframes, while the engine site-isolated cross-origin
+iframes into separate webIsolated content processes. The baseline then
+pinned ``fission.webContentIsolationStrategy`` to 0 (IsolateNothing) and
+kept ``fission.autostart`` off, so every iframe lived in the process of
+its page.
+
+firefox-62 reaches a frame in another process like any other, so the
+baseline now runs Fission the way retail Firefox does on desktop:
+``fission.webContentIsolationStrategy=1`` (IsolateEverything, one content
+process per site), ``fission.autostart=True`` and four isolated content
+processes. ``fission.autostart.session`` is written by the parent at
+startup and is not declared.
 
 These tests exist so a future Firefox upgrade or a fingerprint A/B
-that flips this pref by accident cannot ship without a red CI signal.
+that flips these prefs by accident cannot ship without a red CI signal.
+The prefs belong to ``invisible_core.prefs._BASELINE``: the unit layer
+needs an ``invisible-core`` that declares them.
 
 Layers:
-  * ``unit`` - ``_BASELINE`` contains the pref with the right value. No browser.
+  * ``unit`` - ``_BASELINE`` contains the prefs with the right values. No browser.
   * ``e2e``  - launch the real binary against a LOCAL HTTP harness on
-              ``127.0.0.1`` (two ports = two SOP origins) and verify the
-              four protocol operations that regressed: frame URL tracking,
-              ``handle.content_frame()``, ``frame.evaluate()``, and
-              ``frame_locator(...).locator(...)`` element resolution.
+              ``127.0.0.1`` and verify the four protocol operations that
+              regressed: frame URL tracking, ``handle.content_frame()``,
+              ``frame.evaluate()``, and ``frame_locator(...).locator(...)``
+              element resolution. The harness uses two ports of one host,
+              which is one SITE: those iframes stay in the process of the
+              page even at strategy 1. The iframes that leave the process
+              (different hosts) are held by ``test_fission_strategy1_bench.py``.
 
 The e2e tests run entirely offline. They never call out to a real site;
 the cross-origin shape is reproduced with two local HTTP servers on
@@ -46,51 +58,53 @@ from invisible_core.prefs import _BASELINE, translate_profile_to_prefs
 
 
 @pytest.mark.unit
-def test_baseline_pins_web_content_isolation_strategy_to_zero():
+def test_baseline_pins_web_content_isolation_strategy_to_one():
     """Regression sentinel.
 
-    ``fission.webContentIsolationStrategy`` MUST be 0 (IsolateNothing).
-    The FF150 default is 1 (IsolateEverything), which site-isolates
-    cross-origin iframes into separate webIsolated content processes
-    and breaks Playwright frame tracking from the parent process.
+    ``fission.webContentIsolationStrategy`` MUST be 1 (IsolateEverything):
+    one content process per site, as retail Firefox on desktop. The
+    Juggler of firefox-62 reaches an iframe of another process like any
+    other; strategy 0 (IsolateNothing) put every iframe in the process of
+    its page and is no longer the baseline.
     """
-    assert _BASELINE["fission.webContentIsolationStrategy"] == 0, (
-        "fission.webContentIsolationStrategy must be 0 (IsolateNothing). "
-        "If you bumped it for an A/B, cross-origin iframes will appear "
-        "in page.frames with empty URLs and content_frame() will return "
-        "None - see the changelog entry that introduced this test."
+    assert _BASELINE["fission.webContentIsolationStrategy"] == 1, (
+        "fission.webContentIsolationStrategy must be 1 (IsolateEverything). "
+        "With 0, a cross-site iframe shares the process of its page, "
+        "which no retail Firefox on desktop does."
     )
 
 
 @pytest.mark.unit
-def test_baseline_keeps_fission_autostart_off():
-    """Belt for the suspenders above. All three prefs are required."""
-    assert _BASELINE["fission.autostart"] is False
-    assert _BASELINE["fission.autostart.session"] is False
-    assert _BASELINE["dom.ipc.processCount.webIsolated"] == 1
+def test_baseline_runs_fission_with_four_isolated_processes():
+    """Belt for the suspenders above. All three prefs go together."""
+    assert _BASELINE["fission.autostart"] is True
+    # The parent writes `fission.autostart.session` at startup (nsAppRunner):
+    # declaring it would be overwritten, so the baseline must not carry it.
+    assert "fission.autostart.session" not in _BASELINE
+    assert _BASELINE["dom.ipc.processCount.webIsolated"] == 4
 
 
 @pytest.mark.unit
 def test_translated_profile_propagates_isolation_strategy():
-    """The fix must survive translate_profile_to_prefs, not just live in _BASELINE."""
+    """The strategy must survive translate_profile_to_prefs, not just live in _BASELINE."""
     p = generate_profile(seed=42)
     prefs = translate_profile_to_prefs(p, timezone="America/New_York")
-    assert prefs["fission.webContentIsolationStrategy"] == 0
+    assert prefs["fission.webContentIsolationStrategy"] == 1
 
 
 @pytest.mark.unit
 def test_extra_prefs_override_can_break_isolation_only_explicitly():
     """If a caller wants to A/B isolation, they have to set it explicitly.
-    The wrapper does not silently flip it back on.
+    The wrapper does not silently flip it back off.
     """
     p = generate_profile(seed=42)
     prefs_default = translate_profile_to_prefs(p, timezone="America/New_York")
-    assert prefs_default["fission.webContentIsolationStrategy"] == 0
+    assert prefs_default["fission.webContentIsolationStrategy"] == 1
 
     prefs_ab = translate_profile_to_prefs(
-        p, timezone="America/New_York", extra_prefs={"fission.webContentIsolationStrategy": 1}
+        p, timezone="America/New_York", extra_prefs={"fission.webContentIsolationStrategy": 0}
     )
-    assert prefs_ab["fission.webContentIsolationStrategy"] == 1
+    assert prefs_ab["fission.webContentIsolationStrategy"] == 0
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -190,9 +204,9 @@ def cross_origin_harness():
 def test_cross_origin_iframe_url_appears_in_page_frames(firefox_binary, cross_origin_harness):
     """``page.frames`` must list the cross-origin iframe with its real URL.
 
-    Before the pref fix, the URL came back as '' because the navigation
-    observer for the iframe fired in a different content process than
-    the parent's FrameTree was registered in.
+    Before the fix of issue #20, the URL came back as '' because the
+    navigation observer for the iframe fired in a different content process
+    than the parent's FrameTree was registered in.
     """
     from invisible_playwright import InvisiblePlaywright
 
