@@ -267,3 +267,15 @@ def test_a_failing_fallback_is_a_failed_round_too():
     gc, calls = _collect_calls("minimize", outcomes, rounds=1)
     assert calls == ["Heap.minimizeMemory", "Heap.collectGarbage"]
     assert (gc.effective_mode, gc.fell_back, gc.failed) == ("gc", 1, 1)
+
+
+@pytest.mark.parametrize("message", [
+    "Heap.minimizeMemory: something is not supported by this window",     # the sign without the command's name
+    "Heap.minimizeMemory: ERROR: method 'Heap.collectGarbage' is not supported",   # another command's
+    "Heap.minimizeMemory: Handler for does not implement method \"Page.close\"",
+    "Heap.minimizeMemory: reply timed out",
+])
+def test_an_error_that_does_not_name_the_command_is_not_a_missing_command(message):
+    assert not navgc.command_missing(Missing(message))
+    gc, calls = _collect_calls("minimize", {"Heap.minimizeMemory": Missing(message)}, rounds=2)
+    assert calls == ["Heap.minimizeMemory"] * 2 and (gc.effective_mode, gc.fell_back, gc.failed) == ("minimize", 0, 2)

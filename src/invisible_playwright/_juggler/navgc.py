@@ -6,7 +6,7 @@ page, the server sends Juggler's `Heap.collectGarbage` (GC and cycle collection 
 parent process and its children). Nothing a page can read changes; only timing does.
 
 INVPW_GC_MODE=gc|minimize (default gc) says what is sent. `minimize` sends `Heap.minimizeMemory`,
-about:memory's "Minimize memory usage" (also decoded images, caches, the allocator's free pages;
+the memory manager's MinimizeMemoryUsage, what about:memory's "Minimize memory usage" runs in the parent (also decoded images, caches, the allocator's free pages;
 measured: content 127 MB against 199 after `gc` and 254 after nothing, parent -80 MB against -11).
 It is a pressure like the one a real Firefox gets when the machine is short of memory: it also
 evicts the bfcache, so going back in the history of the tab gives `pageshow.persisted == false`.
@@ -44,11 +44,14 @@ MINIMIZE = "minimize"
 COMMANDS = {GC: "Heap.collectGarbage", MINIMIZE: "Heap.minimizeMemory"}
 
 
-def command_missing(exc: BaseException) -> bool:
-    """An engine that does not have the command: Juggler's dispatcher says "method '<name>' is not
-    supported" (an undeclared command) or "does not implement method" (declared, not handled)."""
+def command_missing(exc: BaseException, command: str = COMMANDS[MINIMIZE]) -> bool:
+    """An engine that does not have `command`: Juggler's dispatcher says "method '<name>' is not
+    supported" (an undeclared command) or "does not implement method "<name>"" (declared, not
+    handled). The NAME is part of the sign: another error that happens to say "is not supported"
+    must not turn the mode down for good."""
     text = str(exc)
-    return "is not supported" in text or "does not implement method" in text
+    return (("is not supported" in text and "'%s'" % command in text)
+            or ("does not implement method" in text and '"%s"' % command in text))
 
 
 class NavigationGc:
