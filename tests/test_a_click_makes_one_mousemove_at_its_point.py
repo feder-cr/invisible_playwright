@@ -23,7 +23,11 @@ import pytest
 
 from invisible_playwright._juggler.server import PageDispatcher
 
-from tests.test_pointer_server import _boxes_of, build_page, clock  # noqa: F401
+from tests import test_pointer_server as _pointer_server
+from tests.test_pointer_server import _boxes_of, build_page
+
+#: the fixture of the other module, under its own name
+clock = _pointer_server.clock
 
 pytestmark = pytest.mark.unit
 

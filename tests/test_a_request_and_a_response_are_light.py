@@ -16,8 +16,10 @@ import sys
 
 import pytest
 
-from test_a_closed_context_leaves_nothing_in_the_registry import (  # noqa: F401
-    ScriptedJuggler, browser)
+import test_a_closed_context_leaves_nothing_in_the_registry as _registry
+
+#: the fixture of the other module, under its own name
+browser = _registry.browser
 
 pytestmark = pytest.mark.unit
 

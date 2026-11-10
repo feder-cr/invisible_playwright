@@ -330,9 +330,12 @@ class RemoteEndpoint:
         try:
             from websockets.asyncio.server import serve
         except ImportError as failure:  # pragma: no cover
+            # Spelled by the tool that installed this package, as `_engine.py` does.
+            from invisible_core.installer import install
+            from invisible_core.pin import format_command
             raise RuntimeError(
                 "serving a browser needs the `websockets` package: "
-                "pip install websockets") from failure
+                + format_command(install("invisible-playwright", "websockets"))) from failure
         self._stop = asyncio.Event()
         try:
             async with serve(self._handler, self.host, self.requested_port,
