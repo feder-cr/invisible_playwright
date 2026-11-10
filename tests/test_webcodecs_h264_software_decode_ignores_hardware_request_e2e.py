@@ -13,7 +13,7 @@ read the host. dom/media/webcodecs/DecoderTemplate.cpp's
 (``gfx::StealthEngineActive()``): always software (libyuv, fixed Firefox
 code), never the driver's own blit.
 
-This is firefox-60 checklist goal 6b: frames a page reads through WebCodecs
+This is firefox-61 checklist goal 6b: frames a page reads through WebCodecs
 must never be converted by the host's GPU VideoProcessor; with the engine on
 it stays on the libyuv path, verified by an e2e on the copyTo hash matching
 retail's software path.
@@ -210,7 +210,7 @@ class _AnnexbHandler(BaseHTTPRequestHandler):
 def test_webcodecs_h264_software_decode_matches_retail_even_with_hardware_request(
     firefox_binary, engine_at_least
 ):
-    engine_at_least("firefox-60")
+    engine_at_least("firefox-61")
 
     from invisible_playwright import InvisiblePlaywright
 
