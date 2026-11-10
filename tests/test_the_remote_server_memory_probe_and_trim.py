@@ -1,12 +1,14 @@
-"""The two opt-in switches of the served browser: a memory probe and a malloc trim.
+"""What the served browser does about its memory: a malloc trim that is ON and a probe that is OFF.
 
-Both are OFF unless INVPW_MEM_LOG / INVPW_MALLOC_TRIM say so. No browser: the stand-in
-Browser of `test_the_remote_server_serves_the_protocol.py`, a real WebSocket, and for the
-trim a fake libc.
+The trim: on Linux (glibc) `malloc_trim(0)` after a context closes and after a message of
+64 KiB or more is sent; INVPW_MALLOC_TRIM=0 turns it off; elsewhere, or with a libc that has
+no such function, nothing is called and nothing is said. The probe: INVPW_MEM_LOG=<file>,
+off by default. No browser: the stand-in Browser of
+`test_the_remote_server_serves_the_protocol.py`, a real WebSocket, a fake libc.
 
-Known-bad: with no `memprobe` module the import fails; with the outbox sum reading 0 the
-growth test fails; with the trimmer called when the switch is off, or loaded with ctypes
-at import, the off test fails.
+Known-bad: with the trim off by default the default-on tests fail; with a warning on the
+platforms that cannot trim, or an exception from a libc without the function, the quiet
+tests fail; with the outbox sum reading 0 the growth test fails.
 """
 from __future__ import annotations
 
@@ -69,6 +71,11 @@ def clean_env(monkeypatch):
     monkeypatch.delenv("INVPW_MALLOC_TRIM", raising=False)
 
 
+def linux_with(monkeypatch, libc):
+    monkeypatch.setattr(memprobe, "_is_linux", lambda: True)
+    monkeypatch.setattr(memprobe, "_load_libc", lambda: libc)
+
+
 def run(coro):
     return asyncio.run(asyncio.wait_for(coro, 20))
 
@@ -99,11 +106,14 @@ def exchange(endpoint):
     return run(go())
 
 
-# ── off by default ─────────────────────────────────────────────────────────
+# ── off when asked, and the wire does not change ────────────────────────────
 
-def test_with_both_off_nothing_is_built_and_ctypes_is_not_asked(clean_env, monkeypatch):
+def test_with_the_trim_off_and_no_probe_nothing_is_built_and_the_libc_is_not_asked(
+        clean_env, monkeypatch):
     def forbidden():
-        raise AssertionError("the libc was loaded with the switch off")
+        raise AssertionError("the libc was loaded with the trim off")
+    monkeypatch.setenv("INVPW_MALLOC_TRIM", "0")
+    monkeypatch.setattr(memprobe, "_is_linux", lambda: True)
     monkeypatch.setattr(memprobe, "_load_libc", forbidden)
     endpoint = make_endpoint()
     assert endpoint.probe is None and endpoint.trim is None
@@ -114,14 +124,16 @@ def test_with_both_off_nothing_is_built_and_ctypes_is_not_asked(clean_env, monke
         endpoint.close()
 
 
-def test_the_wire_is_the_same_byte_for_byte_with_the_switches_on(clean_env, monkeypatch, tmp_path):
-    def bytes_of(env: bool):
-        if env:
+def test_the_wire_is_the_same_byte_for_byte_with_the_trim_and_the_probe_on(
+        clean_env, monkeypatch, tmp_path):
+    def bytes_of(on: bool):
+        if on:
+            monkeypatch.delenv("INVPW_MALLOC_TRIM", raising=False)
             monkeypatch.setenv("INVPW_MEM_LOG", str(tmp_path / "m.jsonl"))
-            monkeypatch.setenv("INVPW_MALLOC_TRIM", "1")
-            monkeypatch.setattr(memprobe, "_is_linux", lambda: True)
-            monkeypatch.setattr(memprobe, "_load_libc",
-                                lambda: type("L", (), {"malloc_trim": staticmethod(lambda n: 0)})())
+            linux_with(monkeypatch, FakeLibc())
+        else:
+            monkeypatch.setenv("INVPW_MALLOC_TRIM", "0")
+            monkeypatch.delenv("INVPW_MEM_LOG", raising=False)
         endpoint = make_endpoint()
         endpoint.start()
         try:
@@ -226,11 +238,9 @@ class FakeLibc:
         return 1
 
 
-def test_the_trim_is_called_after_a_big_reply_and_at_a_context_close(clean_env, monkeypatch):
+def test_the_trim_is_on_by_default_after_a_big_reply_and_at_a_context_close(clean_env, monkeypatch):
     libc = FakeLibc()
-    monkeypatch.setenv("INVPW_MALLOC_TRIM", "1")
-    monkeypatch.setattr(memprobe, "_is_linux", lambda: True)
-    monkeypatch.setattr(memprobe, "_load_libc", lambda: libc)
+    linux_with(monkeypatch, libc)
     endpoint = make_endpoint()
     assert endpoint.trim is not None
     endpoint.start()
@@ -257,14 +267,54 @@ def test_the_trim_is_called_after_a_big_reply_and_at_a_context_close(clean_env, 
         endpoint.close()
 
 
-def test_the_trim_is_ignored_off_linux_with_one_warning(clean_env, monkeypatch):
-    monkeypatch.setenv("INVPW_MALLOC_TRIM", "1")
-    monkeypatch.setattr(memprobe, "_is_linux", lambda: False)
-    monkeypatch.setattr(memprobe, "_WARNED", False)
-    monkeypatch.setattr(memprobe, "_load_libc", lambda: pytest.fail("loaded off Linux"))
-    with pytest.warns(RuntimeWarning, match="INVPW_MALLOC_TRIM"):
-        assert memprobe.trimmer_from_env() is None
+def test_INVPW_MALLOC_TRIM_0_never_trims(clean_env, monkeypatch):
+    libc = FakeLibc()
+    linux_with(monkeypatch, libc)
+    monkeypatch.setenv("INVPW_MALLOC_TRIM", "0")
+    endpoint = make_endpoint()
+    assert endpoint.trim is None
+    endpoint.start()
+    try:
+        exchange(endpoint)
+    finally:
+        endpoint.close()
+    assert libc.calls == []
+
+
+def test_off_linux_nothing_is_called_and_nothing_is_said(clean_env, monkeypatch):
     import warnings
+    monkeypatch.setattr(memprobe, "_is_linux", lambda: False)
+    monkeypatch.setattr(memprobe, "_load_libc", lambda: pytest.fail("loaded off Linux"))
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        assert memprobe.trimmer_from_env() is None  # said once
+        assert memprobe.trimmer_from_env() is None
+        endpoint = make_endpoint()
+        endpoint.start()
+        try:
+            exchange(endpoint)           # the server works
+        finally:
+            endpoint.close()
+
+
+@pytest.mark.parametrize("libc", [object(), "no-libc"])
+def test_a_libc_without_malloc_trim_is_not_an_error_and_the_server_works(
+        clean_env, monkeypatch, libc):
+    """musl has no malloc_trim; a libc that cannot be loaded is the same case."""
+    import warnings
+    monkeypatch.setattr(memprobe, "_is_linux", lambda: True)
+
+    def load():
+        if libc == "no-libc":
+            raise OSError("libc.so.6: cannot open shared object file")
+        return libc
+    monkeypatch.setattr(memprobe, "_load_libc", load)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert memprobe.trimmer_from_env() is None
+        endpoint = make_endpoint()
+        assert endpoint.trim is None
+        endpoint.start()
+        try:
+            exchange(endpoint)
+        finally:
+            endpoint.close()

@@ -1,13 +1,15 @@
-"""Two opt-in switches of the served browser, both OFF unless the environment says so.
+"""What the served browser does about its memory: a trim that is ON, and a probe that is OFF.
 
-  INVPW_MEM_LOG=<file>      a memory probe: one JSON line every INVPW_MEM_LOG_INTERVAL
-                            seconds (default 2) and one at each context close.
-  INVPW_MALLOC_TRIM=1       `malloc_trim(0)` (glibc, Linux only) after each message of
-                            TRIM_BYTES or more has been sent, and at each context close.
+THE TRIM. On Linux with glibc the server calls `malloc_trim(0)` after each message of
+TRIM_BYTES or more has been sent and after each context close. INVPW_MALLOC_TRIM=0 turns
+it off. Elsewhere (not Linux, musl, a libc without the function) it calls nothing and says
+nothing: the endpoint asks `trimmer_from_env` once and every hook on the hot path is a
+test of the None it gets back. No `mallopt` and no MALLOC_ARENA_MAX here: those are
+process-wide and must be set before threads exist, which is the launcher's business
+(README: MALLOC_ARENA_MAX=2).
 
-NOTHING HERE RUNS WITH THE TWO OFF: the endpoint asks `probe_from_env` and
-`trimmer_from_env` once, gets None, and every hook on the hot path is a test of
-that None. `ctypes` is imported only by a trimmer or a probe that needs it.
+THE PROBE, off unless INVPW_MEM_LOG=<file> (INVPW_MEM_LOG_INTERVAL, default 2 s): one JSON
+line every interval and one at each context close, at no cost when it is off.
 
 The line of the probe (`t` is `time.monotonic()`, `event` is "tick" or
 "context_closed"):
@@ -27,10 +29,14 @@ import os
 import sys
 import threading
 import time
-import warnings
 from typing import Any, Callable, Dict, Optional
 
 #: A message of at least this many bytes is a reply with a body worth giving back to the OS.
+#: WHY TRIM AT ALL: in a served browser the pages' contents (1-6 MB each) pass through the
+#: process as JSON strings and die young among the long-lived registry objects; glibc keeps
+#: the freed memory in its arenas. Measured by slack on a container, runs of 95 navigations:
+#: the free memory held by malloc (`fordblks`) went from 13 MB to 177 MB by default. 64 KiB
+#: is under any page's content and over any ordinary message.
 TRIM_BYTES = 64 * 1024
 
 DEFAULT_INTERVAL = 2.0
@@ -45,21 +51,11 @@ def _load_libc() -> Any:
     return ctypes.CDLL("libc.so.6", use_errno=True)
 
 
-_WARNED = False
-
-
 def trimmer_from_env(environ: Optional[Dict[str, str]] = None) -> Optional[Callable[[], None]]:
-    """`malloc_trim(0)` as a callable, or None: off (the default), not Linux
-    (said once), or no such function in the libc."""
-    global _WARNED
+    """`malloc_trim(0)` as a callable, or None: INVPW_MALLOC_TRIM=0, not Linux, or a libc
+    that has no such function (musl) - silently, in every one of them."""
     environ = os.environ if environ is None else environ
-    if environ.get("INVPW_MALLOC_TRIM") != "1":
-        return None
-    if not _is_linux():
-        if not _WARNED:
-            _WARNED = True
-            warnings.warn("INVPW_MALLOC_TRIM=1 is ignored: malloc_trim is glibc on Linux",
-                          RuntimeWarning, stacklevel=2)
+    if environ.get("INVPW_MALLOC_TRIM") == "0" or not _is_linux():
         return None
     try:
         libc = _load_libc()

@@ -125,6 +125,13 @@ with InvisiblePlaywright(proxy=proxy) as browser:
 
 Schemes supported: `socks5`, `socks4`, `http`, `https`. DNS is routed through the proxy by default, no local leak.
 
+### Serving one browser to many clients
+
+`launch_server()` serves one browser on a WebSocket to any Playwright client. On Linux, set
+`MALLOC_ARENA_MAX=2` in the environment of the process that runs it (glibc keeps a memory
+arena per thread otherwise); the server already hands freed memory back with `malloc_trim`
+(`INVPW_MALLOC_TRIM=0` turns that off).
+
 ### Timezone
 
 The browser timezone follows `timezone=`:
