@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.49.0] - 2026-11-10
+
+### Changed
+- Engine firefox-60 through invisible-core 60.61.0, which this version pins: firefox-59 plus
+  the Juggler's memory fixes. A tab no longer keeps the documents it left alive (they used to
+  stay as detached windows after leaving the back/forward cache), and a main-frame navigation
+  drops the response bodies of the documents it left, as Chromium does: `response.body()` of
+  such a response raises the evicted error Playwright already returns for Firefox.
+
 ## [0.48.1] - 2026-11-10
 
 ### Added
