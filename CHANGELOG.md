@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.48.0] - 2026-11-10
+
 ### Added
 - `launch_server()` serves one browser on a WebSocket to any Playwright client: the
   Playwright initializer is the one of protocol 1.62, a call's timeout is read from its
@@ -13,6 +15,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   drawn by the server, once, for every client.
 
 ### Changed
+- Engine firefox-59 (Firefox 159.0), through invisible-core 59.57.0, which this version
+  pins. On Linux WebGL draws on the engine's own GL, never the host's, under X11 too, and
+  every extension the persona declares answers as on Windows.
 - The server collects its oldest protocol objects as Playwright's does, with a lower limit
   for `Request`, `Response` and `Route` (2000, not 10000; nothing younger than 10 seconds).
   A program that holds more than 2000 requests or responses in hand for longer than 10
