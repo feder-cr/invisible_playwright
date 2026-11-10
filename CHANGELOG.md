@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.49.1] - 2026-11-10
+
+### Fixed
+- `page.request_gc()` works on a served browser. It sent the engine's `Heap.collectGarbage` on the
+  browser-level connection, whose handler does not have it, so every call failed with
+  `Handler for does not implement method "Heap.collectGarbage"`; it is now sent with the session
+  of the page, as the engine answers it.
+
 ## [0.49.0] - 2026-11-10
 
 ### Changed

@@ -3478,8 +3478,10 @@ class PageDispatcher(Dispatcher):
         """⛔ `Heap.collectGarbage` really does collect, and it is SLOW - it was
         once used as a "bare command" to measure transport latency and reported
         26,8 ms of browser work as if it were ours. It is the right command
-        here, and the wrong one to benchmark with."""
-        self.conn.send("Heap.collectGarbage", {}, timeout=None)
+        here, and the wrong one to benchmark with. Sent with this page's session
+        (`self.send`): Juggler answers it from its PAGE handler, and the browser-level
+        connection (`self.conn`) gets 'Handler for does not implement method'."""
+        self.send("Heap.collectGarbage", {}, timeout=None)
         return None
 
     def op_add_script_tag(self, params: Dict) -> Any:
