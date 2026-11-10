@@ -195,3 +195,75 @@ def test_page_request_gc_is_sent_with_the_page_session_not_the_browser_connectio
     assert page.op_request_gc({}) is None
     page.send.assert_called_once_with("Heap.collectGarbage", {}, timeout=None)
     page.context.browser.conn.send.assert_not_called()
+
+
+# --- INVPW_GC_MODE: gc (default) or minimize --------------------------------------------------------
+
+class Missing(Exception):
+    pass
+
+
+def _collect_calls(mode, outcomes, rounds=3):
+    """Runs `rounds` collections of a `mode` option; `outcomes` maps a command to an exception to raise."""
+    calls = []
+
+    def send(method, params, timeout=None):
+        calls.append(method)
+        if method in outcomes:
+            raise outcomes[method]
+
+    gc = navgc.NavigationGc(1, send, mode)
+    for _ in range(rounds):
+        gc.note_main_frame_commit()
+        gc.join(5)
+    return gc, calls
+
+
+def test_the_mode_is_gc_unless_asked_and_a_wrong_one_is_gc_with_a_warning(caplog):
+    assert navgc.from_env(Mock(), {navgc.ENV: "2"}).mode == "gc"
+    assert navgc.from_env(Mock(), {navgc.ENV: "2", navgc.MODE_ENV: " Minimize "}).mode == "minimize"
+    with caplog.at_level("WARNING"):
+        wrong = navgc.from_env(Mock(), {navgc.ENV: "2", navgc.MODE_ENV: "full"})
+    assert wrong.mode == "gc"
+    assert any(navgc.MODE_ENV in r.message and "'full'" in r.message for r in caplog.records)
+
+
+def test_a_mode_that_is_not_known_is_refused_by_the_class():
+    with pytest.raises(ValueError):
+        navgc.NavigationGc(1, Mock(), "full")
+
+
+def test_gc_mode_sends_collect_garbage_and_minimize_mode_sends_minimize_memory():
+    _, calls = _collect_calls("gc", {})
+    assert calls == ["Heap.collectGarbage"] * 3
+    gc, calls = _collect_calls("minimize", {})
+    assert calls == ["Heap.minimizeMemory"] * 3
+    assert (gc.effective_mode, gc.fell_back, gc.failed) == ("minimize", 0, 0)
+
+
+@pytest.mark.parametrize("message", [
+    "Heap.minimizeMemory: ERROR: method 'Heap.minimizeMemory' is not supported",   # measured on firefox-60
+    "Heap.minimizeMemory: Handler for does not implement method \"Heap.minimizeMemory\"",
+])
+def test_an_engine_without_the_command_falls_back_to_gc_says_so_once_and_stays_on_gc(message, caplog):
+    with caplog.at_level("WARNING"):
+        gc, calls = _collect_calls("minimize", {"Heap.minimizeMemory": Missing(message)})
+    # the round that found it out collects anyway; the next ones do not ask again
+    assert calls == ["Heap.minimizeMemory", "Heap.collectGarbage", "Heap.collectGarbage", "Heap.collectGarbage"]
+    assert (gc.mode, gc.effective_mode, gc.fell_back, gc.failed) == ("minimize", "gc", 1, 0)
+    warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+    assert len(warnings) == 1 and "Heap.minimizeMemory" in warnings[0].message and "falling back" in warnings[0].message
+
+
+def test_another_error_of_minimize_is_a_failed_round_not_a_fallback():
+    gc, calls = _collect_calls("minimize", {"Heap.minimizeMemory": Missing("timed out after 120 s")})
+    assert calls == ["Heap.minimizeMemory"] * 3
+    assert (gc.effective_mode, gc.fell_back, gc.failed) == ("minimize", 0, 3)
+
+
+def test_a_failing_fallback_is_a_failed_round_too():
+    outcomes = {"Heap.minimizeMemory": Missing("method 'Heap.minimizeMemory' is not supported"),
+                "Heap.collectGarbage": Missing("connection closed")}
+    gc, calls = _collect_calls("minimize", outcomes, rounds=1)
+    assert calls == ["Heap.minimizeMemory", "Heap.collectGarbage"]
+    assert (gc.effective_mode, gc.fell_back, gc.failed) == ("gc", 1, 1)

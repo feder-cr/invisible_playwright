@@ -5,6 +5,14 @@ off). Every N-th commit of a MAIN frame, counted over the whole served browser a
 page, the server sends Juggler's `Heap.collectGarbage` (GC and cycle collection of the
 parent process and its children). Nothing a page can read changes; only timing does.
 
+INVPW_GC_MODE=gc|minimize (default gc) says what is sent. `minimize` sends `Heap.minimizeMemory`,
+about:memory's "Minimize memory usage" (also decoded images, caches, the allocator's free pages;
+measured: content 127 MB against 199 after `gc` and 254 after nothing, parent -80 MB against -11).
+It is a pressure like the one a real Firefox gets when the machine is short of memory: it also
+evicts the bfcache, so going back in the history of the tab gives `pageshow.persisted == false`.
+The command comes with the engine that has it: on an engine without it the first `minimize`
+round logs one warning, falls back to `Heap.collectGarbage` for that round and every later one.
+
 ⛔ NEVER FROM THE CALLER'S THREAD. `note_main_frame_commit` is called from the connection's
 reader thread, under the lifecycle's lock, and the reply to a blocking send can only be
 delivered by that same thread: a send from there is a deadlock. The send runs on a daemon
@@ -29,6 +37,18 @@ log = logging.getLogger(__name__)
 TIMEOUT_S = 120.0
 
 ENV = "INVPW_GC_EVERY_NAV"
+MODE_ENV = "INVPW_GC_MODE"
+
+GC = "gc"
+MINIMIZE = "minimize"
+COMMANDS = {GC: "Heap.collectGarbage", MINIMIZE: "Heap.minimizeMemory"}
+
+
+def command_missing(exc: BaseException) -> bool:
+    """An engine that does not have the command: Juggler's dispatcher says "method '<name>' is not
+    supported" (an undeclared command) or "does not implement method" (declared, not handled)."""
+    text = str(exc)
+    return "is not supported" in text or "does not implement method" in text
 
 
 class NavigationGc:
@@ -37,8 +57,13 @@ class NavigationGc:
     implement method"). So the page that committed hands its own `send` to `note_main_frame_commit`; the one
     given here is only the default of a caller that has none."""
 
-    def __init__(self, every: int, send: Optional[Callable[..., Any]] = None) -> None:
+    def __init__(self, every: int, send: Optional[Callable[..., Any]] = None, mode: str = GC) -> None:
+        if mode not in COMMANDS:
+            raise ValueError("mode must be one of %s, got %r" % (sorted(COMMANDS), mode))
         self.every = every
+        #: What was asked, and what is sent now (`minimize` becomes `gc` on an engine without the command).
+        self.mode = mode
+        self.effective_mode = mode
         self._send = send
         self._lock = threading.Lock()
         self._running: Optional[threading.Thread] = None
@@ -46,6 +71,7 @@ class NavigationGc:
         self.started = 0
         self.skipped = 0
         self.failed = 0
+        self.fell_back = 0
 
     def note_main_frame_commit(self, send: Optional[Callable[..., Any]] = None) -> None:
         with self._lock:
@@ -70,14 +96,31 @@ class NavigationGc:
         try:
             if send is None:
                 raise RuntimeError("no page session to send the collection with")
-            send("Heap.collectGarbage", {}, timeout=TIMEOUT_S)
+            self._run(send)
         except BaseException as exc:  # a collection never takes anything down
             with self._lock:
                 self.failed += 1
-            log.debug("Heap.collectGarbage failed: %r", exc)
+            log.debug("%s failed: %r", COMMANDS[self.effective_mode], exc)
         finally:
             with self._lock:
                 self._running = None
+
+    def _run(self, send: Callable[..., Any]) -> None:
+        if self.effective_mode == MINIMIZE:
+            try:
+                send(COMMANDS[MINIMIZE], {}, timeout=TIMEOUT_S)
+                return
+            except BaseException as exc:
+                if not command_missing(exc):
+                    raise
+                with self._lock:
+                    first = self.effective_mode == MINIMIZE
+                    self.effective_mode = GC
+                    self.fell_back += 1
+                if first:
+                    log.warning("%s=minimize: this engine has no %s (it comes with a later engine): "
+                                "falling back to %s", MODE_ENV, COMMANDS[MINIMIZE], COMMANDS[GC])
+        send(COMMANDS[GC], {}, timeout=TIMEOUT_S)
 
     def join(self, timeout: Optional[float] = None) -> None:
         """Waits for the collection in flight, if any (for the tests and the measures)."""
@@ -96,4 +139,8 @@ def from_env(send: Optional[Callable[..., Any]] = None,
         return None
     if every <= 0:
         return None
-    return NavigationGc(every, send)
+    mode = (environ.get(MODE_ENV) or GC).strip().lower()
+    if mode not in COMMANDS:
+        log.warning("%s=%r is not one of %s: using %s", MODE_ENV, mode, "/".join(COMMANDS), GC)
+        mode = GC
+    return NavigationGc(every, send, mode)
