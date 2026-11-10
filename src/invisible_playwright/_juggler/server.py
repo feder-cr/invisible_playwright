@@ -916,6 +916,24 @@ class FrameDispatcher(Dispatcher):
         "addStyleTag": "op_add_style_tag",
     }
 
+    #: ⛔ A FRAME THAT LEFT THE PAGE STAYS HERE, and answers every call with Playwright's own error. The driver never
+    #: disposes a Frame when it detaches (it disposes the Page, the contexts, the handles; the frames go with the page,
+    #: or are collected when their bucket is full): a call on a detached frame reaches its dispatcher and is refused
+    #: "Frame was detached". Disposing it on detach, as this class did, made the same call a call on a guid that no
+    #: longer exists, and the client read it as `Target page, context or browser has been closed`: the page is not
+    #: closed, and a script that handles "detached" (an iframe a framework removed) never saw it.
+    detached = False
+
+    def detach(self) -> None:
+        """The frame left the page: its handles go (their frame is no more), the frame itself stays and refuses."""
+        self.detached = True
+        self.server.dispose_many(self.server.descendants_of(self), None)
+
+    def call(self, method: str, params: Dict) -> Any:
+        if self.detached:
+            raise ProtocolException("Frame was detached")
+        return super().call(method, params)
+
     def gc_bucket(self) -> str:
         """Playwright counts the main frame and the others apart (`frameDispatcher.ts`)."""
         return "MainFrame" if getattr(self, "parent_frame", None) is None else "Frame"
@@ -2771,7 +2789,7 @@ class PageDispatcher(Dispatcher):
             child = self._frames.pop(frame_id, None)
             if child is not None:
                 self.emit("frameDetached", {"frame": child.channel})
-                child.dispose()
+                child.detach()
             return
         if what == "frameAttached":
             # Never the main frame: the lifecycle announces an id it sees for
