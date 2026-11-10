@@ -2804,6 +2804,15 @@ class PageDispatcher(Dispatcher):
                 "newDocument": self.navigation_document(navigation),
             })
             child.emit("loadstate", {"add": "commit"})
+            # ⛔ Only the main frame counts, and the collection runs on a thread
+            # of its own (`navgc.py`): this is the reader thread, under the
+            # lifecycle's lock, and a blocking send from here would deadlock.
+            nav_gc = self.server.nav_gc
+            if nav_gc is not None and self._is_main_frame(child):
+                nav_gc.note_main_frame_commit()
+
+    def _is_main_frame(self, child: "FrameDispatcher") -> bool:
+        return child is self.frame
 
     #: Events held while the page is being built. The birth of a page is a
     #: burst of a few dozen; a page that never finishes building must not
@@ -5327,6 +5336,10 @@ class JugglerServer(Server):
     #: tables reported it as missing, and the count was wrong by one in the
     #: direction that makes you write code twice.
     METHODS = {"initialize": "op_initialize"}
+
+    #: The collection every N main-frame navigations (`navgc.py`); the endpoint that
+    #: serves this browser sets it, None otherwise.
+    nav_gc: Any = None
 
     def stage_upload(self, payload: Dict) -> str:
         """A `setInputFiles` payload written to a file, and that file's path.

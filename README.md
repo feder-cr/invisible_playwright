@@ -160,6 +160,7 @@ ends with `server.close()` (or with the `with` block).
 On Linux, set `MALLOC_ARENA_MAX=2` in the environment of the process that runs it (glibc keeps a memory
 arena per thread otherwise); the server already hands freed memory back with `malloc_trim`
 (`INVPW_MALLOC_TRIM=0` turns that off).
+Set `INVPW_GC_EVERY_NAV=N` (a positive integer; off by default) to make the server send the browser's `Heap.collectGarbage` every N-th main-frame navigation, counted over the whole served browser, from a thread of its own and with at most one collection in flight.
 
 The server keeps its protocol objects in a registry and, like Playwright's own server,
 collects the oldest ones when a type grows past a limit (`__dispose__` with reason `gc`).

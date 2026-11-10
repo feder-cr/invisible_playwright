@@ -65,7 +65,7 @@ import time
 from typing import Any, Callable, Dict, List, Optional
 from urllib.parse import parse_qs, urlsplit
 
-from . import memprobe, wire
+from . import memprobe, navgc, wire
 from .dispatcher import ProtocolException
 from .server import (BrowserDispatcher, BrowserTypeDispatcher, JugglerServer,
                      LocalUtilsDispatcher, RefusingDispatcher)
@@ -270,6 +270,9 @@ class RemoteEndpoint:
         #: The two opt-in switches (`memprobe.py`): None unless the environment asks.
         self.probe = memprobe.probe_from_env(self)
         self.trim = memprobe.trimmer_from_env()
+        #: A collection every N main-frame navigations (`navgc.py`): None unless asked.
+        self.nav_gc = navgc.from_env(self._browser_send)
+        server.nav_gc = self.nav_gc
         #: The rest of what the Playwright initializer must name (spec 1.62: chromium,
         #: firefox, webkit, android, electron are all required), created once.
         self.chromium = UnservedBrowserType(server, "chromium")
@@ -277,6 +280,9 @@ class RemoteEndpoint:
         self.android = UnservedAndroid(server)
         self.electron = UnservedElectron(server)
         server.endpoint = self
+
+    def _browser_send(self, method: str, params: Dict, timeout: Optional[float] = None) -> Any:
+        return self.browser.conn.send(method, params, timeout=timeout)
 
     # ── where it listens ────────────────────────────────────────────────────
     @property
