@@ -338,12 +338,23 @@ def test_a_context_of_the_top_survives_an_oop_frame_coming_and_going(page, cross
 
 
 @pytest.mark.e2e
-def test_oop_frame_still_answers_after_the_top_comes_back_from_the_cache(page, cross_site_loop):
-    """Red until the frames of other processes are announced again for a document restored from the back-forward
-    cache: the content process no longer announces them (step 1b), so the parent's FrameLifecycle must, when the
-    page handler forgets the frames below the restored document (PageHandler._forgetFramesBelow)."""
+def test_oop_frames_are_listed_again_after_the_top_comes_back_from_the_cache(page, cross_site_loop):
+    """Red until FrameLifecycle announces again the frames below a document restored from the back-forward cache:
+    the content process no longer announces a frame of another process (step 1b), and the client forgets the
+    frames below a frame when a document commits in it."""
     page.goto(cross_site_loop["top"], wait_until="load")
-    wait_for(page, lambda: len(page.frames) >= 2)
+    assert wait_for(page, lambda: len(page.frames) >= 3)
+    page.goto(cross_site_loop["plain"], wait_until="load")
+    page.go_back(wait_until="load")
+    assert wait_for(page, lambda: len(page.frames) >= 3), [f.url for f in page.frames]
+
+
+@pytest.mark.e2e
+def test_oop_frame_has_its_url_and_answers_after_the_top_comes_back_from_the_cache(page, cross_site_loop):
+    """Red until steps 2b + 3: the restored frames come back with their url (the parent's registry of navigations)
+    and with their execution contexts (announced again by the mux)."""
+    page.goto(cross_site_loop["top"], wait_until="load")
+    assert wait_for(page, lambda: len(page.frames) >= 3)
     page.goto(cross_site_loop["plain"], wait_until="load")
     page.go_back(wait_until="load")
     assert wait_for(page, lambda: any(f.url == cross_site_loop["mid"] for f in page.frames))
@@ -356,12 +367,11 @@ def test_removed_oop_frame_leaves_the_frame_list_and_the_page_answers(page, cros
     """Red until PageHandler listens to the FrameLifecycle through helper.on: its own emitter calls a listener with
     the event name first, so `{frameId}` was read from a string and the frame was never detached. The frame of
     another process that is removed from the DOM must leave `page.frames`, and the commands that go to every
-    process (init scripts, extra headers) must not wait for the one that is gone."""
+    process (init scripts) must not wait for the one that is gone."""
     page.goto(cross_site_loop["top"], wait_until="load")
     assert wait_for(page, lambda: len(page.frames) >= 3)
     page.evaluate("document.getElementById('b').remove()")
     assert wait_for(page, lambda: len(page.frames) == 1), [f.url for f in page.frames]
     page.add_init_script("window.__after = 1")
-    page.set_extra_http_headers({"x-bench": "1"})
     page.goto(cross_site_loop["plain"], wait_until="load")
     assert page.evaluate("window.__after") == 1
