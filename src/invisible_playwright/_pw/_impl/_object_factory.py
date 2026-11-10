@@ -21,6 +21,7 @@ from invisible_playwright._pw._impl._browser_type import BrowserType
 from invisible_playwright._pw._impl._cdp_session import CDPSession
 from invisible_playwright._pw._impl._connection import ChannelOwner
 from invisible_playwright._pw._impl._debugger import Debugger
+from invisible_playwright._pw._impl._dialog import Dialog
 from invisible_playwright._pw._impl._disposable import Disposable
 from invisible_playwright._pw._impl._element_handle import ElementHandle
 from invisible_playwright._pw._impl._fetch import APIRequestContext
@@ -67,12 +68,8 @@ def create_remote_object(
         return CDPSession(parent, type, guid, initializer)
     if type == "Debugger":
         return Debugger(parent, type, guid, initializer)
-    # ⛔ NO "Dialog" BRANCH HERE SINCE 2026-08-29, ON PURPOSE. `Dialog` fused
-    # into a plain class with a different constructor signature (see
-    # `_dialog.py`); no `__create__` for a dialog is ever sent any more, so
-    # this factory is never asked to build one. A branch calling the OLD
-    # four-argument form would be a landmine - reachable only if something
-    # regressed, and wrong in a way that points nowhere near the real cause.
+    if type == "Dialog":
+        return Dialog(parent, type, guid, initializer)
     if type == "Disposable":
         return Disposable(parent, type, guid, initializer)
     if type == "ElementHandle":

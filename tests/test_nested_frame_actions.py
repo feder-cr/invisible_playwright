@@ -435,11 +435,10 @@ def test_shadow_number_input_click(firefox_binary, nested_origins, wire,
 @pytest.mark.e2e
 @pytest.mark.parametrize("mode", ["open", "closed"])
 def test_shadow_landing_rejects_siblings_and_overlays(nested_page, nested_origins, mode):
-    """The cursor's landing check, asked directly: the input's own centre is
+    """The landing check of the server's pointer (`Actions.hit_target`), asked
+    directly through the server's `checkHitTarget`: the input's own centre is
     accepted, and the padded container, a sibling laid over it and an overlay
     in the frame's document are not the input."""
-    from invisible_playwright import _cursor
-
     nested_page.goto(nested_origins["origin"] + "/number-top-" + mode)
     frame = frames(nested_page)[1]
     handle = frame.locator("input[type=number]").element_handle()
@@ -449,7 +448,9 @@ def test_shadow_landing_rejects_siblings_and_overlays(nested_page, nested_origin
         x, y = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
 
         def hits():
-            return handle._sync(_cursor._hits(handle._impl_obj, x, y))
+            return bool(handle._sync(handle._impl_obj._channel.send(
+                "checkHitTarget", None, {"point": {"x": x, "y": y}},
+                is_internal=True)))
 
         assert hits()
         handle.evaluate("""el => {

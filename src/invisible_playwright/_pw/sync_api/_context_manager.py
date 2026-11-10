@@ -68,15 +68,6 @@ Please use the Async API instead."""
             transport,
             self._loop,
         )
-        # MODIFIED by invisible_playwright: the one bridge between the two
-        # object graphs. A FUSED type (Dialog, 2026-08-29) has no guid and no
-        # `__create__` of its own, and still needs to reach the live impl-side
-        # object a sibling guid corresponds to - see
-        # `InProcessTransport.bind_impl_objects` for why. `_connection._objects`
-        # is a reference, not a snapshot: it always reflects what has been
-        # created so far, including everything created after this line runs.
-        transport.bind_impl_objects(self._connection._objects,
-                                   self._connection.deliver_event)
 
         g_self = greenlet.getcurrent()
 

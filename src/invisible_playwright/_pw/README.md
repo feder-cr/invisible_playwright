@@ -23,10 +23,9 @@ also where the repository's English gate reads it.
 |---|---|
 | `_impl/_browser.py` | the numbers of the pages the script asks for, 0, 1, 2, in the order of the calls, reserved before the first `await`; the only counter of them |
 | `_impl/_browser_context.py` | each page the script asks for carries its number in the session, reserved on the client at the moment of the call, where the order of the calls exists |
-| `_impl/_connection.py` | the execution-context guarantee is extracted out of `dispatch`, so a fused type (`Dialog`) gets it too: without it a sync `dialog.accept()` inside the `dialog` callback hangs |
 | `_impl/_playwright.py` | asking for `chromium` or `webkit` raises a `ValueError` that says they were removed, not disabled |
 | `sync_api/_generated.py`, `async_api/_generated.py` | the `chromium` and `webkit` properties raise `NotImplementedError` with the same explanation, instead of an `AttributeError` |
-| `sync_api/_context_manager.py`, `async_api/_context_manager.py` | the transport comes from `make_transport` (the in-process server), and the impl-side objects are bound for the fused types |
+| `sync_api/_context_manager.py`, `async_api/_context_manager.py` | the transport comes from `make_transport` (the in-process server) |
 
 Everything else is upstream, byte for byte.
 

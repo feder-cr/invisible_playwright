@@ -33,15 +33,54 @@ from __future__ import annotations
 
 import contextvars
 import itertools
+import os
 import threading
+import time
 from typing import Any, Callable, Dict, List, Optional
 
-from . import perimeter
+from . import perimeter, variants
 # One class for a target that is gone, raised here for a disposed object and
 # by the connection for a closed pipe. Defined there, the lower layer.
 from invisible_core.juggler.connection import TargetClosedError  # noqa: F401 - re-exported on purpose
 
 
+
+
+#: HOW MANY DISPATCHERS OF ONE BUCKET THE REGISTRY KEEPS, AS PLAYWRIGHT'S SERVER DOES
+#: (1.62, `dispatchers/dispatcher.ts` `maxDispatchersForBucket`): a bucket is the object's
+#: type - a Frame is 'MainFrame' or 'Frame' - and past its limit the oldest tenth of the
+#: bucket is disposed with `__dispose__` {reason: "gc"}, which a client reads as "collected
+#: to prevent unbounded heap growth". ONE VALUE PER TYPE, here, so it can be lowered in one
+#: place; `INVPW_GC_LIMITS="Request=1000,Response=1000"` lowers some without editing code
+#: ("default=N" changes the default).
+#:
+#: TWO DIFFERENCES FROM PLAYWRIGHT, and the only two. (1) Request, Response and Route are
+#: 2000, not 10000: a context that lives through a hundred navigations of real pages
+#: (~100 subresources each, ~200 objects per navigation) held 18,000 of them, and with real
+#: headers that is 190 MB of process (measured on a real browser, 95 navigations, one
+#: context, objects already light) against 70 MB with 2000. A client reads a request in the
+#: callback of its event (the Go client keeps none beyond it) and 2000 is ten navigations.
+#: (2) An object younger than GC_MIN_AGE_S is never collected, so what a client was just
+#: handed is valid for the length of any callback however fast the bucket fills: Playwright
+#: collects the oldest tenth whatever its age.
+GC_LIMIT_DEFAULT = 10000
+GC_LIMITS: Dict[str, int] = {"JSHandle": 100000, "ElementHandle": 100000,
+                             "Request": 2000, "Response": 2000, "Route": 2000}
+GC_MIN_AGE_S = 10.0
+
+
+def gc_limits_from_env(environ: Optional[Dict[str, str]] = None) -> Dict[str, int]:
+    """`GC_LIMITS` with the default under "default", and what `INVPW_GC_LIMITS` overrides."""
+    environ = os.environ if environ is None else environ
+    limits = dict(GC_LIMITS)
+    limits["default"] = GC_LIMIT_DEFAULT
+    for item in (environ.get("INVPW_GC_LIMITS") or "").split(","):
+        name, _, value = item.partition("=")
+        try:
+            limits[name.strip()] = max(1, int(value))
+        except ValueError:
+            continue
+    return limits
 
 
 class ProtocolException(Exception):
@@ -120,6 +159,18 @@ class Dispatcher:
         server.register(self)
         # ⛔ Announced BEFORE anyone can name it. See the module docstring.
         server.announce(self)
+        self.announced()
+        # And only then, as Playwright does: past the limit of its bucket the oldest are let go.
+        server.collect_stale(self._gc_bucket)
+
+    def announced(self) -> None:
+        """The `__create__` has gone: where an object lets go of what only the
+        announcement needed (a leaf's headers, a POST body). Runs once, from
+        the constructor."""
+
+    def gc_bucket(self) -> str:
+        """The bucket this object is counted in (`GC_LIMITS`): its type."""
+        return self.TYPE
 
     # ── what the protocol needs ─────────────────────────────────────────────
     @property
@@ -128,7 +179,11 @@ class Dispatcher:
         return {"guid": self.guid}
 
     def emit(self, method: str, params: Optional[Dict] = None) -> None:
-        """Fire a protocol event on this object."""
+        """Fire a protocol event on this object. One that is already disposed says
+        nothing: the client has dropped the guid, and naming it is an error there
+        (Playwright's server ignores it too, outside its own tests)."""
+        if self.disposed:
+            return
         self.server.send_up({"guid": self.guid, "method": method,
                              "params": params or {}})
 
@@ -157,9 +212,17 @@ class Dispatcher:
         self.server.send_up({"guid": self.guid, "method": "__dispose__",
                              "params": params})
         self.server.unregister(self)
+        self.released()
         for child in self.server.descendants_of(self):
             child.disposed = True
             self.server.unregister(child)
+            child.released()
+
+    def released(self) -> None:
+        """The object has left the registry, by its own `dispose` or by an
+        ancestor's cascade (which does not call `dispose` on a descendant):
+        where it lets go of what OTHER objects hold of it - an index, a list,
+        a file. Runs once."""
 
     # ── routing ─────────────────────────────────────────────────────────────
     def call(self, method: str, params: Dict) -> Any:
@@ -199,6 +262,10 @@ class Server:
         #: already in flight behind it.
         self._disposed: Dict[str, None] = {}
         self._counters: Dict[str, itertools.count] = {}
+        #: bucket -> the guids of its live objects, oldest first (a dict keeps the order).
+        self._buckets: Dict[str, Dict[str, None]] = {}
+        self.gc_limits = gc_limits_from_env()
+        self.gc_min_age = GC_MIN_AGE_S
         self._lock = threading.Lock()
         self._transport: Any = None
         #: Guid "" is the Root the client creates on its own side. Nothing is
@@ -207,48 +274,10 @@ class Server:
         self._on_shutdown: list = []
         #: What `shutdown` runs after every hook. See `after_shutdown`.
         self._after_shutdown: list = []
-        #: guid -> the live impl-side object for it, or None until a
-        #: transport binds it. See `bind_twins`.
-        self._twins: Optional[Dict[str, Any]] = None
-        #: The client's `Connection.deliver_event`, or None until bound. See
-        #: `bind_twins` and `deliver`.
-        self._deliver_event: Any = None
 
     # ── plumbing ────────────────────────────────────────────────────────────
     def attach(self, transport: Any) -> None:
         self._transport = transport
-
-    def bind_twins(self, objects: Dict[str, Any], deliver_event: Any) -> None:
-        """Give this server a live view of the client's guid -> object
-        registry, and its event-delivery entry point. See
-        `InProcessTransport.bind_impl_objects`, which calls this - the
-        docstring for WHY lives there, next to its one caller."""
-        self._twins = objects
-        self._deliver_event = deliver_event
-
-    def twin(self, guid: str) -> Any:
-        """The live impl-side object for a guid this server already created,
-        or None if nothing is bound yet or the guid is unknown."""
-        return (self._twins or {}).get(guid)
-
-    def deliver(self, fn: Any, *args: Any) -> None:
-        """Call `fn(*args)` as an event, under the client's own rules for
-        what that means (see `Connection.deliver_event`). MUST be called from
-        the asyncio loop thread - use `call_soon` to get there first."""
-        self._deliver_event(fn, *args)
-
-    def run_blocking(self, fn: Any, *args: Any) -> Any:
-        """A fused dispatcher's way to run a blocking call off the loop.
-        Delegates to the transport, which owns the worker pool; see
-        `InProcessTransport.run_blocking` for why this exists and what it
-        guards against."""
-        return self._transport.run_blocking(fn, *args)
-
-    def call_soon(self, fn: Any, *args: Any) -> None:
-        """A fused dispatcher's way to hand an EVENT to the asyncio loop from
-        the connection's read-loop thread. See
-        `InProcessTransport.call_soon`."""
-        self._transport.call_soon(fn, *args)
 
     def send_up(self, message: Dict) -> None:
         if self._transport is not None:
@@ -260,8 +289,13 @@ class Server:
             return "%s@%d" % (type_name.lower(), next(counter))
 
     def register(self, obj: Dispatcher) -> None:
+        obj._born = time.monotonic()
+        bucket = obj._gc_bucket = getattr(obj, "TYPE", "Unknown")
+        if hasattr(obj, "gc_bucket"):
+            bucket = obj._gc_bucket = obj.gc_bucket()
         with self._lock:
             self._objects[obj.guid] = obj
+            self._buckets.setdefault(bucket, {})[obj.guid] = None
 
     #: How many disposed guids are remembered. Large enough for any burst of
     #: in-flight calls, small enough to be free.
@@ -270,6 +304,9 @@ class Server:
     def unregister(self, obj: Dispatcher) -> None:
         with self._lock:
             self._objects.pop(obj.guid, None)
+            members = self._buckets.get(getattr(obj, "_gc_bucket", None))
+            if members is not None:
+                members.pop(obj.guid, None)
             self._disposed[obj.guid] = None
             while len(self._disposed) > self.DISPOSED_MEMORY:
                 self._disposed.pop(next(iter(self._disposed)))
@@ -296,6 +333,63 @@ class Server:
                 seen.add(id(walker))
                 walker = walker.parent
         return out
+
+    def gc_limit(self, bucket: str) -> int:
+        return self.gc_limits.get(bucket, self.gc_limits["default"])
+
+    def collect_stale(self, bucket: str) -> None:
+        """Playwright's `maybeDisposeStaleDispatchers`: a bucket past its limit loses its
+        oldest tenth, each with `__dispose__` {reason: "gc"} and the whole subtree silently
+        (a client drops the children of a disposed object by itself)."""
+        limit = self.gc_limit(bucket)
+        with self._lock:
+            members = self._buckets.get(bucket)
+            if not members or len(members) <= limit:
+                return
+            oldest = list(itertools.islice(members, max(1, limit // 10)))
+            young = time.monotonic() - self.gc_min_age
+            victims = []
+            for guid in oldest:
+                obj = self._objects.get(guid)
+                if obj is None:
+                    continue
+                if obj._born > young:
+                    break  # the bucket is in birth order: the rest are younger
+                victims.append(obj)
+        self.dispose_many(victims, "gc")
+
+    def dispose_many(self, victims: list, reason: Optional[str]) -> None:
+        """Dispose objects and their subtrees with ONE walk of the registry (a walk per
+        object would be quadratic in a bucket of thousands). A victim under another victim
+        is dropped by the cascade and says nothing of its own: the client would have no
+        guid for it."""
+        ids = {id(v) for v in victims}
+        params = {"reason": reason} if reason else {}
+        for victim in victims:
+            walker, covered = victim.parent, False
+            while walker is not None:
+                if id(walker) in ids:
+                    covered = True
+                    break
+                walker = walker.parent
+            if covered or victim.disposed:
+                continue
+            victim.disposed = True
+            self.send_up({"guid": victim.guid, "method": "__dispose__", "params": params})
+            self.unregister(victim)
+            victim.released()
+        with self._lock:
+            everything = list(self._objects.values())
+        for candidate in everything:
+            walker, seen = candidate.parent, set()
+            while walker is not None and id(walker) not in seen:
+                if id(walker) in ids:
+                    candidate.disposed = True
+                    self.unregister(candidate)
+                    candidate.released()
+                    break
+                seen.add(id(walker))
+                walker = walker.parent
 
     def announce(self, obj: Dispatcher) -> None:
         """Emit `__create__` for a new object, parented where the client can
@@ -370,6 +464,10 @@ class Server:
                 "no object %r to answer %r: it was never created"
                 % (guid, method))
         metadata = message.get("metadata") or {}
+        # ⛔ THE VERSIONS OF THE PROTOCOL ARE FOLDED HERE, once, before any
+        # operation reads a parameter: see `variants.py`. A refusal of a
+        # command this server does not serve is raised from there.
+        params = variants.to_internal(method, params, metadata)
         token = _CURRENT_CALL.set(CallLog(metadata.get("title") or method or ""))
         try:
             return obj.call(method, params)

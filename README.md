@@ -125,6 +125,21 @@ with InvisiblePlaywright(proxy=proxy) as browser:
 
 Schemes supported: `socks5`, `socks4`, `http`, `https`. DNS is routed through the proxy by default, no local leak.
 
+### Serving one browser to many clients
+
+`launch_server()` serves one browser on a WebSocket to any Playwright client. On Linux, set
+`MALLOC_ARENA_MAX=2` in the environment of the process that runs it (glibc keeps a memory
+arena per thread otherwise); the server already hands freed memory back with `malloc_trim`
+(`INVPW_MALLOC_TRIM=0` turns that off).
+
+The server keeps its protocol objects in a registry and, like Playwright's own server,
+collects the oldest ones when a type grows past a limit (`__dispose__` with reason `gc`).
+Its limits are Playwright's, except `Request`, `Response` and `Route`, which are 2000
+instead of 10000, and nothing younger than 10 seconds is ever collected. A client that
+keeps more than 2000 requests or responses in hand for longer than that gets "Target
+closed" on the oldest ones; one that uses them inside its callback is not affected. Set
+`INVPW_GC_LIMITS="Request=10000,Response=10000,Route=10000"` to get Playwright's numbers.
+
 ### Timezone
 
 The browser timezone follows `timezone=`:

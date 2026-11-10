@@ -15,6 +15,7 @@ there has to move.
 from __future__ import annotations
 
 import json
+import math
 import re
 from typing import Any, Dict, List, Optional
 
@@ -135,6 +136,15 @@ def _serialize(value: Any, counter: Optional[Dict] = None) -> Any:
         return {"v": "null"}
     if isinstance(value, bool):
         return {"b": value}
+    if isinstance(value, float):
+        # NaN, the infinities and -0 are not JSON numbers: Playwright sends them as a tag
+        # (`{"v": "NaN"}`), and a bare `{"n": nan}` is refused by a strict wire.
+        if math.isnan(value):
+            return {"v": "NaN"}
+        if math.isinf(value):
+            return {"v": "Infinity" if value > 0 else "-Infinity"}
+        if value == 0.0 and math.copysign(1.0, value) < 0:
+            return {"v": "-0"}
     if isinstance(value, (int, float)):
         return {"n": value}
     if isinstance(value, str):

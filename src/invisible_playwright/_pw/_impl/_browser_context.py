@@ -214,16 +214,10 @@ class BrowserContext(ChannelOwner):
             lambda event: self._on_console_message(event),
         )
 
-        # ⛔ NO "dialog" CHANNEL LISTENER HERE SINCE 2026-08-29, and its absence
-        # is the point. `Dialog` was fused (see `_dialog.py`): it has no guid,
-        # no `__create__`, and nothing on either side ever emits a wire
-        # "dialog" event any more, so this registration could not fire. It was
-        # left behind by the fusion commit, which cleaned up the matching dead
-        # branch in `_object_factory.py` and missed this one.
-        # The sole delivery path is now `PageDispatcher._emit_fused_dialog` in
-        # `_juggler/server.py`, which calls `_on_dialog` below directly across
-        # the thread boundary. `scripts/diff_protocol.py` records the wire-level
-        # consequence permanently, as an argued entry in EXPECTED_DIFFERENCES.
+        self._channel.on(
+            "dialog",
+            lambda params: self._on_dialog(from_channel(params["dialog"])),
+        )
         self._channel.on(
             "pageError",
             lambda params: self._on_page_error(
@@ -738,20 +732,14 @@ class BrowserContext(ChannelOwner):
         if page:
             has_listeners = page.emit(Page.Events.Dialog, dialog) or has_listeners
         if not has_listeners:
-            # ⛔ THIS IS THE ONLY AUTO-ANSWER IN THE PRODUCT, and the reason it
-            # exists is not the one upstream wrote here. Upstream's comment
-            # said this guarded a race between a) the client unsubscribing
-            # from "dialog" and b) the server sending one anyway - a race that
-            # cannot happen since the 2026-08-29 fusion, because there is no
-            # subscription and no wire event left to race with.
-            #
-            # It stays because `_juggler` has NO server-side auto-answer of
-            # its own: upstream's note that "we do similar handling on the
-            # server side" was true of the Node driver and is false here.
-            # An unanswered dialog leaves the content process sitting inside
-            # `window.alert`, and the failure surfaces as an unrelated command
-            # timing out - measured 2026-08-28 as `Runtime.callFunction: no
-            # response in 30s`. Deleting this is a hang, not a leak.
+            # ⛔ THIS IS THE ONLY AUTO-ANSWER IN THE PRODUCT. `_juggler` has NO
+            # server-side auto-answer of its own (upstream's note that "we do
+            # similar handling on the server side" was true of the Node driver
+            # and is false here). An unanswered dialog leaves the content
+            # process sitting inside `window.alert`, and the failure surfaces
+            # as an unrelated command timing out - measured 2026-08-28 as
+            # `Runtime.callFunction: no response in 30s`. Deleting this is a
+            # hang, not a leak.
             if dialog.type == "beforeunload":
                 asyncio.create_task(dialog.accept())
             else:

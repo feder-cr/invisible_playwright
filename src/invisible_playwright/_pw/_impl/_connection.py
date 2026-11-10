@@ -463,57 +463,35 @@ class Connection(EventEmitter):
         object = self._objects[guid]
         should_replace_guids_with_channels = "jsonPipe@" not in guid
         try:
-            transformed_params = (
-                self._replace_guids_with_channels(params)
-                if should_replace_guids_with_channels else params
-            )
             if self._is_sync:
                 for listener in object._channel.listeners(method):
-                    self.deliver_event(listener, transformed_params)
+                    # Event handlers like route/locatorHandlerTriggered require us to perform async work.
+                    # In order to report their potential errors to the user, we need to catch it and store it in the connection
+                    def _done_callback(future: asyncio.Future) -> None:
+                        exc = future.exception()
+                        if exc:
+                            self._on_event_listener_error(exc)
+
+                    def _listener_with_error_handler_attached(params: Any) -> None:
+                        potential_future = listener(params)
+                        if asyncio.isfuture(potential_future):
+                            potential_future.add_done_callback(_done_callback)
+
+                    # Each event handler is a potentilly blocking context, create a fiber for each
+                    # and switch to them in order, until they block inside and pass control to each
+                    # other and then eventually back to dispatcher as listener functions return.
+                    g = EventGreenlet(_listener_with_error_handler_attached)
+                    if should_replace_guids_with_channels:
+                        g.switch(self._replace_guids_with_channels(params))
+                    else:
+                        g.switch(params)
             else:
-                object._channel.emit(method, transformed_params)
-        except BaseException as exc:
-            self._on_event_listener_error(exc)
-
-    def deliver_event(self, fn: Callable[..., Any], *args: Any) -> None:
-        """Call `fn(*args)` the same way a wire event calls a listener:
-        wrapped in its own `EventGreenlet` under the sync facade, so a
-        handler that calls an async method (`dialog.accept()`) can properly
-        suspend into it and resume; called directly under the async facade
-        otherwise.
-
-        # MODIFIED by invisible_playwright: extracted out of `dispatch`'s own
-        # sync branch above, which used to inline this. A FUSED type (Dialog,
-        # 2026-08-29) delivers its own events directly - it never goes through
-        # `dispatch` at all, since there is no `__create__`/guid for it to
-        # arrive under - but it still needs the SAME execution-context
-        # guarantee: without it, a sync-mode `dialog.accept()` called from
-        # inside the "dialog" callback hangs. It suspends into a fiber
-        # expecting the dispatcher fiber on the other end of the switch, and a
-        # bare `call_soon_threadsafe` callback is not that fiber - found live,
-        # not by the unit suite, which stubs this whole path out. One
-        # definition now serves both the wire path and the fused path,
-        # instead of the fused path copying it and the two silently drifting.
-        """
-        try:
-            if self._is_sync:
-                def _done_callback(future: asyncio.Future) -> None:
-                    exc = future.exception()
-                    if exc:
-                        self._on_event_listener_error(exc)
-
-                def _with_error_handler_attached(*a: Any) -> None:
-                    potential_future = fn(*a)
-                    if asyncio.isfuture(potential_future):
-                        potential_future.add_done_callback(_done_callback)
-
-                # Each event handler is a potentially blocking context, create
-                # a fiber for it and switch, until it blocks inside and passes
-                # control back to the dispatcher as the listener returns.
-                g = EventGreenlet(_with_error_handler_attached)
-                g.switch(*args)
-            else:
-                fn(*args)
+                if should_replace_guids_with_channels:
+                    object._channel.emit(
+                        method, self._replace_guids_with_channels(params)
+                    )
+                else:
+                    object._channel.emit(method, params)
         except BaseException as exc:
             self._on_event_listener_error(exc)
 

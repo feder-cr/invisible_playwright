@@ -39,12 +39,6 @@ class PlaywrightContextManager:
             transport,
             loop,
         )
-        # MODIFIED by invisible_playwright: the one bridge between the two
-        # object graphs. See the sync entry point's `_context_manager.py` for
-        # why - this is the same line, needed for the same reason, on the
-        # other facade.
-        transport.bind_impl_objects(self._connection._objects,
-                                   self._connection.deliver_event)
         loop.create_task(self._connection.run())
         playwright_future = self._connection.playwright_future
 

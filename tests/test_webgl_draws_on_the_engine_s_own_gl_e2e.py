@@ -23,11 +23,12 @@ one firefox-57 gave on Windows (ANGLE on D3D11), measured the same day.
 """
 from __future__ import annotations
 
-import glob
 import os
 import sys
 
 import pytest
+
+from engine_process_tree import maps_of_the_engine_below
 
 pytestmark = [pytest.mark.e2e,
               pytest.mark.skipif(not sys.platform.startswith("linux"), reason="the engine's own GL is Linux's")]
@@ -232,22 +233,6 @@ def _ships_its_own_gl(binary_dir: str) -> bool:
     return os.path.isfile(os.path.join(binary_dir, "llvmpipe", "libEGL.so.1"))
 
 
-def _maps_of_the_drawing_process(binary_dir: str) -> list:
-    """The files mapped by the engine process that runs WebGL's host (the one
-    with the CanvasRenderer thread)."""
-    for d in glob.glob("/proc/[0-9]*"):
-        try:
-            if not os.readlink(d + "/exe").startswith(binary_dir):
-                continue
-            threads = {open(t + "/comm").read().strip() for t in glob.glob(d + "/task/*")}
-            if "CanvasRenderer" not in threads:
-                continue
-            return sorted({line.split()[-1] for line in open(d + "/maps") if len(line.split()) > 5})
-        except OSError:
-            continue
-    return []
-
-
 def test_webgl_draws_on_the_engine_s_own_gl(firefox_binary):
     binary_dir = os.path.dirname(os.path.realpath(firefox_binary))
     if not _ships_its_own_gl(binary_dir):
@@ -258,12 +243,17 @@ def test_webgl_draws_on_the_engine_s_own_gl(firefox_binary):
         page = browser.new_page()
         page.goto("about:blank")
         assert page.evaluate(DRAW) == [255, 0, 0, 255]
-        maps = _maps_of_the_drawing_process(binary_dir)
+        # The engine processes BELOW THIS TEST, never the first one on the machine: an e2e run
+        # has other workers' browsers in /proc, one of which has not drawn anything yet.
+        below = maps_of_the_engine_below(os.getpid(), binary_dir)
     own = os.path.join(binary_dir, "llvmpipe") + os.sep
-    assert maps, "no engine process with a CanvasRenderer thread"
-    assert own + "libEGL.so.1" in maps, [m for m in maps if "EGL" in m or "gallium" in m]
-    assert any(m.startswith(own + "libgallium-") for m in maps), [m for m in maps if "gallium" in m]
-    assert not [m for m in maps if "libEGL" in os.path.basename(m) and not m.startswith(own)], maps
+    assert below, "no engine process below this test"
+    drew = [pid for pid, maps in below.items()
+            if own + "libEGL.so.1" in maps and any(m.startswith(own + "libgallium-") for m in maps)]
+    assert drew, {pid: [m for m in maps if "EGL" in m or "gallium" in m] for pid, maps in below.items()}
+    foreign = {pid: [m for m in maps if "libEGL" in os.path.basename(m) and not m.startswith(own)]
+               for pid, maps in below.items()}
+    assert not any(foreign.values()), foreign
 
 
 def test_every_declared_extension_answers_as_on_windows(firefox_binary):
