@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import pytest
 
+from stroke_shape import stroke_problems
+
 PAGE = """<!doctype html><html><body style="margin:0">
 <button id="b" style="position:absolute;left:300px;top:200px;width:200px;height:80px">b</button>
 <script>
@@ -30,10 +32,11 @@ def test_a_humanised_mouse_click_gives_the_page_no_repeated_mousemove(firefox_bi
         page.mouse.click(400, 240)
         moves = page.evaluate("window.moves")
         assert page.evaluate("window.clicks") == 1
-        assert len(moves) > 10, "no stroke reached the page: %r" % moves
-        assert moves[-1] == [400, 240], moves[-3:]
-        repeated = [(i, m) for i, m in enumerate(moves) if i and m == moves[i - 1]]
-        assert repeated == [], "the page saw the same mousemove twice in a row: %r" % repeated
+        # The SHAPE of the stroke, not its length: the pacer drops a sample it cannot send on
+        # time, so a loaded machine gives the page 6 to 9 events where an idle one gives 15
+        # (tests/stroke_shape.py). The Linux gate failed on `len(moves) > 10` with a page that
+        # had received [[1116, 731], ..., [383, 225], [385, 227], [400, 240]].
+        assert stroke_problems(moves, (400, 240)) == [], moves
 
 
 @pytest.mark.e2e
@@ -54,5 +57,6 @@ def test_a_stroke_from_standstill_does_not_open_with_the_point_it_stands_on(fire
         assert page.evaluate("window.moves")[-1] == [500, 300]
         page.mouse.click(400, 240)
         moves = page.evaluate("window.moves")
-        assert len(moves) > seen + 5, moves[seen:]
+        # A stroke left the point it stood on: something before the landing, whatever its count.
+        assert len(moves) >= seen + 2, moves[seen:]
         assert moves[seen] != [500, 300], "the stroke repeated the point it stood on"
