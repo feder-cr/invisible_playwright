@@ -126,10 +126,13 @@ def engine_dir(firefox_binary):
 
 
 #: The engine keeps spare content processes (dom.ipc.processPrelaunch: three with Fission) and starts a new one whenever one is
-#: taken, at a moment that depends on the machine. Stock Firefox does the same. A test that counts the processes would count a
-#: spare that appeared a second after the page it watches, so the count is taken with the spares off: every process it sees was
-#: started for a page. (Measured on the Linux runner, 20 runs each: with the spares on the service-worker test failed 7 times in 20,
-#: always as 2 processes and then 5, three more at once; with them off, 0 in 20.)
+#: taken, at a moment that depends on the machine (stock Firefox does the same). This test asks whether a same-site frame started a
+#: process, and nothing the client can read says which process hosts a frame: no protocol field carries a process id (the Juggler
+#: protocol, juggler/protocol/Protocol.js, has none; the only process the engine names is a context's, TargetRegistry.js
+#: `_processesOfContext`), so the processes are counted, and a spare that appears a second after the page would be counted too.
+#: With the spares off every process counted was started for a page. (Measured on the Linux runner, 20 runs each: the
+#: service-worker test counted 5 instead of 2 in 7 runs with the spares on, 0 with them off; this test passed 20 of 20 alone and
+#: failed in the full suite, on a loaded runner.) The service-worker test keeps the spares on, as shipped.
 NO_SPARE_PROCESSES = {"dom.ipc.processPrelaunch.enabled": False}
 
 

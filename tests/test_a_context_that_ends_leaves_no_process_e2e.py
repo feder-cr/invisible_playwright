@@ -7,11 +7,13 @@ four such contexts left four more processes (8 web content processes at the end 
 BrowserContext now waits a few seconds for the processes of its container once its pages are gone, and kills the
 ones that stay.
 
-The test closes five such contexts in a row and counts the web content processes under the engine after each,
-with the engine's spare content processes off (dom.ipc.processPrelaunch): with them on, the engine starts three spares at once
-whenever it has taken one, at a moment that depends on the machine (the Linux runner counted 2, 2, 2, 5, 5 in 7 runs of 20, and 2, 2,
-2, 2, 2 in the others), and the test counted a spare. Without them every process is a page's. The count after the fifth must not
-be above the count after the SECOND: a flat line (on the old engine every context adds one: [4, 5, 6, 7, 8]).
+The test closes eight such contexts in a row and counts the web content processes under the engine after each. The engine
+also keeps spare content processes (dom.ipc.processPrelaunch; three with Fission, the pref below) and starts new ones whenever
+one is taken, at a moment that depends on the machine: the Linux runner counted 2, 2, 2, 5, 5 in 7 runs of 20 and 2, 2, 2, 2, 2 in the
+others. A spare is not a leak and stock Firefox has them, so the shipped configuration is tested as it is, with the claim that
+fits it: the number of processes does not grow with the number of contexts closed. After eight contexts it is no more than the
+smallest count seen plus the size of the spare pool (a leak of one process per context passes that bound after the fourth;
+on the old engine every context adds one: [4, 5, 6, 7, 8, ...]). With the spares off the line is flat and exact.
 
 The engine that does it is not published when this file is written: `engine_at_least` makes the test wait for
 it, and on an older engine it is skipped, never passed.
@@ -33,6 +35,13 @@ from _servers import LocalServer  # noqa: E402
 pytestmark = pytest.mark.e2e
 
 ENGINE_WITH_THE_FIX = "firefox-61"
+
+#: The size of the engine's pool of spare content processes, set here so the bound below reads it from the same place (the engine's
+#: own default is 3, modules/libpref/init/StaticPrefList.yaml dom.ipc.processPrelaunch.fission.number).
+SPARE_POOL = 3
+CONTEXTS = 8
+SPARES = {"on": {"dom.ipc.processPrelaunch.enabled": True, "dom.ipc.processPrelaunch.fission.number": SPARE_POOL},
+          "off": {"dom.ipc.processPrelaunch.enabled": False}}
 
 PAGE = (b"<!doctype html><title>sw</title><script>"
         b"navigator.serviceWorker.register('/sw.js').catch(e => { document.title = 'ERR ' + e; });</script>")
@@ -107,21 +116,22 @@ class _Client:
         return context, frame
 
 
-def test_closed_contexts_with_a_never_stopping_service_worker_leave_no_process(firefox_binary, engine_at_least):
+@pytest.mark.parametrize("spares", ["on", "off"])
+def test_closed_contexts_with_a_never_stopping_service_worker_leave_no_process(firefox_binary, engine_at_least, spares):
     engine_at_least(ENGINE_WITH_THE_FIX)
     from invisible_playwright import launch_server
 
     server, base = _serve()
     launched = launch_server(host="127.0.0.1", port=0, headless=True, virtual_display=False, humanize=False,
                              seed=4266, binary_path=firefox_binary, launch_timeout_ms=180_000,
-                             extra_prefs={"dom.ipc.processPrelaunch.enabled": False})
+                             extra_prefs=SPARES[spares])
 
     async def drive():
         counts = []
         async with connect(launched.ws_endpoint, max_size=None) as ws:
             client = _Client(ws)
             await client.start()
-            for i in range(5):
+            for i in range(CONTEXTS):
                 context, frame = await client.new_page()
                 await client.call(frame, "goto", {"url": "%s/?i=%d" % (base, i), "waitUntil": "load", "timeout": 30000})
                 await asyncio.sleep(1.0)               # the worker is registered, its install loop is running
@@ -142,4 +152,7 @@ def test_closed_contexts_with_a_never_stopping_service_worker_leave_no_process(f
     finally:
         launched.close()
         server.shutdown()
-    assert counts[4] <= counts[1], "web content processes after each closed context: %r" % (counts,)
+    if spares == "off":
+        assert counts[-1] <= counts[1], "web content processes after each closed context (spares off): %r" % (counts,)
+    else:
+        assert counts[-1] <= min(counts) + SPARE_POOL,             "web content processes after each closed context grow past the spare pool (%d): %r" % (SPARE_POOL, counts)
