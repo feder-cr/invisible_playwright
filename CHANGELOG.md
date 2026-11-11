@@ -8,9 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [0.50.0] - 2026-11-11
 
-<!-- Both entries below wait for the firefox-62 build that proves them (the changelog records a fix only once a build has shown it). -->
-
 ### Changed
+- Engine firefox-62 through invisible-core 62.63.0, which this version pins: firefox-61 plus Fission
+  and the Juggler for frames in another process. When `goto` returns, the frames below have the
+  address of their first document (an iframe of another site used to be listed with an empty url
+  for a moment); a `goto` to the address the page is already at ends; a late event of a frame that
+  left the page no longer brings it back into `page.frames`.
 - Fission: iframes of another site run in a content process of their own (isolation strategy 1,
   `fission.autostart` on, four isolated content processes), as in retail Firefox on desktop. The
   strategy comes from the invisible-core baseline of the firefox-62 engine, whose Juggler reaches a
@@ -20,6 +23,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   iframe and of its page) run on that engine.
 
 ### Fixed
+- A launch that names no session (Playwright's own `BrowserType.launch` against the server) gets a
+  session composed the way `InvisiblePlaywright()` composes one: prefs, environment and, behind a
+  proxy, the egress the page reads as its WebRTC address. It used to come up with Mozilla's
+  defaults, and on Linux its first `new_page` failed with "Unexpected number of tabs in the new
+  window: 2".
+- A frame that left the page (an iframe a script removed) answers a call with "Frame was
+  detached", as Playwright does, not "Target page, context or browser has been closed".
 - `grant_permissions` uses the permission names of the engine. `geolocation` and `notifications` used
   to reach the engine under the web names while it keeps a grant under `geo` and
   `desktop-notification`, so a page of a context that had been granted geolocation and given a
