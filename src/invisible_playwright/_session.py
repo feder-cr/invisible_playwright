@@ -72,16 +72,22 @@ def session_geo(timezone: str, proxy: Optional[Dict[str, str]], locale: Any):
     return prepare_session_geo(timezone, proxy, locale)
 
 
-def default_session_prefs(executable: Optional[str] = None) -> Dict[str, Any]:
-    """The prefs `InvisiblePlaywright()` composes with the server's defaults: a
-    new seed, no proxy, locale "auto", humanize off (the default of
-    `launch_server`, the other entry that is a server). What the server writes
-    for a launch that names no session (`server.session_prefs_for_launch`)."""
+def default_session(executable: Optional[str] = None) -> "tuple[Dict[str, Any], Dict[str, str]]":
+    """The session `InvisiblePlaywright()` composes with the server's defaults (a new
+    seed, no proxy, locale "auto", humanize off: the default of `launch_server`, the
+    other entry that is a server), as (prefs, the variables of its environment).
+
+    The variables are what `build_env` adds to an environment, composed onto an
+    empty one: the font manifest, the WebRTC declaration, the display backend.
+    What `server.session_for_launch` gives a launch that names no session."""
     from .launcher import InvisiblePlaywright
     session = InvisiblePlaywright(binary_path=executable, humanize=False)
     geo = session_geo(session._timezone, session._proxy, session._locale_requested)
     session._timezone, session._locale = geo.timezone, geo.locale
-    return session._build_prefs()
+    prefs = session._build_prefs()
+    env = build_env(srflx_declared=geo.srflx_to_declare(), profile=session._profile,
+                    executable=executable, base_env={})
+    return prefs, env
 
 
 def true_headless_requested(env: Optional[Dict[str, str]] = None) -> bool:

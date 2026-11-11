@@ -130,7 +130,7 @@ def _require_package():
 def _offline_session_geo(request, monkeypatch):
     """Outside the e2e, the one network step of composing a session (the egress
     IP, `_session.session_geo`) answers a fixed geo: New York, en-US. A launch
-    that names no session composes one on the server (`session_prefs_for_launch`),
+    that names no session composes one on the server (`session_for_launch`),
     and a unit test that drives `op_launch` must not ask the network who it is."""
     if request.node.get_closest_marker("e2e") is not None:
         return

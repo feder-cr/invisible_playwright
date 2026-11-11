@@ -235,7 +235,7 @@ POINTER_PREF = "invisible.server.pointer"
 
 #: Set by the launcher's `build_prefs` on every pref dict it composes, and taken
 #: out here like the three above: the profile a launch writes is a composed
-#: session, or the server composes one (`session_prefs_for_launch`).
+#: session, or the server composes one (`session_for_launch`).
 COMPOSED_PREF = "invisible.server.composed"
 #: The persona's keyboards, as Windows writes its input profiles (LANGID:KLID
 #: joined by semicolons, the language's first), decided by the core from the
@@ -269,28 +269,35 @@ def take_session_motion(prefs: Dict) -> tuple:
             (None if budget_ms is None else int(budget_ms) / 1000.0))
 
 
-def session_prefs_for_launch(prefs: Dict, executable: str) -> Dict:
-    """The prefs a launch writes into its profile: always a composed session.
+def session_for_launch(prefs: Dict, executable: str) -> tuple:
+    """What a launch writes into its profile and adds to its environment: always a
+    composed session. Returns (prefs, session_env).
 
     ⛔ A LAUNCH THAT NAMES NO SESSION IS FIREFOX READING THE HOST. The launcher
-    (`InvisiblePlaywright`, `launch_server`) composes the session and marks it
-    (COMPOSED_PREF); a bare `BrowserType.launch` from any other client of this
-    server named only the prefs it chose, usually none, and `user.js` held
-    nothing of the core's. That browser was the engine with Mozilla's defaults:
-    no persona, every value a page reads taken from the machine, and on Linux
-    the first-run policy tab of TelemetryReportingPolicy (the Terms of Use not
-    accepted), a second tab in the first window that `Browser.newPage` refuses
-    with "Unexpected number of tabs in the new window: 2". Measured 2026-11-11
-    on firefox-61 and on the firefox-62 candidate, 15 of 15 bare launches.
+    (`InvisiblePlaywright`, `launch_server`) composes the session, marks its prefs
+    (COMPOSED_PREF) and sends the environment it composed; a bare
+    `BrowserType.launch` from any other client of this server named only the
+    prefs it chose, usually none, and `user.js` held nothing of the core's. That
+    browser was the engine with Mozilla's defaults: no persona, every value a page
+    reads taken from the machine, and on Linux the first-run policy tab of
+    TelemetryReportingPolicy (the Terms of Use not accepted), a second tab in the
+    first window that `Browser.newPage` refuses with "Unexpected number of tabs in
+    the new window: 2". Measured 2026-11-11 on firefox-61 and on the firefox-62
+    candidate, 15 of 15 bare launches.
 
-    So an unmarked launch gets the session `InvisiblePlaywright()` composes
-    with the server's defaults (a new seed, humanize off as in
-    `launch_server`), and the caller's own prefs go on top of it.
+    And the PREFS ARE HALF OF IT. The engine reads its font list at startup from
+    the manifest an environment variable names (`build_env`); without it the
+    engine lists the fonts of the machine. So an unmarked launch gets the session
+    `InvisiblePlaywright()` composes with the server's defaults (a new seed,
+    humanize off as in `launch_server`): its prefs, with the caller's on top, and
+    the variables of its environment, which `op_launch` adds wherever the caller
+    named none of the same name. A marked launch comes with both already.
     """
     if COMPOSED_PREF in prefs:
-        return dict(prefs)
-    from invisible_playwright._session import default_session_prefs
-    return dict(default_session_prefs(executable), **prefs)
+        return dict(prefs), {}
+    from invisible_playwright._session import default_session
+    session_prefs, session_env = default_session(executable)
+    return dict(session_prefs, **prefs), dict(session_env)
 
 
 def session_draws_pointer(prefs: Dict) -> bool:
@@ -5280,8 +5287,12 @@ class BrowserTypeDispatcher(Dispatcher):
         # raise, and until B223 the removal was registered only after both, so
         # those sessions kept their profile. `after_shutdown` runs once
         # `conn.close` has waited for the browser to exit.
-        files = SessionFiles(params.get("userDataDir"),
-                             _launch_environment(params.get("env")))
+        launch_prefs, session_env = session_for_launch(
+            params.get("firefoxUserPrefs") or {}, executable)
+        environment = _launch_environment(params.get("env"))
+        named = {e["name"] for e in params.get("env") or []}
+        environment.update({k: v for k, v in session_env.items() if k not in named})
+        files = SessionFiles(params.get("userDataDir"), environment)
         self.server.after_shutdown(files.remove)
         env, profile = files.env, files.profile
         # ⛔ THE TYPING SEED TRAVELS IN THE PREFS AND IS TAKEN OUT AGAIN HERE,
@@ -5297,8 +5308,6 @@ class BrowserTypeDispatcher(Dispatcher):
         # means "the patched binary reads this", and a reader who found a
         # typing key under it would go looking in C++ for something that is
         # answered in Python.
-        launch_prefs = session_prefs_for_launch(
-            params.get("firefoxUserPrefs") or {}, executable)
         pointer_draws = session_draws_pointer(launch_prefs)
         prefs, session_seed, motion_budget_s = take_session_motion(launch_prefs)
         # The keyboard the session decided, out of the prefs before the

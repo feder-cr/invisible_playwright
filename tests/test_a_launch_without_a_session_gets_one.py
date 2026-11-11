@@ -46,22 +46,31 @@ class _Engine(EventListeners):
         pass
 
 
-def _user_js(monkeypatch, prefs):
-    """Launch with these firefoxUserPrefs; return the prefs `user.js` holds."""
+def _launch(monkeypatch, prefs, env=None):
+    """Launch with these firefoxUserPrefs (and protocol `env`); return what `user.js` holds and the
+    environment the engine was started with."""
     server = JugglerServer()
     server.attach(type("R", (), {"emit_message": lambda self, m: None})())
     seen = {}
 
     def fake_launch(executable, profile_dir, **kwargs):
-        seen.update(_read(pathlib.Path(profile_dir) / "user.js"))
+        seen["prefs"] = _read(pathlib.Path(profile_dir) / "user.js")
+        seen["env"] = dict(kwargs.get("env") or {})
         return _Engine()
 
     monkeypatch.setattr(module.juggler, "launch", fake_launch)
+    params = {"executablePath": "x", "firefoxUserPrefs": prefs}
+    if env is not None:
+        params["env"] = [{"name": k, "value": v} for k, v in env.items()]
     try:
-        BrowserTypeDispatcher(server).op_launch({"executablePath": "x", "firefoxUserPrefs": prefs})
+        BrowserTypeDispatcher(server).op_launch(params)
     finally:
         server.shutdown()
     return seen
+
+
+def _user_js(monkeypatch, prefs):
+    return _launch(monkeypatch, prefs)["prefs"]
 
 
 def _read(path):
@@ -79,7 +88,7 @@ def test_a_launch_that_names_no_session_writes_a_composed_one(monkeypatch):
     # The Terms of Use the core declares accepted: without them Linux opens the policy tab.
     assert written.get("termsofuse.acceptedVersion") == 4, (
         "a bare launch wrote no session into the profile: %d prefs" % len(written))
-    composed = _session.default_session_prefs("x")
+    composed, _ = _session.default_session("x")
     missing = sorted(k for k in composed if k not in written and not k.startswith("invisible.server."))
     assert not missing, "prefs of the composed session absent from user.js: %s" % missing[:10]
     assert COMPOSED_PREF not in written and SESSION_SEED_PREF not in written, (
@@ -99,7 +108,7 @@ def test_a_composed_session_is_written_as_it_came(monkeypatch):
     def refuse(*_a, **_k):
         raise AssertionError("a composed session was composed again on the server")
 
-    monkeypatch.setattr(_session, "default_session_prefs", refuse)
+    monkeypatch.setattr(_session, "default_session", refuse)
     written = _user_js(monkeypatch, {COMPOSED_PREF: True, "only.this": 1})
     assert written == {"only.this": 1}
 
@@ -117,3 +126,30 @@ def test_the_launcher_marks_what_it_composes():
             timezone="America/New_York", extra_prefs=None, virtual_display=False,
             cursor_engine=_session.ENGINE_BINARY, humanize=humanize, session_seed=7)
         assert prefs.get(COMPOSED_PREF) is True, humanize
+
+
+MANIFEST = "STEALTHFOX_FONT_MANIFEST"
+
+
+@pytest.mark.unit
+def test_a_launch_that_names_no_session_starts_with_the_session_s_fonts(monkeypatch):
+    """The engine lists its fonts at startup from the manifest this variable names; without it,
+    the fonts of the machine (`_session.build_env`)."""
+    monkeypatch.delenv(MANIFEST, raising=False)
+    env = _launch(monkeypatch, {})["env"]
+    assert env.get(MANIFEST), "a bare launch started the engine without the font manifest"
+    assert env[MANIFEST].endswith(".list")
+
+
+@pytest.mark.unit
+def test_a_variable_the_caller_names_wins_over_the_session_s(monkeypatch):
+    env = _launch(monkeypatch, {}, env={MANIFEST: "/the/caller/s.list", "DISPLAY": ":7"})["env"]
+    assert env[MANIFEST] == "/the/caller/s.list"
+    assert env["DISPLAY"] == ":7"
+    assert env.get("MOZ_ENABLE_WAYLAND") == "0", "the session's other variables were not added"
+
+
+@pytest.mark.unit
+def test_a_composed_launch_gets_no_variable_it_did_not_send(monkeypatch):
+    env = _launch(monkeypatch, {COMPOSED_PREF: True}, env={"ONLY": "1"})["env"]
+    assert MANIFEST not in env and "MOZ_ENABLE_WAYLAND" not in env, sorted(env)
