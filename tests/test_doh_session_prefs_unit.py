@@ -1,16 +1,16 @@
-"""A proxied session declares Firefox's DoH in mode 3 through the proxy; a session without a proxy declares no DoH.
+"""The core declares the PROVIDER of Firefox's DoH for every session; the engine derives the rest from the proxies it receives.
 
-The contract (core-19): with a proxy, every name the browser resolves goes to DoH, and a DoH request is a channel like
-any other, so it leaves through the proxy of the context of the lookup. What the core writes to make that so:
+The contract: with a proxy, every name the browser resolves goes to DoH, and a DoH request is a channel like any other, so it
+leaves through the proxy of the context of the lookup. What the core writes to make that so is only the provider, with or
+without a proxy (a DoH state would be two declarations of one fact):
 
-  network.trr.mode = 3                     no fallback to the resolver of the machine
   network.trr.uri = https://mozilla.cloudflare-dns.com/dns-query
   network.trr.bootstrapAddr = <an IP>      the DoH host is found with no DNS at all
-  network.trr.exclude-etc-hosts = False    the hosts file of the machine answers nothing
-  network.trr.excluded-domains = <proxy>   ONLY when the proxy is given by NAME: the one name the system resolver
-                                           answers (DoH needs the proxy); an address needs no lookup
-  network.proxy.allow_bypass = False       no channel falls back to direct when the proxy stumbles
+  network.proxy.allow_bypass = False       with a proxy: no channel falls back to direct when the proxy stumbles
   network.parental_controls_cached_state = False   declared off, as retail without the service
+
+and NOT `network.trr.mode`, `network.trr.exclude-etc-hosts` or `network.trr.excluded-domains` (the engine derives the state, the
+hosts file and the proxy's own name from the proxies Juggler gives it).
 
 Two doors are checked, because the e2e launches through the second: the core's composer, and the wrapper's own path
 (`InvisiblePlaywright._build_prefs` and the core's proxy step, what a launch composes). Nothing here starts a browser or the network (the
@@ -63,23 +63,19 @@ def compose(request):
 
 @pytest.mark.parametrize("proxy", [NAMED, BY_ADDRESS, HTTP_WITH_CREDENTIALS, HTTP_BY_V6_ADDRESS],
                          ids=["socks-name", "socks-ip", "http-name", "http-ipv6"])
-def test_a_proxied_session_declares_doh_in_mode_3(compose, proxy):
+def test_a_proxied_session_declares_the_doh_provider_and_closes_the_bypass(compose, proxy):
     prefs = compose(proxy)
-    assert prefs["network.trr.mode"] == 3
     assert prefs["network.trr.uri"] == URI
     ipaddress.ip_address(prefs["network.trr.bootstrapAddr"])  # raises unless it is an IP literal
-    assert prefs["network.trr.exclude-etc-hosts"] is False
+    for derived in ("network.trr.mode", "network.trr.exclude-etc-hosts"):
+        assert derived not in prefs, "%s is derived by the engine from the proxies, not declared by the core" % derived
     assert prefs["network.proxy.allow_bypass"] is False
     assert prefs["network.parental_controls_cached_state"] is False
 
 
-@pytest.mark.parametrize("proxy, host", [(NAMED, "gw.example.test"), (HTTP_WITH_CREDENTIALS, "gw.example.test")])
-def test_a_proxy_named_by_a_name_is_the_one_name_the_system_resolver_answers(compose, proxy, host):
-    assert compose(proxy)["network.trr.excluded-domains"] == host
-
-
-@pytest.mark.parametrize("proxy", [BY_ADDRESS, HTTP_BY_V6_ADDRESS], ids=["ipv4", "ipv6"])
-def test_a_proxy_given_by_an_address_excludes_nothing(compose, proxy):
+@pytest.mark.parametrize("proxy", [NAMED, HTTP_WITH_CREDENTIALS, BY_ADDRESS, HTTP_BY_V6_ADDRESS],
+                         ids=["socks-name", "http-name", "ipv4", "ipv6"])
+def test_the_core_excludes_no_domain_the_engine_derives_the_proxys_own_name(compose, proxy):
     assert "network.trr.excluded-domains" not in compose(proxy)
 
 
@@ -88,9 +84,9 @@ def test_the_bootstrap_address_is_a_public_address_and_not_the_proxy(compose):
     assert bootstrap.is_global and str(bootstrap) != "203.0.113.9"
 
 
-def test_a_session_without_a_proxy_declares_no_doh(compose):
+def test_a_session_without_a_proxy_declares_the_provider_and_no_state(compose):
     prefs = compose(None)
-    assert [k for k in prefs if k.startswith("network.trr.")] == []
+    assert sorted(k for k in prefs if k.startswith("network.trr.")) == ["network.trr.bootstrapAddr", "network.trr.uri"]
     assert prefs.get("network.proxy.allow_bypass") is not False, "no proxy, no closed fallback"
     assert prefs["network.parental_controls_cached_state"] is False, "declared off with or without a proxy"
 
