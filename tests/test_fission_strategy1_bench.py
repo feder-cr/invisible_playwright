@@ -213,12 +213,20 @@ def test_cross_site_iframe_gets_its_own_process(page, cross_site_loop, engine_di
 
 @pytest.mark.e2e
 def test_same_site_other_port_stays_in_process(page, cross_site_loop, engine_dir):
-    """Green today, the control: a frame of the page's own site adds no process for a site, and the page stays
-    in the process it was in."""
+    """Green today, the control: a frame of the page's own site adds no process for a site.
+
+    The frame is put in the page that is already shown, not reached by a navigation of the top. A top-level
+    navigation whose old document may enter the back-forward cache replaces the browsing context
+    (`mReplaceBrowsingContext`, dom/ipc/ProcessIsolation.cpp), and the new one may land in another process of
+    the same site (`dom.ipc.processCount.webIsolated` is 4): seen once on the e2e of #451, [10878] -> [10878,
+    11208] after a.test/plain -> a.test/same-site, never in 87 local runs. That is the top's process, not the
+    frame's; a frame of the page's site stays in the page's process."""
     page.goto(cross_site_loop["plain"])
     before = quiet(engine_dir)
-    page.goto(cross_site_loop["same_site"], wait_until="load")
-    assert wait_for(page, lambda: any(r["path"] == "/report/loaded" for r in cross_site_loop["reports"]))
+    page.evaluate("(u) => { const f = document.createElement('iframe'); f.id = 's'; f.src = u;"
+                  " document.body.appendChild(f); }", cross_site_loop["leaf"])
+    assert wait_for(page, lambda: any(r["path"] == "/report/loaded" and r["query"]["path"] == ["/leaf"]
+                                      for r in cross_site_loop["reports"]))
     after = quiet(engine_dir)
     assert after == before, "a same-site frame changed the processes of the sites: %s -> %s" % (sorted(before), sorted(after))
 
