@@ -55,6 +55,9 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 SUITE = ROOT / "tests" / "playwright-upstream"
 #: Seconds each test file took, per OS, in a recorded CI run.
 WEIGHTS = ROOT / "tests" / "gates" / "upstream_weights.json"
+#: The folder with `sitecustomize.py` that puts the redirect into every child
+#: interpreter (see `_pin_launch` in the plugin below).
+SITE = ROOT / "scripts" / "upstream_site"
 
 #: Every `playwright.*` module the suite imports, counted from its own source.
 #: ⛔ Read from the suite rather than listed by hand: a name added upstream must
@@ -158,12 +161,80 @@ def suite_files(target: str) -> list:
     return [str(f.relative_to(SUITE)).replace("\\", "/") for f in found]
 
 
-def shard_files(target: str, shard: tuple, os_name=None, weights=None) -> list:
-    """The test files under `target` that belong to `shard`, suite-relative."""
+def test_key(classname: str, name: str) -> str:
+    """A test inside its file, as pytest writes it after the file: `name`, or
+    `Class::name` for a test in a class."""
+    parts = classname.split(".")
+    for i, part in enumerate(parts):
+        if part.startswith("test_"):
+            return "::".join(parts[i + 1:] + [name])
+    return name
+
+
+def split_parts(weights: dict, os_name: str, rel: str):
+    """(parts, {test key: part}, seconds of each part) of a SPLIT file, or None.
+
+    A file that alone takes more than a shard is listed under `splits` in the
+    weights, with the seconds of each of its tests and the number of parts. The
+    tests go heaviest first into the lightest part, ties broken by name, so
+    every job computes the same parts. A test the table does not know (a new
+    one upstream) is placed by the plugin from a hash of its name.
+    """
+    entry = weights.get("splits", {}).get(rel)
+    if not entry:
+        return None
+    count = entry["parts"]
+    tests = entry["seconds"][os_name]
+    load = [0.0] * count
+    mapping = {}
+    for key in sorted(tests, key=lambda k: (-tests[k], k)):
+        j = min(range(count), key=lambda i: (load[i], i))
+        mapping[key] = j
+        load[j] += tests[key]
+    return count, mapping, load
+
+
+def planned_units(weights: dict, os_name: str, rels) -> dict:
+    """unit -> seconds: a file, or `file#K/M` for the K-th of M parts of a split
+    file. These are what is dealt to the shards."""
+    secs = planned_seconds(weights, os_name, rels)
+    per_file = weights["overhead_per_file"][os_name]
+    units = {}
+    for rel in rels:
+        split = split_parts(weights, os_name, rel)
+        if split is None:
+            units[rel] = secs[rel]
+            continue
+        count, _, load = split
+        for j in range(count):
+            units["%s#%d/%d" % (rel, j + 1, count)] = load[j] + per_file
+    return units
+
+
+def shard_plan(target: str, shard: tuple, os_name=None, weights=None) -> tuple:
+    """(files, split) of `shard`: the test files it runs, and for each file it
+    runs only some tests of, {file: {parts, keep, map}} for the plugin."""
     rels = suite_files(target)
     w = weights if weights is not None else load_weights()
-    owner = assign(planned_seconds(w, os_name or current_os(), rels), shard[1])
-    return [r for r in rels if owner[r] == shard[0] - 1]
+    name = os_name or current_os()
+    owner = assign(planned_units(w, name, rels), shard[1])
+    mine = [u for u, k in owner.items() if k == shard[0] - 1]
+    files = sorted({u.split("#")[0] for u in mine})
+    split = {}
+    for unit in mine:
+        if "#" not in unit:
+            continue
+        rel, part = unit.split("#")
+        count, mapping, _ = split_parts(w, name, rel)
+        entry = split.setdefault(
+            rel, {"parts": count, "keep": [], "map": mapping})
+        entry["keep"].append(int(part.split("/")[0]) - 1)
+    return files, split
+
+
+def shard_files(target: str, shard: tuple, os_name=None, weights=None) -> list:
+    """The test files under `target` that belong to `shard`, suite-relative."""
+    return shard_plan(target, shard, os_name, weights)[0]
 
 
 # ── the weights, from junit reports ─────────────────────────────────────────
@@ -184,6 +255,17 @@ def junit_seconds(path) -> tuple:
     suite = root.find("testsuite")
     stated = float(suite.get("time") or 0) if suite is not None else 0.0
     return per_file, max(0.0, stated - sum(per_file.values()))
+
+
+def junit_tests(path) -> dict:
+    """file -> {test key: seconds, every attempt counted} of a junit report."""
+    out: dict = {}
+    for case in ET.parse(str(path)).getroot().iter("testcase"):
+        classname = case.get("classname", "")
+        per_test = out.setdefault(file_of(classname), {})
+        key = test_key(classname, case.get("name", ""))
+        per_test[key] = per_test.get(key, 0.0) + float(case.get("time") or 0)
+    return out
 
 
 def os_of_report(path) -> str:
@@ -282,15 +364,29 @@ def write_weights(reports: list, run_id: str, date: str, os_name=None,
         low = set(data["lower_bound"].get(name, []))
         outside, files = 0.0, 0
         measured = set()
+        # Summed over the reports of this call: the parts of a split file are
+        # in different shards, and the file took what its parts took together.
+        total: dict = {}
+        keyed: dict = {}
         for p in (p for p in paths if not p.endswith(".jsonl")):
             per_file, extra = junit_seconds(p)
             for f, t in per_file.items():
-                secs[f] = round(t, 1)
-                est.discard(f)
-                low.discard(f)
-                measured.add(f)
+                total[f] = total.get(f, 0.0) + t
+            for f, tests in junit_tests(p).items():
+                for key, t in tests.items():
+                    keyed.setdefault(f, {})[key] = (
+                        keyed.get(f, {}).get(key, 0.0) + t)
             outside += extra
             files += len(per_file)
+        for f, t in total.items():
+            secs[f] = round(t, 1)
+            est.discard(f)
+            low.discard(f)
+            measured.add(f)
+        for f, entry in data.get("splits", {}).items():
+            if f in keyed:
+                table = entry["seconds"].setdefault(name, {})
+                table.update({k: round(t, 1) for k, t in keyed[f].items()})
         for p in (p for p in paths if p.endswith(".jsonl")):
             per_file, last = record_seconds(p)
             for f, t in per_file.items():
@@ -395,7 +491,7 @@ for _name in _NAMES:
     sys.modules[_name] = _mod
 
 
-def pytest_sessionstart(session):
+def _pin_launch():
     """Give every launch OUR engine.
 
     The suite calls `browser_type.launch(**launch_arguments)` and those
@@ -403,6 +499,15 @@ def pytest_sessionstart(session):
     one. Our launch REFUSES without an `executable_path` - correctly, it is the
     seal's whole job - so the binary is injected here rather than by editing
     the reference copy.
+
+    ⛔ AT MODULE LEVEL, NOT ONLY IN A PYTEST HOOK, and the binary comes from
+    the environment. A test that starts a child with `multiprocessing` gets a
+    fresh interpreter on Windows (spawn, not fork): nothing of pytest's state
+    is in it, so a redirect installed only by a hook is missing there, and the
+    child imports the stock `playwright` and looks for its own Firefox. Every
+    interpreter of the job imports this module first (`upstream_site/
+    sitecustomize.py`), so the redirect holds in the children too. Idempotent:
+    the pytest hook calls it again and it installs nothing twice.
     """
     import os
     binary = os.environ.get("INVPW_BINARY_PATH")
@@ -410,6 +515,8 @@ def pytest_sessionstart(session):
         return
     from invisible_playwright._pw._impl import _browser_type as _bt
 
+    if getattr(_bt.BrowserType.launch, "_invpw_pinned", False):
+        return
     original = _bt.BrowserType.launch
 
     async def launch(self, *args, **kwargs):
@@ -421,9 +528,33 @@ def pytest_sessionstart(session):
             kwargs["executablePath"] = binary
         return await original(self, *args, **kwargs)
 
+    launch._invpw_pinned = True
     _bt.BrowserType.launch = launch
     print("[baseline] every launch pinned to %s" % binary)
+
+
+_pin_launch()
+
+
+def pytest_sessionstart(session):
+    _pin_launch()
 '''
+
+
+def job_env(binary: str, environ=None) -> dict:
+    """The environment pytest and every interpreter it starts run with."""
+    import os
+    env = dict(os.environ if environ is None else environ)
+    env["INVPW_BINARY_PATH"] = binary
+    # ⛔ THIS CHECKOUT'S `src` TOO, or the suite measures whatever wrapper is
+    # INSTALLED: `ROOT` alone only makes `scripts._upstream_alias` importable,
+    # and `invisible_playwright` then resolves to the editable install, which
+    # from a worktree is somebody else's tree on somebody else's commit. A
+    # branch measured that way reports main's numbers as its own.
+    # SITE first: its `sitecustomize` installs the redirect in every child.
+    env["PYTHONPATH"] = os.pathsep.join(
+        [str(SITE), str(ROOT), str(ROOT / "src")])
+    return env
 
 
 def write_plugin() -> pathlib.Path:
@@ -503,21 +634,22 @@ def main() -> int:
               "all": "tests"}[a.which]
     # Without --shard the target stays the directory, exactly as before. With
     # it, the files this shard owns replace the directory on the command line.
-    if shard and not a.per_file:
-        targets = shard_files(target, shard, a.weights_os)
+    split = {}
+    if shard:
+        targets, split = shard_plan(target, shard, a.weights_os)
         if not targets:
             # An empty shard would pass as "0 tests, exit 5" in some jobs and
             # as a green nothing in others: say it is a configuration error.
             p.error("shard %d/%d owns no test file under %s"
                     % (shard[0], shard[1], target))
-        print("shard %d/%d: %d files (planned with the %s weights)"
-              % (shard[0], shard[1], len(targets),
-                 a.weights_os or current_os()))
-    else:
+        print("shard %d/%d: %d files, %d of them in part (planned with the %s "
+              "weights)" % (shard[0], shard[1], len(targets), len(split),
+                            a.weights_os or current_os()))
+    if not shard or a.per_file:
         targets = [target]
     argv = [sys.executable, "-m", "pytest", *targets,
             "-o", "addopts=", "-p", "scripts._upstream_alias",
-            "-p", "scripts.upstream_record",
+            "-p", "scripts.upstream_record", "-p", "scripts.upstream_split",
             "--browser", "firefox", "-p", "no:cacheprovider",
             "--timeout", a.timeout, "--timeout-method", "thread",
             "-q", "--no-header", "-rN"]
@@ -528,21 +660,16 @@ def main() -> int:
         # lands inside the vendored copy, which nothing is allowed to write to.
         argv += ["--junitxml", str(pathlib.Path(a.junit).resolve())]
 
-    import os
-    env = dict(os.environ)
-    env["INVPW_BINARY_PATH"] = a.binary
+    env = job_env(a.binary)
+    if split:
+        # which tests of a split file this shard runs: scripts/upstream_split.py
+        env["INVPW_SPLIT"] = json.dumps(split)
     if a.record:
         # ⛔ Absolute (pytest runs with `cwd=SUITE`) and started empty: a record
         # left by an earlier run would be read as this one's.
         record = pathlib.Path(a.record).resolve()
         record.write_text("", encoding="utf-8")
         env["INVPW_RECORD"] = str(record)
-    # ⛔ THIS CHECKOUT'S `src` TOO, or the suite measures whatever wrapper is
-    # INSTALLED: `ROOT` alone only makes `scripts._upstream_alias` importable,
-    # and `invisible_playwright` then resolves to the editable install, which
-    # from a worktree is somebody else's tree on somebody else's commit. A
-    # branch measured that way reports main's numbers as its own.
-    env["PYTHONPATH"] = os.pathsep.join([str(ROOT), str(ROOT / "src")])
 
     if not a.per_file:
         print("running: %s" % " ".join(argv[3:]))

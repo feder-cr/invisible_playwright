@@ -21,21 +21,21 @@
 # cannot change what is measured.
 #
 # How it is split. The sync arm is ~700 tests and ~50 minutes of work. It runs
-# as 7 shards per OS (14 jobs), and a shard owns whole test FILES
-# (scripts/upstream_baseline.py --shard K/N). Which files is decided by how long
-# each took in a recorded run (tests/gates/upstream_weights.json, heaviest file
-# first into the lightest shard), not by a hash of the path: the time of this
-# suite sits in a handful of tests that wait for a timeout (and are run four
-# times), so a hash gave shards of 3, 7, 14 and more than 16 minutes. The
-# weights predict every shard at 6.5 minutes of tests or less, except the two
-# that hold one file each: `test_request_intercept` (about 14 minutes: seven
-# tests of ~2 minutes each, never seen to finish) and
-# `test_browsercontext_request_intercept` (8.2 minutes, measured). They are
-# alone in shards 1 and 2 and have the longer limits below. The step limit is
-# about twice the predicted time of its shard. When the plan changes, update
-# `include:` below and the VERDICT line in the verdict job; the unit test
-# names whichever disagrees. The `verdict` job merges the shards of each OS and
-# judges them; a shard job only has to deliver its report.
+# as 7 shards on Linux and 8 on Windows (15 jobs), and a shard owns whole test
+# FILES (scripts/upstream_baseline.py --shard K/N). Which files is decided by
+# how long each took in a recorded run (tests/gates/upstream_weights.json,
+# heaviest first into the lightest shard), not by a hash of the path: the time
+# of this suite sits in a handful of tests that wait for a timeout (and are run
+# four times), so a hash gave shards of 3, 7, 14 and more than 16 minutes. Two
+# files, `test_request_intercept` and `test_browsercontext_request_intercept`,
+# take 8 to 10 minutes alone (four or five tests of 2 minutes each), so each is
+# cut in two by test id and its parts go to different shards
+# (scripts/upstream_split.py deselects the other part). The weights predict
+# every shard at 7.5 minutes of tests or less; the step limit is about twice
+# that. When the plan changes, update `include:` below and the VERDICT line in
+# the verdict job; the unit test names whichever disagrees. The `verdict` job
+# merges the shards of each OS and judges them; a shard job only has to
+# deliver its report.
 #
 # A shard that hits its limit is killed before pytest writes its junit, so each
 # shard also appends one line per test report to a `.jsonl` record as it runs
@@ -114,20 +114,21 @@ jobs:
         # minutes the test step may take (about twice what the weights predict
         # for that shard), `job` that plus the install and the clone.
         include:
-          - { os: ubuntu-24.04, shard: 1, of: 7, limit: 29, job: 37 }
-          - { os: ubuntu-24.04, shard: 2, of: 7, limit: 17, job: 25 }
-          - { os: ubuntu-24.04, shard: 3, of: 7, limit: 12, job: 20 }
-          - { os: ubuntu-24.04, shard: 4, of: 7, limit: 12, job: 20 }
-          - { os: ubuntu-24.04, shard: 5, of: 7, limit: 12, job: 20 }
-          - { os: ubuntu-24.04, shard: 6, of: 7, limit: 12, job: 20 }
-          - { os: ubuntu-24.04, shard: 7, of: 7, limit: 12, job: 20 }
-          - { os: windows-latest, shard: 1, of: 7, limit: 29, job: 37 }
-          - { os: windows-latest, shard: 2, of: 7, limit: 17, job: 25 }
-          - { os: windows-latest, shard: 3, of: 7, limit: 13, job: 21 }
-          - { os: windows-latest, shard: 4, of: 7, limit: 13, job: 21 }
-          - { os: windows-latest, shard: 5, of: 7, limit: 13, job: 21 }
-          - { os: windows-latest, shard: 6, of: 7, limit: 13, job: 21 }
-          - { os: windows-latest, shard: 7, of: 7, limit: 13, job: 21 }
+          - { os: ubuntu-24.04, shard: 1, of: 7, limit: 14, job: 22 }
+          - { os: ubuntu-24.04, shard: 2, of: 7, limit: 14, job: 22 }
+          - { os: ubuntu-24.04, shard: 3, of: 7, limit: 14, job: 22 }
+          - { os: ubuntu-24.04, shard: 4, of: 7, limit: 14, job: 22 }
+          - { os: ubuntu-24.04, shard: 5, of: 7, limit: 14, job: 22 }
+          - { os: ubuntu-24.04, shard: 6, of: 7, limit: 14, job: 22 }
+          - { os: ubuntu-24.04, shard: 7, of: 7, limit: 14, job: 22 }
+          - { os: windows-latest, shard: 1, of: 8, limit: 13, job: 21 }
+          - { os: windows-latest, shard: 2, of: 8, limit: 13, job: 21 }
+          - { os: windows-latest, shard: 3, of: 8, limit: 13, job: 21 }
+          - { os: windows-latest, shard: 4, of: 8, limit: 13, job: 21 }
+          - { os: windows-latest, shard: 5, of: 8, limit: 13, job: 21 }
+          - { os: windows-latest, shard: 6, of: 8, limit: 13, job: 21 }
+          - { os: windows-latest, shard: 7, of: 8, limit: 13, job: 21 }
+          - { os: windows-latest, shard: 8, of: 8, limit: 13, job: 21 }
     # On Windows GitHub runs `run:` blocks with PowerShell by default; these
     # are bash, as in e2e-hunt.yml.
     defaults:
@@ -283,7 +284,7 @@ jobs:
             echo "The baseline was recorded on Linux; Windows is judged against the same file."
           } >> "$GITHUB_STEP_SUMMARY"
           # VERDICT: the shard count of each OS, as in `include:` above.
-          for plan in Linux:7 Windows:7; do
+          for plan in Linux:7 Windows:8; do
             os="${plan%%:*}"
             count="${plan##*:}"
             files=()

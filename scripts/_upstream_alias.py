@@ -64,7 +64,7 @@ for _name in _NAMES:
     sys.modules[_name] = _mod
 
 
-def pytest_sessionstart(session):
+def _pin_launch():
     """Give every launch OUR engine.
 
     The suite calls `browser_type.launch(**launch_arguments)` and those
@@ -72,6 +72,15 @@ def pytest_sessionstart(session):
     one. Our launch REFUSES without an `executable_path` - correctly, it is the
     seal's whole job - so the binary is injected here rather than by editing
     the reference copy.
+
+    ⛔ AT MODULE LEVEL, NOT ONLY IN A PYTEST HOOK, and the binary comes from
+    the environment. A test that starts a child with `multiprocessing` gets a
+    fresh interpreter on Windows (spawn, not fork): nothing of pytest's state
+    is in it, so a redirect installed only by a hook is missing there, and the
+    child imports the stock `playwright` and looks for its own Firefox. Every
+    interpreter of the job imports this module first (`upstream_site/
+    sitecustomize.py`), so the redirect holds in the children too. Idempotent:
+    the pytest hook calls it again and it installs nothing twice.
     """
     import os
     binary = os.environ.get("INVPW_BINARY_PATH")
@@ -79,6 +88,8 @@ def pytest_sessionstart(session):
         return
     from invisible_playwright._pw._impl import _browser_type as _bt
 
+    if getattr(_bt.BrowserType.launch, "_invpw_pinned", False):
+        return
     original = _bt.BrowserType.launch
 
     async def launch(self, *args, **kwargs):
@@ -90,5 +101,13 @@ def pytest_sessionstart(session):
             kwargs["executablePath"] = binary
         return await original(self, *args, **kwargs)
 
+    launch._invpw_pinned = True
     _bt.BrowserType.launch = launch
     print("[baseline] every launch pinned to %s" % binary)
+
+
+_pin_launch()
+
+
+def pytest_sessionstart(session):
+    _pin_launch()

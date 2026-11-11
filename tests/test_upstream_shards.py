@@ -70,7 +70,12 @@ def _universe(os_name: str) -> list:
 
 
 def _seconds(os_name: str) -> dict:
-    return base.planned_seconds(WEIGHTS, os_name, _universe(os_name))
+    """What is dealt to the shards: files, and parts of the split files."""
+    return base.planned_units(WEIGHTS, os_name, _universe(os_name))
+
+
+def _file_of_unit(unit: str) -> str:
+    return unit.split("#")[0]
 
 
 @pytest.mark.parametrize("text, expected", [("1/4", (1, 4)), (" 4/4 ", (4, 4)),
@@ -101,10 +106,15 @@ def test_every_file_belongs_to_exactly_one_shard(os_name, count):
     files = _universe(os_name)
     assert len(files) > 50
     owner = base.assign(_seconds(os_name), count)
-    assert sorted(owner) == files
     assert all(0 <= k < count for k in owner.values())
-    per_shard = [[f for f in files if owner[f] == k] for k in range(count)]
-    assert sorted(f for part in per_shard for f in part) == files
+    # every file is there, once, or as all of its parts and nothing else
+    assert sorted({_file_of_unit(u) for u in owner}) == files
+    for rel, entry in WEIGHTS.get("splits", {}).items():
+        parts = sorted(u for u in owner if _file_of_unit(u) == rel)
+        assert parts == ["%s#%d/%d" % (rel, j, entry["parts"])
+                         for j in range(1, entry["parts"] + 1)]
+    whole = [u for u in owner if "#" not in u]
+    assert len(whole) == len(set(whole))
 
 
 @pytest.mark.parametrize("os_name", ["Linux", "Windows"])
@@ -176,6 +186,27 @@ def _lone(os_name: str) -> list:
     return out
 
 
+def _tests_per_shard(os_name: str) -> list:
+    """How many recorded tests each planned shard runs (parts counted)."""
+    count = _plan()[os_name]
+    owner = base.assign(_seconds(os_name), count)
+    counts = [0] * count
+    parts = {rel: base.split_parts(WEIGHTS, os_name, rel)
+             for rel in WEIGHTS.get("splits", {})}
+    for test in BASELINE:
+        module, _, name = test.partition("::")
+        rel = base.file_of(module)
+        key = base.test_key(module, name)
+        if rel in parts:
+            n, mapping, _ = parts[rel]
+            part = mapping.get(key, zlib.crc32(key.encode()) % n)
+            unit = "%s#%d/%d" % (rel, part + 1, n)
+        else:
+            unit = rel
+        counts[owner[unit]] += 1
+    return counts
+
+
 @pytest.mark.parametrize("os_name", ["Linux", "Windows"])
 def test_the_planned_shards_are_balanced_and_fit_the_budget(os_name):
     loads = base.shard_loads(_seconds(os_name), _plan()[os_name])
@@ -201,15 +232,16 @@ def test_each_step_limit_is_about_twice_the_predicted_time_of_its_shard(os_name)
         assert job >= limit + 5, (os_name, k, limit, job)
 
 
-def test_only_files_that_cannot_fit_a_shard_are_alone_in_one():
+def test_a_unit_that_cannot_fit_a_shard_is_alone_in_one_and_none_is_left():
     for os_name in ("Linux", "Windows"):
         secs = _seconds(os_name)
         too_big = sorted(f for f, t in secs.items() if t > 8 * 60)
         owner = base.assign(secs, _plan()[os_name])
-        assert too_big, "the heavy files of the weights are the reason for this"
         for f in too_big:
             assert [g for g, k in owner.items() if k == owner[f]] == [f], f
         assert len(_lone(os_name)) == len(too_big)
+        # the files that alone took more than a shard are cut in parts now
+        assert not too_big, "split this file by test id: %s" % too_big
 
 
 def test_the_plan_fits_in_sixteen_jobs_and_names_both_systems():
@@ -220,8 +252,8 @@ def test_the_plan_fits_in_sixteen_jobs_and_names_both_systems():
 
 def test_the_old_hash_split_would_have_been_far_off_these_weights():
     # The reason the weights exist: 4 shards by crc32 of the path, planned with
-    # the same numbers, are 12 / 12 / 6 / 3 minutes on Linux.
-    secs = _seconds("Linux")
+    # the same numbers, are 12 / 26 / 6 / 2 minutes on Linux.
+    secs = base.planned_seconds(WEIGHTS, "Linux", _universe("Linux"))
     load = [0.0] * 4
     for f, t in secs.items():
         load[zlib.crc32(f.encode()) % 4] += t
@@ -455,16 +487,148 @@ def test_a_file_one_system_never_timed_takes_the_other_systems_time_scaled(
     assert data["estimated"]["Windows"] == []
 
 
-def test_the_committed_unknown_files_are_marked_and_weighted_above_their_bound():
-    for os_name in ("Linux", "Windows"):
-        unknown = set(WEIGHTS["estimated"][os_name]) - set(
-            WEIGHTS["scaled"][os_name])
-        assert unknown <= set(WEIGHTS["lower_bound"][os_name]), unknown
-        # the shard that timed out held test_request_intercept; the known
-        # files and per-file cost of that shard left it at least this long
-        bound = {"Linux": 549, "Windows": 481}[os_name]
-        assert WEIGHTS["seconds"][os_name][
-            "tests/sync/test_request_intercept.py"] >= 1.3 * bound
+@pytest.mark.parametrize("os_name", ["Linux", "Windows"])
+def test_what_the_weights_call_scaled_or_a_bound_is_listed_as_estimated(os_name):
+    estimated = set(WEIGHTS["estimated"][os_name])
+    assert set(WEIGHTS["scaled"][os_name]) <= estimated
+    assert set(WEIGHTS["lower_bound"][os_name]) <= estimated
+
+
+@pytest.mark.parametrize("os_name", ["Linux", "Windows"])
+def test_the_split_files_are_cut_by_the_seconds_of_their_tests(os_name):
+    assert set(WEIGHTS["splits"]) == {
+        "tests/sync/test_request_intercept.py",
+        "tests/sync/test_browsercontext_request_intercept.py"}
+    for rel, entry in WEIGHTS["splits"].items():
+        count, mapping, load = base.split_parts(WEIGHTS, os_name, rel)
+        assert count == entry["parts"] == 2
+        assert sorted(mapping) == sorted(entry["seconds"][os_name])
+        # the tests add up to the file, and the parts are of about one size
+        assert sum(load) == pytest.approx(WEIGHTS["seconds"][os_name][rel],
+                                          abs=1.0)
+        assert max(load) / min(load) < 1.5, load   # a 2-minute test is not divisible
+        # the same call gives the same parts
+        assert base.split_parts(WEIGHTS, os_name, rel) == (count, mapping, load)
+
+
+def test_a_shard_runs_exactly_the_tests_its_parts_own(tmp_path, monkeypatch):
+    sync = tmp_path / "tests" / "sync"
+    sync.mkdir(parents=True)
+    for n in ("test_a.py", "test_big.py", "test_c.py"):
+        (sync / n).write_text("", encoding="utf-8")
+    monkeypatch.setattr(base, "SUITE", tmp_path)
+    weights = {
+        "overhead_per_file": {"Linux": 1.0},
+        "seconds": {"Linux": {"tests/sync/test_a.py": 50.0,
+                              "tests/sync/test_big.py": 120.0,
+                              "tests/sync/test_c.py": 50.0}},
+        "splits": {"tests/sync/test_big.py": {"parts": 2, "seconds": {"Linux": {
+            "t1": 50.0, "t2": 50.0, "t3": 10.0, "t4": 10.0}}}},
+    }
+    seen = {}
+    for k in (1, 2, 3):
+        files, split = base.shard_plan("tests/sync", (k, 3), "Linux", weights)
+        seen[k] = (files, split)
+    big = [(k, f, s) for k, (f, s) in seen.items()
+           if "tests/sync/test_big.py" in f]
+    # the two parts of the big file are in two shards, and each runs only its
+    # own tests: together all four, none twice
+    assert len(big) == 2
+    ran = []
+    for k, _, s in big:
+        entry = s["tests/sync/test_big.py"]
+        ran += [t for t, part in entry["map"].items() if part in entry["keep"]]
+    assert sorted(ran) == ["t1", "t2", "t3", "t4"]
+    # a whole file is in one shard and has no split entry
+    whole = [k for k, (f, s) in seen.items() if "tests/sync/test_a.py" in f]
+    assert len(whole) == 1
+    assert "tests/sync/test_a.py" not in seen[whole[0]][1]
+
+
+def test_the_split_hook_keeps_one_part_and_places_unknown_tests_by_hash(
+        monkeypatch):
+    import upstream_split as split
+
+    class Item:
+        def __init__(self, nodeid):
+            self.nodeid = nodeid
+
+    class Hook:
+        dropped = None
+
+        def pytest_deselected(self, items):
+            self.dropped = items
+
+    class Config:
+        hook = Hook()
+
+    spec = {"tests/sync/test_big.py": {
+        "parts": 2, "keep": [0], "map": {"t1": 0, "t2": 1, "Cls::t3": 0}}}
+    names = ["tests/sync/test_big.py::t1", "tests/sync/test_big.py::t2",
+             "tests/sync/test_big.py::Cls::t3", "tests/sync/test_big.py::new_t",
+             "tests/sync/test_other.py::t9"]
+    items = [Item(n) for n in names]
+    monkeypatch.delenv("INVPW_SPLIT", raising=False)
+    split.pytest_collection_modifyitems(Config(), items)
+    assert [i.nodeid for i in items] == names          # off: nothing happens
+
+    monkeypatch.setenv("INVPW_SPLIT", json.dumps(spec))
+    items = [Item(n) for n in names]
+    config = Config()
+    split.pytest_collection_modifyitems(config, items)
+    kept = {i.nodeid for i in items}
+    dropped = {i.nodeid for i in config.hook.dropped}
+    assert kept | dropped == set(names) and not kept & dropped
+    assert "tests/sync/test_big.py::t1" in kept
+    assert "tests/sync/test_big.py::t2" in dropped
+    assert "tests/sync/test_big.py::Cls::t3" in kept
+    assert "tests/sync/test_other.py::t9" in kept       # not a split file
+    # the new test goes where its name hashes, and to the other part's shard
+    # it goes to the other part: exactly one of the two keeps it
+    other = dict(spec["tests/sync/test_big.py"], keep=[1])
+    monkeypatch.setenv("INVPW_SPLIT", json.dumps(
+        {"tests/sync/test_big.py": other}))
+    second = [Item("tests/sync/test_big.py::new_t")]
+    split.pytest_collection_modifyitems(Config(), second)
+    assert ("tests/sync/test_big.py::new_t" in kept) != bool(second)
+
+
+def test_the_split_option_sets_the_variable_the_hook_reads(tmp_path,
+                                                           monkeypatch):
+    seen = []
+
+    def fake_run(argv, **kw):
+        seen.append((argv, kw["env"]))
+
+        class R:
+            returncode = 0
+        return R()
+
+    monkeypatch.setattr(base, "SUITE", tmp_path)
+    (tmp_path / "tests" / "sync").mkdir(parents=True)
+    for n in ("test_a.py", "test_b.py"):
+        (tmp_path / "tests" / "sync" / n).write_text("", encoding="utf-8")
+    monkeypatch.setattr(base, "write_plugin", lambda: tmp_path / "p.py")
+    monkeypatch.setattr(base.subprocess, "run", fake_run)
+    weights = tmp_path / "w.json"
+    weights.write_text(json.dumps({
+        "overhead_per_file": {"Linux": 1.0, "Windows": 1.0},
+        "seconds": {"Linux": {"tests/sync/test_a.py": 10.0,
+                              "tests/sync/test_b.py": 100.0}},
+        "splits": {"tests/sync/test_b.py": {"parts": 2, "seconds": {"Linux": {
+            "t1": 50.0, "t2": 50.0}}}}}), encoding="utf-8")
+    monkeypatch.setattr(base, "WEIGHTS", weights)
+    for k in (1, 2):
+        monkeypatch.setattr(sys, "argv", ["upstream_baseline.py", "ff", "--shard",
+                                          "%d/2" % k, "--weights-os", "Linux"])
+        assert base.main() == 0
+        argv, env = seen[-1]
+        assert "scripts.upstream_split" in argv
+        if "tests/sync/test_b.py" in argv:
+            spec = json.loads(env["INVPW_SPLIT"])
+            assert spec["tests/sync/test_b.py"]["parts"] == 2
+        else:
+            assert "INVPW_SPLIT" not in env
 
 
 def test_the_record_option_sets_the_variable_the_hook_reads(tmp_path,
@@ -508,6 +672,30 @@ def test_the_write_weights_option_runs_nothing_and_asks_for_no_binary(
     assert json.loads(target.read_text(encoding="utf-8"))["runs"]["Linux"][
         "run_id"] == "42"
     assert "Linux: 1 files" in capsys.readouterr().out
+
+
+def test_the_parts_of_a_split_file_add_up_and_refresh_its_test_table(tmp_path):
+    target = tmp_path / "w.json"
+    target.write_text(json.dumps({
+        "format": 1, "runs": {}, "overhead_per_file": {"Linux": 1.0},
+        "seconds": {"Linux": {"tests/sync/test_big.py": 1.0}},
+        "estimated": {"Linux": ["tests/sync/test_big.py"]},
+        "splits": {"tests/sync/test_big.py": {"parts": 2, "seconds": {
+            "Linux": {"t1": 1.0, "t2": 1.0, "t3": 1.0}}}},
+    }), encoding="utf-8")
+    # the two parts ran in two shards, with a test in a class and a rerun
+    one = _timed_junit(tmp_path / "upstream-Linux-1.xml", 40.0,
+                       ("tests.sync.test_big", "t1", 10.0),
+                       ("tests.sync.test_big", "t1", 10.0))
+    two = _timed_junit(tmp_path / "upstream-Linux-2.xml", 30.0,
+                       ("tests.sync.test_big.TestX", "t2", 20.0))
+    data = base.write_weights([one, two], "5", "2026-12-01", path=target)
+    assert data["seconds"]["Linux"]["tests/sync/test_big.py"] == 40.0
+    assert data["splits"]["tests/sync/test_big.py"]["seconds"]["Linux"] == {
+        "t1": 20.0, "t2": 1.0, "TestX::t2": 20.0, "t3": 1.0}
+    assert data["estimated"]["Linux"] == []
+    assert base.test_key("tests.sync.test_big.TestX", "t2") == "TestX::t2"
+    assert base.test_key("tests.sync.test_big", "t1") == "t1"
 
 
 # ── merging the reports ──────────────────────────────────────────────────────
@@ -593,10 +781,7 @@ def test_the_floor_of_the_real_baseline_loses_a_big_shard_but_not_a_rename():
     n = len(BASELINE)
     floor = reg.floor_of(n, 0.95)
     for os_name, count in _plan().items():
-        owner = base.assign(_seconds(os_name), count)
-        per_shard = [0] * count
-        for k in BASELINE:
-            per_shard[owner[base.file_of(k.split("::")[0])]] += 1
+        per_shard = _tests_per_shard(os_name)
         assert sum(per_shard) == n
         # losing a shard that owns more than the 5% the floor allows fails it;
         # a smaller one is caught by its job failing and by its missing report
