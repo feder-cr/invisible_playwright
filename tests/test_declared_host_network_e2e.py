@@ -29,7 +29,7 @@ import statistics
 
 import pytest
 
-from test_webrtc_realness import (_FAKE_EGRESS, _e2e_binary, _launch, candidates, decode_priority, host_candidates,
+from test_webrtc_realness import (_e2e_binary, _launch, candidates, decode_priority, host_candidates,
                                   is_mdns, local_https_page, socks5_tcp_only)  # noqa: F401  (fixtures)
 
 pytestmark = [pytest.mark.e2e, pytest.mark.usefixtures("the_udp_line")]
@@ -89,8 +89,6 @@ def _session(declaration, socks, page_url, monkeypatch, seed, script):
     binary = _e2e_binary()
     if not binary:
         pytest.skip("no patched binary (set STEALTHFOX_E2E_BINARY)")
-    monkeypatch.setenv("STEALTHFOX_WEBRTC_PUBLIC_IP", _FAKE_EGRESS)
-    monkeypatch.delenv("STEALTHFOX_WEBRTC_DISABLE_IPV6", raising=False)  # the declaration replaces it
     monkeypatch.setenv(NETWORK_ENV, declaration)
     prefs = {"network.proxy.allow_hijacking_localhost": True, "network.proxy.no_proxies_on": ""}
     proxy = {"server": "socks5://127.0.0.1:%d" % socks.port}
