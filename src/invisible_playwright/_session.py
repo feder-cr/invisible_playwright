@@ -321,9 +321,9 @@ class ProxyEgressNonVerificabile(RuntimeError):
 
     This is not drift and it is not parity: it is absence of measurement. A
     proxy that does not answer the probe for several checks in a row is not a
-    proxy that holds, it is a proxy we are flying blind on while the engine
-    keeps declaring to every page an address that nobody is confirming any
-    more.
+    proxy that holds, it is a proxy we are flying blind on while the timezone
+    and the locale, decided from the egress at launch, go on being declared
+    to every page with nobody confirming the egress they came from any more.
     """
 
 

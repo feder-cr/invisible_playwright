@@ -1005,3 +1005,6 @@ def test_a_burst_of_silent_probes_rejects_the_session():
     assert _session.ProxyEgressNonVerificabile is not _session.ProxyEgressDrifted, (
         "unmeasurable and drifted are two different diagnoses and must be "
         "distinguished by type too, or a catch cannot react differently")
+    # what goes unconfirmed is the timezone and the locale decided from the egress: the engine declares no egress address
+    doc = " ".join(_session.ProxyEgressNonVerificabile.__doc__.split())
+    assert "timezone" in doc and "locale" in doc and "an address" not in doc, doc
