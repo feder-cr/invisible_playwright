@@ -20,6 +20,19 @@ from _servers import LocalServer
 
 pytestmark = pytest.mark.e2e
 
+
+def _stock_client(module):
+    """The stock Playwright client, as production (tf-fetch) drives the served browser. It is a pinned dev dependency
+    (`playwright==` in the `dev` extra), so its absence is a broken environment, not a reason to skip: a gate that skips
+    in CI checks nothing."""
+    import importlib
+
+    try:
+        return importlib.import_module(module)
+    except ImportError as exc:       # pragma: no cover - only in a broken environment
+        pytest.fail("the stock Playwright client is missing (%s): install the wrapper with its dev extra" % exc,
+                    pytrace=False)
+
 PAGE = b"""<!doctype html><html><head><meta charset=utf-8><title>routed</title>
 <link rel=stylesheet href=/style.css>
 <link rel=preload as=font type=font/woff2 href=/font.woff2 crossorigin>
@@ -145,7 +158,7 @@ def _router(delay_s):
 @pytest.mark.parametrize("kind", sorted(EXTRA))
 def test_networkidle_arrives_on_a_routed_page_through_a_served_browser(firefox_binary, site, kind):
     from invisible_playwright._juggler.remote import launch_server
-    sync_playwright = pytest.importorskip("playwright.sync_api").sync_playwright   # a stock client, as production uses
+    sync_playwright = _stock_client("playwright.sync_api").sync_playwright   # a stock client, as production uses
 
     server = launch_server(headless=True, binary_path=firefox_binary, locale="en-US", timezone="Europe/Rome")
     try:
@@ -178,7 +191,7 @@ def test_networkidle_arrives_when_the_client_answers_all_requests_concurrently_a
 
     from invisible_playwright._juggler.remote import launch_server
 
-    async_playwright = pytest.importorskip("playwright.async_api").async_playwright
+    async_playwright = _stock_client("playwright.async_api").async_playwright
     server = launch_server(headless=True, binary_path=firefox_binary, locale="en-US", timezone="Europe/Rome")
     errors = []
 
@@ -220,7 +233,7 @@ def test_one_page_reused_for_many_addresses_reaches_networkidle_every_time(firef
     addresses that follow: the lifecycle's memory of requests in flight is per document, keyed by request id."""
     from invisible_playwright._juggler.remote import launch_server
 
-    sync_playwright = pytest.importorskip("playwright.sync_api").sync_playwright
+    sync_playwright = _stock_client("playwright.sync_api").sync_playwright
     server = launch_server(headless=True, binary_path=firefox_binary, locale="en-US", timezone="Europe/Rome")
     try:
         with sync_playwright() as p:
@@ -249,7 +262,7 @@ def test_a_plain_route_handler_is_not_poisoned_by_a_request_the_page_cancelled(f
     on a real news page: six held requests in a row, one a beacon, and networkidle never)."""
     from invisible_playwright._juggler.remote import launch_server
 
-    sync_playwright = pytest.importorskip("playwright.sync_api").sync_playwright
+    sync_playwright = _stock_client("playwright.sync_api").sync_playwright
     server = launch_server(headless=True, binary_path=firefox_binary, locale="en-US", timezone="Europe/Rome")
     try:
         with sync_playwright() as p:
