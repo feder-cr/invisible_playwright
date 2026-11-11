@@ -2730,6 +2730,9 @@ class PageDispatcher(Dispatcher):
         self._dialogs_open: Dict[str, Any] = {}
         self._dialogs_seen = 0
         self.main_frame_id = self.lifecycle.wait_for_main_frame(timeout=20.0)
+        # ⛔ HANDED OVER READY, as Playwright's own page is (FFPage reports it on Page.ready): the engine commits the initial about:blank
+        # after the frame is announced, and a `goto` sent before that commit is 'interrupted by another navigation to about:blank'.
+        self.lifecycle.wait_for_page_ready(timeout=20.0)
         # ⛔ The Frame is created BEFORE the Page and adopted after: the Page
         # initializer has to name a mainFrame the client can already resolve.
         self.frame = FrameDispatcher(server, self, self.main_frame_id)
