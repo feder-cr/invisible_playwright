@@ -30,6 +30,9 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler, HTTPServer
 
 import pytest
 
+from _socks_servers import MEASURE_NUMBER, STUN_PORT
+from _udp_line import declared_udp, egress_by_proxy, measure_servers
+
 # ──────────────────────────────────────────────────────────────────────────
 #  Pure SDP / ICE-candidate helpers (no I/O) - the heart of the sentinels.
 # ──────────────────────────────────────────────────────────────────────────
@@ -438,9 +441,18 @@ def _launch(**extra):
           # discovery through the (fake) proxy - irrelevant here, we inject the
           # egress IP directly and want the launch deterministic/offline.
           "timezone": "America/New_York",
+          # Where the core measures the UDP exit of a SOCKS5 proxy from (an explicit launch parameter, never the public
+          # defaults in a hermetic test): a documentation address only the relay of a test gateway answers.
+          "udp_stun_servers": ["%s:%d" % (MEASURE_NUMBER, STUN_PORT)],
           "extra_prefs": {"media.peerconnection.ice.obfuscate_host_addresses": True}}
     kw.update(extra)
     return InvisiblePlaywright(**kw)
+
+
+def _launch_behind(gateway, **extra):
+    """The launch behind a test gateway: its proxy, and the STUN server its relay answers for the measurement of its UDP
+    exit (``udp_stun_servers``). ONE place for every e2e that needs the relay."""
+    return _launch(proxy=gateway.proxy, udp_stun_servers=measure_servers(gateway), **extra)
 
 
 @pytest.mark.e2e
@@ -551,9 +563,9 @@ def _gather_behind_a_coherent_gateway(monkeypatch, credentials, ice_prefs, rtt_m
         exit_ip = gateway.tcp_exit
         # The session asks the gateway for its TCP exit over HTTPS, which no local gateway can answer as itself: the
         # answer is the gateway's. The UDP probe that follows is NOT replaced: it runs through the relay, for real.
-        monkeypatch.setattr(_geo, "discover_egress_ip", lambda *_a, **_k: exit_ip)
+        monkeypatch.setattr(_geo, "discover_egress_ip", egress_by_proxy(gateway))
         extra_prefs = {"media.peerconnection.ice.obfuscate_host_addresses": True, **ice_prefs}
-        with _launch(binary_path=binary, proxy=gateway.proxy, extra_prefs=extra_prefs) as browser:
+        with _launch_behind(gateway, binary_path=binary, extra_prefs=extra_prefs) as browser:
             page = browser.new_context().new_page()
             if page_first_ms is None:
                 page.goto("about:blank")
@@ -680,9 +692,10 @@ def test_two_contexts_with_two_proxies_each_gets_the_srflx_of_its_own(monkeypatc
     stun = f"stun:{STUN_NUMBER}:{STUN_PORT}"
     host = _address_of_this_host()
     with coherent(exit_ip="203.0.113.7", user="alice", password="s3cret", relay_host=host) as first,             coherent(exit_ip="198.51.100.77", user="bob", password="hunter2", relay_host=host) as second:
-        monkeypatch.setattr(_geo, "discover_egress_ip", lambda *_a, **_k: first.tcp_exit)
+        # Each gateway reports the TCP exit of its own: the context proxy is measured against ITS exit, not the session's.
+        monkeypatch.setattr(_geo, "discover_egress_ip", egress_by_proxy(first, second))
         extra_prefs = {"media.peerconnection.ice.obfuscate_host_addresses": True}
-        with _launch(binary_path=binary, proxy=first.proxy, extra_prefs=extra_prefs) as browser:
+        with _launch_behind(first, binary_path=binary, extra_prefs=extra_prefs) as browser:
             of_the_session = browser.new_context().new_page()
             of_its_own = browser.new_context(proxy=second.proxy).new_page()
             res_session = of_the_session.evaluate(_RELAY_PROBE_JS, stun)
@@ -711,9 +724,9 @@ def test_the_turn_over_tcp_of_a_context_goes_through_the_proxy_of_that_context(m
     host = _address_of_this_host()
     turn_host, turn_port = "198.51.100.9", 3478
     with coherent(exit_ip="203.0.113.7", user="alice", password="s3cret", relay_host=host) as session,             coherent(exit_ip="198.51.100.77", user="bob", password="hunter2", relay_host=host) as context:
-        monkeypatch.setattr(_geo, "discover_egress_ip", lambda *_a, **_k: session.tcp_exit)
+        monkeypatch.setattr(_geo, "discover_egress_ip", egress_by_proxy(session, context))
         extra_prefs = {"media.peerconnection.ice.obfuscate_host_addresses": True}
-        with _launch(binary_path=binary, proxy=session.proxy, extra_prefs=extra_prefs) as browser:
+        with _launch_behind(session, binary_path=binary, extra_prefs=extra_prefs) as browser:
             page = browser.new_context(proxy=context.proxy).new_page()
             page.goto("about:blank")
             page.evaluate("""async (turn) => {
@@ -730,28 +743,32 @@ def test_the_turn_over_tcp_of_a_context_goes_through_the_proxy_of_that_context(m
         f"by the gateway of the session {session.connects}")
 
 
-@pytest.mark.e2e
-@pytest.mark.usefixtures("the_udp_line")
-def test_a_proxy_that_does_not_relay_udp_gives_no_srflx_at_all(monkeypatch):
-    """⛔ THE KNOWN-BAD INPUT: a gateway that refuses UDP ASSOCIATE. The target is a retail Windows at home on a network
-    that blocks UDP: the host candidates are there, the UDP datagrams leave nowhere and nothing answers (no error, no
-    direct send), so the STUN request retransmits and ends in 701 in nICEr's own time, and the page gets no srflx: the
-    session does not invent one (a candidate with the exit of TCP and no allocation behind it, raddr 0.0.0.0, is a value
-    no browser makes). The time of that 701 on a retail with UDP blocked is still to be measured."""
+def _gather_where_the_udp_is_dropped(gateway, monkeypatch, measured):
+    """Launch behind ``gateway`` (a SOCKS5 proxy whose UDP is not coherent), gather with a STUN server only its relay could
+    reach, and say what the target must look like: a retail Windows at home on a network that blocks UDP.
+
+    The core measured the proxy before the launch declared it, and it is ``measured`` (``no`` or ``unmeasured``): the engine
+    sends the page's UDP nowhere, not to the relay and not direct, so the STUN request retransmits and ends in 701 in nICEr's
+    own time. The page gets host candidates and no srflx: the session does not invent one (a candidate with the exit of TCP and
+    no allocation behind it, raddr 0.0.0.0, is a value no browser makes)."""
     binary = _e2e_binary()
     if not binary:
         pytest.skip("no patched binary (set STEALTHFOX_E2E_BINARY)")
     from invisible_core import _geo
 
-    from _socks_servers import STUN_NUMBER, STUN_PORT, tcp_only
+    from _socks_servers import STUN_NUMBER
     stun = f"stun:{STUN_NUMBER}:{STUN_PORT}"
-    with tcp_only(user="alice", password="s3cret") as gateway:
-        monkeypatch.setattr(_geo, "discover_egress_ip", lambda *_a, **_k: gateway.tcp_exit)
-        extra_prefs = {"media.peerconnection.ice.obfuscate_host_addresses": True}
-        with _launch(binary_path=binary, proxy=gateway.proxy, extra_prefs=extra_prefs) as browser:
-            page = browser.new_context().new_page()
-            page.goto("about:blank")
-            res = page.evaluate(_RELAY_PROBE_JS, stun)
+    monkeypatch.setattr(_geo, "discover_egress_ip", egress_by_proxy(gateway))
+    extra_prefs = {"media.peerconnection.ice.obfuscate_host_addresses": True}
+    with _launch_behind(gateway, binary_path=binary, extra_prefs=extra_prefs) as browser:
+        page = browser.new_context().new_page()
+        page.goto("about:blank")
+        res = page.evaluate(_RELAY_PROBE_JS, stun)
+    carried = [(host, port) for host, port, _payload in gateway.datagrams]
+    declared = declared_udp(gateway.proxy, measure_servers(gateway))
+    assert declared == measured, f"the core declared udp={declared} for this proxy, the measurement is {measured}"
+    assert (STUN_NUMBER, STUN_PORT) not in carried, (
+        f"the engine sent the page's UDP to a relay that was not measured coherent: {carried}")
     typ = [c["typ"] for c in candidates(res["candidates"])]
     assert "srflx" not in typ and "relay" not in typ, f"a candidate that nothing allocated: {res['candidates']}"
     assert "host" in typ, f"no host candidate at all: {res['candidates']}"
@@ -763,6 +780,38 @@ def test_a_proxy_that_does_not_relay_udp_gives_no_srflx_at_all(monkeypatch):
     assert protocols == ["TCP", "UDP"], f"host candidates of a retail on a network that drops UDP: {res['candidates']}"
     assert 10_000 <= res["at_ms"]["error"] <= 13_000, (
         f"the 701 of the UDP request came at {res['at_ms']['error']} ms; nICEr's time on a network that drops UDP is 11.1-11.3 s")
+
+
+@pytest.mark.e2e
+@pytest.mark.usefixtures("the_udp_line")
+def test_a_proxy_that_does_not_relay_udp_gives_no_srflx_at_all(monkeypatch):
+    """⛔ THE KNOWN-BAD INPUT: a gateway that refuses UDP ASSOCIATE (reply 7). The core measures it ``no``: the target is a
+    retail Windows at home on a network that blocks UDP (see :func:`_gather_where_the_udp_is_dropped`)."""
+    from _socks_servers import tcp_only
+    with tcp_only(user="alice", password="s3cret") as gateway:
+        _gather_where_the_udp_is_dropped(gateway, monkeypatch, "no")
+
+
+@pytest.mark.e2e
+@pytest.mark.usefixtures("the_udp_line")
+def test_a_proxy_whose_udp_leaves_from_another_address_gives_no_srflx_at_all(monkeypatch):
+    """⛔ THE KNOWN-BAD INPUT: a gateway that grants UDP ASSOCIATE and answers STUN, but with an address that is not its TCP
+    exit: the classic leak (a srflx that is not the address of the page's HTTP). The core measures it ``no`` and the engine
+    treats it as a router that drops UDP: the relay is granted but the page's datagrams never go to it."""
+    from _socks_servers import mismatched
+    with mismatched(user="alice", password="s3cret", relay_host=_address_of_this_host()) as gateway:
+        _gather_where_the_udp_is_dropped(gateway, monkeypatch, "no")
+
+
+@pytest.mark.e2e
+@pytest.mark.usefixtures("the_udp_line")
+def test_a_proxy_whose_relay_never_answers_gives_no_srflx_at_all(monkeypatch):
+    """⛔ THE KNOWN-BAD INPUT: a gateway that grants UDP ASSOCIATE and carries datagrams, but no STUN server ever answers (a
+    router that drops UDP behind a working handshake). The measurement ends within its budget in ``unmeasured``: not a
+    refusal, but the engine acts on ``coherent`` only, so the page is where it is on a network that blocks UDP."""
+    from _socks_servers import silent_udp
+    with silent_udp(user="alice", password="s3cret", relay_host=_address_of_this_host()) as gateway:
+        _gather_where_the_udp_is_dropped(gateway, monkeypatch, "unmeasured")
 
 
 

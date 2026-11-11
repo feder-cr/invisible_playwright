@@ -5,7 +5,7 @@ test) starts one with ``with coherent() as gw:`` and points the product at
 ``gw.server`` (``socks5://127.0.0.1:<port>``), with ``gw.credentials`` when the
 gateway asks for a user and password.
 
-The three gateways are the three things a real one can be:
+The gateways are the things a real one can be:
 
 * :func:`coherent` - TCP CONNECT works, UDP ASSOCIATE is granted, and the relay
   carries a STUN binding request to a fake STUN server that answers with the
@@ -15,6 +15,15 @@ The three gateways are the three things a real one can be:
   7 ("command not supported"), the way a residential gateway does.
 * :func:`mismatched` - UDP ASSOCIATE is granted and STUN answers, but with an
   address DIFFERENT from the TCP exit: the disagreement a detector looks for.
+* :func:`silent_udp` - UDP ASSOCIATE is granted and the relay carries datagrams, but
+  no STUN server ever answers (a router that drops UDP behind a working handshake): the core's
+  measurement ends in ``unmeasured``.
+
+THE CORE MEASURES THE UDP EXIT of a SOCKS5 proxy before it declares it to the browser (``invisible_core._udp_exit``: a STUN
+Binding through the proxy's ASSOCIATE, compared with the TCP exit). A test that wants the relay to be used hands the core
+this gateway's measurement server, ``udp_stun_servers=gw.measure_servers`` (``MEASURE_NUMBER``: the fake STUN server by a
+documentation NUMBER of its own, so the datagrams of the measurement are told apart from those of the page, which asks
+``STUN_NUMBER``). The measurement is a UDP ASSOCIATE of its own: :attr:`Gateway.associates` and :attr:`Gateway.datagrams` count it.
 
 Everything is on loopback, so the "exit address" is made observable and
 controllable instead of real: the TCP exit is what the gateway's fake "what is
@@ -51,6 +60,9 @@ STUN_PORT = 19302
 #: address (RFC 5737, TEST-NET-2), unroutable: the only road to it is the relay, which maps it to the fake STUN
 #: server. (A copy of invisible_core's tests/_socks_servers.py with this one addition.)
 STUN_NUMBER = "198.51.100.5"
+#: The same fake STUN server by ANOTHER number: where the core's own measurement of the UDP exit asks (``udp_stun_servers``),
+#: so that what the measurement sent through the relay is never mistaken for what the page sent. Documentation address too.
+MEASURE_NUMBER = "198.51.100.6"
 #: A page the gateway serves itself, for a test that loads one through the proxy (a name nothing else resolves).
 WEB_NAME = "page.test"
 #: The echo endpoints the product asks for its TCP exit.
@@ -112,9 +124,11 @@ class Gateway:
     def __init__(self, *, udp: str, tcp_exit: str, udp_exit: str,
                  user: Optional[str] = None, password: Optional[str] = None,
                  relay_host: str = "127.0.0.1", rtt_ms: int = 0,
-                 exit_host: str = "127.0.0.1", tcp_data_delay: bool = False):
+                 exit_host: str = "127.0.0.1", tcp_data_delay: bool = False, stun_answers: bool = True):
         assert udp in ("relay", "refuse")
         self.udp = udp
+        #: False: the relay carries the datagrams but the fake STUN server is mute (its requests are dropped).
+        self.stun_answers = stun_answers
         #: The round trip to this gateway, in seconds: every answer on the control connection waits for it, and each
         #: datagram the relay carries waits half of it each way. A real gateway is not on loopback.
         self.rtt = rtt_ms / 1000.0
@@ -154,6 +168,12 @@ class Gateway:
     @property
     def server(self) -> str:
         return "socks5://127.0.0.1:%d" % self.port
+
+    @property
+    def measure_servers(self) -> List[str]:
+        """The ``udp_stun_servers`` of a launch behind this gateway: where the core measures its UDP exit, in the
+        form the parameter takes (``"ip:port"``, an IPv4 literal)."""
+        return ["%s:%d" % (MEASURE_NUMBER, STUN_PORT)]
 
     @property
     def credentials(self) -> dict:
@@ -336,7 +356,9 @@ class Gateway:
         ``reported_as`` is the address the client is told the reply came from (None: the real source). A subclass may also
         answer by itself with ``answer(host, port, data)``. By default the fake STUN server, by name or by number, is
         mapped and everything else is forwarded for real."""
-        if (host, dport) in ((STUN_NAME, STUN_PORT), (STUN_NUMBER, STUN_PORT)):
+        if (host, dport) in ((STUN_NAME, STUN_PORT), (STUN_NUMBER, STUN_PORT), (MEASURE_NUMBER, STUN_PORT)):
+            if not self.stun_answers:
+                return None
             # A real server answers from the address it was asked at; the fake STUN server is mapped, so its reply is
             # reported as from the asked address (only when that was a literal: a name has no address to report).
             return self.stun.address, ((host, dport) if atyp == 1 else None)
@@ -429,15 +451,23 @@ def coherent(*, exit_ip: str = EXIT, user: Optional[str] = None,
 
 
 def tcp_only(*, exit_ip: str = EXIT, user: Optional[str] = None,
-             password: Optional[str] = None) -> Gateway:
+             password: Optional[str] = None, relay_host: str = "127.0.0.1") -> Gateway:
     """TCP works; UDP ASSOCIATE is refused with reply code 7."""
     return Gateway(udp="refuse", tcp_exit=exit_ip, udp_exit=exit_ip,
-                   user=user, password=password)
+                   user=user, password=password, relay_host=relay_host)
 
 
 def mismatched(*, tcp_exit: str = EXIT, udp_exit: str = OTHER_EXIT,
-               user: Optional[str] = None, password: Optional[str] = None) -> Gateway:
+               user: Optional[str] = None, password: Optional[str] = None, relay_host: str = "127.0.0.1") -> Gateway:
     """UDP is granted and STUN answers, with an address that is not the TCP exit."""
     assert udp_exit != tcp_exit
     return Gateway(udp="relay", tcp_exit=tcp_exit, udp_exit=udp_exit,
-                   user=user, password=password)
+                   user=user, password=password, relay_host=relay_host)
+
+
+def silent_udp(*, exit_ip: str = EXIT, user: Optional[str] = None, password: Optional[str] = None,
+               relay_host: str = "127.0.0.1") -> Gateway:
+    """TCP works and UDP ASSOCIATE is granted, but no STUN request is ever answered: the core's measurement is
+    ``unmeasured``."""
+    return Gateway(udp="relay", tcp_exit=exit_ip, udp_exit=exit_ip, user=user, password=password,
+                   relay_host=relay_host, stun_answers=False)

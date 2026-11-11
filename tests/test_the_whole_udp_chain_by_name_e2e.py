@@ -29,29 +29,31 @@ context made with `ignore_https_errors=True` (applied per user context to the Do
 import pytest
 
 import _turn_chain as chain_mod
+from _udp_line import declared_udp, egress_by_proxy, measure_servers
 
 pytestmark = pytest.mark.e2e
 
-EXIT = "203.0.113.7"   # what the product's own probe of the egress is told: RFC 5737 TEST-NET-3
 #: Loopback goes through the proxy too (as in test_doh_through_the_proxy_e2e.py), so the road of the page is observable.
 PREFS = {"network.proxy.allow_hijacking_localhost": True, "network.proxy.no_proxies_on": ""}
 
 
 @pytest.fixture
 def gateway(monkeypatch):
-    # The probes of the core that ask for the egress go nowhere: the world has no network but the gateway.
-    for module, name in (("invisible_core._geo", "discover_egress_ip"),):
+    with chain_mod.Chain(rtt_ms=130) as chain:
+        # The probe of the core that asks for the TCP exit goes nowhere (the world has no network but the gateway): it is told
+        # the exit of the chain, the address its datagrams leave from. The core's UDP measurement that follows is NOT replaced:
+        # it asks the chain's relay for a STUN Binding for real and compares what comes back with that exit, so the road
+        # is declared ``coherent`` by measurement and the engine sends the page's UDP to the relay.
         try:
-            mod = __import__(module, fromlist=[name])
-            monkeypatch.setattr(mod, name, lambda *a, **k: EXIT, raising=False)
+            from invisible_core import _geo
+            monkeypatch.setattr(_geo, "discover_egress_ip", egress_by_proxy(chain), raising=False)
         except Exception:   # noqa: BLE001
             pass
-    try:
-        from invisible_playwright import InvisiblePlaywright
-        monkeypatch.setattr(InvisiblePlaywright, "_assert_uscita_invariata", lambda self: None, raising=False)
-    except Exception:   # noqa: BLE001
-        pass
-    with chain_mod.Chain(rtt_ms=130) as chain:
+        try:
+            from invisible_playwright import InvisiblePlaywright
+            monkeypatch.setattr(InvisiblePlaywright, "_assert_uscita_invariata", lambda self: None, raising=False)
+        except Exception:   # noqa: BLE001
+            pass
         yield chain
 
 
@@ -61,7 +63,8 @@ def test_a_turn_srflx_by_name_arrives_through_the_relay_before_the_tick(gateway,
     from invisible_playwright import InvisiblePlaywright
 
     with InvisiblePlaywright(headless=True, binary_path=firefox_binary, timezone="America/New_York", locale="en-US",
-                             proxy=gateway.proxy, extra_prefs=dict(PREFS)) as browser:
+                             proxy=gateway.proxy, udp_stun_servers=measure_servers(gateway),
+                             extra_prefs=dict(PREFS)) as browser:
         page = browser.new_context(ignore_https_errors=True).new_page()
         page.goto(gateway.page.url, wait_until="domcontentloaded", timeout=60000)
         try:
@@ -69,5 +72,7 @@ def test_a_turn_srflx_by_name_arrives_through_the_relay_before_the_tick(gateway,
         except Exception:   # noqa: BLE001
             pass
         result = page.evaluate("window.__result")
+    declared = declared_udp(gateway.proxy, measure_servers(gateway))
+    assert declared == "coherent", "the core did not measure the chain's UDP coherent (%s): the engine would not use the relay" % declared + gateway.explain(result)
     ok = result.get("status") == "DONE" and gateway.page.verdicts and gateway.page.verdicts[-1]["ok"]
     assert ok, "the page did not get a server-reflexive candidate that the TURN server saw, before its tick of 2 s:" + gateway.explain(result)
