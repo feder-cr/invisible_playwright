@@ -25,6 +25,7 @@ import asyncio
 import threading
 import time
 from http.server import BaseHTTPRequestHandler
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -158,7 +159,7 @@ def test_an_iframe_refused_its_load_ends_it_and_its_error_page_is_a_navigation(f
 
     frames, events = _run(firefox_binary, scenario)
     assert frames[1][1] == "r", frames       # the error page's frame is named by its iframe, in whatever process
-    assert frames[1][0].startswith("http://b.test:9"), frames
+    assert urlsplit(frames[1][0])[:2] == ("http", "b.test:9"), frames
 
 
 def test_an_iframe_removed_while_it_loads_is_aborted_then_gone(firefox_binary, sites):
