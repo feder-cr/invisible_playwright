@@ -7,7 +7,7 @@ against anything of ours: its `conftest.py` imports the real `playwright`
 package, so it has only ever measured Microsoft's client.
 
 The plan it serves: replacing the channel between our client and our server
-removes the boundary `diff_protocol.py` compares across, so the judgement has to
+removes the boundary the old protocol comparison compared across, so the judgement has to
 move up a level, from the PROTOCOL to the CONTRACT. This suite is that judge -
 but only if we know, before touching anything, which of those 2173 pass TODAY.
 A baseline taken afterwards proves nothing: every failure would be arguable.

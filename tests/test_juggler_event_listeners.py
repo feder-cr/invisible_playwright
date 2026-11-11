@@ -189,7 +189,7 @@ def test_a_long_session_does_not_accumulate_subscribers(firefox_binary, first_ru
     assert leaked_objects == 0, (
         "forty open-and-close cycles left %d objects in the server's guid "
         "registry; a closed page must be disposed, which is also what the "
-        "driver does and what diff_protocol's fifth dimension compares"
+        "driver does and what the old protocol comparison's fifth dimension compared"
         % leaked_objects)
 
 

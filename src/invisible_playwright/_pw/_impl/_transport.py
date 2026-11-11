@@ -102,5 +102,5 @@ class Transport(ABC):
 #
 # ⛔ To get the old arm back for a comparison - which is the only thing it
 # was still for - check out the last commit that carried it into a git
-# worktree and point `INVPW_DRIVER_TREE` at it. `judge_both_transports.py`
-# and `diff_protocol.py` both read that variable.
+# worktree and point `INVPW_DRIVER_TREE` at it. `scripts/capture_protocol.py`
+# reads that variable.

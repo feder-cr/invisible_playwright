@@ -91,7 +91,7 @@ def test_the_default_is_the_PYTHON_SERVER(monkeypatch):
     user session into an experiment. What flipped it is four measurements taken
     on one code state, not the code looking done: `run_e2e.py` 188 passed on
     BOTH transports; the transport judge 50 green on both with 0 red only on
-    ours; `diff_protocol.py` at parity on methods, parameters, object types,
+    ours; the protocol comparison at parity on methods, parameters, object types,
     initializer fields, events and parentage; and the realness gates green on
     this path for the first time.
 
@@ -107,7 +107,7 @@ def test_the_driver_is_still_reachable_by_name(monkeypatch):
     """⛔ The way back has to keep working, or the flip above is one-way.
 
     A user whose session behaves differently on the new path must be able to
-    say so and get the old one, and `judge_both_transports.py` needs it to have
+    say so and get the old one, and any comparison between the two arms needs it to have
     a second arm at all.
     """
     monkeypatch.setenv(factory.CHOICE_ENV, "driver")

@@ -52,14 +52,14 @@ did so on evidence rather than on the code looking finished:
   regenerating them. `injected.js` (the selector engines, actionability and
   `expect` that run in the page), `keylayout.py` (both in `invisible_core.juggler`
   since 0.30.0, with their extractors in the core's `scripts/`), and the four rules
-  `prefs_byte_parity.py` compares our `user.js` writer against - now frozen in
-  `tests/gates/driver_prefs_rules.json` with the sha of the bundle and of the
-  exact window they came from.
-- ⛔ And the second arm. `judge_both_transports.py` and `diff_protocol.py` exist
-  only while there are two implementations to compare. To get one back:
+  the `user.js` writer was compared against (the comparison script and the frozen
+  rules file were later deleted; they are in git history).
+- ⛔ And the second arm. A comparison between the two transports only exists
+  while there are two implementations to compare, and the scripts that did it
+  were deleted with the driver arm. To get one back:
 
       git worktree add /tmp/judge <the last commit that carried _driver/>
-      INVPW_DRIVER_TREE=/tmp/judge python scripts/judge_both_transports.py <bin>
+      INVPW_DRIVER_TREE=/tmp/judge python scripts/capture_protocol.py <bin>
 
   A worktree rather than an installed release, because a published wrapper pins
   a published core and a sealed engine and therefore cannot drive a locally
