@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "label": "browser launches",
+  "message": "5.31M",
+  "color": "FF7139",
+  "namedLogo": "firefoxbrowser",
+  "logoColor": "white",
+  "cacheSeconds": 3600
+}
