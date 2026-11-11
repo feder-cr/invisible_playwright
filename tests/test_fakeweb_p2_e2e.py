@@ -19,7 +19,7 @@ from fakeweb import profile_p2, sites
 pytestmark = pytest.mark.e2e
 
 HERE = pathlib.Path(__file__).resolve().parent / "fakeweb"
-HARD = ["newsfront", "leaving_beacons_subframe", "leaving_beacons", "cancel_among_beacons"]
+HARD = ["leaving_beacons_subframe", "leaving_beacons", "cancel_among_beacons"]
 REPETITIONS = 5
 
 

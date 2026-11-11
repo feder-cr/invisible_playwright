@@ -21,7 +21,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 from fakeweb import profile_p2, sites  # noqa: E402
 
 # The patterns that took a routed, reused page to `networkidle` never: a request whose end the page never gets.
-HARD = ["newsfront", "leaving_beacons_subframe", "leaving_beacons", "cancel_among_beacons"]
+HARD = ["leaving_beacons_subframe", "leaving_beacons", "cancel_among_beacons"]
 
 
 def main(argv=None):
