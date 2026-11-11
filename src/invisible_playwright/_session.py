@@ -72,16 +72,17 @@ def session_geo(timezone: str, proxy: Optional[Dict[str, str]], locale: Any):
     return prepare_session_geo(timezone, proxy, locale)
 
 
-def default_session(executable: Optional[str] = None) -> "tuple[Dict[str, Any], Dict[str, str]]":
+def default_session(executable: Optional[str] = None,
+                    proxy: Optional[Dict[str, str]] = None) -> "tuple[Dict[str, Any], Dict[str, str]]":
     """The session `InvisiblePlaywright()` composes with the server's defaults (a new
-    seed, no proxy, locale "auto", humanize off: the default of `launch_server`, the
+    seed, the launch's proxy, locale "auto", humanize off: the default of `launch_server`, the
     other entry that is a server), as (prefs, the variables of its environment).
 
     The variables are what `build_env` adds to an environment, composed onto an
     empty one: the font manifest, the WebRTC declaration, the display backend.
     What `server.session_for_launch` gives a launch that names no session."""
     from .launcher import InvisiblePlaywright
-    session = InvisiblePlaywright(binary_path=executable, humanize=False)
+    session = InvisiblePlaywright(binary_path=executable, humanize=False, proxy=proxy or None)
     geo = session_geo(session._timezone, session._proxy, session._locale_requested)
     session._timezone, session._locale = geo.timezone, geo.locale
     prefs = session._build_prefs()

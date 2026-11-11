@@ -269,7 +269,7 @@ def take_session_motion(prefs: Dict) -> tuple:
             (None if budget_ms is None else int(budget_ms) / 1000.0))
 
 
-def session_for_launch(prefs: Dict, executable: str) -> tuple:
+def session_for_launch(prefs: Dict, executable: str, proxy: Optional[Dict] = None) -> tuple:
     """What a launch writes into its profile and adds to its environment: always a
     composed session. Returns (prefs, session_env).
 
@@ -292,11 +292,16 @@ def session_for_launch(prefs: Dict, executable: str) -> tuple:
     humanize off as in `launch_server`): its prefs, with the caller's on top, and
     the variables of its environment, which `op_launch` adds wherever the caller
     named none of the same name. A marked launch comes with both already.
+
+    `proxy` is the launch's own (`launch(proxy=...)`): the session is composed
+    through it as `InvisiblePlaywright(proxy=...)` composes, so the egress it
+    measures there is the address WebRTC declares (STEALTHFOX_WEBRTC_PUBLIC_IP),
+    not this machine's. The engine is told the proxy by `op_launch`, as before.
     """
     if COMPOSED_PREF in prefs:
         return dict(prefs), {}
     from invisible_playwright._session import default_session
-    session_prefs, session_env = default_session(executable)
+    session_prefs, session_env = default_session(executable, proxy)
     return dict(session_prefs, **prefs), dict(session_env)
 
 
@@ -5288,7 +5293,7 @@ class BrowserTypeDispatcher(Dispatcher):
         # those sessions kept their profile. `after_shutdown` runs once
         # `conn.close` has waited for the browser to exit.
         launch_prefs, session_env = session_for_launch(
-            params.get("firefoxUserPrefs") or {}, executable)
+            params.get("firefoxUserPrefs") or {}, executable, params.get("proxy"))
         environment = _launch_environment(params.get("env"))
         named = {e["name"] for e in params.get("env") or []}
         environment.update({k: v for k, v in session_env.items() if k not in named})

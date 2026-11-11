@@ -89,3 +89,64 @@ def test_every_context_of_a_served_browser_is_the_session(firefox_binary):
     assert seen[0] == seen[1], "two contexts of one served session are two machines: %r" % seen
     agent, platform, _ = seen[0]
     assert "Windows NT" in agent and platform == "Win32", seen[0]
+
+
+def test_a_bare_launch_behind_a_proxy_declares_the_egress_as_its_srflx(firefox_binary, monkeypatch):
+    """Behind a proxy a page must read, as WebRTC's server-reflexive candidate, the address the session
+    leaves from (STEALTHFOX_WEBRTC_PUBLIC_IP, which the session's environment carries), not none and not
+    this machine's. A bare launch got no session environment, so a page behind the proxy saw no srflx of
+    the egress. The proxy is the local TCP-only SOCKS5 of test_webrtc_realness.py; the egress the session
+    measures through it is answered with a TEST-NET address (RFC 5737), as in those tests."""
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    import threading
+
+    from invisible_core import decide_session_locale
+    from invisible_core._geo import SessionGeo
+    from invisible_playwright import _session
+    from invisible_playwright._pw.sync_api import sync_playwright
+    from test_webrtc_realness import _PROBE_JS, _Socks5TcpOnly, candidates, srflx_candidates
+
+    egress = "203.0.113.7"
+    for name in ("STEALTHFOX_WEBRTC_PUBLIC_IP", "STEALTHFOX_WEBRTC_DISABLE_IPV6"):
+        monkeypatch.delenv(name, raising=False)
+    measured = []
+
+    def through_the_proxy(timezone, proxy, locale):
+        measured.append(proxy)
+        return SessionGeo("America/New_York", egress, srflx_suppressed=False,
+                          locale=decide_session_locale("en-US"))
+
+    monkeypatch.setattr(_session, "session_geo", through_the_proxy, raising=False)  # absent before the fix
+
+    class Page(BaseHTTPRequestHandler):
+        timeout = 5
+
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.end_headers()
+            self.wfile.write(b"<html><body>wrtc</body></html>")
+
+        def log_message(self, *a):
+            pass
+
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), Page)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    socks = _Socks5TcpOnly()
+    try:
+        with sync_playwright() as p:
+            browser = p.firefox.launch(executable_path=firefox_binary, headless=True,
+                                       proxy={"server": "socks5://127.0.0.1:%d" % socks.port})
+            try:
+                page = browser.new_context().new_page()
+                page.goto("http://127.0.0.1:%d/" % httpd.server_address[1], wait_until="domcontentloaded")
+                res = page.evaluate(_PROBE_JS)
+            finally:
+                browser.close()
+    finally:
+        socks.close()
+        httpd.shutdown()
+    srflx = [c for c in srflx_candidates(candidates(res["candidates"])) if c["address"] == egress]
+    assert srflx, "behind the proxy the page reads no srflx of the egress %s: %s" % (egress, res["candidates"])
+    assert measured and measured[0] and measured[0].get("server", "").startswith("socks5://"), (
+        "the session was not composed through the launch's proxy: %r" % measured)
