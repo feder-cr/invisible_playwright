@@ -26,7 +26,7 @@ from ._cursor import (ENGINE_BINARY,
                       enable_for as _enable_cursor_engine,
                       max_seconds_for as _cursor_max_seconds)
 from ._engine import resolve_executable
-from ._juggler.server import COMPOSED_PREF, MOTION_BUDGET_PREF, POINTER_PREF, SESSION_SEED_PREF
+from ._juggler.server import COMPOSED_PREF, MOTION_BUDGET_PREF, POINTER_PREF, SESSION_SEED_PREF, UDP_STUN_PREF
 from typing import Any, Dict, Optional
 
 from invisible_core import compose_session_prefs, context_geometry, make_virtual_display
@@ -63,6 +63,15 @@ __all__ = ["build_prefs", "true_headless_requested", "TRUE_HEADLESS_ENV",
 #: deliberate choice of a different rendering path. Full account:
 #: `71-bug-archive.md` [B150].
 TRUE_HEADLESS_ENV = "INVPW_TRUE_HEADLESS"
+
+
+def udp_stun_list(servers: Optional[Any]) -> Optional[list]:
+    """The `udp_stun_servers=` of a launch, validated by the core ("ip:port" IPv4 literals; a name or a bad port
+    raises ValueError naming the parameter) and normalised to "ip:port" strings; None for the two public defaults."""
+    if servers is None:
+        return None
+    from invisible_core._udp_exit import stun_servers
+    return ["%s:%d" % server for server in stun_servers(servers)]
 
 
 def session_geo(timezone: str, proxy: Optional[Dict[str, str]], locale: Any,
@@ -189,6 +198,7 @@ def build_prefs(
     humanize: Any,
     show_cursor: Optional[bool] = None,
     session_seed: Optional[int] = None,
+    udp_stun_servers: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """Fingerprint prefs plus the humanize toggle, which is always set explicitly.
 
@@ -272,6 +282,10 @@ def build_prefs(
     # The persona's keyboards are in the prefs already: the core declares them
     # with the language and country (invisible_core.prefs._apply_locale).
     prefs[COMPOSED_PREF] = True
+    # ⛔ THE STUN SERVERS OF THE UDP-EXIT MEASUREMENT ride here for the server only (`UDP_STUN_PREF`): `op_launch`
+    # takes the key out before the profile is written, as it does the seed. Not written when the launch named none.
+    if udp_stun_servers:
+        prefs[UDP_STUN_PREF] = ",".join(udp_stun_servers)
     if session_seed is not None and humanize:
         prefs[SESSION_SEED_PREF] = int(session_seed)
         prefs[POINTER_PREF] = cursor_engine == ENGINE_PYTHON
@@ -400,6 +414,11 @@ class CommonLaunch:
     #: or None. Set by `__enter__` from the egress, like `_timezone`.
     _geolocation: Optional[Dict[str, float]] = None
 
+    #: Where this session measures a SOCKS5 proxy's UDP exit from: the ``udp_stun_servers=`` of the launch, as
+    #: "ip:port" strings (validated by the core), or None for the two public defaults. Kept on the session so the
+    #: launch geo step and the browser's later context proxies use the same list.
+    _udp_stun_servers: Optional[list] = None
+
     def _resolve_headless(self) -> bool:
         """Translate the user's ``headless`` flag.
 
@@ -503,6 +522,7 @@ class CommonLaunch:
             humanize=self._humanize,
             show_cursor=self._show_cursor,
             session_seed=self.seed,
+            udp_stun_servers=self._udp_stun_servers,
         )
 
     def _arm_cursor_engine(self, owner: Any) -> None:

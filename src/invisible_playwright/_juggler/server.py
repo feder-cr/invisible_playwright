@@ -70,7 +70,7 @@ from ._marshal import (_js_number, _as_script, _button, _caller_timeout,
 # here for the length of one fix. Two readings of what a proxy is would be
 # the same duplication that produced the defect, one layer down.
 from invisible_core import SessionLocale, parse_proxy
-from invisible_core._udp_exit import declare_context_proxy, declare_launch_proxy
+from invisible_core._udp_exit import context_proxy_command, launch_proxy_command, stun_servers
 
 from invisible_core import write_user_js
 from invisible_core.juggler import (SessionFiles, domain_matches, host_of,
@@ -238,6 +238,12 @@ POINTER_PREF = "invisible.server.pointer"
 #: out here like the three above: the profile a launch writes is a composed
 #: session, or the server composes one (`session_for_launch`).
 COMPOSED_PREF = "invisible.server.composed"
+#: WHERE THE SESSION MEASURES A SOCKS5 PROXY'S UDP EXIT FROM (`udp_stun_servers=` of the launch, "ip:port" joined by
+#: commas). Like the seed it rides in the prefs the launcher composes, because that dict is the one thing that
+#: reaches this server from the session, and it is taken out in `op_launch` before the profile is written: it is
+#: a parameter of the Python launch, never a browser declaration. The server keeps it on the browser, so the launch
+#: and every later `new_context(proxy=...)` measure with the SAME list.
+UDP_STUN_PREF = "invisible.server.udp_stun_servers"
 #: The persona's keyboards, as Windows writes its input profiles (LANGID:KLID
 #: joined by semicolons, the language's first), decided by the core from the
 #: session's language AND country (`keyboard.profiles_for`). Server-only, like
@@ -265,9 +271,19 @@ def take_session_motion(prefs: Dict) -> tuple:
     budget_ms = rest.pop(MOTION_BUDGET_PREF, None)
     rest.pop(POINTER_PREF, None)
     rest.pop(COMPOSED_PREF, None)
+    rest.pop(UDP_STUN_PREF, None)
     return (rest,
             (None if seed is None else int(seed)),
             (None if budget_ms is None else int(budget_ms) / 1000.0))
+
+
+def session_udp_stun_servers(prefs: Dict) -> Optional[list]:
+    """The STUN servers the launcher named (`UDP_STUN_PREF`), validated again, or None for the defaults. Read
+    BEFORE `take_session_motion` takes the key out."""
+    value = prefs.get(UDP_STUN_PREF)
+    if not value:
+        return None
+    return ["%s:%d" % server for server in stun_servers(str(value).split(","))]
 
 
 def session_for_launch(prefs: Dict, executable: str, proxy: Optional[Dict] = None) -> tuple:
@@ -4406,8 +4422,12 @@ class BrowserDispatcher(Dispatcher):
                  conn: Any, version: str, session_seed: Any = None,
                  motion_budget_s: Any = None,
                  service_workers_enabled: bool = True,
-                 layout: str = "us", pointer_draws: bool = False) -> None:
+                 layout: str = "us", pointer_draws: bool = False,
+                 udp_stun_servers: Optional[list] = None) -> None:
         self.conn = conn
+        #: Where this session measures a proxy's UDP exit from (the launch's `udp_stun_servers`, "ip:port"
+        #: strings; None = the two public defaults): the launch and every context proxy use the same list.
+        self.udp_stun_servers = udp_stun_servers
         #: Whether this browser's pages walk the pointer onto their targets
         #: (`pointer.py`): the launcher chose the Python generator. Off for a
         #: browser built without saying so, which acts as the caller wrote.
@@ -5017,14 +5037,13 @@ class BrowserDispatcher(Dispatcher):
         # a context whose proxy cannot be expressed must not come back usable.
         if params.get("proxy"):
             try:
-                parse_proxy(params["proxy"])
                 # ⛔ MEASURED BEFORE IT IS SENT. The proxy's UDP exit (does its UDP leave from the address of its TCP?)
                 # travels in this very command, as `udp`, and without it the engine drops the UDP of every SOCKS5
                 # proxy. The core discovers the TCP exit through the proxy and measures the UDP beside it, once per
-                # proxy (cached by endpoint and a hash of the credentials): this is the ONE place a context's proxy
-                # is applied, for the sync and async clients and for a remote one alike.
-                proxy = parse_proxy(
-                    declare_context_proxy(params["proxy"])).as_engine_command()
+                # proxy (cached by endpoint, a hash of the credentials and the servers), from the STUN servers the
+                # SESSION was launched with: this is the ONE place a context's proxy is applied, for the sync and
+                # async clients and for a remote one alike. A `udp` key in what the caller wrote is not read.
+                proxy = context_proxy_command(params["proxy"], self.udp_stun_servers)
             except ValueError as exc:
                 raise ProtocolException(
                     "new_context(proxy=...) cannot be applied: %s" % exc)
@@ -5316,6 +5335,8 @@ class BrowserTypeDispatcher(Dispatcher):
         # `conn.close` has waited for the browser to exit.
         launch_prefs, session_env = session_for_launch(
             params.get("firefoxUserPrefs") or {}, executable, params.get("proxy"))
+        # Read BEFORE `take_session_motion` takes it out: it never reaches the profile.
+        udp_stun_servers = session_udp_stun_servers(launch_prefs)
         environment = _launch_environment(params.get("env"))
         named = {e["name"] for e in params.get("env") or []}
         environment.update({k: v for k, v in session_env.items() if k not in named})
@@ -5366,11 +5387,9 @@ class BrowserTypeDispatcher(Dispatcher):
         proxy = None
         if params.get("proxy"):
             try:
-                parse_proxy(params["proxy"])
-                # The launcher's proxy already carries the measure its geo step made (`configure_proxy(udp=)`); one
-                # from a client that composed no session is measured now (a cache hit when the server composed it).
-                proxy = parse_proxy(
-                    declare_launch_proxy(params["proxy"])).as_engine_command()
+                # The measure is the one the launch's geo step remembered for this proxy and these servers (nothing is
+                # asked of the network here): `unmeasured` when there is none, never a claimed `coherent`.
+                proxy = launch_proxy_command(params["proxy"], udp_stun_servers)
             except ValueError as exc:
                 raise ProtocolException("launch(proxy=...) cannot be applied: "
                                         "%s" % exc)
@@ -5399,7 +5418,8 @@ class BrowserTypeDispatcher(Dispatcher):
                 # The persona's keyboard: the one a Windows install gives the
                 # session's language in its country (German in Switzerland
                 # types on the Swiss keyboard).
-                layout=keyboard_layout, pointer_draws=pointer_draws)
+                layout=keyboard_layout, pointer_draws=pointer_draws,
+                udp_stun_servers=udp_stun_servers)
         except BaseException:
             conn.close()
             raise

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Sequence, Union
 
 from invisible_playwright._pw.sync_api import Browser, BrowserContext, Playwright, sync_playwright
 
@@ -101,6 +101,7 @@ class InvisiblePlaywright(_session.CommonLaunch):
         profile_dir: Optional[Union[str, Path]] = None,
         prep_recaptcha: bool = False,
         show_cursor: Optional[bool] = None,
+        udp_stun_servers: Optional[Sequence[str]] = None,
     ) -> None:
         """
         Args:
@@ -185,6 +186,10 @@ class InvisiblePlaywright(_session.CommonLaunch):
         self._pin = pin
         self._headless = headless
         self._proxy = proxy
+        # Where a SOCKS5 proxy's UDP exit is measured from ("ip:port" IPv4 literals; None = the two public
+        # defaults). Validated now, kept on the session for the launch AND for every context proxy; a parameter of
+        # this Python launch only: nothing of it is put in the browser's environment, argv, prefs or pipe.
+        self._udp_stun_servers = _session.udp_stun_list(udp_stun_servers)
         self._extra_args = list(extra_args or [])
         self._humanize = humanize
         # Who draws the cursor path: this package (default), the browser
@@ -258,7 +263,7 @@ class InvisiblePlaywright(_session.CommonLaunch):
         # core resolves "auto" and applies Firefox's language table, and this
         # session keeps the DECISION (a SessionLocale), never a tag of its own.
         _geo = prepare_session_geo(self._timezone, self._proxy, self._locale_requested,
-                                   seed=self.seed)
+                                   seed=self.seed, udp_stun_servers=self._udp_stun_servers)
         self._timezone = _geo.timezone
         self._locale = _geo.locale
         self._webrtc_egress_ip = _geo.egress_ip
@@ -272,7 +277,7 @@ class InvisiblePlaywright(_session.CommonLaunch):
             # after: B172, 2026-08-24.
             pw_headless = self._resolve_headless()
             prefs = self._build_prefs()
-            playwright_proxy = _configure_proxy_shared(self._proxy, prefs, udp=_geo.udp_exit)
+            playwright_proxy = _configure_proxy_shared(self._proxy, prefs)
             self._session_token = SessionToken.mint()
             env = self._build_env(prefs)
             self._pw = sync_playwright().start()

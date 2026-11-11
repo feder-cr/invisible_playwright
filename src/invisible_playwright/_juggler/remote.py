@@ -721,7 +721,8 @@ def _launch_params(session: Any, *, virtual_display: bool, headless: bool,
     from invisible_playwright._reaper import SessionToken
 
     geo = prepare_session_geo(session._timezone, session._proxy,
-                              session._locale_requested, seed=session.seed)
+                              session._locale_requested, seed=session.seed,
+                              udp_stun_servers=session._udp_stun_servers)
     session._timezone = geo.timezone
     session._locale = geo.locale
     session._webrtc_egress_ip = geo.egress_ip
@@ -741,7 +742,7 @@ def _launch_params(session: Any, *, virtual_display: bool, headless: bool,
                 vd.start()
                 session._virtual_display = vd
     prefs = session._build_prefs()
-    playwright_proxy = configure_proxy(session._proxy, prefs, udp=geo.udp_exit)
+    playwright_proxy = configure_proxy(session._proxy, prefs)
     session._session_token = SessionToken.mint()
     env = session._build_env(prefs)
     params: Dict[str, Any] = {
@@ -778,6 +779,7 @@ def launch_server(host: str = DEFAULT_HOST, port: int = 0, *,
                   context_options_override: bool = False,
                   launch_timeout_ms: Optional[int] = 60000,
                   on_engine_closed: Optional[Callable[[], None]] = None,
+                  udp_stun_servers: Optional[List[str]] = None,
                   ) -> RemoteServer:
     """Launch ONE browser and serve it on a WebSocket; return when it listens
     and the browser is ready.
@@ -806,6 +808,9 @@ def launch_server(host: str = DEFAULT_HOST, port: int = 0, *,
                         `context_options_override=True`.
     on_engine_closed    called, from another thread, when the engine dies
                         (not when `close()` ends it).
+    udp_stun_servers    where a SOCKS5 proxy's UDP exit is measured from: "ip:port" IPv4 literals, None for the
+                        two public defaults. Kept on the session, so the launch and every context proxy a client
+                        later gives measure from the same list. Python only: nothing reaches the browser.
     The engine is the sealed one (`ensure_binary`, INVISIBLE_PLAYWRIGHT_ENGINE_DIR)
     and the launch FAILS if the version it reports is not the seal's.
     """
@@ -818,7 +823,7 @@ def launch_server(host: str = DEFAULT_HOST, port: int = 0, *,
         seed, pin=pin, headless=headless, proxy=proxy, extra_args=extra_args,
         humanize=humanize, locale=locale, timezone=timezone,
         extra_prefs=extra_prefs, binary_path=binary_path,
-        show_cursor=show_cursor)
+        show_cursor=show_cursor, udp_stun_servers=udp_stun_servers)
     notes: List[str] = []
     server = _SharedServer()
     endpoint: Optional[RemoteEndpoint] = None

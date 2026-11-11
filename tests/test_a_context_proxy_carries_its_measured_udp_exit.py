@@ -4,14 +4,16 @@ The core measures the UDP exit of a SOCKS5 proxy (`invisible_core._udp_exit`: UD
 with ICE's retransmissions, compared with the TCP exit it discovers through the same proxy) and the answer is the
 optional field ``udp`` of ``Browser.setContextProxy``: ``coherent``, ``no`` or ``unmeasured``. Without it the engine
 drops the UDP of every SOCKS5 proxy, so a context that is given its own proxy would never get a server-reflexive
-candidate.
+candidate. The caller never declares it: a ``udp`` key in the dict of a proxy is not read.
 
 ``new_context(proxy=...)`` of the sync client, of the async client and of a remote one all end in
 ``BrowserDispatcher._apply_context_options``: one place, tested here with a recorder in place of the engine. The
-gateway is the fake of ``_socks_servers`` (a SOCKS5 server with a UDP relay and a STUN server only the relay reaches);
-the STUN server of the measurement is DECLARED through ``STEALTHFOX_UDP_STUN_SERVERS`` as that unroutable address.
+gateway is the fake of ``_socks_servers`` (a SOCKS5 server with a UDP relay and a STUN server only the relay reaches).
 
-Credentials: used on the socket, never in a log record, the environment or argv.
+THE STUN SERVERS ARE A PARAMETER OF THE LAUNCH: ``InvisiblePlaywright(..., udp_stun_servers=[...])`` and
+``launch_server(..., udp_stun_servers=[...])`` ("ip:port" IPv4 literals; None = the two public defaults). The session
+keeps the list, the launch's geo step and every later context proxy use it, and none of it reaches the browser: not its
+environment, argv, prefs or pipe.
 """
 from __future__ import annotations
 
@@ -22,11 +24,16 @@ import sys
 import pytest
 
 from _socks_servers import EXIT, STUN_NUMBER, STUN_PORT, coherent, mismatched, tcp_only
-from invisible_core import _geo, _udp_exit, environment
+from invisible_core import _geo, _udp_exit
 from invisible_core.juggler.connection import EventListeners
-from invisible_playwright._juggler.server import BrowserDispatcher, Server
+from invisible_playwright import _session
+from invisible_playwright._juggler.server import (BrowserDispatcher, Server, UDP_STUN_PREF,
+                                                  session_udp_stun_servers, take_session_motion)
 
 pytestmark = pytest.mark.unit
+
+#: The fake STUN server only the gateway's relay reaches, in the form the launch parameter takes.
+STUN = ["%s:%d" % (STUN_NUMBER, STUN_PORT)]
 
 
 class _Connection(EventListeners):
@@ -47,17 +54,16 @@ class _Connection(EventListeners):
 
 
 @pytest.fixture(autouse=True)
-def _declared(monkeypatch):
-    monkeypatch.setenv(environment.UDP_STUN_SERVERS, "%s:%d" % (STUN_NUMBER, STUN_PORT))
+def _fresh(monkeypatch):
     monkeypatch.setattr(_udp_exit, "_cache", {})
     # The fake gateway answers the exit question the way the product asks it (api.ipify.org through socks5h), but
     # these tests are about the measurement, so the TCP exit is the gateway's own declaration.
     monkeypatch.setattr(_geo, "discover_egress_ip", lambda proxy=None, **kw: EXIT)
 
 
-def _apply(options, gateways=()):
+def _apply(options, gateways=(), stun=STUN):
     conn = _Connection(gateways)
-    dispatcher = BrowserDispatcher(Server(), None, conn, "151.0")
+    dispatcher = BrowserDispatcher(Server(), None, conn, "151.0", udp_stun_servers=stun)
     conn.sent.clear()
     dispatcher._apply_context_options("CTX", options)
     return conn
@@ -98,10 +104,13 @@ def test_a_proxy_that_is_not_socks5_declares_no_field_and_opens_no_connection(sc
         assert gw.associates == 0 and not gw.connects
 
 
-def test_what_the_caller_wrote_under_udp_is_not_declared():
+def test_the_caller_never_declares_udp_on_a_context_proxy():
+    """Red on the code that read the key: a caller-written `coherent` for a proxy whose UDP exits elsewhere (or
+    is refused) must come out as what was MEASURED."""
     with tcp_only() as gw:
-        params = _context_proxy(_apply({"proxy": dict(gw.proxy, udp="coherent")}, [gw]))[1]
-    assert params["udp"] == "no"
+        assert _context_proxy(_apply({"proxy": dict(gw.proxy, udp="coherent")}, [gw]))[1]["udp"] == "no"
+    with mismatched() as gw:
+        assert _context_proxy(_apply({"proxy": dict(gw.proxy, udp="coherent")}, [gw]))[1]["udp"] == "no"
 
 
 def test_one_proxy_is_measured_once_however_many_contexts_are_given_it():
@@ -147,38 +156,94 @@ def test_a_context_proxy_that_cannot_be_read_is_refused_and_nothing_is_measured(
         assert gw.associates == 0
 
 
-# the launch: the proxy the launcher composes carries what its geo step measured --------------------------
-def test_the_launchers_proxy_carries_the_measure_of_its_geo_step():
-    from invisible_core import configure_proxy
-    from invisible_core._geo import SessionGeo
-    geo = SessionGeo("Asia/Tokyo", EXIT, udp_exit="coherent")
-    declared = configure_proxy({"server": "socks5://10.0.0.1:1080"}, {}, udp=geo.udp_exit)
-    from invisible_core import parse_proxy
-    assert parse_proxy(declared).as_engine_command()["udp"] == "coherent"
+def test_a_browser_built_without_a_list_measures_from_the_two_defaults():
+    conn = _Connection()
+    assert BrowserDispatcher(Server(), None, conn, "151.0").udp_stun_servers is None
 
 
-@pytest.mark.parametrize("module", ["launcher", "async_api", "_juggler.remote"])
-def test_every_entry_point_hands_the_geo_measure_to_configure_proxy(module):
-    """The three places a session is composed (sync launcher, async launcher, `launch_server`) call
-    `configure_proxy` with the udp their geo step measured: a call without it would drop it for that entry point."""
-    import ast
-    import importlib
+# the launch: the list is a parameter of the session, kept on it, never given to the browser ------------------
+def test_the_session_keeps_the_list_the_launch_named_and_the_server_gets_it():
+    from invisible_playwright import InvisiblePlaywright
+    from invisible_playwright.async_api import InvisiblePlaywright as AsyncInvisiblePlaywright
+    expected = ["198.51.100.5:19302", "203.0.113.9:3478"]
+    for cls in (InvisiblePlaywright, AsyncInvisiblePlaywright):
+        session = cls(seed=1, udp_stun_servers=["198.51.100.5:19302", ("203.0.113.9", 3478)])
+        assert session._udp_stun_servers == expected
+        assert cls(seed=1)._udp_stun_servers is None
+
+
+def test_a_bad_list_is_refused_by_every_public_entry_point():
     import inspect
-    source = inspect.getsource(importlib.import_module("invisible_playwright." + module))
-    calls = [n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.Call)
-             and (getattr(n.func, "id", None) in ("_configure_proxy_shared", "configure_proxy"))]
-    assert calls, module
-    for call in calls:
-        assert "udp" in [k.arg for k in call.keywords], (module, ast.dump(call)[:120])
+
+    from invisible_playwright import InvisiblePlaywright
+    from invisible_playwright._juggler.remote import launch_server
+    from invisible_playwright.async_api import InvisiblePlaywright as AsyncInvisiblePlaywright
+    for cls in (InvisiblePlaywright, AsyncInvisiblePlaywright):
+        with pytest.raises(ValueError, match="udp_stun_servers"):
+            cls(seed=1, udp_stun_servers=["stun.example.org:3478"])
+    assert "udp_stun_servers" in inspect.signature(launch_server).parameters
 
 
-def test_the_launch_and_the_context_of_the_server_both_declare_the_measure():
-    """`op_launch` (a client that composed no session) and the context options go through the core's declaration of
-    the proxy: a command built from the bare `parse_proxy(...)` would drop the field for that road."""
+def test_the_server_takes_the_list_out_of_the_prefs_before_the_profile():
+    prefs = {"a.b": 1, UDP_STUN_PREF: "198.51.100.5:19302,203.0.113.9:3478"}
+    assert session_udp_stun_servers(prefs) == ["198.51.100.5:19302", "203.0.113.9:3478"]
+    rest, _seed, _budget = take_session_motion(prefs)
+    assert UDP_STUN_PREF not in rest and rest == {"a.b": 1}
+    assert session_udp_stun_servers({"a.b": 1}) is None
+
+
+def test_op_launch_reads_the_list_before_the_prefs_are_cleaned_and_writes_a_profile_without_it():
     import inspect
 
     from invisible_playwright._juggler import server
-    source = inspect.getsource(server)
-    assert "declare_launch_proxy(params[\"proxy\"])" in source
-    assert "declare_context_proxy(params[\"proxy\"])" in source
+    source = inspect.getsource(server.BrowserTypeDispatcher.op_launch)
+    assert source.index("session_udp_stun_servers(launch_prefs)") < source.index("take_session_motion(launch_prefs)")
+    assert source.index("take_session_motion(launch_prefs)") < source.index("write_user_js(")
+    assert "launch_proxy_command(params[\"proxy\"], udp_stun_servers)" in source
     assert "parse_proxy(params[\"proxy\"]).as_engine_command()" not in source
+
+
+def test_every_entry_point_hands_the_list_to_the_geo_step():
+    """The sync launcher, the async launcher and `launch_server` call `prepare_session_geo` with the session's list."""
+    import ast
+    import importlib
+    import inspect
+    for module in ("launcher", "async_api", "_juggler.remote"):
+        source = inspect.getsource(importlib.import_module("invisible_playwright." + module))
+        tree = ast.parse(source)
+        calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call)
+                 and getattr(n.func, "id", None) == "prepare_session_geo"]
+        # (the async launcher passes the function to `asyncio.to_thread`: its keywords are on that call)
+        calls += [n for n in ast.walk(tree) if isinstance(n, ast.Call)
+                  and getattr(n.func, "attr", None) == "to_thread"
+                  and any(getattr(a, "id", None) == "prepare_session_geo" for a in n.args)]
+        assert calls, module
+        for call in calls:
+            assert "udp_stun_servers" in [k.arg for k in call.keywords], module
+
+
+def test_no_stun_address_reaches_the_browsers_environment_argv_prefs_or_pipe():
+    from invisible_core import decide_session_locale
+    from invisible_playwright import InvisiblePlaywright
+    servers = ["198.51.100.5:19302", "203.0.113.9:3478"]
+    session = InvisiblePlaywright(seed=7, udp_stun_servers=servers, binary_path="firefox")
+    session._timezone, session._locale = "Asia/Tokyo", decide_session_locale("en-US")
+    prefs = session._build_prefs()
+    assert session_udp_stun_servers(prefs) == servers        # the server's own key is there...
+    env = _session.build_env(network_declared="v4=198.51.100.7;v6=0", profile=session._profile,
+                             executable=None, base_env={})
+    # ...and what the engine is given: the prefs after the server took its own keys out, the environment, the pipe.
+    browser_prefs, _seed, _budget = take_session_motion(prefs)
+    pipe = repr(_udp_exit.launch_proxy_command({"server": "socks5://10.0.0.1:1080"}, servers))
+    given = repr(browser_prefs) + repr(env) + pipe
+    for needle in servers + ["198.51.100.5", "203.0.113.9"]:
+        assert needle not in given, needle
+    assert not [k for k in env if "STUN" in k.upper()]
+
+
+# the launch of a client that composed no session ----------------------------------------------------------
+def test_a_hand_made_launch_proxy_cannot_claim_a_coherent_udp():
+    """`launch(proxy={..., "udp": "coherent"})` through a bare client: nothing was measured, so `unmeasured`."""
+    with mismatched() as gw:
+        command = _udp_exit.launch_proxy_command(dict(gw.proxy, udp="coherent"), STUN)
+    assert command["udp"] == "unmeasured"

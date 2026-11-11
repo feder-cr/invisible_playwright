@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Sequence, Union
 
 from invisible_playwright._pw.async_api import Browser, BrowserContext, Playwright, async_playwright
 from invisible_playwright._pw._impl._browser_context import page_number_reserved
@@ -37,6 +37,7 @@ class InvisiblePlaywright(_session.CommonLaunch):
         profile_dir: Optional[Union[str, Path]] = None,
         prep_recaptcha: bool = False,
         show_cursor: Optional[bool] = None,
+        udp_stun_servers: Optional[Sequence[str]] = None,
     ) -> None:
         # See sync launcher: `zoom.stealth.fpp.hw_seed` is int32_t - clamp.
         # One place decides the seed, and a profile directory remembers it
@@ -45,6 +46,8 @@ class InvisiblePlaywright(_session.CommonLaunch):
         self._pin = pin
         self._headless = headless
         self._proxy = proxy
+        # See the sync launcher: validated now, kept for the launch and for every context proxy.
+        self._udp_stun_servers = _session.udp_stun_list(udp_stun_servers)
         self._extra_args = list(extra_args or [])
         self._humanize = humanize
         # See the sync launcher: who draws the cursor path (this package by
@@ -110,7 +113,7 @@ class InvisiblePlaywright(_session.CommonLaunch):
         # launcher.
         _geo = await asyncio.to_thread(
             prepare_session_geo, self._timezone, self._proxy, self._locale_requested,
-            seed=self.seed,
+            seed=self.seed, udp_stun_servers=self._udp_stun_servers,
         )
         self._timezone = _geo.timezone
         self._locale = _geo.locale
@@ -125,7 +128,7 @@ class InvisiblePlaywright(_session.CommonLaunch):
             # prefs, not after: B172, 2026-08-24.
             pw_headless = self._resolve_headless()
             prefs = self._build_prefs()
-            playwright_proxy = _configure_proxy_shared(self._proxy, prefs, udp=_geo.udp_exit)
+            playwright_proxy = _configure_proxy_shared(self._proxy, prefs)
             self._session_token = SessionToken.mint()
             env = self._build_env(prefs)
             self._pw = await async_playwright().start()
