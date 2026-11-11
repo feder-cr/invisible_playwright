@@ -402,30 +402,32 @@ def test_a_dead_proxy_does_not_fall_back(firefox_binary, doh, pages, gateway, tr
 
 def test_a_session_without_a_proxy_resolves_with_the_system_resolver(firefox_binary, pages, watcher):
     """The negative control: with no proxy the exit is the machine's own network and retail resolves with the system
-    resolver (mode 0). No `network.trr.*` pref is declared, and the resolver trap sees the question."""
-    if not ResolverTrap.available:
-        pytest.skip(ResolverTrap.reason)
-    zone = {"page-d.test": "127.0.0.1"}
+    resolver (mode 0). No `network.trr.*` pref is declared. Where the resolver trap can run (Linux, root) it also sees the
+    question; where it cannot (Windows) the page is reached by a name the system resolves by itself, and the trap's
+    assertion is the only one that is not made."""
+    trapped = ResolverTrap.available
+    name = "page-d.test" if trapped else "localhost"
     session = InvisiblePlaywright(seed=42, binary_path=firefox_binary, proxy=None)
     session._timezone, session._locale = GEO.timezone, GEO.locale
     declared = [k for k in session._build_prefs() if k.startswith("network.trr.")]
     assert declared == [], "a session without a proxy declared TRR prefs: %s" % declared
 
-    try:
-        trap = ResolverTrap(zone)
-        trap.__enter__()
-    except OSError:
-        pytest.skip("port 53 is taken (another worker holds the resolver trap)")
+    trap = None
+    if trapped:
+        trap = ResolverTrap({"page-d.test": "127.0.0.1"})
+        trap.__enter__()  # port 53 taken by another worker is a failure of the setup, not a reason to skip
     try:
         with session as browser:
             context = browser.new_context()
             page = context.new_page()
-            page.goto(pages.url("page-d.test"), wait_until="load", timeout=30000)
+            page.goto(pages.url(name), wait_until="load", timeout=30000)
             text = _text(page)
             context.close()
     finally:
-        trap.__exit__(None, None, None)
+        if trap is not None:
+            trap.__exit__(None, None, None)
         watcher.stop()
 
-    assert "HOST=page-d.test:%d" % pages.port in text, "the page did not load through the system resolver: %r" % text
-    assert trap.asked("page-d.test"), "the system resolver was never asked for page-d.test: %s" % trap.describe()
+    assert "HOST=%s:%d" % (name, pages.port) in text, "the page did not load through the system resolver: %r" % text
+    if trap is not None:
+        assert trap.asked(name), "the system resolver was never asked for %s: %s" % (name, trap.describe())
