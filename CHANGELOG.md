@@ -26,6 +26,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   iframe and of its page) run on that engine.
 
 ### Fixed
+- `goto(wait_until="networkidle")` arrives on a page that is reused for many addresses, and on a served browser whose
+  context routes every request, as with a stock Firefox. Two causes, both ours. A route answered after the browser had
+  already closed its request (a fetch the page aborted, an image it replaced, an iframe it removed, a beacon cancelled
+  with its document) came back to the client as an error, which the client kept for the whole connection and raised on the
+  next route command; that command was never sent, its request stayed held in the engine, and so on down the page. The
+  server now takes such an answer as done, as Playwright's own server does. The same defect was found a month earlier by richardpowellus
+  (#351), on the favicon of the page a `goto` had just left; his test is part of this release. And the core counted the requests in flight
+  with one integer per page, never reset by a navigation, so one request whose end never arrived kept every later address
+  from going idle (invisible-core 62.64.0 keeps them by request id, per document).
 - A launch that names no session (Playwright's own `BrowserType.launch` against the server) gets a
   session composed the way `InvisiblePlaywright()` composes one: prefs, environment and, behind a
   proxy, the egress the page reads as its WebRTC address. It used to come up with Mozilla's
