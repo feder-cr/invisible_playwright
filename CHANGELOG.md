@@ -37,6 +37,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   with one integer per page, never reset by a navigation, so one request whose end never arrived kept every later address
   from going idle (invisible-core 62.64.0 keeps them by request id, per document, and does not keep the requests of a
   frame that already left: a beacon sent at `pagehide` is announced after its frame is gone).
+- A `goto` sent right after `new_page` is no longer "interrupted by another navigation to about:blank" on a loaded machine. The page was
+  handed to the caller as soon as its main frame was announced, while the engine had not yet committed the page's own initial
+  `about:blank`; a navigation answered before that commit lost to it. The page is now handed over when the engine says it is
+  ready (`Page.ready`), as Playwright's own page is (invisible-core 62.65.0, `Lifecycle.wait_for_page_ready`; a page closed before
+  it was ready ends the wait with an error at once).
 - A launch that names no session (Playwright's own `BrowserType.launch` against the server) gets a
   session composed the way `InvisiblePlaywright()` composes one: prefs, environment and, behind a
   proxy, the egress the page reads as its WebRTC address. It used to come up with Mozilla's
