@@ -397,13 +397,16 @@ class FakeDoh:
 
 
 # --------------------------------------------------------------------------------------------------------- relaying
-def pump(source: socket.socket, sink: socket.socket) -> None:
-    """Copy bytes from ``source`` to ``sink`` until either ends, then shut both."""
+def pump(source: socket.socket, sink: socket.socket, delay: float = 0.0) -> None:
+    """Copy bytes from ``source`` to ``sink`` until either ends, then shut both. ``delay`` seconds wait before each
+    chunk is forwarded (a gateway that is far away)."""
     try:
         while True:
             data = source.recv(65536)
             if not data:
                 break
+            if delay:
+                time.sleep(delay)
             sink.sendall(data)
     except OSError:
         pass
@@ -415,13 +418,13 @@ def pump(source: socket.socket, sink: socket.socket) -> None:
                 pass
 
 
-def relay(a: socket.socket, b: socket.socket) -> None:
+def relay(a: socket.socket, b: socket.socket, delay: float = 0.0) -> None:
     """Carry bytes both ways between two connected sockets until one ends. Blocks."""
     a.settimeout(None)
     b.settimeout(None)
-    thread = threading.Thread(target=pump, args=(b, a), daemon=True)
+    thread = threading.Thread(target=pump, args=(b, a, delay), daemon=True)
     thread.start()
-    pump(a, b)
+    pump(a, b, delay)
     thread.join(timeout=2)
 
 
@@ -450,7 +453,9 @@ class DohGateway(Gateway):
     """
 
     def __init__(self, name: str, doh: FakeDoh, *, user: Optional[str] = None, password: Optional[str] = None,
-                 first_connection_delay: float = 0.0):
+                 first_connection_delay: float = 0.0, **gateway: object):
+        # ``gateway`` goes to the base Gateway as it is (``udp="relay"``, ``relay_host``, ``rtt_ms``, ``exit_host``,
+        # ``tcp_exit``, ``udp_exit``, ``tcp_data_delay``): a road with UDP is this same class, not another gateway.
         # State first: the base constructor starts the accept thread.
         self.name = name
         self.doh = doh
@@ -464,7 +469,9 @@ class DohGateway(Gateway):
         self.killed = False
         self._live: List[socket.socket] = []
         self._live_lock = threading.Lock()
-        super().__init__(udp="refuse", tcp_exit=EXIT, udp_exit=EXIT, user=user, password=password)
+        options = dict(udp="refuse", tcp_exit=EXIT, udp_exit=EXIT)
+        options.update(gateway)
+        super().__init__(user=user, password=password, **options)
 
     # --- accepting, and the slow first hello ---------------------------------------------------------------------
     def _handle(self, c: socket.socket) -> None:
@@ -508,6 +515,14 @@ class DohGateway(Gateway):
         if (host, port) in DOH_TARGETS:
             self.connects.append((host, port))
             self._send(c, self._reply(0))
+            if self.tcp_data_delay and self.rtt:   # a far gateway: every chunk of the tunnel waits half the round trip
+                near, far = socket.socketpair()
+                threading.Thread(target=self.doh.serve, args=(far, self.name), daemon=True).start()
+                try:
+                    relay(c, near, self.rtt / 2)
+                finally:
+                    near.close()
+                return
             self.doh.serve(c, self.name)
             return
         if (host, port) in (WHOAMI4, WHOAMI6, (WEB_NAME, 80)):
@@ -528,7 +543,7 @@ class DohGateway(Gateway):
             self._live.append(upstream)
         self._send(c, self._reply(0))
         try:
-            relay(c, upstream)
+            relay(c, upstream, self.rtt / 2 if self.tcp_data_delay else 0.0)
         finally:
             upstream.close()
 
