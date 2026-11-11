@@ -32,6 +32,7 @@ import time
 
 import pytest
 
+from _host_address import this_host_address
 from _udp_line import declared_udp, egress_by_proxy, expected_protocols, judge_visits, measure_servers
 
 pytestmark = [pytest.mark.e2e, pytest.mark.usefixtures("the_udp_line")]
@@ -50,15 +51,6 @@ def _binary():
     if not cand or not os.path.exists(cand):
         pytest.skip("no patched binary (set STEALTHFOX_E2E_BINARY)")
     return cand
-
-
-def _address_of_this_host() -> str:
-    probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        probe.connect(("192.0.2.1", 9))
-        return probe.getsockname()[0]
-    finally:
-        probe.close()
 
 
 def _gateway(road: str, host: str):
@@ -109,7 +101,7 @@ def test_a_page_with_no_proxy_reads_h2_then_h3_then_h3(monkeypatch):
     import aioquic  # noqa: F401 - the dev extra installs it: a missing one is a failure, never a skip
     from _h3_server import H3Server
 
-    with H3Server(_address_of_this_host()) as server:
+    with H3Server(this_host_address()) as server:
         protocols, walls = _three_visits(server, monkeypatch, egress_by_proxy(direct=EXIT_DIRECT))
         problems = judge_visits("direct", protocols, walls)
         assert not problems, "; ".join(problems) + ". " + _report("direct", protocols, walls, server)
@@ -120,7 +112,7 @@ def test_a_page_behind_a_gateway_that_relays_udp_reads_h2_then_h3_then_h3_and_th
     import aioquic  # noqa: F401 - the dev extra installs it: a missing one is a failure, never a skip
     from _h3_server import H3Server
 
-    host = _address_of_this_host()
+    host = this_host_address()
     with H3Server(host) as server, _gateway("socks5_coherent", host) as gateway:
         protocols, walls = _three_visits(server, monkeypatch, egress_by_proxy(gateway), proxy=gateway.proxy,
                                          udp_stun_servers=measure_servers(gateway))
@@ -142,7 +134,7 @@ def test_a_page_behind_a_socks5_proxy_that_is_not_coherent_reads_h2_three_times_
     import aioquic  # noqa: F401 - the dev extra installs it: a missing one is a failure, never a skip
     from _h3_server import H3Server
 
-    host = _address_of_this_host()
+    host = this_host_address()
     with H3Server(host) as server, _gateway(road, host) as gateway:
         protocols, walls = _three_visits(server, monkeypatch, egress_by_proxy(gateway), proxy=gateway.proxy,
                                          udp_stun_servers=measure_servers(gateway))
@@ -178,7 +170,7 @@ def test_a_page_behind_an_http_proxy_reads_h2_three_times_and_loads_without_dela
             finally:
                 upstream.close()
 
-    host = _address_of_this_host()
+    host = this_host_address()
     doh = FakeDoh({})
     try:
         with H3Server(host) as server:

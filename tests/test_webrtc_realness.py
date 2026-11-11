@@ -30,6 +30,7 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler, HTTPServer
 
 import pytest
 
+from _host_address import this_host_address
 from _socks_servers import MEASURE_NUMBER, STUN_PORT
 from _udp_line import declared_udp, egress_by_proxy, measure_servers
 
@@ -530,16 +531,6 @@ _RELAY_PROBE_JS = r"""async (stun) => {
 }"""
 
 
-def _address_of_this_host() -> str:
-    """The IPv4 address the host sends from (a routable one, as a real gateway's relay is). No packet is sent."""
-    probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        probe.connect(("192.0.2.1", 9))
-        return probe.getsockname()[0]
-    finally:
-        probe.close()
-
-
 _ICE_PREFS = [
     {},                                                          # the engine's default: ICE in the socket process
     {"media.peerconnection.mtransport_process": False},          # ICE in the process of the page
@@ -560,7 +551,7 @@ def _gather_behind_a_coherent_gateway(monkeypatch, credentials, ice_prefs, rtt_m
     user, password = credentials or (None, None)
     # The relay sits on the address of this host, as a real gateway's does: the engine's ICE sockets are bound to an
     # interface address, and on Windows such a socket cannot send to a relay on loopback.
-    with coherent(user=user, password=password, relay_host=_address_of_this_host(), rtt_ms=rtt_ms) as gateway:
+    with coherent(user=user, password=password, relay_host=this_host_address(), rtt_ms=rtt_ms) as gateway:
         exit_ip = gateway.tcp_exit
         # The session asks the gateway for its TCP exit over HTTPS, which no local gateway can answer as itself: the
         # answer is the gateway's. The UDP probe that follows is NOT replaced: it runs through the relay, for real.
@@ -691,7 +682,7 @@ def test_two_contexts_with_two_proxies_each_gets_the_srflx_of_its_own(monkeypatc
 
     from _socks_servers import STUN_NUMBER, STUN_PORT, coherent
     stun = f"stun:{STUN_NUMBER}:{STUN_PORT}"
-    host = _address_of_this_host()
+    host = this_host_address()
     with coherent(exit_ip="203.0.113.7", user="alice", password="s3cret", relay_host=host) as first,             coherent(exit_ip="198.51.100.77", user="bob", password="hunter2", relay_host=host) as second:
         # Each gateway reports the TCP exit of its own: the context proxy is measured against ITS exit, not the session's.
         monkeypatch.setattr(_geo, "discover_egress_ip", egress_by_proxy(first, second))
@@ -722,7 +713,7 @@ def test_the_turn_over_tcp_of_a_context_goes_through_the_proxy_of_that_context(m
     from invisible_core import _geo
 
     from _socks_servers import coherent
-    host = _address_of_this_host()
+    host = this_host_address()
     turn_host, turn_port = "198.51.100.9", 3478
     with coherent(exit_ip="203.0.113.7", user="alice", password="s3cret", relay_host=host) as session,             coherent(exit_ip="198.51.100.77", user="bob", password="hunter2", relay_host=host) as context:
         monkeypatch.setattr(_geo, "discover_egress_ip", egress_by_proxy(session, context))
@@ -800,7 +791,7 @@ def test_a_proxy_whose_udp_leaves_from_another_address_gives_no_srflx_at_all(mon
     exit: the classic leak (a srflx that is not the address of the page's HTTP). The core measures it ``no`` and the engine
     treats it as a router that drops UDP: the relay is granted but the page's datagrams never go to it."""
     from _socks_servers import mismatched
-    with mismatched(user="alice", password="s3cret", relay_host=_address_of_this_host()) as gateway:
+    with mismatched(user="alice", password="s3cret", relay_host=this_host_address()) as gateway:
         _gather_where_the_udp_is_dropped(gateway, monkeypatch, "no")
 
 
@@ -811,7 +802,7 @@ def test_a_proxy_whose_relay_never_answers_gives_no_srflx_at_all(monkeypatch):
     router that drops UDP behind a working handshake). The measurement ends within its budget in ``unmeasured``: not a
     refusal, but the engine acts on ``coherent`` only, so the page is where it is on a network that blocks UDP."""
     from _socks_servers import silent_udp
-    with silent_udp(user="alice", password="s3cret", relay_host=_address_of_this_host()) as gateway:
+    with silent_udp(user="alice", password="s3cret", relay_host=this_host_address()) as gateway:
         _gather_where_the_udp_is_dropped(gateway, monkeypatch, "unmeasured")
 
 

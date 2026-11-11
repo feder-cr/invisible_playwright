@@ -39,6 +39,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Dict, List, Optional, Tuple
 
 from _doh_servers import DohGateway, FakeDoh
+from _host_address import this_host_address
 from _socks_servers import WHOAMI4, Gateway
 
 TURN_NAME = "turn.relay-only.test"
@@ -53,17 +54,6 @@ MAGIC = 0x2112A442
 PASSWORD = "qwerty"
 REALM = "hermetic"
 NONCE = "6e6f6e6365"
-
-
-def this_host_address() -> str:
-    """The address of this host that a socket bound to an interface can send from: the relay's BND.ADDR (a loopback relay
-    only suits a client whose UDP socket is not bound to an interface, and an engine's ICE sockets are)."""
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        s.connect(("192.0.2.1", 9))
-        return s.getsockname()[0]
-    finally:
-        s.close()
 
 
 # ── STUN / TURN wire ───────────────────────────────────────────────────────────
@@ -162,11 +152,13 @@ class Chain(DohGateway):
     whoami_names = ("api.ipify.org", "ifconfig.me", "icanhazip.com")
 
     def __init__(self, *, rtt_ms: int = 130, relay_host: Optional[str] = None) -> None:
+        # The address of this host first: on a host with no default route the test skips, with no server started yet.
+        relay_host = relay_host or this_host_address()
         self.turn = TurnServer()
         self.doh = FakeDoh({TURN_NAME: TURN_IP, PAGE_NAME: "127.0.0.1"})
         self.page = Page(self)
         super().__init__("chain", self.doh, udp="relay", tcp_exit=EXIT_HOST, udp_exit=EXIT_HOST,
-                         relay_host=relay_host or this_host_address(), rtt_ms=rtt_ms,
+                         relay_host=relay_host, rtt_ms=rtt_ms,
                          exit_host=EXIT_HOST, tcp_data_delay=True)
 
     def close(self) -> None:
