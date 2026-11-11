@@ -3061,6 +3061,15 @@ class PageDispatcher(Dispatcher):
             # cannot disagree about a request, a redirect or a replay.
             if method == "Network.requestWillBeSent" and params.get("isIntercepted"):
                 self._let_through(params.get("requestId"))
+        elif (method == "Network.requestWillBeSent" and params.get("method") == "OPTIONS"
+              and not params.get("isIntercepted")):
+            # ⛔ AS PLAYWRIGHT'S OWN SERVER (ffNetworkManager `_onRequestWillBeSent`: `if (event.method === "OPTIONS" &&
+            # !event.isIntercepted) return;`): an OPTIONS request that no route holds is a CORS preflight, which the browser
+            # makes for the page and the page cannot see; a client never hears of it. Reported here, a page with a
+            # preflighted fetch showed one request more than on stock Firefox (10 per page on cnbc.com, 18 on scmp.com),
+            # in `page.on("request")`, in `route`, in a request counter. Its response and its end find no request and are
+            # dropped with it.
+            pass
         elif method == "Network.requestWillBeSent":
             request = RequestDispatcher(self.server, self, params)
             self._requests[params.get("requestId")] = request
