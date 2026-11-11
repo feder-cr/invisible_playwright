@@ -8,8 +8,8 @@ the new window: 2", 15 times in 15 on firefox-61 and on the firefox-62 candidate
 was the engine's own default, not a persona: the Linux engine said "X11; Linux" where every session says
 Windows.
 
-And the remote transport (`launch_server`, what Tetra runs): every context a client opens on the served
-browser lives in the profile the server composed, so each says the same Windows machine.
+And the remote transport (`launch_server`, what a remote client drives): every context a client opens on the
+served browser lives in the profile the server composed, so each says the same Windows machine.
 """
 from __future__ import annotations
 
