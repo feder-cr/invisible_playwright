@@ -21,20 +21,15 @@ test says what the product does not do yet and the step that makes it green:
     9  named world after the OOP frame        step 1a + 2b
     10 console of the OOP frame               step 1a
 
-The oracle for "another process" is the set of the engine's processes that host a site, below the test: a
-cross-site frame adds at least one, a same-site one adds none. A content process is not one of them by being
-new: the engine keeps preallocated content processes (`dom.ipc.processPrelaunch.fission.number`), hands one to
-a site when a site needs a process, and starts another to refill the pool, whenever it gets to it. A pid that
-appears is often that refill, not a site. On Linux the process says which it is: `ContentChild::SetProcessName`
-names it by its remote type with `prctl(PR_SET_NAME)` (ipc/glue/ProcessUtils_linux.cpp), "Isolated Web Co" for
-a site of strategy 1 (`webIsolated=<site>`), "Web Content" while it is preallocated. Windows names no process
-(ProcessUtils_none.cpp), so the two tests that count processes skip there. The set is read once it is quiet.
+The oracle for "another process" is the set of the engine's processes that host a site, below the test
+(tests/_processes.py says how a site's process is told from a preallocated one): a cross-site frame adds at
+least one, a same-site one changes nothing. The set is read once it is quiet. Off Linux the two tests that
+count processes skip: no other system names the process.
 """
 from __future__ import annotations
 
 import json
 import os
-import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler
@@ -43,6 +38,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
+from _processes import site_processes_below
 from _servers import LocalServer
 
 FISSION_ON = {
@@ -131,35 +127,9 @@ def engine_dir(firefox_binary):
     return str(Path(firefox_binary).resolve().parent)
 
 
-#: The name a content process of strategy 1 takes once it hosts a site (15 characters: PR_SET_NAME keeps 15 of
-#: "Isolated Web Content"). A preallocated one is "Web Content" until a site is given to it.
-SITE_PROCESS_NAME = "Isolated Web Co"
-
-
-def site_pids(processes, engine_dir):
-    """The pids of the processes of the engine, among `processes` (psutil-like), that host a site."""
-    import psutil
-
-    pids = set()
-    for proc in processes:
-        try:
-            if not os.path.normcase(proc.exe()).startswith(os.path.normcase(engine_dir)):
-                continue
-            name, cmd = proc.name(), proc.cmdline()
-        except psutil.Error:
-            continue
-        if "-contentproc" in cmd and cmd[-1] == "tab" and name == SITE_PROCESS_NAME:
-            pids.add(proc.pid)
-    return pids
-
-
 def site_processes(engine_dir):
-    """The pids of the engine's processes below this test that host a site (see the module's docstring)."""
-    import psutil
-
-    if not sys.platform.startswith("linux"):
-        pytest.skip("only Linux names a content process by the site it hosts; %s names none" % sys.platform)
-    return site_pids(psutil.Process(os.getpid()).children(recursive=True), engine_dir)
+    """The pids of the engine's processes below this test that host a site (tests/_processes.py)."""
+    return site_processes_below(os.getpid(), engine_dir)
 
 
 def quiet(engine_dir, seconds=3.0, limit=30.0):
