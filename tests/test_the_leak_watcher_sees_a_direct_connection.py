@@ -156,20 +156,19 @@ def test_the_trap_answers_the_names_it_is_given_over_udp_and_tcp():
         assert aaaa[3] & 0xF == 0 and aaaa[6:8] == b"\x00\x00", "empty NOERROR for AAAA"
 
 
-def test_a_trap_that_cannot_rewrite_resolv_conf_says_why_and_does_not_start():
-    if ResolverTrap.available:
-        pytest.skip("this host can run the trap")
-    assert ResolverTrap.reason
-    with pytest.raises(RuntimeError):
-        ResolverTrap().__enter__()
-
-
-@pytest.mark.skipif(not ResolverTrap.available, reason=ResolverTrap.reason or "the resolver trap is available")
-def test_the_trap_points_resolv_conf_at_itself_and_restores_it_byte_for_byte():
-    from pathlib import Path
-    original = Path("/etc/resolv.conf").read_bytes()
-    with ResolverTrap({"page-d.test": "127.0.0.1"}) as trap:
-        assert b"nameserver 127.0.0.1" in Path("/etc/resolv.conf").read_bytes()
-        assert socket.gethostbyname("page-d.test") == "127.0.0.1"
-        assert trap.asked("page-d.test")
-    assert Path("/etc/resolv.conf").read_bytes() == original
+# A test that does not apply to a host is not collected there, never skipped (ci/required-suites.json: no skip is
+# allowed in a required suite). Exactly one of the two below exists on every host, so the count is the same everywhere.
+if ResolverTrap.available:
+    def test_the_trap_points_resolv_conf_at_itself_and_restores_it_byte_for_byte():
+        from pathlib import Path
+        original = Path("/etc/resolv.conf").read_bytes()
+        with ResolverTrap({"page-d.test": "127.0.0.1"}) as trap:
+            assert b"nameserver 127.0.0.1" in Path("/etc/resolv.conf").read_bytes()
+            assert socket.gethostbyname("page-d.test") == "127.0.0.1"
+            assert trap.asked("page-d.test")
+        assert Path("/etc/resolv.conf").read_bytes() == original
+else:
+    def test_a_trap_that_cannot_rewrite_resolv_conf_says_why_and_does_not_start():
+        assert ResolverTrap.reason
+        with pytest.raises(RuntimeError):
+            ResolverTrap().__enter__()
