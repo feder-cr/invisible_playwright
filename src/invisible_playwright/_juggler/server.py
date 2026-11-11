@@ -2484,11 +2484,13 @@ class RouteDispatcher(Dispatcher):
         # error up; the client kept it as the error of the whole connection and raised it on the NEXT route command,
         # which was never sent: its request stayed held in the engine, its handler failed too, and so on down the page
         # (measured on a real news page: six held requests in a row, one a beacon, networkidle never).
+        # ⛔ EVERY protocol error of the three commands, not one wording of it. The engine says "Cannot find request" when
+        # the request left its held set first, and "NS_BINDING_ABORTED [nsIInterceptedChannel.resetInterceptionWithURI]"
+        # when the channel was cancelled while the answer was on its way: the same event, two messages. Stock's
+        # `sendMayFail` swallows both, and a list of the wordings we have met would fail on the next one.
         try:
             result = self.request.page.send(command, params)
-        except juggler.ProtocolError as exc:
-            if "Cannot find request" not in str(exc):
-                raise
+        except juggler.ProtocolError:
             result = None
         except juggler.TargetClosedError:
             result = None            # the page went away: nothing is held any more

@@ -54,16 +54,40 @@ def test_every_op_of_a_route_goes_through__send_and_nothing_else_talks_to_the_pa
         assert not _sends_network_command(fn), "%s sends a Network command by itself" % name
 
 
-def test__send_swallows_a_request_the_browser_already_closed_and_nothing_else():
+def test__send_answers_every_protocol_error_of_a_route_command_as_may_fail():
+    """Stock's `sendMayFail`: whatever the engine says about a request the page already closed ("Cannot find request",
+    "NS_BINDING_ABORTED [nsIInterceptedChannel.resetInterceptionWithURI]", the next wording) is not the client's error."""
     send = _methods(_route_dispatcher())["_send"]
     handlers = [n for n in ast.walk(send) if isinstance(n, ast.ExceptHandler)]
     caught = {ast.unparse(h.type) for h in handlers if h.type is not None}
     assert caught == {"juggler.ProtocolError", "juggler.TargetClosedError"}, caught
+    assert not any(isinstance(n, ast.Raise) for h in handlers for n in ast.walk(h)), \
+        "an error of a route command must never reach the client: it would be raised on its NEXT route command"
     source = ast.get_source_segment(SERVER.read_text(encoding="utf-8"), send)
-    assert '"Cannot find request" not in str(exc)' in source and "raise" in source, \
-        "a ProtocolError other than 'Cannot find request' must still reach the client"
     assert source.index("self.dispose()") > source.index("except juggler.TargetClosedError"), \
         "the route is disposed after a swallowed error too"
+
+
+@pytest.mark.parametrize("message", [
+    'Network.resumeInterceptedRequest: Cannot find request "123"',
+    "Network.resumeInterceptedRequest: Component returned failure code: 0x804b0002 (NS_BINDING_ABORTED) "
+    "[nsIInterceptedChannel.resetInterceptionWithURI]",
+    "Network.abortInterceptedRequest: Component returned failure code: 0x80004005 (NS_ERROR_FAILURE)",
+])
+def test_a_protocol_error_from_the_engine_is_not_the_clients_error(message):
+    from invisible_playwright._juggler import server as srv
+
+    class Page:
+        def send(self, command, params):
+            raise srv.juggler.ProtocolError(message)
+
+    class Request:
+        page = Page()
+        request_id = "r1"
+
+    route = object.__new__(srv.RouteDispatcher)
+    route.request, route.answered, route.dispose = Request(), False, lambda: None
+    assert route._send("Network.resumeInterceptedRequest", {}) is None
 
 
 def test_the_stock_client_the_networkidle_e2e_drives_the_server_with_is_a_pinned_dev_dependency():
