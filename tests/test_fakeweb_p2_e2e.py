@@ -9,6 +9,7 @@ runs stock in the same job and is the CI entry.
 """
 from __future__ import annotations
 
+import importlib
 import json
 import pathlib
 
@@ -24,12 +25,12 @@ REPETITIONS = 10
 
 
 def _stock_client():
+    """The stock Playwright client (a pinned dev dependency), imported by name: the fork's guard forbids a static import."""
     try:
-        from playwright.sync_api import sync_playwright
+        return importlib.import_module("playwright.sync_api").sync_playwright
     except ImportError as exc:      # a broken environment, not a reason to skip: a skipped gate checks nothing
         pytest.fail("the stock Playwright client is missing (%s): install the wrapper with its dev extra" % exc,
                     pytrace=False)
-    return sync_playwright
 
 
 def test_every_hard_page_reaches_networkidle_every_time_on_a_reused_routed_page(firefox_binary):

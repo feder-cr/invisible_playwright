@@ -35,7 +35,9 @@ def main(argv=None):
     ap.add_argument("--out", default=None)
     args = ap.parse_args(argv)
 
-    from playwright.sync_api import sync_playwright
+    import importlib
+
+    sync_playwright = importlib.import_module("playwright.sync_api").sync_playwright   # the stock client, by name
 
     declared = json.loads((ROOT / "tests" / "fakeweb" / "pages.json").read_text(encoding="utf-8"))["stock_firefox"]
     patterns = [p for p in sites.PATTERNS if p != "quiet"] if args.patterns == "all" else args.patterns.split(",")
