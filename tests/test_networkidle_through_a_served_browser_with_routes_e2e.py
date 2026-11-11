@@ -47,6 +47,10 @@ EXTRA = {
     "cancel_img": b"<script>for(let i=0;i<30;i++){const m=new Image();m.src='/pixel.png?a='+i;m.src='/pixel.png?b='+i}</script><script src=/slow.js></script>",
     "cancel_iframe": b"<script>for(let i=0;i<6;i++){const f=document.createElement('iframe');f.src='/frame?i='+i;document.body.appendChild(f);setTimeout(()=>f.remove(),5*i)}</script>",
     "cancel_navigation": b"<script>history.pushState({},'','/spa');fetch('/api/data');setTimeout(()=>{history.pushState({},'','/spa2');fetch('/api/data?x=1')},10)</script><script src=/slow.js></script>",
+    # Beacons the way ad and analytics scripts send them: to another origin, and while the document is being left.
+    "cross_beacon": b"<script>for(let i=0;i<6;i++)navigator.sendBeacon('http://localhost:%(port)d/beacon?i='+i,JSON.stringify({i}))</script>",
+    "unload_beacon": b"<script>addEventListener('pagehide',()=>{for(let i=0;i<4;i++)navigator.sendBeacon('/beacon?leave='+i,'x')});addEventListener('visibilitychange',()=>navigator.sendBeacon('/beacon?vis','x'))</script>",
+    "keepalive": b"<script>for(let i=0;i<4;i++)fetch('/api/data?k='+i,{method:'POST',keepalive:true,body:'x'}).catch(()=>{})</script>",
     "many": b"<script>for(let i=0;i<50;i++){fetch('/api/data?i='+i).catch(()=>{});(new Image).src='/pixel.png?i='+i}</script>",
 }
 # kinds whose route handler is slow (ms). The sync client runs the handlers one after the other, so the page's 100 requests
@@ -229,6 +233,42 @@ def test_one_page_reused_for_many_addresses_reaches_networkidle_every_time(firef
                 t0 = time.monotonic()
                 page.goto(site + "?kind=%s&n=%d" % (kind, n), wait_until="networkidle", timeout=20000)
                 assert time.monotonic() - t0 < 15, "address %d (%s) reached networkidle after %.1f s" % (n, kind, time.monotonic() - t0)
+            ctx.close()
+            browser.close()
+    finally:
+        server.close()
+
+
+@pytest.mark.parametrize("kind", ["cancel_fetch", "cancel_img", "cancel_iframe"])
+def test_a_plain_route_handler_is_not_poisoned_by_a_request_the_page_cancelled(firefox_binary, site, kind):
+    """The handler of a tf-fetch-like client is a plain function: continue_ or abort, no try. The page cancels requests
+    while the (slow) route is deciding; the browser has already closed them, and the engine answers the late command with
+    `Cannot find request`. Stock Playwright's server sends those commands as may-fail and tells the client nothing; ours
+    passed the error up, the client kept it as the error of the connection and raised it on the NEXT route command, which
+    was then never sent: the request stayed held in the engine, its handler failed too, and so on down the page (measured
+    on a real news page: six held requests in a row, one a beacon, and networkidle never)."""
+    from invisible_playwright._juggler.remote import launch_server
+
+    sync_playwright = pytest.importorskip("playwright.sync_api").sync_playwright
+    server = launch_server(headless=True, binary_path=firefox_binary, locale="en-US", timezone="Europe/Rome")
+    try:
+        with sync_playwright() as p:
+            browser = p.firefox.connect(server.ws_endpoint)
+            ctx = browser.new_context()
+
+            def plain(route):                    # no try: the way a client is written
+                time.sleep(0.12)
+                if route.request.resource_type in BLOCKED:
+                    route.abort("blockedbyclient")
+                else:
+                    route.continue_()
+
+            ctx.route("**/*", plain)
+            page = ctx.new_page()
+            for attempt in range(3):
+                t0 = time.monotonic()
+                page.goto(site + "?kind=%s&n=%d" % (kind, attempt), wait_until="networkidle", timeout=25000)
+                assert time.monotonic() - t0 < 20, "attempt %d: networkidle after %.1f s" % (attempt, time.monotonic() - t0)
             ctx.close()
             browser.close()
     finally:

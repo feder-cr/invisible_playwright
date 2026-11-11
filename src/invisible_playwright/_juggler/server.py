@@ -2477,7 +2477,21 @@ class RouteDispatcher(Dispatcher):
         # session they came back "Handler for does not implement method", the
         # held request was never released and the page hung on its first
         # request. Every route that ever reached a handler failed this way.
-        result = self.request.page.send(command, params)
+        # ⛔ THE ANSWER TO A REQUEST THE BROWSER HAS ALREADY CLOSED IS NOT AN ERROR. The page cancels requests while a route is
+        # deciding (a fetch aborted, an image replaced, an iframe removed, a beacon with its document): the engine takes
+        # the request out of its held set at once, and the late `continue`/`abort`/`fulfill` meets "Cannot find request".
+        # Stock Playwright sends these commands as may-fail and tells the client nothing (`sendMayFail`). Ours passed the
+        # error up; the client kept it as the error of the whole connection and raised it on the NEXT route command,
+        # which was never sent: its request stayed held in the engine, its handler failed too, and so on down the page
+        # (measured on a real news page: six held requests in a row, one a beacon, networkidle never).
+        try:
+            result = self.request.page.send(command, params)
+        except juggler.ProtocolError as exc:
+            if "Cannot find request" not in str(exc):
+                raise
+            result = None
+        except juggler.TargetClosedError:
+            result = None            # the page went away: nothing is held any more
         self.dispose()
         return result
 
