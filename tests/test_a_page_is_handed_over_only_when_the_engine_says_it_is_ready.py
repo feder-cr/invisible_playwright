@@ -8,8 +8,11 @@ navigations.
 'interrupted by another navigation to about:blank'. A wrapper that hands the page over on the main frame alone (no wait for
 Page.ready) returns `new_page()` while the engine is still in that window; so does the adoption of a popup.
 
-Known-bad: with the `wait_for_page_ready` call of `PageDispatcher.__init__` removed (a21e1de), both tests fail - the page is
-delivered before Page.ready; with it, the page is delivered right after.
+Known-bad: with the wait for Page.ready removed (a21e1de), the first two tests fail - the page is delivered before Page.ready; with
+the wait INSIDE the constructor (7db28e4..6a60dce), the last two fail - a popup opened by a link has its first request held by a
+route until its page answers, so a page that is only built once it is ready never becomes ready, and what the engine says between
+the commit and the ready (the commit itself, the `load`) is said to a page that does not exist yet and is lost; the client's popup
+then has no `load` to wait for. The page is BUILT at once and ANNOUNCED when ready.
 """
 from __future__ import annotations
 
@@ -19,7 +22,7 @@ import time
 import pytest
 
 from invisible_playwright._juggler import remote
-from invisible_playwright._juggler.server import LocalUtilsDispatcher
+from invisible_playwright._juggler.server import FrameDispatcher, LocalUtilsDispatcher
 
 from test_a_closed_context_leaves_nothing_in_the_registry import ScriptedJuggler
 
@@ -75,6 +78,12 @@ def late_browser():
     yield browser
     for session in list(conn.held):
         conn.say_ready(session)
+    time.sleep(0.1)
+    for context in list(browser.contexts):
+        try:
+            server.handle({"guid": context.guid, "method": "close", "params": {}})
+        except Exception:
+            pass
     server.shutdown()
 
 
@@ -138,3 +147,65 @@ def test_a_popup_is_announced_only_after_page_ready(late_browser):
         time.sleep(0.01)
     assert announced, "the popup was never announced after Page.ready"
     assert len(context.pages) == 2
+
+
+def _unannounced_page(browser, session):
+    return next(o for o in browser.server._objects.values()
+                if o.TYPE == "Page" and getattr(o, "session", None) == session)
+
+
+def test_a_popup_exists_and_listens_while_it_waits_for_its_ready(late_browser):
+    """The first request of a popup opened by a link is held by a route until its page answers: the page must be built to answer."""
+    server, conn = late_browser.server, late_browser.conn
+    context = _new_context(late_browser)
+    conn.released = {"s1"}
+    server.handle({"guid": context.guid, "method": "newPage", "params": {"pageNumber": 1}})
+    opener_target = next(iter(conn.sessions))
+    target, session = conn.popup_born(opener_target, context.context_id, 1)
+    deadline = time.monotonic() + 5
+    page = None
+    while page is None and time.monotonic() < deadline:
+        try:
+            page = _unannounced_page(late_browser, session)
+        except StopIteration:
+            time.sleep(0.01)
+    assert page is not None, "the popup was not built while the engine had not said Page.ready: nothing answers its first request"
+    time.sleep(0.2)
+    assert page._held is None, "the popup is built but does not listen: the events of its birth are held"
+    assert len(context.pages) == 1, "and it was announced before it was ready"
+
+
+def test_what_a_popup_does_before_its_ready_reaches_its_frame(late_browser, monkeypatch):
+    """The engine says Page.ready at the commit of the popup's first document; the `load` follows at once. Both reach the client."""
+    server, conn = late_browser.server, late_browser.conn
+    context = _new_context(late_browser)
+    conn.released = {"s1"}
+    server.handle({"guid": context.guid, "method": "newPage", "params": {"pageNumber": 1}})
+    opener_target = next(iter(conn.sessions))
+    said = []
+    original = FrameDispatcher.emit
+
+    def spy(self, event, params=None):
+        said.append((self.frame_id, event, params))
+        return original(self, event, params)
+
+    monkeypatch.setattr(FrameDispatcher, "emit", spy)
+    target, session = conn.popup_born(opener_target, context.context_id, 1)
+    frame_id = "f" + target
+    url = "http://127.0.0.1/popup"
+    conn.dispatch_event("Page.navigationStarted", {"frameId": frame_id, "navigationId": "n1", "url": url}, session)
+    conn.dispatch_event("Page.navigationCommitted", {"frameId": frame_id, "navigationId": "n1", "url": url, "name": ""}, session)
+    conn.dispatch_event("Page.eventFired", {"frameId": frame_id, "name": "DOMContentLoaded"}, session)
+    conn.dispatch_event("Page.eventFired", {"frameId": frame_id, "name": "load"}, session)
+    conn.say_ready(session)
+    deadline = time.monotonic() + 5
+    while len(context.pages) < 2 and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert len(context.pages) == 2, "the popup was never announced"
+    popup = context.pages[1]
+    assert popup.frame.url == url, "the frame of the popup was told about:blank: its commit was said to a page that did not exist"
+    heard = set(popup.frame.initializer["loadStates"])
+    heard |= {params["add"] for fid, event, params in said
+              if fid == frame_id and event == "loadstate" and params and "add" in params}
+    assert "load" in heard, ("the client's frame never heard `load` of the popup (heard %s): wait_for_url(until=load) would wait for ever"
+                             % sorted(heard))

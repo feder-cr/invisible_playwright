@@ -2730,12 +2730,17 @@ class PageDispatcher(Dispatcher):
         self._dialogs_open: Dict[str, Any] = {}
         self._dialogs_seen = 0
         self.main_frame_id = self.lifecycle.wait_for_main_frame(timeout=20.0)
-        # ⛔ HANDED OVER READY, as Playwright's own page is (FFPage reports it on Page.ready): the engine commits the initial about:blank
-        # after the frame is announced, and a `goto` sent before that commit is 'interrupted by another navigation to about:blank'.
-        self.lifecycle.wait_for_page_ready(timeout=20.0)
         # ⛔ The Frame is created BEFORE the Page and adopted after: the Page
         # initializer has to name a mainFrame the client can already resolve.
-        self.frame = FrameDispatcher(server, self, self.main_frame_id)
+        # ⛔ WITH WHAT THE LIFECYCLE ALREADY KNOWS OF IT, as every other frame is made (`frame_for`): the initializer is a snapshot, and
+        # a popup commits and loads on its own time - what it did between its attach and this line was heard by the lifecycle and by
+        # nobody that tells the client.
+        known = self.lifecycle.frame(self.main_frame_id)
+        self.frame = FrameDispatcher(
+            server, self, self.main_frame_id,
+            url=getattr(known, "url", "") or "about:blank",
+            name=getattr(known, "name", "") or "",
+            load_states=sorted(getattr(known, "states", []) or []) or None)
         viewport = self.viewport_size
         # `pageNumber` is ours, not Playwright's: the number the page's
         # rhythms are drawn under (`pointer.py` and the actions' nonce read it
@@ -2780,6 +2785,19 @@ class PageDispatcher(Dispatcher):
         return self.context.browser.conn
 
 
+
+    def wait_until_ready(self, timeout: float = 20.0) -> None:
+        """Return once the engine has said `Page.ready`; the caller announces the page to the client after it.
+
+        ⛔ ANNOUNCED READY, BUT BUILT AT ONCE. Playwright's own page is reported as new on Page.ready (FFPage), and not before: the engine
+        commits the page's initial about:blank after the frame is announced, and a `goto` sent before that commit is 'interrupted by
+        another navigation to about:blank'. That is what the wait is for. It is NOT done inside the constructor, because the page has
+        to exist while it waits: the first request of a popup opened by a link is held by a route (the context's, the served browser's)
+        until the page's own routing answers it, and a popup whose commit waits for that answer never becomes ready if the page that
+        would answer it is not built yet. Built, the page also follows the commit and the `load` that come with its own ready; built
+        after them, the client would be told a frame of `about:blank` that is loaded already and never hears the `load`.
+        """
+        self.lifecycle.wait_for_page_ready(timeout=timeout)
 
     def _install_events(self) -> None:
         """Turn Juggler events into protocol events.
@@ -4492,6 +4510,8 @@ class BrowserDispatcher(Dispatcher):
         #: Targets whose adoption thread is still building. `op_new_page`
         #: waits on these instead of building a second dispatcher.
         self._adopting: set = set()
+        #: Pages built and waiting for their Page.ready, by target (announced to the client after it).
+        self._building: Dict[str, PageDispatcher] = {}
         #: Adoption failures, by target. The `newPage` waiter re-raises (and
         #: pops) them; capped because a spontaneous popup nobody waits for
         #: must not grow this for the life of the browser.
@@ -4738,6 +4758,7 @@ class BrowserDispatcher(Dispatcher):
         so it behaves like any other page and carries no observable marker of
         how it was opened. Stealth is preserved by doing nothing special.
         """
+        page = None
         try:
             if number is None:
                 number = self._number_of_requested(
@@ -4746,6 +4767,17 @@ class BrowserDispatcher(Dispatcher):
             context = self._context_for_popup(browser_context_id)
             page = PageDispatcher(self.server, context, session, target_id,
                                   number, opener=opener)
+            with self._targets_lock:
+                self._building[target_id] = page
+            try:
+                page.wait_until_ready(timeout=20.0)
+            except juggler.TargetClosedError:
+                # Gone before it was ready (a popup the site closed at once): announced and closed right after, as a detach that
+                # beats the adoption always was (`_detached_early`).
+                pass
+            finally:
+                with self._targets_lock:
+                    self._building.pop(target_id, None)
             # ⛔ `page` BEFORE the registration, on purpose. A detach racing
             # this build is recorded as early (see `_handle_detach`) and the
             # close is announced right after, so the client always sees the
@@ -4762,6 +4794,12 @@ class BrowserDispatcher(Dispatcher):
             if early:
                 page.announce_closed()
         except Exception as failure:
+            if page is not None:
+                # Built and never announced (not ready in time): its listeners and its object on the client go.
+                try:
+                    page.announce_closed()
+                except Exception:
+                    pass
             with self._targets_lock:
                 self._adopting.discard(target_id)
                 self._detached_early.discard(target_id)
@@ -4832,11 +4870,18 @@ class BrowserDispatcher(Dispatcher):
         that died before it finished attaching). Never blocks the reader."""
         if not target_id:
             return
+        building = None
         with self._targets_lock:
             page = self._page_targets.get(target_id)
             if page is None and target_id in self._adopting:
                 self._detached_early.add(target_id)
-                return
+                building = self._building.get(target_id)
+                if building is None:
+                    return
+        if building is not None:
+            # Built and waiting for its Page.ready: the wait ends now (TargetClosedError) and the adoption announces the page closed.
+            building.lifecycle.detach()
+            return
         if page is None:
             # A target that never became a page: only its buffered events
             # and its session entry are left to drop.
