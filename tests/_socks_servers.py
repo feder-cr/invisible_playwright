@@ -150,6 +150,10 @@ class Gateway:
         self.associates = 0
         #: When the gateway started: the origin of the times below.
         self.t0 = time.monotonic()
+        #: The same instant on the wall clock (seconds since the epoch), to compare with what a page reads from Date.now().
+        self.wall0 = time.time()
+        #: Every TCP connection the gateway accepted (a SOCKS handshake starts with one), as seconds from t0.
+        self.accepted: List[float] = []
         #: Every UDP ASSOCIATE that was granted, as [start, end] seconds from t0; end is None until it was answered.
         self.associations: List[List[Optional[float]]] = []
         #: Every datagram the relay carried out, as (host as sent, port, address type, seconds from t0).
@@ -212,6 +216,7 @@ class Gateway:
                 conn, _ = self._listener.accept()
             except OSError:
                 return
+            self.accepted.append(time.monotonic() - self.t0)
             threading.Thread(target=self._handle, args=(conn,), daemon=True).start()
 
     def _greet(self, c: socket.socket) -> bool:
