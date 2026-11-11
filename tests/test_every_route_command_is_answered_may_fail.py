@@ -64,3 +64,14 @@ def test__send_swallows_a_request_the_browser_already_closed_and_nothing_else():
         "a ProtocolError other than 'Cannot find request' must still reach the client"
     assert source.index("self.dispose()") > source.index("except juggler.TargetClosedError"), \
         "the route is disposed after a swallowed error too"
+
+
+def test_the_stock_client_the_networkidle_e2e_drives_the_server_with_is_a_pinned_dev_dependency():
+    """That e2e fails (not skips) without the stock Playwright client, so CI must install it: the `dev` extra pins it to the
+    version of scripts/playwright_pin.txt."""
+    import tomllib
+
+    root = SERVER.parents[3]
+    dev = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"]["optional-dependencies"]["dev"]
+    pin = (root / "scripts" / "playwright_pin.txt").read_text(encoding="utf-8").strip()
+    assert "playwright==%s" % pin in dev, dev
