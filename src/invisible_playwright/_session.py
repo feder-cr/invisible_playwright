@@ -86,9 +86,16 @@ def default_session(executable: Optional[str] = None,
     geo = session_geo(session._timezone, session._proxy, session._locale_requested)
     session._timezone, session._locale = geo.timezone, geo.locale
     prefs = session._build_prefs()
-    env = build_env(srflx_declared=geo.srflx_to_declare(), profile=session._profile,
+    env = build_env(network_declared=declared_network(session), profile=session._profile,
                     executable=executable, base_env={})
     return prefs, env
+
+
+def declared_network(session: Any) -> str:
+    """The host network this session declares to the engine (the value of
+    STEALTHFOX_WEBRTC_NETWORK), drawn from its seed, with or without a proxy."""
+    from invisible_core import network_to_declare
+    return network_to_declare(session.seed)
 
 
 def true_headless_requested(env: Optional[Dict[str, str]] = None) -> bool:
@@ -99,13 +106,9 @@ def true_headless_requested(env: Optional[Dict[str, str]] = None) -> bool:
 #: lives. It was duplicated here byte-for-byte - ten entries, including the
 def build_env(
     *,
-    #: The address to DECLARE as srflx, or None to declare nothing and let the
-    #: real one through. ⛔ This is NOT the egress IP: it is a DECISION the
-    #: core makes in a single place, looking at the capabilities of the egress
-    #: (`SessionGeo.srflx_to_declare`). The old name, `egress_ip`, said
-    #: something else and made the rule look like "there's a proxy -> declare
-    #: it", which is the wrong question.
-    srflx_declared: Optional[str],
+    #: The host network the engine reads (STEALTHFOX_WEBRTC_NETWORK), drawn from
+    #: the session seed (`declared_network`); None declares nothing.
+    network_declared: Optional[str],
     profile: Any = None,
     executable: Optional[str] = None,
     base_env: Optional[Dict[str, str]] = None,
@@ -166,7 +169,7 @@ def build_env(
                     f"(e.g. {missing[:3]}). Engine: {executable}. The metrics "
                     f"would describe fonts that are not there.")
         manifest_path = cached_font_manifest_path(manifest)
-    return build_launch_env({}, srflx_declared=srflx_declared,
+    return build_launch_env({}, network_declared=network_declared,
                             manifest_path=manifest_path, base_env=base_env,
                             display_env=display_env)
 
@@ -279,16 +282,14 @@ class ProxyEgressDrifted(RuntimeError):
     This is not a condition the product can recover from, and it is deliberate
     that it is an error instead of a silent update.
 
-    The IP we declare to the engine for the WebRTC srflx candidate is
-    discovered ONCE, at launch. If the egress changes afterwards, the page
-    exits from one address and WebRTC announces another: it is exactly the
-    comparison detectors make ("WebRTC IP doesn't match your Remote IP"), and
-    no Firefox on a real connection produces it.
+    The timezone and the locale are decided ONCE, at launch, from the egress
+    country. If the egress moves afterwards, the page exits from one place
+    while the timezone and the language still describe another: a mismatch no
+    real connection produces.
 
-    Updating the value on the fly would be worse, not better: the site would
-    see the WebRTC IP change before its own eyes mid-session, which is just as
-    unnatural a signal. If the egress does not hold for the duration of the
-    session, that proxy is not sticky and is not usable for this purpose.
+    Updating them on the fly would be just as unnatural (the site would see
+    them change mid-session). If the egress does not hold for the duration of
+    the session, that proxy is not sticky and is not usable for this purpose.
 
     Measured on 2026-08-25: the two providers tried both declare sessions
     sticky by TIME (60 minutes at most for one, a sliding timeout for the
@@ -384,7 +385,7 @@ class CommonLaunch:
     `_cursor_engine`, `_extra_prefs`, `_headless`, `_humanize`,
     `_lifetime_guard`, `_locale` (the core's SessionLocale, None until
     `__enter__` decides it), `_profile`, `_session_token`, `_show_cursor`,
-    `_srflx_declared`, `_timezone` and `_virtual_display` in their own
+    `_network_declared`, `_timezone` and `_virtual_display` in their own
     `__init__`. They already did, identically, which is why this works at all.
     """
 
@@ -449,7 +450,7 @@ class CommonLaunch:
         """Env for the Firefox subprocess, then stamped with this session's token.
 
         The body is `build_env`, shared with the async class - it was
-        written twice, identically, and the WebRTC pair is a contract with the
+        written twice, identically, and the WebRTC declaration is a contract with the
         binary, so two landing sites meant two chances to miss a change.
 
         The token stamp stays here because it is the only genuinely per-session
@@ -458,7 +459,7 @@ class CommonLaunch:
         """
         vd = self._virtual_display
         return self._session_token.stamp(
-            build_env(srflx_declared=self._srflx_declared,
+            build_env(network_declared=self._network_declared,
                       profile=self._profile,
                       executable=resolve_executable(self._binary_path),
                       display_env=vd.launch_env() if vd is not None else None))

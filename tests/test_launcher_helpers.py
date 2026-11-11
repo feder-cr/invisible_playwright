@@ -180,45 +180,23 @@ def test_default_context_with_no_language_asked_is_en_us():
     assert ip._default_context_kwargs()["locale"] == "en-US"
 
 
-# ── InvisiblePlaywright._build_env - WebRTC egress auto-derive ─────────
-# Locks the 2026-06-10 fix: behind a proxy the launcher feeds the discovered
-# egress IP to nICEr (srflx override) + drops IPv6. Without it, a proxied
-# session's WebRTC silently fell back to leaking/blocking. Runs in tests.yml.
+# ── InvisiblePlaywright._build_env - the declared network ─────────────
+# The session declares its host network (drawn from the seed) in one variable,
+# with or without a proxy. Runs in tests.yml.
 
 
 @pytest.mark.unit
-def test_build_env_injects_webrtc_egress_when_discovered():
-    ip = InvisiblePlaywright(seed=42)
-    # ⛔ TWO FIELDS, and this test only exercised one. `_webrtc_egress_ip`
-    # is the FACT (where we exit from, read by the guard against drift);
-    # `_srflx_declared` is the DECISION that ends up in the env. Since
-    # 2026-08-25 they do not coincide: when the exit has proven, consistent
-    # UDP the decision is None and nothing gets declared.
-    ip._webrtc_egress_ip = "203.0.113.9"  # what __enter__ resolves behind a proxy
-    ip._srflx_declared = "203.0.113.9"  # and here the decision coincides with the fact
-    env = ip._build_env({})
-    assert env["STEALTHFOX_WEBRTC_PUBLIC_IP"] == "203.0.113.9"
-    assert env["STEALTHFOX_WEBRTC_DISABLE_IPV6"] == "1"
-
-
-@pytest.mark.unit
-def test_build_env_no_webrtc_keys_without_proxy(monkeypatch):
-    monkeypatch.delenv("STEALTHFOX_WEBRTC_PUBLIC_IP", raising=False)
-    ip = InvisiblePlaywright(seed=42)
-    ip._webrtc_egress_ip = None  # no proxy → real STUN already truthful
-    env = ip._build_env({})
-    assert "STEALTHFOX_WEBRTC_PUBLIC_IP" not in env
-    assert "STEALTHFOX_WEBRTC_DISABLE_IPV6" not in env
+def test_build_env_carries_the_declared_network():
+    from invisible_core import network_to_declare
+    env = InvisiblePlaywright(seed=42)._build_env({})
+    assert env["STEALTHFOX_WEBRTC_NETWORK"] == network_to_declare(42)
 
 
 @pytest.mark.unit
 def test_build_env_caller_env_override_wins(monkeypatch):
-    monkeypatch.setenv("STEALTHFOX_WEBRTC_PUBLIC_IP", "198.51.100.5")
-    ip = InvisiblePlaywright(seed=42)
-    ip._webrtc_egress_ip = "203.0.113.9"  # auto-discovered
-    env = ip._build_env({})
-    assert env["STEALTHFOX_WEBRTC_PUBLIC_IP"] == "198.51.100.5"  # caller wins
-    assert env["STEALTHFOX_WEBRTC_DISABLE_IPV6"] == "1"
+    monkeypatch.setenv("STEALTHFOX_WEBRTC_NETWORK", "v4=198.51.100.5;v6=1")
+    env = InvisiblePlaywright(seed=42)._build_env({})
+    assert env["STEALTHFOX_WEBRTC_NETWORK"] == "v4=198.51.100.5;v6=1"  # caller wins
 
 
 @pytest.mark.unit
@@ -232,7 +210,7 @@ def test_build_env_drops_the_variables_the_display_names_absent():
     ``None`` value and, worse, keep ``WAYLAND_DISPLAY``."""
     from invisible_playwright._session import build_env
     base = {"PATH": "/usr/bin", "WAYLAND_DISPLAY": "wayland-0", "DISPLAY": ":0"}
-    env = build_env(srflx_declared=None, base_env=base,
+    env = build_env(network_declared=None, base_env=base,
                     display_env={"DISPLAY": ":123", "GDK_BACKEND": "x11",
                                  "WAYLAND_DISPLAY": None, "PULSE_SERVER": None})
     assert env["DISPLAY"] == ":123"

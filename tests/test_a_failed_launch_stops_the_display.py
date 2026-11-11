@@ -39,8 +39,7 @@ def display(monkeypatch):
     vd = RecordingDisplay()
     geo = types.SimpleNamespace(timezone="Europe/Rome",
                                 locale=SessionLocale.of("it-IT"),
-                                egress_ip=None,
-                                srflx_to_declare=lambda: None)
+                                egress_ip=None)
 
     def refuse(**_kw):
         raise FontManifestMismatch("the engine does not carry these faces")

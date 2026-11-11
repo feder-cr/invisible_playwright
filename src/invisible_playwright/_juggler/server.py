@@ -295,7 +295,7 @@ def session_for_launch(prefs: Dict, executable: str, proxy: Optional[Dict] = Non
 
     `proxy` is the launch's own (`launch(proxy=...)`): the session is composed
     through it as `InvisiblePlaywright(proxy=...)` composes, so the egress it
-    measures there is the address WebRTC declares (STEALTHFOX_WEBRTC_PUBLIC_IP),
+    measures there (timezone, locale) and the network it declares are the proxy's,
     not this machine's. The engine is told the proxy by `op_launch`, as before.
     """
     if COMPOSED_PREF in prefs:
@@ -5351,8 +5351,8 @@ class BrowserTypeDispatcher(Dispatcher):
         # ⛔ THE PROXY IS SET BY THE CORE'S `launch`, before any page exists,
         # and a proxy the engine refuses closes the browser there: the driver
         # once accepted `proxy=` and dropped it, and a page went out on the
-        # host address while the session's timezone, locale and WebRTC
-        # candidate had been resolved THROUGH the proxy (2026-08-30). Until
+        # host address while the session's timezone and locale
+        # had been resolved THROUGH the proxy (2026-08-30). Until
         # 0.34.0 this method sent the command itself, as Selenium's and
         # Puppeteer's launch did, each with the same fixed 10 s.
         conn = juggler.launch(executable, profile,

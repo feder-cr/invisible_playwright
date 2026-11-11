@@ -713,7 +713,7 @@ def _launch_params(session: Any, *, virtual_display: bool, headless: bool,
     """`InvisiblePlaywright.__enter__` up to the launch, as protocol params.
 
     The same calls in the same order, so the served browser is the one the
-    wrapper would have launched: geo (egress, timezone, locale, srflx), the
+    wrapper would have launched: geo (egress, timezone, locale), the
     hidden display, the prefs, the proxy, the session token and the env."""
     from invisible_core import configure_proxy, prepare_session_geo
     from invisible_core import make_virtual_display
@@ -725,7 +725,6 @@ def _launch_params(session: Any, *, virtual_display: bool, headless: bool,
     session._timezone = geo.timezone
     session._locale = geo.locale
     session._webrtc_egress_ip = geo.egress_ip
-    session._srflx_declared = geo.srflx_to_declare()
     executable = resolve_executable(session._binary_path)
     pw_headless = bool(headless)
     if not headless and virtual_display:
@@ -789,7 +788,7 @@ def launch_server(host: str = DEFAULT_HOST, port: int = 0, *,
     pin                 fingerprint fields forced (see docs/pinning.md).
     proxy               `{"server", "username", "password"}`, fixed after the
                         launch; the egress (exit IP -> timezone, locale
-                        "auto", srflx/WebRTC; the GeoIP database offline from
+                        "auto"; the GeoIP database offline from
                         STEALTHFOX_GEOIP_MMDB) is measured here through it.
     headless            True = true headless; False = headed.
     virtual_display     with headless=False: a private virtual display (Xvfb

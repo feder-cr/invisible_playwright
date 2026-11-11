@@ -88,13 +88,11 @@ class InvisiblePlaywright(_session.CommonLaunch):
         # otherwise. Nothing was red because no test enters this context manager.
         self._session_token = SessionToken()
         self._lifetime_guard = guard_for()
-        # Proxy egress IP (WebRTC srflx override); discovered in __aenter__.
+        # Proxy egress IP, discovered in __aenter__: the guard against drift
+        # compares it with the egress now. None without a proxy.
         self._webrtc_egress_ip: Optional[str] = None
-        #: The DECISION about the srflx, distinct from the fact above.
-        #: Starts as None like it: `_build_env` can be called before
-        #: the geo path has resolved, and in that case nothing is
-        #: declared.
-        self._srflx_declared: Optional[str] = None
+        #: The host network the engine reads, drawn from the seed.
+        self._network_declared: str = _session.declared_network(self)
         #: See the twin in `launcher.py`: starts at 0 because the first
         #: context must be able to check right away.
         self._ultimo_controllo_uscita: float = 0.0
@@ -116,17 +114,6 @@ class InvisiblePlaywright(_session.CommonLaunch):
         self._timezone = _geo.timezone
         self._locale = _geo.locale
         self._webrtc_egress_ip = _geo.egress_ip
-        # ⛔ TWO DIFFERENT THINGS, and they used to be a single field.
-        # `_webrtc_egress_ip` is the FACT: where we exit from. It feeds
-        # the guard against drift, which compares the current egress
-        # against the one at launch.
-        # `_srflx_declared` is the DECISION: what the engine must
-        # announce. It is None when the egress has proven, consistent
-        # UDP, because there the real srflx is already correct and
-        # declaring one would add a candidate with no matching
-        # allocation - the signal a detector running its own TURN reads.
-        # The core takes it in a single spot.
-        self._srflx_declared = _geo.srflx_to_declare()
         # binary_path= never reaches ensure_binary(), so the engine check lives
         # on the resolved executable rather than inside the fetcher.
         executable = resolve_executable(self._binary_path)
@@ -191,7 +178,7 @@ class InvisiblePlaywright(_session.CommonLaunch):
     #: session gets rejected. One alone would be too strict - a timeout
     #: happens - but unlimited would be declared blindness: after three
     #: silent checks at 120 s each, that is six minutes in which nothing
-    #: is confirming the address the engine announces on every page.
+    #: is confirming that the timezone and the locale still match the egress.
     _MAX_USCITE_NON_MISURABILI = 3
 
     async def _assert_uscita_invariata(self) -> None:
@@ -210,19 +197,19 @@ class InvisiblePlaywright(_session.CommonLaunch):
         if outcome == _session.USCITA_DERIVATA:
             raise _session.ProxyEgressDrifted(
                 "the proxy's egress IP changed during the session: "
-                "at launch it was %s, now it is %s. The WebRTC srflx "
-                "candidate still declares the first one, so from this "
-                "moment the page exits from one address and WebRTC "
-                "announces another - the disagreement detectors look "
-                "for. This proxy does not hold the session sticky for "
+                "at launch it was %s, now it is %s. The timezone and the "
+                "locale still describe the first one, so from this moment "
+                "the page exits from one place and they say another. "
+                "This proxy does not hold the session sticky for "
                 "the required duration: use one that guarantees it, or "
                 "shorten the session."
                 % (self._webrtc_egress_ip, current))
         if outcome == _session.USCITA_NON_MISURABILE:
             # This is NOT "holds", which is why there are three outcomes. A
             # probe that fails ONCE is the network; one that always fails is
-            # blindness: from that moment the engine keeps declaring an
-            # address on every page that nobody is confirming anymore. It is
+            # blindness: from that moment the timezone and the locale stay
+            # declared on every page with nobody confirming them against the
+            # egress anymore. It is
             # counted, instead of ignored, and rejected only if it repeats.
             self._uscite_non_misurabili += 1
             if self._uscite_non_misurabili >= self._MAX_USCITE_NON_MISURABILI:
@@ -230,8 +217,8 @@ class InvisiblePlaywright(_session.CommonLaunch):
                     "the egress IP could not be verified for %d checks in "
                     "a row. It is not drift - the probe did not respond at "
                     "all - but it is not agreement either: from here on "
-                    "the engine would be declaring an address on every "
-                    "page that nobody confirms anymore. Check that the "
+                    "the timezone and the locale go unconfirmed on every "
+                    "page. Check that the "
                     "proxy is reachable, then relaunch the session."
                     % self._uscite_non_misurabili)
             return

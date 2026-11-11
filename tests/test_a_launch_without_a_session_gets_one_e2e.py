@@ -91,12 +91,13 @@ def test_every_context_of_a_served_browser_is_the_session(firefox_binary):
     assert "Windows NT" in agent and platform == "Win32", seen[0]
 
 
-def test_a_bare_launch_behind_a_proxy_declares_the_egress_as_its_srflx(firefox_binary, monkeypatch):
-    """Behind a proxy a page must read, as WebRTC's server-reflexive candidate, the address the session
-    leaves from (STEALTHFOX_WEBRTC_PUBLIC_IP, which the session's environment carries), not none and not
-    this machine's. A bare launch got no session environment, so a page behind the proxy saw no srflx of
-    the egress. The proxy is the local TCP-only SOCKS5 of test_webrtc_realness.py; the egress the session
-    measures through it is answered with a TEST-NET address (RFC 5737), as in those tests."""
+def test_a_bare_launch_behind_a_proxy_is_composed_through_it(firefox_binary, monkeypatch):
+    """A bare launch behind a proxy gets a session composed THROUGH that proxy (the egress, the timezone and
+    the locale measured there, the network declared from the seed), and the page's WebRTC gather still
+    completes with mDNS hosts. The declaration (STEALTHFOX_WEBRTC_NETWORK) is read by the new engine only;
+    its value is asserted without a browser in test_the_network_declaration_reaches_the_engine.py. The
+    proxy is the local TCP-only SOCKS5 of test_webrtc_realness.py; the egress the session measures through
+    it is answered with a TEST-NET address (RFC 5737), as in those tests."""
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
     import threading
 
@@ -104,16 +105,15 @@ def test_a_bare_launch_behind_a_proxy_declares_the_egress_as_its_srflx(firefox_b
     from invisible_core._geo import SessionGeo
     from invisible_playwright import _session
     from invisible_playwright._pw.sync_api import sync_playwright
-    from test_webrtc_realness import _PROBE_JS, _Socks5TcpOnly, candidates, srflx_candidates
+    from test_webrtc_realness import _PROBE_JS, _Socks5TcpOnly, candidates, host_is_mdns
 
     egress = "203.0.113.7"
-    for name in ("STEALTHFOX_WEBRTC_PUBLIC_IP", "STEALTHFOX_WEBRTC_DISABLE_IPV6"):
-        monkeypatch.delenv(name, raising=False)
+    monkeypatch.delenv("STEALTHFOX_WEBRTC_NETWORK", raising=False)
     measured = []
 
     def through_the_proxy(timezone, proxy, locale):
         measured.append(proxy)
-        return SessionGeo("America/New_York", egress, srflx_suppressed=False,
+        return SessionGeo("America/New_York", egress,
                           locale=decide_session_locale("en-US"))
 
     monkeypatch.setattr(_session, "session_geo", through_the_proxy, raising=False)  # absent before the fix
@@ -146,7 +146,7 @@ def test_a_bare_launch_behind_a_proxy_declares_the_egress_as_its_srflx(firefox_b
     finally:
         socks.close()
         httpd.shutdown()
-    srflx = [c for c in srflx_candidates(candidates(res["candidates"])) if c["address"] == egress]
-    assert srflx, "behind the proxy the page reads no srflx of the egress %s: %s" % (egress, res["candidates"])
+    cands = candidates(res["candidates"])
+    assert cands and host_is_mdns(cands), "behind the proxy the gather is blocked or leaks a host: %s" % res["candidates"]
     assert measured and measured[0] and measured[0].get("server", "").startswith("socks5://"), (
         "the session was not composed through the launch's proxy: %r" % measured)
