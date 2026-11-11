@@ -113,23 +113,57 @@ def test_the_posix_pipe_carries_messages_both_ways(firefox_binary, served, first
             pass
 
 
+# A parent whose descriptor table has nothing on 3 and 4 and whose pipes land far from them launches a program that reads fd 3 and
+# answers on fd 4, the contract of the engine (`nsRemoteDebuggingPipe.cpp` hard-wires the two numbers), and says what else it holds.
+_SPAWN_PARENT = """
+import fcntl, os, sys
+from invisible_core.juggler import connection
+
+for fd in range(3, 64):
+    try:
+        os.close(fd)
+    except OSError:
+        pass
+real_pipe = os.pipe
+
+
+def far_pipe():
+    r, w = real_pipe()
+    r2, w2 = fcntl.fcntl(r, fcntl.F_DUPFD, 20), fcntl.fcntl(w, fcntl.F_DUPFD, 20)
+    os.close(r)
+    os.close(w)
+    return r2, w2
+
+
+os.pipe = far_pipe
+engine = ("import os; d = os.read(3, 16); "
+          "extra = [fd for fd in range(5, 40) if os.path.exists('/proc/self/fd/%d' % fd) or os.path.exists('/dev/fd/%d' % fd)]; "
+          "os.write(4, b'pong:' + d + b':' + str(len(extra)).encode())")
+our_write, our_read, process = connection._spawn_posix(sys.executable, ["-c", engine], dict(os.environ))
+os.write(our_write, b"ping")
+sys.stdout.write(os.read(our_read, 64).decode())
+process.wait(timeout=10)
+"""
+
+
 @pytest.mark.unit
 def test_the_spawn_keeps_the_two_hardwired_descriptors():
-    """The keep list must name 3 and 4, and this is a check on the CODE.
+    """What the launch must do, executed: the child it starts finds the pipe on descriptors 3 (it reads) and 4 (it writes), and no
+    descriptor of the parent above them.
 
-    ⛔ Written as a source assertion on purpose. The behavioural test above
-    needs a Linux Firefox; this one needs nothing, so the day somebody
-    "simplifies" the keep list back to the two pipe ends the failure arrives on
-    every POSIX machine in the unit suite rather than on the one person who has
-    a Linux build.
+    ⛔ THIS ASSERTED THE TEXT OF THE CORE'S SOURCE and broke the day the core launched with `posix_spawn` and file actions instead of
+    `pass_fds=(its_read, its_write, 3, 4)`: the behaviour did not change, the words did. It needs no Linux Firefox: the "engine" is a
+    program that reads fd 3 and answers on fd 4, exactly the contract of `nsRemoteDebuggingPipe.cpp`. The day somebody changes the
+    launch so that the browser starts with nothing on 4 (a live process whose first write gets EPIPE), this fails on every POSIX
+    machine of the unit suite rather than on the one person who has a Linux build.
     """
-    import inspect
+    import subprocess
+    import sys
 
-    from invisible_core.juggler import connection as conn
-
-    source = inspect.getsource(conn._spawn_posix)
-    assert "pass_fds=(its_read, its_write, 3, 4)" in source, (
-        "the spawn no longer keeps descriptors 3 and 4. CPython's close sweep "
-        "runs AFTER preexec_fn, so the dup2'd descriptors are closed again "
-        "before exec and the browser starts with nothing on 4 - a live process "
-        "whose first write gets EPIPE.")
+    done = subprocess.run([sys.executable, "-c", _SPAWN_PARENT], capture_output=True, text=True, timeout=60)
+    assert done.returncode == 0, ("the launch failed: %s" % (done.stderr.strip().splitlines()[-1:],))
+    assert done.stdout.startswith("pong:ping:"), (
+        "the child did not find the pipe on descriptors 3 and 4: it read nothing on 3 or its answer on 4 never came (%r)"
+        % done.stdout)
+    assert done.stdout.rsplit(":", 1)[-1] == "0", (
+        "the child holds descriptors above 4 that the parent opened: " + done.stdout)
