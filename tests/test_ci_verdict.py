@@ -292,7 +292,7 @@ def test_without_commit_it_is_git_head_of_the_current_directory(tmp_path, monkey
     import subprocess
     repo = tmp_path / "wrapper"
     repo.mkdir()
-    git = ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@example.invalid"]
+    git = ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=ci-verdict-test"]
     subprocess.run(git + ["init", "-q"], check=True)
     subprocess.run(git + ["commit", "-q", "--allow-empty", "-m", "x"], check=True)
     head = subprocess.run(git + ["rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
