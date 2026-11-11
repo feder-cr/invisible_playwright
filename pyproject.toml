@@ -118,7 +118,7 @@ dependencies = [
 
 [project.optional-dependencies]
 remote = ["websockets>=13"]
-dev = ["websockets>=13", "pytest>=7", "build>=1", "ruff>=0.6", "pytest-rerunfailures>=14", "pytest-timeout>=2", "pytest-xdist>=3", "playwright==1.61.0", "cryptography>=41"]
+dev = ["websockets>=13", "pytest>=7", "build>=1", "ruff>=0.6", "pytest-rerunfailures>=14", "pytest-timeout>=2", "pytest-xdist>=3", "playwright==1.61.0", "cryptography>=41", "h2>=4,<5"]
 
 [tool.pytest.ini_options]
 markers = [
