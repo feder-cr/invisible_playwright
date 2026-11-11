@@ -13,14 +13,25 @@ dns-query` (a `.test` name is on no preload list) and `network.trr.bootstrapAddr
 address of the FakeDoh as a gateway knows it, never a real one). The gateways map a CONNECT to that address (or name) to
 the FakeDoh. The core's own default provider is checked by `test_doh_session_prefs_unit.py`, not here.
 
-The contract (core-19 and motore-18): a PROXIED session declares TRR mode 3 (`network.trr.uri` the DoH of Mozilla,
-`network.trr.bootstrapAddr` an address so the DoH host is found with no DNS, `network.proxy.allow_bypass` false).
-Every name the browser resolves - page hosts, ICE server names, HTTP/3 hosts - goes to that DoH; a DoH request is a
-channel like any other, so it leaves THROUGH the session proxy (a SOCKS5 CONNECT or an HTTP CONNECT to
-162.159.61.4:443), by the proxy of the context of the lookup; the browser then connects to the resolved ADDRESS (SOCKS5
-by address, never by name). The session proxy is the first command on the pipe, and every proxied channel waits for
-it: nothing goes DIRECT. No UDP/53 and no direct TCP leave the browser, and no helper process (crash reporter, default
-browser agent, maintenance service, updater, pingsender) is started.
+The contract (core-19 and motore-18): the core declares the DoH PROVIDER for every session (`network.trr.uri` the DoH of
+Mozilla, `network.trr.bootstrapAddr` an address so the DoH host is found with no DNS) and, with a proxy,
+`network.proxy.allow_bypass` false; the ENGINE owns the state, so the core never writes `network.trr.mode`,
+`exclude-etc-hosts` or `excluded-domains`. Each browser context is a whole situation, decided per lookup by the user
+context of the lookup (the DoH service itself stays in mode 0; Juggler publishes the contexts that have a proxy):
+
+* a context WITH a proxy - its own, or the launch proxy, which is the proxy of every context that has none of its own,
+  the default one included - resolves its names ONLY by DoH, THROUGH that proxy, fail-closed: a DoH request is a channel
+  like any other, so it leaves by a SOCKS5 CONNECT or an HTTP CONNECT to the DoH address, by the proxy of the context of
+  the lookup, and the browser then connects to the resolved ADDRESS (SOCKS5 by address, never by name);
+* a context WITHOUT a proxy resolves natively (the system resolver) and NEVER reaches the DoH.
+
+Page hosts, ICE server names and HTTP/3 hosts of a proxied context all follow the first rule. The session proxy is the
+first command on the pipe, and every proxied channel waits for it: nothing of a proxied context goes DIRECT. No UDP/53
+and no direct TCP to a DoH leave the browser, and no helper process (crash reporter, default browser agent,
+maintenance service, updater, pingsender) is started. The tests of a session WITH a launch proxy may therefore assert
+that nothing at all goes direct and nothing asks the system resolver (the default context is proxied too); the tests of a
+session WITHOUT one assert only about the DoH road, because the default context is then the machine's own network.
+`test_context_proxy_only_resolves_by_doh_e2e.py` and `test_resolver_race_e2e.py` test the rule where it is sharpest.
 
 How each test sees it, with nothing but loopback:
 
@@ -38,11 +49,13 @@ accept the FakeDoh certificate: the pages are opened in contexts made with `igno
 implements per user context (`Browser.setIgnoreHTTPSErrors` -> `nsICertOverrideService`, keyed by the origin attributes
 of the TLS socket), and a DoH request of a lookup carries the user context of that lookup
 (`StealthApplyTRRContextToChannel`). So the lookups of THESE contexts accept the certificate; a lookup of the default
-context (user context 0: the browser's own background resolutions, telemetry and the like) cannot be made to, and mode 3
-does not need it: those lookups fail against the FakeDoh BY DESIGN, so no assertion here counts the FakeDoh's TLS
-failures or treats a name of the default context as a result; every assertion is about the names and the contexts the
-test itself creates. This is why a test says "a context with no proxy of its own" where the brief says "the default
-context".
+context (user context 0: the browser's own background resolutions, telemetry and the like) cannot be made to. In a session
+WITH a launch proxy the default context is proxied too, so its background lookups go to the FakeDoh through the launch
+proxy and fail the handshake BY DESIGN: no assertion there counts the FakeDoh's TLS failures or treats a name of the
+default context as a result (the accounting helper below counts them against the CONNECTs of the gateway). In a session
+WITHOUT a launch proxy the default context resolves natively and never reaches the FakeDoh: there a TLS failure at the
+FakeDoh is itself the sign of the defect. Every assertion is about the names and the contexts the test itself creates.
+This is why a test says "a context with no proxy of its own" where the brief says "the default context".
 
 Assumptions that could not be verified without the engine, each one the first place to look if a test fails for no
 visible reason: (1) the TRR channel of a lookup in a context honours `ignore_https_errors` of that context; (2) the
@@ -236,12 +249,31 @@ def _is_address(host):
         return False
 
 
-def _assert_every_connection_went_through_the_gateway(doh, *proxies):
-    """Every connection the browser made, the test's own and the background traffic of the default context, is
-    accounted for at a gateway, and none reached the FakeDoh by another road.
+#: The addresses a DoH request could reach by a road other than the proxy of its context: the bootstrap address of the
+#: test's provider and the one of the core's default provider.
+DOH_ADDRESSES = (DOH_BOOTSTRAP, "162.159.61.4")
 
-    The background lookups of the default context (telemetry and the like) have no `ignore_https_errors`, so their TLS
-    handshake with the FakeDoh fails BY DESIGN. That is an expected outcome, counted here, not ignored:
+
+def _direct_to_the_doh(watcher):
+    """The direct connections the watcher saw to a DoH address or to a DNS port (53)."""
+    return [c for c in watcher.direct
+            if c.remote.rsplit(":", 1)[0] in DOH_ADDRESSES or c.remote.endswith(":53")]
+
+
+def _asked_outside(doh, *zone_names):
+    """The FakeDoh queries whose name is none of `zone_names` nor a name under one of them (the question of the HTTPS
+    record of a name is `_<port>._https.<name>`, which ends with it). Empty when only the names of the test's own
+    contexts were asked, i.e. when no background name of another context reached the DoH."""
+    names = tuple(n.lower() for n in zone_names)
+    return [q for q in doh.queries if not any(q.name == n or q.name.endswith("." + n) for n in names)]
+
+
+def _assert_every_connection_went_through_the_gateway(doh, *proxies):
+    """Every connection the browser made, the test's own and (in a session with a launch proxy) the background traffic
+    of the default context, is accounted for at a gateway, and none reached the FakeDoh by another road.
+
+    The background lookups of a proxied default context (telemetry and the like) have no `ignore_https_errors`, so their
+    TLS handshake with the FakeDoh fails BY DESIGN. That is an expected outcome, counted here, not ignored:
 
     * the FakeDoh served no connection (successful or failed) by `direct`: each one arrived by a named gateway;
     * per gateway, the connections the FakeDoh served (completed + failed handshakes) are all tunnels of a DoH CONNECT
@@ -457,11 +489,10 @@ def test_a_dead_proxy_does_not_fall_back(firefox_binary, doh, pages, gateway, tr
 
 
 def test_a_session_without_a_proxy_resolves_with_the_system_resolver(firefox_binary, pages, watcher):
-    """The negative control: with no proxy the exit is the machine's own network and retail resolves with the system
-    resolver (mode 0). The core declares the DoH provider (uri + bootstrapAddr) in every session, but no engine-owned
-    state (`network.trr.mode` and the other two), so TRR stays off. Where the resolver trap can run (Linux, root) it also sees
-    the question; where it cannot (Windows) the page is reached by a name the system resolves by itself, and the trap's
-    assertion is the only one that is not made."""
+    """The negative control: with no proxy anywhere the exit is the machine's own network and retail resolves with the
+    system resolver. The core declares the DoH provider (uri + bootstrapAddr) in every session, but no engine-owned
+    state (`network.trr.mode` and the other two), and no context has a proxy, so no lookup is a DoH lookup: the
+    resolver trap sees the question and no connection goes to a DoH address."""
     trapped = ResolverTrap.available
     why = _trap_policy.failure(None, trapped, ResolverTrap.reason)
     if why:
@@ -494,3 +525,6 @@ def test_a_session_without_a_proxy_resolves_with_the_system_resolver(firefox_bin
     assert "HOST=%s:%d" % (name, pages.port) in text, "the page did not load through the system resolver: %r" % text
     if trap is not None:
         assert trap.asked(name), "the system resolver was never asked for %s: %s" % (name, trap.describe())
+    assert watcher.watched_pids, "the watcher never saw a browser process: %s" % watcher.process_names
+    assert _direct_to_the_doh(watcher) == [], (
+        "a session with no proxy reached a DoH (or a DNS server) instead of the system resolver: %s" % watcher.describe())
