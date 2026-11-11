@@ -25,7 +25,7 @@ start / stop cycles in several threads with random delays between the reply
 and the frame, and random stops in the middle of a frame.
 
 Known-bad, run before this file was trusted: take the ack and the id out of
-the lock in `PageDispatcher._screencast_frame`, or set `_screencast_id` after
+the lock in `PageDispatcher._on_screencast_frame` and `_hand_up_screencast_frame`, or set `_screencast_id` after
 `send` returns as it was -> every test that says "stall" goes red.
 """
 from __future__ import annotations
