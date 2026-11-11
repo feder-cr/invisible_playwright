@@ -21,14 +21,20 @@ test says what the product does not do yet and the step that makes it green:
     9  named world after the OOP frame        step 1a + 2b
     10 console of the OOP frame               step 1a
 
-The oracle for "another process" is the engine's own processes below the test (`-contentproc ... tab`): a
-cross-site frame adds at least one, a same-site one adds none. The count is read after the browser is quiet
-(the engine pre-allocates a content process and replaces it when it is used).
+The oracle for "another process" is the set of the engine's processes that host a site, below the test: a
+cross-site frame adds at least one, a same-site one adds none. A content process is not one of them by being
+new: the engine keeps preallocated content processes (`dom.ipc.processPrelaunch.fission.number`), hands one to
+a site when a site needs a process, and starts another to refill the pool, whenever it gets to it. A pid that
+appears is often that refill, not a site. On Linux the process says which it is: `ContentChild::SetProcessName`
+names it by its remote type with `prctl(PR_SET_NAME)` (ipc/glue/ProcessUtils_linux.cpp), "Isolated Web Co" for
+a site of strategy 1 (`webIsolated=<site>`), "Web Content" while it is preallocated. Windows names no process
+(ProcessUtils_none.cpp), so the two tests that count processes skip there. The set is read once it is quiet.
 """
 from __future__ import annotations
 
 import json
 import os
+import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler
@@ -125,30 +131,44 @@ def engine_dir(firefox_binary):
     return str(Path(firefox_binary).resolve().parent)
 
 
-def content_processes(engine_dir):
-    """The pids of the engine's web content processes (`-contentproc ... tab`) below this test."""
+#: The name a content process of strategy 1 takes once it hosts a site (15 characters: PR_SET_NAME keeps 15 of
+#: "Isolated Web Content"). A preallocated one is "Web Content" until a site is given to it.
+SITE_PROCESS_NAME = "Isolated Web Co"
+
+
+def site_pids(processes, engine_dir):
+    """The pids of the processes of the engine, among `processes` (psutil-like), that host a site."""
     import psutil
 
     pids = set()
-    for child in psutil.Process(os.getpid()).children(recursive=True):
+    for proc in processes:
         try:
-            if not os.path.normcase(child.exe()).startswith(os.path.normcase(engine_dir)):
+            if not os.path.normcase(proc.exe()).startswith(os.path.normcase(engine_dir)):
                 continue
-            cmd = child.cmdline()
+            name, cmd = proc.name(), proc.cmdline()
         except psutil.Error:
             continue
-        if "-contentproc" in cmd and cmd[-1] == "tab":
-            pids.add(child.pid)
+        if "-contentproc" in cmd and cmd[-1] == "tab" and name == SITE_PROCESS_NAME:
+            pids.add(proc.pid)
     return pids
 
 
+def site_processes(engine_dir):
+    """The pids of the engine's processes below this test that host a site (see the module's docstring)."""
+    import psutil
+
+    if not sys.platform.startswith("linux"):
+        pytest.skip("only Linux names a content process by the site it hosts; %s names none" % sys.platform)
+    return site_pids(psutil.Process(os.getpid()).children(recursive=True), engine_dir)
+
+
 def quiet(engine_dir, seconds=3.0, limit=30.0):
-    """The set of content processes once it has not changed for `seconds`."""
+    """The set of the processes that host a site, once it has not changed for `seconds`."""
     end = time.time() + limit
-    last, since = content_processes(engine_dir), time.time()
+    last, since = site_processes(engine_dir), time.time()
     while time.time() < end:
         time.sleep(0.25)
-        now = content_processes(engine_dir)
+        now = site_processes(engine_dir)
         if now != last:
             last, since = now, time.time()
         elif time.time() - since >= seconds:
@@ -218,18 +238,19 @@ def test_cross_site_iframe_gets_its_own_process(page, cross_site_loop, engine_di
     assert wait_for(page, lambda: any(r["path"] == "/report/loaded" and r["host"] == "a.test" and
                                 r["query"]["path"] == ["/leaf"] for r in cross_site_loop["reports"]))
     after = quiet(engine_dir)
-    assert len(after - before) >= 1, "no new content process: before %s, after %s" % (sorted(before), sorted(after))
+    assert len(after - before) >= 1, "no new process for a site: before %s, after %s" % (sorted(before), sorted(after))
 
 
 @pytest.mark.e2e
 def test_same_site_other_port_stays_in_process(page, cross_site_loop, engine_dir):
-    """Green today, the control: a frame of the page's own site adds no content process."""
+    """Green today, the control: a frame of the page's own site adds no process for a site, and the page stays
+    in the process it was in."""
     page.goto(cross_site_loop["plain"])
     before = quiet(engine_dir)
     page.goto(cross_site_loop["same_site"], wait_until="load")
     assert wait_for(page, lambda: any(r["path"] == "/report/loaded" for r in cross_site_loop["reports"]))
     after = quiet(engine_dir)
-    assert not (after - before), "a same-site frame started a process: %s" % sorted(after - before)
+    assert after == before, "a same-site frame changed the processes of the sites: %s -> %s" % (sorted(before), sorted(after))
 
 
 # ── 3 .. 10: what the product does not do yet ──────────────────────────────────
