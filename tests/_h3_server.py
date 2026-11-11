@@ -3,7 +3,7 @@
 The same port answers TCP (TLS, HTTP/2 by ALPN with an `Alt-Svc: h3` header, HTTP/1.1 for a client that offers nothing
 else) and UDP (QUIC, HTTP/3, aioquic), with a self-signed certificate for the address it is given. The TCP side speaks HTTP/2
 because that is what a real site does: the FIRST visit of a page reads `h2`, and only after the Alt-Svc it carries may a
-later one read `h3` (retail Firefox 159, 15 of 15: h2, h3, h3). It records, for every QUIC connection, the address the packets
+later one read `h3` (retail Firefox 159: never h3 at the first visit; h2, h3, h3 with no proxy in loopback, h3 within a few visits behind a proxy). It records, for every QUIC connection, the address the packets
 came from: a connection that comes from anywhere but the relay of a gateway on this host (127.0.0.1) did not go through
 the proxy.
 
