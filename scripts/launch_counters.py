@@ -229,14 +229,48 @@ def render(value: str, badge: Badge) -> bytes:
     return "\n".join(lines).encode("utf-8")
 
 
+def latest(history: dict[str, dict[str, int]], key: str) -> int:
+    days = [d for d in history if key in history[d]]
+    if not days:
+        raise SystemExit(f"no {key} in the history")
+    return history[max(days)][key]
+
+
+# The big row at the top of the README is drawn by shields.io from these
+# files (its "endpoint" badge), so the numbers stay ours and the look is theirs.
+@dataclass(frozen=True)
+class Endpoint:
+    label: str
+    colour: str
+    logo: str
+    file_name: str
+    key: str
+
+
+ENDPOINTS = [
+    Endpoint("browser launches", "FF7139", "firefoxbrowser", "launches.json", "launches_total"),
+    Endpoint("engine downloads", "2EA44F", "github", "downloads.json", "total_binaries"),
+]
+
+
+def endpoint_json(value: str, e: Endpoint) -> bytes:
+    if not SAFE_VALUE.match(value):
+        raise ValueError(f"refusing to publish an unexpected value: {value!r}")
+    return (json.dumps({
+        "schemaVersion": 1, "label": e.label, "message": value,
+        "color": e.colour, "namedLogo": e.logo, "logoColor": "white",
+        "cacheSeconds": 3600,
+    }, indent=2) + "\n").encode("utf-8")
+
+
 def write_badges(directory: Path, history: dict[str, dict[str, int]]) -> None:
     directory.mkdir(parents=True, exist_ok=True)
     for b in BADGES:
-        days = [d for d in history if b.key in history[d]]
-        if not days:
-            raise SystemExit(f"no {b.key} in the history")
         (directory / b.file_name).write_bytes(
-            render(format_count(history[max(days)][b.key]), b))
+            render(format_count(latest(history, b.key)), b))
+    for e in ENDPOINTS:
+        (directory / e.file_name).write_bytes(
+            endpoint_json(format_count(latest(history, e.key)), e))
 
 
 # ── entry point ─────────────────────────────────────────────────────────────
@@ -275,6 +309,15 @@ def selftest() -> int:
         append_snapshot(p, "2026-11-08", {"stars": 1})
         if append_snapshot(p, "2026-11-08", {"stars": 2}) or read_history(p)["2026-11-08"]["stars"] != 1:
             fails.append("idempotent")
+        # The README's top row reads these two files through shields.io.
+        h = {"2026-11-11": {"launches_total": 5_319_939, "total_binaries": 232_924, "stars": 2569}}
+        write_badges(Path(t) / "b", h)
+        got = json.loads((Path(t) / "b" / "launches.json").read_text(encoding="utf-8"))
+        if (got.get("schemaVersion"), got.get("label"), got.get("message")) != (1, "browser launches", "5.31M"):
+            fails.append("endpoint launches")
+        got = json.loads((Path(t) / "b" / "downloads.json").read_text(encoding="utf-8"))
+        if got.get("message") != "232.92k":
+            fails.append("endpoint downloads")
     print("selftest:", "OK" if not fails else "FAIL " + ", ".join(fails))
     return 1 if fails else 0
 

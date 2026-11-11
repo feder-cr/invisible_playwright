@@ -7,6 +7,11 @@
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/banner-dark.gif">
   <img alt="invisible_playwright, Playwright on an anti-detect Firefox. An animation: the two-line switch from Playwright, the fingerprint set inside the engine, a mouse that moves like a hand, and the bot tests it passes." src="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/banner-light.gif" width="100%">
 </picture>
+<p align="center">
+  <a href="https://github.com/feder-cr/invisible_playwright/blob/badges/counters/launches_daily.csv"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Ffeder-cr%2Finvisible_playwright%2Fbadges%2Fdocs%2Fbadges%2Flaunches.json&style=for-the-badge" alt="browser launches"></a>
+  <a href="https://github.com/feder-cr/firefox_antidetect_patch/releases"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Ffeder-cr%2Finvisible_playwright%2Fbadges%2Fdocs%2Fbadges%2Fdownloads.json&style=for-the-badge" alt="engine downloads"></a>
+  <a href="https://github.com/feder-cr/invisible_playwright/stargazers"><img src="https://img.shields.io/github/stars/feder-cr/invisible_playwright?style=for-the-badge&logo=github&color=e8a317" alt="GitHub stars"></a>
+</p>
 <h3 align="center">Playwright gets caught by anti-bots and captchas.<br>
 This one runs on an anti-detect Firefox with an undetected fingerprint, compatible with your existing Playwright code.</h3>
 </div>
@@ -367,6 +372,4 @@ This project is for educational purposes only. It is provided as-is, with no war
   <a href="https://github.com/feder-cr/invisible_playwright/blob/main/LICENSE"><img src="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/badges/license.svg" alt="License: MIT"></a>
   <a href="https://www.python.org/downloads/"><img src="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/badges/python.svg" alt="Python 3.11+"></a>
   <a href="https://github.com/feder-cr/firefox_antidetect_patch/releases"><img src="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/badges/firefox.svg" alt="Firefox 159.0"></a>
-  <img src="https://raw.githubusercontent.com/feder-cr/invisible_playwright/badges/docs/badges/launches.svg" alt="browser launches">
-  <a href="https://github.com/feder-cr/invisible_playwright/stargazers"><img src="https://raw.githubusercontent.com/feder-cr/invisible_playwright/badges/docs/badges/stars.svg" alt="GitHub stars"></a>
 </p>

@@ -11,6 +11,8 @@
 #   counters/history.csv         date,key,value - every counter, once a day
 #   counters/launches_daily.csv  day_utc,launches - one row per measured day
 #   docs/badges/launches.svg, docs/badges/stars.svg
+#   docs/badges/launches.json, docs/badges/downloads.json - read by shields.io
+#     for the big row at the top of the README
 #
 # 00:10 UTC, so the snapshot dated D closes calendar day D-1.
 name: counters
