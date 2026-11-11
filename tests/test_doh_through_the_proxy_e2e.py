@@ -1,11 +1,17 @@
 """E2E: behind a proxy every name is resolved by Firefox's DoH THROUGH the proxy, and nothing leaves the host.
 
-WRITTEN AGAINST THE CONTRACT, BEFORE THE ENGINE THAT KEEPS IT EXISTS. No binary in this tree has the behaviour yet, so
-these tests cannot go green here; what is proven now is that the tools they stand on are right
-(`test_the_fake_doh_answers.py`, `test_the_http_proxy_helper_asks_for_credentials.py`,
-`test_the_leak_watcher_sees_a_direct_connection.py`) and that the session declares what the contract starts from
-(`test_doh_session_prefs_unit.py`). Run against an engine that keeps the contract, they are the proof; run against one
-that does not, each of them fails on the thing it names.
+Hermetic on a real binary. The tools they stand on are proven by `test_the_fake_doh_answers.py`,
+`test_the_http_proxy_helper_asks_for_credentials.py` and `test_the_leak_watcher_sees_a_direct_connection.py`, and the
+session declaration they start from by `test_doh_session_prefs_unit.py`. Run against an engine that keeps the contract,
+they are the proof; run against one that does not, each of them fails on the thing it names.
+
+The fake DoH is NOT `mozilla.cloudflare-dns.com`. That host is HSTS-preloaded/pinned, and Firefox refuses any
+certificate override for such a host ("HSTS or pinned host - no overrides allowed", MOZILLA_PKIX_ERROR_SELF_SIGNED_CERT),
+so a self-signed fake for it is rejected whatever `ignore_https_errors` says. The test declares its own provider through
+the core's `extra_prefs` overlay (applied last, documented for this): `network.trr.uri` = `https://doh.gateway.test/
+dns-query` (a `.test` name is on no preload list) and `network.trr.bootstrapAddr` = `192.0.2.53` (TEST-NET-1: the
+address of the FakeDoh as a gateway knows it, never a real one). The gateways map a CONNECT to that address (or name) to
+the FakeDoh. The core's own default provider is checked by `test_doh_session_prefs_unit.py`, not here.
 
 The contract (core-19 and motore-18): a PROXIED session declares TRR mode 3 (`network.trr.uri` the DoH of Mozilla,
 `network.trr.bootstrapAddr` an address so the DoH host is found with no DNS, `network.proxy.allow_bypass` false).
@@ -32,8 +38,11 @@ accept the FakeDoh certificate: the pages are opened in contexts made with `igno
 implements per user context (`Browser.setIgnoreHTTPSErrors` -> `nsICertOverrideService`, keyed by the origin attributes
 of the TLS socket), and a DoH request of a lookup carries the user context of that lookup
 (`StealthApplyTRRContextToChannel`). So the lookups of THESE contexts accept the certificate; a lookup of the default
-context (user context 0: the browser's own background resolutions) cannot be made to, and mode 3 does not need it. This
-is why a test says "a context with no proxy of its own" where the brief says "the default context".
+context (user context 0: the browser's own background resolutions, telemetry and the like) cannot be made to, and mode 3
+does not need it: those lookups fail against the FakeDoh BY DESIGN, so no assertion here counts the FakeDoh's TLS
+failures or treats a name of the default context as a result; every assertion is about the names and the contexts the
+test itself creates. This is why a test says "a context with no proxy of its own" where the brief says "the default
+context".
 
 Assumptions that could not be verified without the engine, each one the first place to look if a test fails for no
 visible reason: (1) the TRR channel of a lookup in a context honours `ignore_https_errors` of that context; (2) the
@@ -58,7 +67,7 @@ from invisible_playwright import InvisiblePlaywright
 
 import _doh_servers as ds
 import _trap_policy
-from _doh_servers import DOH_BOOTSTRAP, DOH_HOST, DOH_PORT, QTYPE_A, DohGateway, FakeDoh
+from _doh_servers import DOH_BOOTSTRAP, DOH_HOST, DOH_PORT, DOH_PROVIDER_PREFS, QTYPE_A, DohGateway, FakeDoh
 from _http_proxy import HttpProxy, basic
 from _leaks import ResolverTrap, Watcher
 from _servers import LocalServer
@@ -69,7 +78,9 @@ pytestmark = [pytest.mark.e2e, pytest.mark.usefixtures("the_udp_line")]
 ZONE = {"page-a.test": "127.0.0.1", "page-b.test": "127.0.0.1", "page-c.test": "127.0.0.1",
         "stun-a.test": "127.0.0.1"}
 #: Loopback targets go through the proxy too (as in test_proxy_socks_auth_e2e.py), so the road of a page is observable.
-PREFS = {"network.proxy.allow_hijacking_localhost": True, "network.proxy.no_proxies_on": ""}
+#: The two `network.trr.*` entries replace the core's default provider (a preloaded host whose certificate cannot be
+#: overridden) with the FakeDoh's: https://doh.gateway.test/dns-query, found at 192.0.2.53 with no DNS.
+PREFS = {"network.proxy.allow_hijacking_localhost": True, "network.proxy.no_proxies_on": "", **DOH_PROVIDER_PREFS}
 #: The helper processes of Firefox that a session behind a proxy must never start (match on the executable's stem).
 HELPERS = ("crashreporter", "default-browser-agent", "maintenanceservice", "updater", "pingsender")
 GEO = SessionGeo("America/New_York", "203.0.113.7", latitude=40.7128, longitude=-74.0060,
@@ -209,7 +220,7 @@ def _why(doh, *proxies):
     """What every side saw, for the message of a failed assertion."""
     lines = ["FakeDoh queries: %s" % [tuple(q) for q in doh.queries],
              "FakeDoh connections (via, protocol): %s" % doh.connections,
-             "FakeDoh TLS failures: %s" % doh.tls_failures]
+             "FakeDoh TLS failures (the default context's background lookups fail by design): %s" % doh.tls_failures]
     for p in proxies:
         lines.append("%s CONNECTs: %s" % (p.name, p.connects))
         if getattr(p, "refused", None):
@@ -225,8 +236,42 @@ def _is_address(host):
         return False
 
 
-def _assert_stayed_home(watcher, trap=None):
-    """Nothing went past the gateway (no direct connection) and nothing asked the machine's resolver."""
+def _assert_every_connection_went_through_the_gateway(doh, *proxies):
+    """Every connection the browser made, the test's own and the background traffic of the default context, is
+    accounted for at a gateway, and none reached the FakeDoh by another road.
+
+    The background lookups of the default context (telemetry and the like) have no `ignore_https_errors`, so their TLS
+    handshake with the FakeDoh fails BY DESIGN. That is an expected outcome, counted here, not ignored:
+
+    * the FakeDoh served no connection (successful or failed) by `direct`: each one arrived by a named gateway;
+    * per gateway, the connections the FakeDoh served (completed + failed handshakes) are all tunnels of a DoH CONNECT
+      that the gateway itself recorded (it records the CONNECT before it hands the socket over), so none is
+      unaccounted for: served <= recorded DoH CONNECTs;
+    * no CONNECT of any gateway carries the name of the test's own zone (the browser resolves those with the DoH and
+      connects by address); a CONNECT to some other non-loopback target is listed by the gateway in `refused`, i.e. it
+      was attempted THROUGH the gateway and went no further, which is the point.
+    """
+    why = _why(doh, *proxies)
+    names = {p.name for p in proxies}
+    served = list(doh.connections) + [(via, "tls-failed") for via, _error in doh.tls_failures]
+    by_road = {via for via, _what in served}
+    assert by_road <= names, "the FakeDoh served a connection by a road that is no gateway of the test: %s" % (
+        sorted(by_road - names)) + why
+    for proxy in proxies:
+        mine = [what for via, what in served if via == proxy.name]
+        recorded = len(proxy.doh_connects())
+        assert len(mine) <= recorded, (
+            "%s: the FakeDoh served %d connection(s) (%d failed handshakes) but the gateway recorded only %d DoH "
+            "CONNECT(s)" % (proxy.name, len(mine), mine.count("tls-failed"), recorded) + why)
+        zone_names = [h for h, _p in proxy.connects if h.lower() in ZONE]
+        assert zone_names == [], "%s was sent the NAME %s instead of an address" % (proxy.name, zone_names) + why
+
+
+def _assert_stayed_home(watcher, trap=None, doh=None, *proxies):
+    """Nothing went past the gateway (no direct connection), nothing asked the machine's resolver, and (when the
+    FakeDoh and the proxies are given) every connection is accounted for at a gateway."""
+    if doh is not None:
+        _assert_every_connection_went_through_the_gateway(doh, *proxies)
     assert watcher.watched_pids, ("the watcher never saw a browser process (it saw: %s): a watcher that cannot see "
                                   "proves nothing" % watcher.process_names)
     assert watcher.direct == [], "the browser connected past the gateway: %s" % watcher.describe()
@@ -265,7 +310,7 @@ def test_names_resolve_through_doh_by_the_proxy(firefox_binary, doh, pages, gate
         "a CONNECT carried a name: the browser must resolve with the DoH and connect by address" + why)
     assert ("127.0.0.1", pages.port) in gw1.connects, "the page was not reached by address through gw1" + why
     assert "direct" not in {q.via for q in doh.queries}, "something reached the DoH without the proxy" + why
-    _assert_stayed_home(watcher, trap)
+    _assert_stayed_home(watcher, trap, doh, gw1)
 
 
 def test_an_ice_server_name_resolves_the_same_way(firefox_binary, doh, pages, gateway, trap, watcher):
@@ -283,7 +328,7 @@ def test_an_ice_server_name_resolves_the_same_way(firefox_binary, doh, pages, ga
     why = _why(doh, gw1)
     assert asked, "the browser never asked the DoH for the ICE server name" + why
     assert doh.vias_of("stun-a.test") == {"gw1"}, "stun-a.test was not asked by gw1 only" + why
-    _assert_stayed_home(watcher, trap)
+    _assert_stayed_home(watcher, trap, doh, gw1)
 
 
 def test_two_contexts_two_doh_exits(firefox_binary, doh, pages, gateway, trap, watcher):
@@ -312,7 +357,7 @@ def test_two_contexts_two_doh_exits(firefox_binary, doh, pages, gateway, trap, w
         "gw1 saw: %s" % gw1.credentials_seen)
     assert gw2.credentials_seen and set(gw2.credentials_seen) == {("gw2-user", "gw2-pass")}, (
         "gw2 saw: %s" % gw2.credentials_seen)
-    _assert_stayed_home(watcher, trap)
+    _assert_stayed_home(watcher, trap, doh, gw1, gw2)
 
 
 def test_an_authenticated_http_proxy_resolves(firefox_binary, doh, pages, trap, watcher):
@@ -346,7 +391,7 @@ def test_an_authenticated_http_proxy_resolves(firefox_binary, doh, pages, trap, 
             "every DoH CONNECT must carry the preemptive Basic header %r, saw %r" % (expected, authorizations) + why)
         assert [s for s in proxy.refused_for_credentials if (s.host, s.port) in ds.DOH_TARGETS] == [], (
             "the DoH CONNECT needed a 407 round trip: the header was not preemptive" + why)
-        _assert_stayed_home(watcher, trap)
+        _assert_stayed_home(watcher, trap, doh, proxy)
     finally:
         proxy.close()
 
@@ -367,7 +412,7 @@ def test_nothing_leaves_the_host_between_launch_and_the_first_command(firefox_bi
     why = _why(doh, gw1)
     assert "HOST=page-a.test" in text
     assert gw1.accepted_at, "the browser never connected to the gateway" + why
-    _assert_stayed_home(watcher, trap)
+    _assert_stayed_home(watcher, trap, doh, gw1)
 
 
 def test_no_helper_process_starts(firefox_binary, doh, pages, gateway, trap, watcher):
@@ -408,13 +453,14 @@ def test_a_dead_proxy_does_not_fall_back(firefox_binary, doh, pages, gateway, tr
         "the dead proxy still served a page: %s" % pages.hits + why)
     assert doh.queries_for("page-c.test") == [], "page-c.test was resolved after the proxy died" + why
     assert gw1.killed and failed.value is not None
-    _assert_stayed_home(watcher, trap)
+    _assert_stayed_home(watcher, trap, doh, gw1)
 
 
 def test_a_session_without_a_proxy_resolves_with_the_system_resolver(firefox_binary, pages, watcher):
     """The negative control: with no proxy the exit is the machine's own network and retail resolves with the system
-    resolver (mode 0). No `network.trr.*` pref is declared. Where the resolver trap can run (Linux, root) it also sees the
-    question; where it cannot (Windows) the page is reached by a name the system resolves by itself, and the trap's
+    resolver (mode 0). The core declares the DoH provider (uri + bootstrapAddr) in every session, but no engine-owned
+    state (`network.trr.mode` and the other two), so TRR stays off. Where the resolver trap can run (Linux, root) it also sees
+    the question; where it cannot (Windows) the page is reached by a name the system resolves by itself, and the trap's
     assertion is the only one that is not made."""
     trapped = ResolverTrap.available
     why = _trap_policy.failure(None, trapped, ResolverTrap.reason)
@@ -423,8 +469,11 @@ def test_a_session_without_a_proxy_resolves_with_the_system_resolver(firefox_bin
     name = "page-d.test" if trapped else "localhost"
     session = InvisiblePlaywright(seed=42, binary_path=firefox_binary, proxy=None)
     session._timezone, session._locale = GEO.timezone, GEO.locale
-    declared = [k for k in session._build_prefs() if k.startswith("network.trr.")]
-    assert declared == [], "a session without a proxy declared TRR prefs: %s" % declared
+    prefs = session._build_prefs()
+    assert prefs.get("network.trr.mode") != 3, "a session without a proxy turned TRR on: %s" % prefs.get("network.trr.mode")
+    engine_owned = [k for k in ("network.trr.mode", "network.trr.exclude-etc-hosts", "network.trr.excluded-domains")
+                    if k in prefs]
+    assert engine_owned == [], "a session without a proxy declared engine-owned TRR prefs: %s" % engine_owned
 
     trap = None
     if trapped:
