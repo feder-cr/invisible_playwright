@@ -77,8 +77,13 @@ def _three_visits(server, monkeypatch, discover, **launch):
 
     monkeypatch.setattr(_geo, "discover_egress_ip", discover)
     protocols, walls = [], []
+    # Firefox turns HTTP/3 off when the certificate chain ends in a root that is not one of its own (a self-signed test
+    # server always does): measured, the Alt-Svc is learned, the QUIC handshake of validation succeeds with the override and
+    # Firefox then closes it itself (hasThirdPartyRoots), so the visits stay h2. A test with a certificate of its own turns
+    # that check off; the product does not (it would change what Firefox does with a root it does not know).
+    prefs = {"network.http.http3.disable_when_third_party_roots_found": False, **launch.pop("extra_prefs", {})}
     with InvisiblePlaywright(headless=True, binary_path=_binary(), timezone="America/New_York", locale="en-US",
-                             **launch) as browser:
+                             extra_prefs=prefs, **launch) as browser:
         context = browser.new_context(ignore_https_errors=True)
         page = context.new_page()
         for visit in (1, 2, 3):
