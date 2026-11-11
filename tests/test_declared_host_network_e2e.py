@@ -32,7 +32,7 @@ import pytest
 from test_webrtc_realness import (_FAKE_EGRESS, _e2e_binary, _launch, candidates, decode_priority, host_candidates,
                                   is_mdns, local_https_page, socks5_tcp_only)  # noqa: F401  (fixtures)
 
-pytestmark = pytest.mark.e2e
+pytestmark = [pytest.mark.e2e, pytest.mark.usefixtures("the_udp_line")]
 
 NETWORK_ENV = "STEALTHFOX_WEBRTC_NETWORK"
 # retail 159 on Windows. The interface rank is the position in the prioritizer's sort, starting at 127

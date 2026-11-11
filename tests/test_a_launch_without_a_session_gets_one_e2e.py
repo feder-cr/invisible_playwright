@@ -77,7 +77,7 @@ async def _two_contexts(endpoint):
 def test_every_context_of_a_served_browser_is_the_session(firefox_binary):
     import asyncio
 
-    pytest.importorskip("websockets")
+    import websockets  # noqa: F401 - the dev extra installs it: a missing one is a failure, never a skip
     from invisible_playwright._juggler.remote import launch_server
 
     server = launch_server(headless=True, binary_path=firefox_binary, locale="en-US",

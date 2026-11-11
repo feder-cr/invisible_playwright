@@ -56,8 +56,8 @@ def gateway(monkeypatch):
 
 
 def test_a_turn_srflx_by_name_arrives_through_the_relay_before_the_tick(gateway, firefox_binary, engine_at_least):
-    pytest.importorskip("h2", reason="Firefox's TRR speaks h2: the FakeDoh serves it with the h2 package (pip install h2)")
-    engine_at_least("firefox-62")
+    import h2  # noqa: F401 - the dev extra installs it: a missing one is a failure, never a skip
+    engine_at_least("firefox-63")
     from invisible_playwright import InvisiblePlaywright
 
     with InvisiblePlaywright(headless=True, binary_path=firefox_binary, timezone="America/New_York", locale="en-US",

@@ -16,7 +16,7 @@ import socket
 
 import pytest
 
-pytestmark = pytest.mark.e2e
+pytestmark = [pytest.mark.e2e, pytest.mark.usefixtures("the_udp_line")]
 
 
 def _binary():
@@ -63,7 +63,7 @@ def _protocols_behind(gateway, server, monkeypatch):
 
 
 def test_a_page_behind_a_gateway_that_relays_udp_reads_h3_and_the_quic_goes_by_the_relay(monkeypatch):
-    pytest.importorskip("aioquic")
+    import aioquic  # noqa: F401 - the dev extra installs it: a missing one is a failure, never a skip
     from _h3_server import H3Server
     from _socks_servers import coherent
 
@@ -78,7 +78,7 @@ def test_a_page_behind_a_gateway_that_relays_udp_reads_h3_and_the_quic_goes_by_t
 
 
 def test_a_page_behind_a_gateway_without_udp_falls_back_to_h2_and_nothing_goes_direct(monkeypatch):
-    pytest.importorskip("aioquic")
+    import aioquic  # noqa: F401 - the dev extra installs it: a missing one is a failure, never a skip
     from _h3_server import H3Server
     from _socks_servers import tcp_only
 

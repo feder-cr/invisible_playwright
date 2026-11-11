@@ -258,6 +258,13 @@ def engine_at_least():
     return check
 
 
+@pytest.fixture
+def the_udp_line(engine_at_least):
+    """The UDP line (the declared network, the DoH through the proxy, the SOCKS5 UDP layer, HTTP/3 through it) is the engine
+    firefox-63: a test of it skips on an older engine (the published one that main's e2e fetches) and runs on the candidate."""
+    engine_at_least("firefox-63")
+
+
 # ---------------------------------------------------------------------------
 # Local HTTP fixture server - service workers need a real http(s) origin
 # (data: and about:blank are opaque-origin, no SW registration possible).

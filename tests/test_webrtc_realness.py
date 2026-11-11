@@ -577,6 +577,7 @@ def _gather_behind_a_coherent_gateway(monkeypatch, credentials, ice_prefs, rtt_m
 @pytest.mark.parametrize("credentials", [None, ("alice", "s3cret"), ("user~tcp-windows-65535", "not-a-real-password")],
                          ids=["no_auth", "user_and_password", "user_with_a_tilde"])
 @pytest.mark.parametrize("ice_prefs", _ICE_PREFS, ids=_ICE_IDS)
+@pytest.mark.usefixtures("the_udp_line")
 def test_a_gateway_with_coherent_udp_gives_the_page_a_srflx_born_through_its_relay(monkeypatch, credentials, ice_prefs):
     """The default engine, a SOCKS5 gateway that relays UDP and whose UDP exit is its TCP exit: the page's STUN request
     goes THROUGH the relay and the srflx it gets is the gateway's exit.
@@ -594,6 +595,7 @@ def test_a_gateway_with_coherent_udp_gives_the_page_a_srflx_born_through_its_rel
 
 
 @pytest.mark.e2e
+@pytest.mark.usefixtures("the_udp_line")
 def test_a_host_with_ipv6_addresses_gathers_through_an_ipv4_relay(monkeypatch):
     """The ICE sockets are opened with the family of the host candidate they carry (NrSocket::create, PR_OpenUDPSocket
     with the address's family): an IPv6 host gets AF_INET6 sockets next to its AF_INET ones, while the relay of the
@@ -607,6 +609,7 @@ def test_a_host_with_ipv6_addresses_gathers_through_an_ipv4_relay(monkeypatch):
 @pytest.mark.e2e
 @pytest.mark.parametrize("rtt_ms", [80, 150, 250])
 @pytest.mark.parametrize("ice_prefs", _ICE_PREFS, ids=_ICE_IDS)
+@pytest.mark.usefixtures("the_udp_line")
 def test_a_gateway_that_is_far_away_still_gives_the_page_a_srflx_born_through_its_relay(monkeypatch, ice_prefs, rtt_ms):
     """The same gather with a gateway that is not on loopback: every answer on the control connection waits `rtt_ms`
     and the relay adds half of it each way. The layer opens one association per ICE socket, one after the other, each
@@ -619,6 +622,7 @@ def test_a_gateway_that_is_far_away_still_gives_the_page_a_srflx_born_through_it
 
 @pytest.mark.e2e
 @pytest.mark.parametrize("ice_prefs", _ICE_PREFS, ids=_ICE_IDS)
+@pytest.mark.usefixtures("the_udp_line")
 def test_the_first_candidate_of_a_gather_does_not_wait_for_a_gateway_that_is_far_away(monkeypatch, ice_prefs):
     """⛔ THE KNOWN-BAD INPUT: a gateway 250 ms away. The layer made its associations one after the other on the thread of
     the ICE sockets, a connect, a greeting, an authentication and the ASSOCIATE each, so the first candidate of the page
@@ -640,6 +644,7 @@ def test_the_first_candidate_of_a_gather_does_not_wait_for_a_gateway_that_is_far
 
 
 @pytest.mark.e2e
+@pytest.mark.usefixtures("the_udp_line")
 def test_a_gather_after_the_page_loaded_through_the_gateway_costs_only_the_road_to_the_server(monkeypatch):
     """⛔ THE KNOWN-BAD INPUT: a gateway 250 ms away, a page loaded through it, and two seconds later the page asks for
     WebRTC. Next to a gateway the srflx comes at once; behind this one it may come later by the road itself, the round
@@ -661,6 +666,7 @@ def test_a_gather_after_the_page_loaded_through_the_gateway_costs_only_the_road_
 
 
 @pytest.mark.e2e
+@pytest.mark.usefixtures("the_udp_line")
 def test_two_contexts_with_two_proxies_each_gets_the_srflx_of_its_own(monkeypatch):
     """⛔ THE KNOWN-BAD INPUT: a session whose proxy is one gateway and a context whose proxy is another. The proxy a
     page's traffic takes is the one of its context, UDP included: the srflx of each context is the exit of its own
@@ -690,6 +696,7 @@ def test_two_contexts_with_two_proxies_each_gets_the_srflx_of_its_own(monkeypatc
 
 
 @pytest.mark.e2e
+@pytest.mark.usefixtures("the_udp_line")
 def test_the_turn_over_tcp_of_a_context_goes_through_the_proxy_of_that_context(monkeypatch):
     """⛔ THE KNOWN-BAD INPUT: the proxy lookup of the TCP socket of a TURN server was made with a channel of the system
     principal, so the filter of the session answered for context 0 and a SOCKS5 proxy of the context was not the one the
@@ -724,6 +731,7 @@ def test_the_turn_over_tcp_of_a_context_goes_through_the_proxy_of_that_context(m
 
 
 @pytest.mark.e2e
+@pytest.mark.usefixtures("the_udp_line")
 def test_a_proxy_that_does_not_relay_udp_gives_no_srflx_at_all(monkeypatch):
     """⛔ THE KNOWN-BAD INPUT: a gateway that refuses UDP ASSOCIATE. The target is a retail Windows at home on a network
     that blocks UDP: the host candidates are there, the UDP datagrams leave nowhere and nothing answers (no error, no

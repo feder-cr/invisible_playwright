@@ -61,7 +61,7 @@ from _http_proxy import HttpProxy, basic
 from _leaks import ResolverTrap, Watcher
 from _servers import LocalServer
 
-pytestmark = pytest.mark.e2e
+pytestmark = [pytest.mark.e2e, pytest.mark.usefixtures("the_udp_line")]
 
 #: The zone of the FakeDoh: every name a test uses, all pointing at the loopback where the page server is.
 ZONE = {"page-a.test": "127.0.0.1", "page-b.test": "127.0.0.1", "page-c.test": "127.0.0.1",
@@ -90,8 +90,7 @@ def _hermetic_session(monkeypatch):
 
 @pytest.fixture
 def doh():
-    pytest.importorskip("h2", reason="Firefox's TRR speaks h2: the FakeDoh serves it with the h2 package "
-                                     "(pip install h2); without it only HTTP/1.1 would be exercised")
+    import h2  # noqa: F401 - the dev extra installs it: a missing one is a failure, never a skip
     server = FakeDoh(ZONE)
     yield server
     server.close()

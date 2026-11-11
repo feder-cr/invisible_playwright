@@ -19,7 +19,7 @@ import pytest
 
 from test_webrtc_realness import _e2e_binary, _launch, candidates, host_candidates  # noqa: F401
 
-pytestmark = pytest.mark.e2e
+pytestmark = [pytest.mark.e2e, pytest.mark.usefixtures("the_udp_line")]
 
 V4_ONLY = "v4=192.168.31.7;v6=0;p6="
 UDP_127, TCP_127 = 2122252543, 2105524479

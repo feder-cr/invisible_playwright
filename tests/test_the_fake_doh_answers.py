@@ -345,7 +345,7 @@ def test_two_gateways_tag_their_own_queries(doh):
 
 
 def test_the_doh_road_works_over_h2_through_the_gateway(doh):
-    pytest.importorskip("h2")
+    import h2  # noqa: F401 - the dev extra installs it: a missing one is a failure, never a skip
     with DohGateway("gw1", doh) as gw:
         s, code = _socks_connect(gw.port, DOH_BOOTSTRAP, 443)
         assert code == 0
