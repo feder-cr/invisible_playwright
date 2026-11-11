@@ -1076,11 +1076,17 @@ def test_the_launch_handler_hands_the_named_environment_to_the_engine(monkeypatc
                     "env": [{"name": "DISPLAY", "value": ":123"}]})
     try:
         env = dict(seen[-1])
-        # The session's own temporary directory is the server's addition, the
-        # one thing in the environment the caller did not name.
+        # The session's own temporary directory is the server's addition, and
+        # so are the variables of the session this unmarked launch was given
+        # (`server.session_for_launch`: the font manifest, the display backend,
+        # the crash reporter). Nothing of the server's own process comes in:
+        # WAYLAND_DISPLAY, set above, stays out.
         tmp = env.pop("TMP")
         assert env.pop("TEMP") == tmp and env.pop("TMPDIR") == tmp
-        assert env == {"DISPLAY": ":123"}
+        from invisible_playwright import _session
+        _, session_env = _session.default_session("x")
+        assert env == dict(session_env, DISPLAY=":123")
+        assert "WAYLAND_DISPLAY" not in env
     finally:
         server.shutdown()
 
