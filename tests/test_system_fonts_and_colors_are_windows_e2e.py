@@ -65,7 +65,7 @@ def test_the_reference_has_every_font_and_both_schemes():
 
 @pytest.mark.e2e
 def test_system_fonts_and_colours_match_windows_retail(firefox_binary, engine_at_least):
-    engine_at_least("firefox-63")
+    engine_at_least("firefox-64")
     from invisible_playwright import InvisiblePlaywright
 
     with InvisiblePlaywright(seed=6022, binary_path=firefox_binary, headless=True) as browser:
