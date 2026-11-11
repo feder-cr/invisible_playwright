@@ -29,7 +29,7 @@ def main(argv=None):
     ap.add_argument("--binary", required=True)
     ap.add_argument("--profile", default="p2", choices=["p2"])
     ap.add_argument("--patterns", default=",".join(HARD), help="comma separated; 'all' for every page")
-    ap.add_argument("--repetitions", type=int, default=5)
+    ap.add_argument("--repetitions", type=int, default=10)
     ap.add_argument("--idle-timeout-ms", type=int, default=10000)
     ap.add_argument("--no-stock", action="store_true", help="candidate only (the verdict then reads pages.json alone)")
     ap.add_argument("--out", default=None)

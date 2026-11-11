@@ -20,7 +20,7 @@ pytestmark = pytest.mark.e2e
 
 HERE = pathlib.Path(__file__).resolve().parent / "fakeweb"
 HARD = ["leaving_beacons_subframe", "leaving_beacons", "cancel_among_beacons"]
-REPETITIONS = 5
+REPETITIONS = 10
 
 
 def _stock_client():
