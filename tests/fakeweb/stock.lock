@@ -1,0 +1,2 @@
+playwright=1.61.0
+# sha256 of the stock browser archives is added here by the PR that changes the version
