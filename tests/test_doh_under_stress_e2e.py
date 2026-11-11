@@ -53,6 +53,21 @@ RETRY_GAP_S = 2.0
 RETRY_WINDOW_S = 15.0
 
 
+#: Firefox keeps the failure of ANY lookup (a refused DoH query included) in the DNS cache for network.dnsNegativeCacheExpiration
+#: = 60 s, plus 60 s of grace (network.dnsNegativeCacheExpirationGracePeriod): retail behaviour, under a global TRR-only mode
+#: too, measured by reading nsHostResolver.cpp:1333-1349 (not by a run). To isolate what this test is about (no TEMPORARY BLOCK
+#: of the DoH and no stickiness beyond that cache) the session shortens the cache to 1 s and drops the grace period: the
+#: refusal is then forgotten within the retry window. This only touches a cache; the code path of the lookup is the same.
+SHORT_NEGATIVE_CACHE = {"network.dnsNegativeCacheExpiration": 1, "network.dnsNegativeCacheExpirationGracePeriod": 0}
+
+
+def _launch_with_a_short_negative_cache(binary):
+    """A session without a launch proxy (the proxy is the context's) whose DNS negative cache is 1 s."""
+    from invisible_playwright import InvisiblePlaywright
+    from test_doh_through_the_proxy_e2e import PREFS
+    return InvisiblePlaywright(seed=42, binary_path=binary, proxy=None, extra_prefs={**PREFS, **SHORT_NEGATIVE_CACHE})
+
+
 def _navigate(context, url, timeout_ms):
     """(text or None, error or None, seconds) of one navigation in a fresh page of `context`, which is closed after."""
     page = context.new_page()
@@ -139,13 +154,16 @@ def test_a_name_the_doh_refused_once_resolves_on_the_next_request(firefox_binary
                                                                   record_property):
     """The FakeDoh ends the exchange of the first A (and the first AAAA) query for `flaky-a.test` with no answer, then
     serves the name. The first navigation may fail with NS_ERROR_UNKNOWN_HOST or load; a retry (a fresh page of the same
-    context, 2 s apart, up to 5 times, within 15 s) must load, and the browser must have asked the DoH again."""
+    context, 2 s apart, up to 5 times, within 15 s) must load, and the browser must have asked the DoH again. The
+    DNS negative cache (60 s + 60 s of grace in a release, the same under a global TRR-only mode) is shortened to 1 s
+    for this test (SHORT_NEGATIVE_CACHE): without it the retries would be answered from the cache, as in a retail
+    Firefox, and the test would say nothing about a temporary block of the DoH."""
     doh.names["flaky-a.test"] = "127.0.0.1"
     doh.fail_first["flaky-a.test"] = "close"
     gw = gateway("gw")
     url = pages.url("flaky-a.test")
     attempts = []                       # (text or None, error or None, seconds)
-    with _launch(firefox_binary, None) as browser:
+    with _launch_with_a_short_negative_cache(firefox_binary) as browser:
         context, page = _page_in(browser, proxy=gw.proxy)
         page.close()
         attempts.append(_navigate(context, url, 20000))
