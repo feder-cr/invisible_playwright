@@ -24,11 +24,14 @@ proxy, so the DoH is never asked (no CONNECT to it reaches the gateway) and the 
 the handshakes of its associations are serial (each costs round trips of the gateway before a socket is usable).
 
 The browser accepts the certificate of the FakeDoh the way `test_doh_through_the_proxy_e2e.py` does: the page is opened in a
-context made with `ignore_https_errors=True` (applied per user context to the DoH request of the lookup of that context).
+context made with `ignore_https_errors=True` (applied per user context to the DoH request of the lookup of that context), and
+the provider is the FakeDoh's own name (`doh.gateway.test`, declared through `extra_prefs`): the DoH of Mozilla is HSTS-preloaded
+and Firefox never accepts an override for it.
 """
 import pytest
 
 import _turn_chain as chain_mod
+from _doh_servers import DOH_PROVIDER_PREFS
 from _udp_line import declared_udp, egress_by_proxy, measure_servers
 
 pytestmark = pytest.mark.e2e
@@ -64,7 +67,7 @@ def test_a_turn_srflx_by_name_arrives_through_the_relay_before_the_tick(gateway,
 
     with InvisiblePlaywright(headless=True, binary_path=firefox_binary, timezone="America/New_York", locale="en-US",
                              proxy=gateway.proxy, udp_stun_servers=measure_servers(gateway),
-                             extra_prefs=dict(PREFS)) as browser:
+                             extra_prefs={**PREFS, **DOH_PROVIDER_PREFS}) as browser:
         page = browser.new_context(ignore_https_errors=True).new_page()
         page.goto(gateway.page.url, wait_until="domcontentloaded", timeout=60000)
         try:
