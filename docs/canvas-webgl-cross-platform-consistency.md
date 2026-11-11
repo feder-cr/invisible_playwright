@@ -1,17 +1,20 @@
 ---
-title: "Canvas and WebGL fingerprints, identical across OSes"
-description: "Canvas and WebGL fingerprints identical across Windows and Linux: intercept readback, not the render, so one seed produces a byte-identical hash on every OS."
+title: "Canvas and WebGL fingerprints across OSes"
+description: "Canvas and WebGL fingerprints across Windows and Linux: 2D canvas is drawn on the CPU, noise is projected only when WebGL and WebGPU pixels are read back, and it depends only on the seed."
 parent: "Canvas, WebGL, Fonts and Audio"
 grand_parent: "Guides"
 nav_order: 9
 ---
 
 
-# Canvas and WebGL fingerprints, identical across OSes
+# Canvas and WebGL fingerprints across OSes
 
 A GPU-backed render surface can't be read from or written to directly and safely, so
 the fix intercepts the one place JavaScript can actually see the result instead - the
-same seed then produces a byte-identical canvas and WebGL hash on Windows and Linux.
+same seed then gives the same noise on Windows and Linux. 2D canvas is drawn on the CPU, so it
+does not depend on the GPU; the noise is projected only when WebGL and WebGPU pixels are read back.
+Text and GPU raster can still differ slightly between the two OSes, and the PNG container is left
+as a stock Firefox writes it.
 
 [Why headless browsers render different fonts](headless-fonts-differ.md) and
 [how to make Linux and macOS report real Windows fonts](bundled-fonts-cross-platform.md)
@@ -92,17 +95,18 @@ for the same reason: nothing about it resembles noise added on top of a real sig
 | Additive per-call noise | Perturbs a fraction of pixels on top of the real render | Two reads in one page differ; the real render's font/GPU signature still shows through; the noise has a high-frequency shape a single read can flag |
 | Full substitution | Replaces pixels with a pure function of the seed and the pixel position, with zero input from the render underneath | Must leave low-entropy buffers untouched so it does not break legitimate canvas reads |
 
-## The proof: byte-identical hashes, not just "looks similar"
+## What was checked, and what was not
 
 Rendered the same seed's canvas (text plus a gradient) and WebGL scene (a
-high-entropy draw) on Windows and on Linux, hashed both in-page. The hashes matched
-byte for byte on both platforms. Run against a commercial fingerprint scanner across
-multiple seeds, zero failures on either OS.
+high-entropy draw) on Windows and on Linux, hashed both in-page, and ran a commercial
+fingerprint scanner across multiple seeds. What holds: the noise is a pure function of
+the seed and of the pixels it is applied to, so two reads of the same bytes give the same
+result, and the 2D path does not depend on the GPU.
 
-That is a stronger claim than "produces a plausible fingerprint." It's the same
-identity, provably, regardless of which OS is actually running underneath - which is
-what makes a seed a real, portable identity instead of a value that happens to look
-right on the machine it was tested on.
+What is not claimed: that every byte matches between a Windows and a Linux host. Text
+pixels follow the host's rasteriser on Linux, and GPU raster can differ by one level
+between drivers. Whether two profiles with the same font can be linked by the way they
+rasterise has not been measured.
 
 ## What this generalises to, and where the edges still are
 
@@ -121,8 +125,8 @@ a fact that becomes true once and stays true.
 The render was never the reachable surface. Content only ever sees a canvas or a
 WebGL scene through a handful of readback calls, and putting the substitution there
 instead of in the renderer is what makes a seed portable: the same identity produces
-the same bytes on Windows and on Linux, because nothing about either host's actual
-rendering pipeline reaches the output.
+the same noise on Windows and on Linux, because the noise comes from the seed and not from
+the host's rendering pipeline.
 
 The tradeoff is honest rather than free - the fix covers only the readback paths it
 enumerates, and a masking-safe design still has to leave genuinely low-entropy canvas
@@ -131,10 +135,10 @@ fingerprinting.
 
 ## Short answers to the questions that lead here
 
-**Can canvas and WebGL fingerprints be made identical across operating systems?** Yes,
-if the interception happens at every point content can read the result rather
-than at the render itself, which is the part that can't be touched directly on a
-GPU-backed surface.
+**Can canvas and WebGL fingerprints be made the same across operating systems?** The
+noise can: it is applied where content can read the result, from the seed, rather than at
+the render itself, which can't be touched directly on a GPU-backed surface. The pixels
+underneath still differ slightly between hosts for text and GPU raster.
 
 **Why substitution instead of adding noise to the real render?** Noise on top of a
 real image still carries the host's own rendering signature underneath it.
@@ -162,7 +166,7 @@ content can observe, not at the source - applied to a different surface.
   retrieved 2026-08-28, the enumerable set of readback calls this page's interception
   point covers.
 - This project's own render-readback interception work and its cross-platform
-  validation (same-seed byte-identical hashes on Windows and Linux, multi-seed
+  validation (same-seed hashes on Windows and Linux, multi-seed
   results against a commercial fingerprint scanner).
 
 **See also:** [canvas fingerprint noise](canvas-fingerprint-noise.md), for why
