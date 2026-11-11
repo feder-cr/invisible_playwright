@@ -456,6 +456,7 @@ def _launch_behind(gateway, **extra):
 
 
 @pytest.mark.e2e
+@pytest.mark.usefixtures("the_udp_line")
 def test_the_gather_is_real_without_a_proxy(local_https_page):
     """No proxy: the engine keeps the real network. The gather completes, the
     host is mDNS, and an srflx, when one is born, is genuine (Fix A/B) and

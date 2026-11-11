@@ -51,7 +51,7 @@ from _doh_servers import QTYPE_A, FakeDoh
 from _http_proxy import HttpProxy, basic
 from _socks_servers import STUN_NUMBER
 
-pytestmark = pytest.mark.e2e
+pytestmark = [pytest.mark.e2e, pytest.mark.usefixtures("the_udp_line")]
 
 #: The ICE names of the tests. Both resolve to a routable documentation address that only a relay could reach.
 ICE_ZONE = {**ZONE, "stun-a.test": STUN_NUMBER, "stun-b.test": STUN_NUMBER}
