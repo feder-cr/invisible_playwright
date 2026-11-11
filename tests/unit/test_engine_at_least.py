@@ -7,16 +7,16 @@ import conftest
 pytestmark = pytest.mark.unit
 
 
-def _check(tag, minimum="firefox-62"):
+def _check(tag, minimum="firefox-63"):
     conftest._skip_unless_engine_at_least(minimum, tag)
 
 
 def test_an_older_engine_is_skipped_with_the_reason():
-    with pytest.raises(Skipped, match="needs firefox-62 or later; this engine is firefox-58"):
+    with pytest.raises(Skipped, match="needs firefox-63 or later; this engine is firefox-58"):
         _check("firefox-58")
 
 
-@pytest.mark.parametrize("tag", ["firefox-62", "firefox-62-candidate", "firefox-63"])
+@pytest.mark.parametrize("tag", ["firefox-63", "firefox-63-candidate", "firefox-64"])
 def test_the_engine_that_promises_it_runs(tag):
     _check(tag)
 
@@ -32,10 +32,10 @@ def test_a_seal_with_no_number_fails_and_says_why(tag):
         _check(tag)
 
 
-@pytest.mark.parametrize("tag", ["firefox-61", "firefox-61-candidate"])
-def test_firefox_61_does_not_run_what_the_62_promises(tag):
-    """firefox-61 is the next release of the engine (firefox-60 plus the corrections); the shelved
-    line with the idwr text, the colours, the maths and the media goals is firefox-62. A test that
-    asks for 62 must skip on 61, or the 61 would run goals that line has not shipped."""
-    with pytest.raises(Skipped, match="needs firefox-62 or later; this engine is " + tag):
+@pytest.mark.parametrize("tag", ["firefox-61", "firefox-61-candidate", "firefox-62", "firefox-62-candidate"])
+def test_firefox_62_does_not_run_what_the_63_promises(tag):
+    """firefox-62 is the Fission release (one process per site); the shelved line with the idwr text,
+    the colours, the maths and the media goals is firefox-63. A test that asks for 63 must skip on 62
+    (and on 61), or the 62 would run goals that line has not shipped."""
+    with pytest.raises(Skipped, match="needs firefox-63 or later; this engine is " + tag):
         _check(tag)

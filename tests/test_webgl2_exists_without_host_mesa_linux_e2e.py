@@ -59,7 +59,7 @@ def _host_mesa_files() -> list:
 
 
 def test_webgl2_exists_on_a_host_without_mesa(firefox_binary, engine_at_least):
-    engine_at_least("firefox-62")
+    engine_at_least("firefox-63")
     if not sys.platform.startswith("linux"):
         pytest.skip("the host's GL probe that blocked WebGL is a Linux one")
     present = _host_mesa_files()

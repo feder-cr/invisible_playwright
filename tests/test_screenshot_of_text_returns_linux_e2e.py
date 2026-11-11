@@ -1,6 +1,6 @@
 """A screenshot of a page with text comes back (e2e, Linux).
 
-On the candidate engine of firefox-62 ``page.screenshot()`` of a page with HTML
+On the candidate engine of firefox-63 ``page.screenshot()`` of a page with HTML
 text never answered: the parent waited for a paint that the text never let
 finish, while a page without text, or a canvas, was fine. Every engine before
 it draws the same page, so this is not tied to an engine release: it must pass
