@@ -56,6 +56,9 @@ class _Page:
         self.number = number
         self.channel = {"guid": "page-" + target_id}
 
+    def wait_until_ready(self, timeout=20.0):
+        pass          # the engine of this test says Page.ready at once
+
     def announce_closed(self):
         pass
 

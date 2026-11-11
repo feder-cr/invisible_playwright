@@ -59,6 +59,16 @@ def site():
         srv.server_close()
 
 
+def _stock_client(module):
+    """The stock Playwright client, a pinned dev dependency: its absence is a broken environment, not a reason to skip."""
+    import importlib
+
+    try:
+        return importlib.import_module(module)
+    except ImportError as exc:       # pragma: no cover - only in a broken environment
+        pytest.fail("the stock Playwright client is missing (%s): install the wrapper with its dev extra" % exc, pytrace=False)
+
+
 OPENERS = ["#link", "#noopener", "#open", "#open-noopener"]
 
 
@@ -101,10 +111,7 @@ def test_a_popup_reaches_an_in_process_client(firefox_binary, site, opener, rout
 @pytest.mark.parametrize("opener", OPENERS)
 def test_a_popup_reaches_a_stock_client_of_a_served_browser(firefox_binary, site, opener, routed):
     from invisible_playwright._juggler.remote import launch_server
-    try:
-        from playwright.sync_api import sync_playwright
-    except ImportError as exc:       # pragma: no cover - only in a broken environment
-        pytest.fail("the stock Playwright client is missing (%s): install the wrapper with its dev extra" % exc, pytrace=False)
+    sync_playwright = _stock_client("playwright.sync_api").sync_playwright   # a stock client, as production uses
 
     server = launch_server(headless=True, binary_path=firefox_binary, locale="en-US", timezone="Europe/Rome")
     try:
