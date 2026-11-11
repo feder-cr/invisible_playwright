@@ -741,7 +741,7 @@ def _launch_params(session: Any, *, virtual_display: bool, headless: bool,
                 vd.start()
                 session._virtual_display = vd
     prefs = session._build_prefs()
-    playwright_proxy = configure_proxy(session._proxy, prefs)
+    playwright_proxy = configure_proxy(session._proxy, prefs, udp=geo.udp_exit)
     session._session_token = SessionToken.mint()
     env = session._build_env(prefs)
     params: Dict[str, Any] = {

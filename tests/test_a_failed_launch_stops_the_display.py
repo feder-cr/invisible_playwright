@@ -39,7 +39,7 @@ def display(monkeypatch):
     vd = RecordingDisplay()
     geo = types.SimpleNamespace(timezone="Europe/Rome",
                                 locale=SessionLocale.of("it-IT"),
-                                egress_ip=None,
+                                egress_ip=None, udp_exit=None,
                                 geolocation_override=lambda: None)
 
     def refuse(**_kw):

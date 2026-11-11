@@ -70,6 +70,7 @@ from ._marshal import (_js_number, _as_script, _button, _caller_timeout,
 # here for the length of one fix. Two readings of what a proxy is would be
 # the same duplication that produced the defect, one layer down.
 from invisible_core import SessionLocale, parse_proxy
+from invisible_core._udp_exit import declare_context_proxy, declare_launch_proxy
 
 from invisible_core import write_user_js
 from invisible_core.juggler import (SessionFiles, domain_matches, host_of,
@@ -5016,7 +5017,14 @@ class BrowserDispatcher(Dispatcher):
         # a context whose proxy cannot be expressed must not come back usable.
         if params.get("proxy"):
             try:
-                proxy = parse_proxy(params["proxy"]).as_engine_command()
+                parse_proxy(params["proxy"])
+                # ⛔ MEASURED BEFORE IT IS SENT. The proxy's UDP exit (does its UDP leave from the address of its TCP?)
+                # travels in this very command, as `udp`, and without it the engine drops the UDP of every SOCKS5
+                # proxy. The core discovers the TCP exit through the proxy and measures the UDP beside it, once per
+                # proxy (cached by endpoint and a hash of the credentials): this is the ONE place a context's proxy
+                # is applied, for the sync and async clients and for a remote one alike.
+                proxy = parse_proxy(
+                    declare_context_proxy(params["proxy"])).as_engine_command()
             except ValueError as exc:
                 raise ProtocolException(
                     "new_context(proxy=...) cannot be applied: %s" % exc)
@@ -5358,7 +5366,11 @@ class BrowserTypeDispatcher(Dispatcher):
         proxy = None
         if params.get("proxy"):
             try:
-                proxy = parse_proxy(params["proxy"]).as_engine_command()
+                parse_proxy(params["proxy"])
+                # The launcher's proxy already carries the measure its geo step made (`configure_proxy(udp=)`); one
+                # from a client that composed no session is measured now (a cache hit when the server composed it).
+                proxy = parse_proxy(
+                    declare_launch_proxy(params["proxy"])).as_engine_command()
             except ValueError as exc:
                 raise ProtocolException("launch(proxy=...) cannot be applied: "
                                         "%s" % exc)

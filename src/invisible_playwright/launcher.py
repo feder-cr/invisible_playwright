@@ -272,7 +272,7 @@ class InvisiblePlaywright(_session.CommonLaunch):
             # after: B172, 2026-08-24.
             pw_headless = self._resolve_headless()
             prefs = self._build_prefs()
-            playwright_proxy = _configure_proxy_shared(self._proxy, prefs)
+            playwright_proxy = _configure_proxy_shared(self._proxy, prefs, udp=_geo.udp_exit)
             self._session_token = SessionToken.mint()
             env = self._build_env(prefs)
             self._pw = sync_playwright().start()
