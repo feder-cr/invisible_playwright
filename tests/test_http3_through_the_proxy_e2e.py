@@ -1,22 +1,48 @@
-"""HTTP/3 behind a SOCKS5 proxy: the page reads `nextHopProtocol`, and a retail Firefox with no proxy uses h3.
+"""HTTP/3 behind a proxy: three visits of one page read the protocols a retail Firefox reads, road by road.
 
-⛔ THE KNOWN-BAD INPUT: the engine refuses HTTP/3 whenever a proxy is in use (AltSvcCache::UpdateAltServiceMapping, the
-attempt of DnsAndConnectSocket, HttpBaseChannel), so a page behind a SOCKS5 gateway that relays UDP read `h2` where the
-same Firefox with no proxy reads `h3`. With a gateway that relays UDP the QUIC connection goes through the ASSOCIATE of the
-proxy (the server sees the relay, never this host); with one that does not, the QUIC handshake never completes and Firefox
-falls back to h2 by itself, and nothing UDP leaves this host direct.
+⛔ THE KNOWN-BAD INPUT: an engine that refuses HTTP/3 whenever a proxy is in use reads `h2` behind a SOCKS5 gateway that relays
+UDP where the same Firefox with no proxy reads `h3`; and one that tries h3 over a UDP that goes nowhere makes the page wait for
+a timeout before it falls back to h2.
 
-The server is local, reached by its address (an address of this host that is not loopback: a loopback destination goes
-direct whatever the proxy), with a self-signed certificate (the context ignores certificate errors).
+THE REFERENCE is a retail Firefox 159 (``invisible_WebRTC/captures/h3-fallback/retail-159-linux``, 3 sites x 5 runs x 3 visits,
+one profile per run): with UDP free the first visit of a site is ``h2`` and the second and the third are ``h3`` (15 of 15); with
+UDP dropped every visit is ``h2`` (15 of 15), and the later visits load as fast as the first (no wait for a timeout before the
+fallback). The method is the retail's: one context, the same page three times (``?v=N`` keeps each visit off the HTTP cache), a
+pause of two seconds after each load so that the Alt-Svc it carries settles, and the ``nextHopProtocol`` of the navigation
+entry of the document, ``performance.getEntriesByType('navigation')[0].nextHopProtocol``. The sequence per road is
+``_udp_line.expected_protocols``, and a visit 1 that reads h3 is an error whatever the road.
+
+THE ROADS. A proxy whose UDP the core MEASURED ``coherent`` (a STUN Binding through its ASSOCIATE came back from the address of
+its TCP exit) carries QUIC through the relay, the server sees the relay and never this host, and the page reads what it reads
+with no proxy at all: h2, h3, h3. Every other proxy is "a router that drops UDP", and the engine acts on it: the SOCKS5 proxy
+that refuses UDP (``no``), whose UDP leaves from another address (``no``) or that never answers (``unmeasured``), and an HTTP
+proxy (which has no UDP at all): h2, h2, h2, nothing QUIC reaches the server, no datagram of the page goes to a relay, and no
+visit waits for a timeout. The core's measurement is not replaced: it asks the relay of each gateway for a Binding for real,
+at the server the launch names (``udp_stun_servers``), and the test says what the launch declared.
+
+The server is local, reached by its address (an address of this host that is not loopback: a loopback destination goes direct
+whatever the proxy), with a self-signed certificate (the context ignores certificate errors); its TCP side speaks HTTP/2 and
+carries ``Alt-Svc: h3`` (tests/_h3_server.py).
 """
 from __future__ import annotations
 
 import os
 import socket
+import time
 
 import pytest
 
+from _udp_line import declared_udp, egress_by_proxy, expected_protocols, judge_visits, measure_servers
+
 pytestmark = [pytest.mark.e2e, pytest.mark.usefixtures("the_udp_line")]
+
+#: What the product's own probe of the egress is told when there is no proxy: RFC 5737 TEST-NET-3.
+EXIT_DIRECT = "203.0.113.7"
+#: What the core is expected to have measured, by road.
+_DECLARED = {"socks5_coherent": "coherent", "socks5_no_udp": "no", "socks5_mismatched": "no", "socks5_unmeasured": "unmeasured"}
+#: The pause after each load (the retail method), and the nextHopProtocol of the document.
+PAUSE_MS = 2000
+_NAV_JS = "() => performance.getEntriesByType('navigation')[0].nextHopProtocol"
 
 
 def _binary():
@@ -35,56 +61,133 @@ def _address_of_this_host() -> str:
         probe.close()
 
 
-_FETCH = """async (url) => {
-  const seen = [];
-  for (let i = 0; i < 12; i++) {
-    const r = await fetch(url + '?n=' + i, {cache: 'no-store', mode: 'no-cors'});
-    await r.arrayBuffer();
-    const entry = performance.getEntriesByType('resource').filter(e => e.name.includes('?n=' + i)).pop();
-    seen.push(entry ? entry.nextHopProtocol : '?');
-    await new Promise(resolve => setTimeout(resolve, 500));
-  }
-  return seen;
-}"""
+def _gateway(road: str, host: str):
+    from _socks_servers import coherent, mismatched, silent_udp, tcp_only
+    make = {"socks5_coherent": coherent, "socks5_no_udp": tcp_only, "socks5_mismatched": mismatched,
+            "socks5_unmeasured": silent_udp}[road]
+    # The relay sits on the address of this host, as a real gateway's does: the engine's UDP sockets are bound to an interface.
+    return make(user="alice", password="s3cret", relay_host=host)
 
 
-def _protocols_behind(gateway, server, monkeypatch):
+def _three_visits(server, monkeypatch, discover, **launch):
+    """Visit the page of ``server`` three times in one context; the nextHopProtocol of the document of each visit and the time
+    ``page.goto`` took to the load event, in milliseconds."""
     from invisible_core import _geo
     from invisible_playwright import InvisiblePlaywright
 
-    monkeypatch.setattr(_geo, "discover_egress_ip", lambda *_a, **_k: gateway.tcp_exit)
-    with InvisiblePlaywright(headless=True, binary_path=_binary(), timezone="America/New_York",
-                             proxy=gateway.proxy) as browser:
+    monkeypatch.setattr(_geo, "discover_egress_ip", discover)
+    protocols, walls = [], []
+    with InvisiblePlaywright(headless=True, binary_path=_binary(), timezone="America/New_York", locale="en-US",
+                             **launch) as browser:
         context = browser.new_context(ignore_https_errors=True)
         page = context.new_page()
-        page.goto(server.url, wait_until="load", timeout=60000)      # the answer that carries Alt-Svc: h3
-        page.wait_for_timeout(1500)
-        return page.evaluate(_FETCH, server.url)
+        for visit in (1, 2, 3):
+            url = server.url if visit == 1 else "%s?v=%d" % (server.url, visit)
+            started = time.monotonic()
+            page.goto(url, wait_until="load", timeout=60000)
+            walls.append(round((time.monotonic() - started) * 1000))
+            page.wait_for_timeout(PAUSE_MS)           # let the later resources and the Alt-Svc settle
+            protocols.append(page.evaluate(_NAV_JS))
+    return protocols, walls
 
 
-def test_a_page_behind_a_gateway_that_relays_udp_reads_h3_and_the_quic_goes_by_the_relay(monkeypatch):
+def _report(road, protocols, walls, server, gateway=None):
+    said = ("the %d visits of road %s read %s (a retail Firefox reads %s), loaded in %s ms; the server answered TCP with "
+            "ALPN %s and saw QUIC from %s" % (len(protocols), road, protocols, expected_protocols(road), walls,
+                                              server.tcp_alpn, server.quic_peers))
+    if gateway is not None:
+        said += "; datagrams the relay carried: %s" % sorted({(h, p) for h, p, _data in gateway.datagrams})
+    return said
+
+
+def test_a_page_with_no_proxy_reads_h2_then_h3_then_h3(monkeypatch):
     import aioquic  # noqa: F401 - the dev extra installs it: a missing one is a failure, never a skip
     from _h3_server import H3Server
-    from _socks_servers import coherent
+
+    with H3Server(_address_of_this_host()) as server:
+        protocols, walls = _three_visits(server, monkeypatch, egress_by_proxy(direct=EXIT_DIRECT))
+        problems = judge_visits("direct", protocols, walls)
+        assert not problems, "; ".join(problems) + ". " + _report("direct", protocols, walls, server)
+        assert server.quic_peers, "the h3 visits did not reach the server by QUIC"
+
+
+def test_a_page_behind_a_gateway_that_relays_udp_reads_h2_then_h3_then_h3_and_the_quic_goes_by_the_relay(monkeypatch):
+    import aioquic  # noqa: F401 - the dev extra installs it: a missing one is a failure, never a skip
+    from _h3_server import H3Server
 
     host = _address_of_this_host()
-    with H3Server(host) as server, coherent(user="alice", password="s3cret", relay_host=host) as gateway:
-        protocols = _protocols_behind(gateway, server, monkeypatch)
+    with H3Server(host) as server, _gateway("socks5_coherent", host) as gateway:
+        protocols, walls = _three_visits(server, monkeypatch, egress_by_proxy(gateway), proxy=gateway.proxy,
+                                         udp_stun_servers=measure_servers(gateway))
         carried = [(h, p) for h, p, _data in gateway.datagrams if (h, p) == (host, server.port)]
-    assert "h3" in protocols, f"nextHopProtocol of 12 fetches behind a gateway that relays UDP: {protocols}"
-    assert carried, "the QUIC datagrams did not go by the relay of the gateway"
+        declared = declared_udp(gateway.proxy, measure_servers(gateway))
+        said = _report("socks5_coherent", protocols, walls, server, gateway)
+    assert declared == "coherent", "the core measured the gateway %s, not coherent: the engine would not use its relay. %s" % (declared, said)
+    problems = judge_visits("socks5_coherent", protocols, walls)
+    assert not problems, "; ".join(problems) + ". " + said
+    assert carried, "the QUIC datagrams did not go by the relay of the gateway. " + said
     assert server.quic_peers and set(server.quic_peers) == {"127.0.0.1"}, (
-        f"the QUIC server saw {server.quic_peers}: only the relay of the gateway (127.0.0.1) may reach it")
+        "the QUIC server saw %s: only the relay of the gateway (127.0.0.1) may reach it. %s" % (server.quic_peers, said))
 
 
-def test_a_page_behind_a_gateway_without_udp_falls_back_to_h2_and_nothing_goes_direct(monkeypatch):
+@pytest.mark.parametrize("road", ["socks5_no_udp", "socks5_mismatched", "socks5_unmeasured"])
+def test_a_page_behind_a_socks5_proxy_that_is_not_coherent_reads_h2_three_times_and_loads_without_delay(monkeypatch, road):
+    """A relay that is refused, that leaves from another address or that never answers is a router that drops UDP: every
+    visit is h2, nothing QUIC reaches the server, nothing of the page goes to the relay, and visits 2 and 3 load as fast as 1."""
     import aioquic  # noqa: F401 - the dev extra installs it: a missing one is a failure, never a skip
     from _h3_server import H3Server
-    from _socks_servers import tcp_only
 
     host = _address_of_this_host()
-    with H3Server(host) as server, tcp_only(user="alice", password="s3cret") as gateway:
-        protocols = _protocols_behind(gateway, server, monkeypatch)
-    assert "?" not in protocols and "h3" not in protocols, (
-        f"behind a gateway that carries no UDP every fetch is h2 (or http/1.1), never h3: {protocols}")
-    assert not server.quic_peers, f"a QUIC connection reached the server direct, around the proxy: {server.quic_peers}"
+    with H3Server(host) as server, _gateway(road, host) as gateway:
+        protocols, walls = _three_visits(server, monkeypatch, egress_by_proxy(gateway), proxy=gateway.proxy,
+                                         udp_stun_servers=measure_servers(gateway))
+        to_the_server = [(h, p) for h, p, _data in gateway.datagrams if (h, p) == (host, server.port)]
+        declared = declared_udp(gateway.proxy, measure_servers(gateway))
+        said = _report(road, protocols, walls, server, gateway)
+    assert declared == _DECLARED[road], "the core declared udp=%s, the road is %s. %s" % (declared, _DECLARED[road], said)
+    problems = judge_visits(road, protocols, walls)
+    assert not problems, "; ".join(problems) + ". " + said
+    assert not server.quic_peers, "a QUIC connection reached the server: %s. %s" % (server.quic_peers, said)
+    assert not to_the_server, "the page's UDP went to a relay that was not measured coherent. " + said
+
+
+def test_a_page_behind_an_http_proxy_reads_h2_three_times_and_loads_without_delay(monkeypatch):
+    """An HTTP proxy has no UDP at all: the engine refuses HTTP/3 behind it and the page falls to h2 by itself."""
+    import aioquic  # noqa: F401 - the dev extra installs it: a missing one is a failure, never a skip
+    from _doh_servers import FakeDoh, relay
+    from _h3_server import H3Server
+    from _http_proxy import HttpProxy
+
+    class ProxyToTheServer(HttpProxy):
+        """The HTTP proxy of the tests relays a CONNECT to a loopback address only; this one also relays the one to the server."""
+        target = None
+
+        def _connect(self, conn, host, port, authorization):
+            if (host, port) != self.target:
+                return super()._connect(conn, host, port, authorization)
+            upstream = socket.create_connection((host, port), timeout=10)
+            self._record("CONNECT", host, port, authorization, 200)
+            self._answer(conn, 200)
+            try:
+                relay(conn, upstream)
+            finally:
+                upstream.close()
+
+    host = _address_of_this_host()
+    doh = FakeDoh({})
+    try:
+        with H3Server(host) as server:
+            proxy = ProxyToTheServer("http1", doh)
+            proxy.target = (host, server.port)
+            try:
+                protocols, walls = _three_visits(server, monkeypatch, lambda *_a, **_k: EXIT_DIRECT, proxy=proxy.proxy)
+                connects = [c for c in proxy.connects if c == (host, server.port)]
+            finally:
+                proxy.close()
+            said = _report("http_proxy", protocols, walls, server) + "; CONNECTs to the server: %d" % len(connects)
+        problems = judge_visits("http_proxy", protocols, walls)
+        assert not problems, "; ".join(problems) + ". " + said
+        assert connects, "the page did not go through the proxy. " + said
+        assert not server.quic_peers, "a QUIC connection reached the server direct, around the proxy: %s. %s" % (server.quic_peers, said)
+    finally:
+        doh.close()
