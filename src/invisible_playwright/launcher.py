@@ -516,8 +516,8 @@ class InvisiblePlaywright(_session.CommonLaunch):
             # then on.
             #
             # Measured 2026-08-25 in a manual session: at launch the egress
-            # was `82.40.95.144` and that is what landed in the srflx; nine
-            # tabs later the page was exiting from `130.12.17.118`, and the
+            # was `203.0.113.10` and that is what landed in the srflx; nine
+            # tabs later the page was exiting from `203.0.113.20`, and the
             # two showed up together on screen - `PUBLIC IP` against
             # `WEBRTC CLIENT SIDE IP OFFER`. The guard existed, it was
             # correct, and it was never asked.
