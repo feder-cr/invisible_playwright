@@ -157,7 +157,14 @@ def test_a_name_the_doh_refused_once_resolves_on_the_next_request(firefox_binary
     context, 2 s apart, up to 5 times, within 15 s) must load, and the browser must have asked the DoH again. The
     DNS negative cache (60 s + 60 s of grace in a release, the same under a global TRR-only mode) is shortened to 1 s
     for this test (SHORT_NEGATIVE_CACHE): without it the retries would be answered from the cache, as in a retail
-    Firefox, and the test would say nothing about a temporary block of the DoH."""
+    Firefox, and the test would say nothing about a temporary block of the DoH.
+
+    WHAT IT MEASURES: that a lookup the DoH refused once is not blocked by anything of the DoH itself (no temporary
+    blocklist, no failure counter: under a per-request TRR_ONLY with the service in global mode 0 neither applies, by
+    reading TRRService.cpp:1025-1066, :1126, :1250-1298 and TRR.cpp:177-217) and that the browser asks the DoH again
+    (a second A query at the FakeDoh) and resolves the name when it is served. WHAT IT DOES NOT MEASURE: how long Firefox
+    keeps the failure of a lookup in its DNS cache (60 s + 60 s of grace in a release, retail behaviour, the same in a
+    global TRR-only mode); that duration is shortened here on purpose and is not tested."""
     doh.names["flaky-a.test"] = "127.0.0.1"
     doh.fail_first["flaky-a.test"] = "close"
     gw = gateway("gw")
