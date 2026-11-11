@@ -25,11 +25,18 @@ A JUnit XML has one entry per test with its outcome. It costs a flag.
     python scripts/upstream_regressions.py --record out.xml
     python scripts/upstream_regressions.py --check  out.xml
     python scripts/upstream_regressions.py --selftest
+
+A run split over several jobs leaves several reports. Pass them all: they are
+merged before the comparison, and the floor refuses a merge that lost a shard.
+
+    python scripts/upstream_regressions.py --check a.xml b.xml c.xml d.xml
+    python scripts/upstream_regressions.py --check --min-fraction 0.95 a.xml
 """
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import pathlib
 import sys
 import xml.etree.ElementTree as ET
@@ -66,6 +73,38 @@ def outcomes(xml_text: str) -> dict:
         if out.get(name, "passed") == "passed":
             out[name] = esito
     return out
+
+
+def merge(reports: list) -> dict:
+    """One outcome map from several, the worse outcome winning on a clash.
+
+    Shards split the suite by file, so a test normally appears in exactly one
+    report. If one appears in two (a file moved between shards, a report
+    uploaded twice), a pass in one must not hide a failure in the other.
+    """
+    rank = {"passed": 0, "skipped": 1, "failed": 2, "error": 3}
+    merged: dict = {}
+    for one in reports:
+        for test, esito in one.items():
+            if test not in merged or rank[esito] > rank[merged[test]]:
+                merged[test] = esito
+    return merged
+
+
+def floor_of(recorded: int, fraction: float) -> int:
+    """How many recorded tests must still be collected for a run to count.
+
+    A fraction of the RECORDED set, not of what this run collected: a shard
+    that died before writing its report removes its whole share of the suite,
+    and a floor taken from the run itself would shrink with it.
+    """
+    return math.ceil(recorded * fraction)
+
+
+def differences(a: dict, b: dict) -> list:
+    """(test, outcome in a, outcome in b) for every test that differs."""
+    return [(t, a.get(t, "absent"), b.get(t, "absent"))
+            for t in sorted(set(a) | set(b)) if a.get(t) != b.get(t)]
 
 
 def compare(before: dict, after: dict) -> tuple:
@@ -136,24 +175,83 @@ def _selftest() -> int:
         broken += 1
     print("  %-50s %s (%d)" % ("tests that vanished are reported",
                                "ok" if ok2 else "BROKEN", len(gone)))
-    print("selftest: %d cases, %d broken" % (len(cases) + 2, broken))
+
+    # several reports: disjoint ones are the union, and on a clash the worse
+    # outcome wins, so a green copy cannot cover a red one.
+    one = outcomes(_xml(("a", "t1", None)))
+    two = outcomes(_xml(("a", "t2", "failure")))
+    both = merge([one, two])
+    ok3 = both == {"a::t1": "passed", "a::t2": "failed"}
+    clash = merge([outcomes(_xml(("a", "t1", None))),
+                   outcomes(_xml(("a", "t1", "error")))])
+    ok3 = ok3 and clash == {"a::t1": "error"}
+    if not ok3:
+        broken += 1
+    print("  %-50s %s" % ("merged reports keep the worse outcome",
+                          "ok" if ok3 else "BROKEN"))
+
+    # the floor is a share of the RECORDED tests, rounded up.
+    ok4 = floor_of(698, 0.95) == 664 and floor_of(10, 0.5) == 5
+    if not ok4:
+        broken += 1
+    print("  %-50s %s" % ("the floor is a share of the recorded set",
+                          "ok" if ok4 else "BROKEN"))
+    print("selftest: %d cases, %d broken" % (len(cases) + 4, broken))
     return 1 if broken else 0
+
+
+def _load(paths: list) -> dict:
+    """The merged outcomes of every report, or an exit-2 message.
+
+    A report that is missing, empty or not XML is a shard that did not
+    deliver. Reading it as "no tests" would let a dead shard pass for a clean
+    one, so it stops the run instead.
+    """
+    reports = []
+    for path in paths:
+        f = pathlib.Path(path)
+        if not f.is_file():
+            print("MISSING REPORT: %s" % path)
+            raise SystemExit(2)
+        try:
+            reports.append(outcomes(f.read_text(encoding="utf-8",
+                                                errors="replace")))
+        except ET.ParseError as e:
+            print("UNREADABLE REPORT: %s (%s)" % (path, e))
+            raise SystemExit(2)
+    return merge(reports)
 
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("report", nargs="?", help="a JUnit XML from the baseline")
+    p.add_argument("report", nargs="*",
+                   help="one or more JUnit XMLs from the baseline, merged")
     p.add_argument("--record", action="store_true")
     p.add_argument("--check", action="store_true")
     p.add_argument("--selftest", action="store_true")
+    p.add_argument("--min-fraction", type=float, default=None, metavar="F",
+                   help="fail unless at least this share of the recorded "
+                        "tests was collected: a shard that vanished takes its "
+                        "tests with it, and what is not collected cannot "
+                        "regress")
+    p.add_argument("--save-merged", default=None, metavar="JSON",
+                   help="write the merged outcomes of the reports to JSON")
+    p.add_argument("--compare-to", default=None, metavar="JSON",
+                   help="list the tests whose outcome differs from a merged "
+                        "JSON saved by another run (informational: it never "
+                        "changes the exit code)")
+    p.add_argument("--diff-out", default=None, metavar="TXT",
+                   help="write that list to a file instead of printing it")
     a = p.parse_args()
     if a.selftest:
         return _selftest()
     if not a.report:
         p.error("a JUnit XML is needed")
 
-    now = outcomes(pathlib.Path(a.report).read_text(encoding="utf-8",
-                                                    errors="replace"))
+    now = _load(a.report)
+    if a.save_merged:
+        pathlib.Path(a.save_merged).write_bytes(
+            json.dumps(now, indent=1, sort_keys=True).encode("utf-8"))
     if a.record:
         REFERENCE.parent.mkdir(parents=True, exist_ok=True)
         REFERENCE.write_bytes(json.dumps(now, indent=1, sort_keys=True)
@@ -178,10 +276,33 @@ def main() -> int:
               % len(repairs))
     if gone:
         print("(%d recorded test(s) were not collected this time)" % len(gone))
+    if a.compare_to:
+        other = json.loads(pathlib.Path(a.compare_to).read_text(
+            encoding="utf-8"))
+        diff = differences(other, now)
+        lines = ["DIFFERENT FROM THE OTHER PLATFORM: %d test(s)" % len(diff)]
+        lines += ["  %s: %s -> %s" % d for d in diff]
+        if a.diff_out:
+            pathlib.Path(a.diff_out).write_bytes(
+                ("\n".join(lines) + "\n").encode("utf-8"))
+            print(lines[0] + " (listed in %s)" % a.diff_out)
+        else:
+            print("\n".join(lines))
+    short = False
+    if a.min_fraction is not None:
+        need = floor_of(len(before), a.min_fraction)
+        have = len(before) - len(gone)
+        if have < need:
+            short = True
+            print("TOO FEW TESTS COLLECTED: %d of the %d recorded, the floor "
+                  "is %d (%.0f%%). A shard probably did not run."
+                  % (have, len(before), need, a.min_fraction * 100))
     if regressions:
         print()
         print("UPSTREAM REGRESSIONS: %d test(s) that passed no longer do."
               % len(regressions))
+        return 1
+    if short:
         return 1
     print("UPSTREAM REGRESSIONS: none. %d recorded, %d of them passing."
           % (len(before), sum(1 for v in before.values() if v == "passed")))

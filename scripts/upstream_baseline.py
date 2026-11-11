@@ -28,6 +28,7 @@ failure that reads as a product defect for a whole afternoon.
 
     python scripts/upstream_baseline.py <firefox-binary>
     python scripts/upstream_baseline.py <firefox-binary> --which sync
+    python scripts/upstream_baseline.py <firefox-binary> --shard 2/4
 """
 from __future__ import annotations
 
@@ -37,6 +38,7 @@ import pathlib
 import re
 import subprocess
 import sys
+import zlib
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SUITE = ROOT / "tests" / "playwright-upstream"
@@ -51,6 +53,43 @@ def wanted_modules() -> list:
         for m in re.findall(r"(?:from|import)\s+(playwright[\w.]*)", text):
             found.add(m)
     return sorted(found)
+
+
+def parse_shard(text: str) -> tuple:
+    """"K/N" -> (K, N), 1-based, or a ValueError that says what was wrong."""
+    m = re.fullmatch(r"(\d+)/(\d+)", text.strip())
+    if not m:
+        raise ValueError("a shard is written K/N, for example 2/4: %r" % text)
+    k, n = int(m.group(1)), int(m.group(2))
+    if not 1 <= k <= n:
+        raise ValueError("shard %d/%d is out of range: K runs from 1 to N"
+                         % (k, n))
+    return k, n
+
+
+def shard_of(rel: str, count: int) -> int:
+    """Which shard (0-based) a test file belongs to, from its path alone.
+
+    A hash of the PATH and nothing else, so a file lands in the same shard on
+    every machine, on every OS and on every run, whatever else is collected
+    around it. crc32 and not `hash()`: the builtin is salted per process, so
+    two jobs would disagree about who owns a file and some files would run
+    twice and some never. The path is the posix form relative to the suite, so
+    Windows and Linux agree too.
+    """
+    return zlib.crc32(rel.replace("\\", "/").encode("utf-8")) % count
+
+
+def in_shard(rel: str, shard: tuple) -> bool:
+    k, n = shard
+    return shard_of(rel, n) == k - 1
+
+
+def shard_files(target: str, shard: tuple) -> list:
+    """The test files under `target` that belong to `shard`, suite-relative."""
+    found = sorted(SUITE.joinpath(target).rglob("test_*.py"))
+    rels = [str(f.relative_to(SUITE)).replace("\\", "/") for f in found]
+    return [r for r in rels if in_shard(r, shard)]
 
 
 PLUGIN = '''
@@ -168,10 +207,21 @@ def main() -> int:
                    help="write a JUnit XML too: it is the only per-test record "
                         "this suite produces, and `upstream_regressions.py` "
                         "needs it")
+    p.add_argument("--shard", default=None, metavar="K/N",
+                   help="run only the test FILES whose path hashes to shard K "
+                        "of N (K from 1): the files are split by a stable hash "
+                        "of the path, so CI can spread one suite over N jobs "
+                        "and a file always lands in the same one")
     p.add_argument("--per-file", action="store_true",
                    help="one pytest process per file: mandatory on the async "
                         "arm, see `_per_file`")
     a = p.parse_args()
+    shard = None
+    if a.shard is not None:
+        try:
+            shard = parse_shard(a.shard)
+        except ValueError as e:
+            p.error(str(e))
 
     plugin = write_plugin()
     print("aliased modules: %s" % ", ".join(wanted_modules()))
@@ -179,7 +229,19 @@ def main() -> int:
 
     target = {"sync": "tests/sync", "async": "tests/async",
               "all": "tests"}[a.which]
-    argv = [sys.executable, "-m", "pytest", target,
+    # Without --shard the target stays the directory, exactly as before. With
+    # it, the files this shard owns replace the directory on the command line.
+    if shard and not a.per_file:
+        targets = shard_files(target, shard)
+        if not targets:
+            # An empty shard would pass as "0 tests, exit 5" in some jobs and
+            # as a green nothing in others: say it is a configuration error.
+            p.error("shard %d/%d owns no test file under %s"
+                    % (shard[0], shard[1], target))
+        print("shard %d/%d: %d files" % (shard[0], shard[1], len(targets)))
+    else:
+        targets = [target]
+    argv = [sys.executable, "-m", "pytest", *targets,
             "-o", "addopts=", "-p", "scripts._upstream_alias",
             "--browser", "firefox", "-p", "no:cacheprovider",
             "--timeout", a.timeout, "--timeout-method", "thread",
@@ -206,10 +268,10 @@ def main() -> int:
         r = subprocess.run(argv, cwd=SUITE, env=env)
         return r.returncode
 
-    return _per_file(argv, target, env)
+    return _per_file(argv, target, env, shard)
 
 
-def _per_file(argv: list, target: str, env: dict) -> int:
+def _per_file(argv: list, target: str, env: dict, shard=None) -> int:
     """One pytest process per FILE, and the reason is structural.
 
     The async arm cannot be measured in a single process. `pytest-asyncio` runs
@@ -228,6 +290,10 @@ def _per_file(argv: list, target: str, env: dict) -> int:
     sync one by construction: that is what being measurable at all costs.
     """
     files = sorted((SUITE / target).glob("test_*.py"))
+    if shard:
+        files = [f for f in files
+                 if in_shard(str(f.relative_to(SUITE)).replace("\\", "/"),
+                             shard)]
     print("per-file: %d files, one process each" % len(files),
           flush=True)
     totals = {"passed": 0, "failed": 0, "error": 0, "skipped": 0}
