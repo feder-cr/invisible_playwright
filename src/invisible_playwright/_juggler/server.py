@@ -232,6 +232,11 @@ MOTION_BUDGET_PREF = "invisible.server.motion_budget_ms"
 #: pointer is the engine's own (`binary`) or nobody's (`off`): drawing a path
 #: here as well would humanise twice.
 POINTER_PREF = "invisible.server.pointer"
+
+#: Set by the launcher's `build_prefs` on every pref dict it composes, and taken
+#: out here like the three above: the profile a launch writes is a composed
+#: session, or the server composes one (`session_for_launch`).
+COMPOSED_PREF = "invisible.server.composed"
 #: The persona's keyboards, as Windows writes its input profiles (LANGID:KLID
 #: joined by semicolons, the language's first), decided by the core from the
 #: session's language AND country (`keyboard.profiles_for`). Server-only, like
@@ -258,9 +263,46 @@ def take_session_motion(prefs: Dict) -> tuple:
     seed = rest.pop(SESSION_SEED_PREF, None)
     budget_ms = rest.pop(MOTION_BUDGET_PREF, None)
     rest.pop(POINTER_PREF, None)
+    rest.pop(COMPOSED_PREF, None)
     return (rest,
             (None if seed is None else int(seed)),
             (None if budget_ms is None else int(budget_ms) / 1000.0))
+
+
+def session_for_launch(prefs: Dict, executable: str, proxy: Optional[Dict] = None) -> tuple:
+    """What a launch writes into its profile and adds to its environment: always a
+    composed session. Returns (prefs, session_env).
+
+    ⛔ A LAUNCH THAT NAMES NO SESSION IS FIREFOX READING THE HOST. The launcher
+    (`InvisiblePlaywright`, `launch_server`) composes the session, marks its prefs
+    (COMPOSED_PREF) and sends the environment it composed; a bare
+    `BrowserType.launch` from any other client of this server named only the
+    prefs it chose, usually none, and `user.js` held nothing of the core's. That
+    browser was the engine with Mozilla's defaults: no persona, every value a page
+    reads taken from the machine, and on Linux the first-run policy tab of
+    TelemetryReportingPolicy (the Terms of Use not accepted), a second tab in the
+    first window that `Browser.newPage` refuses with "Unexpected number of tabs in
+    the new window: 2". Measured 2026-11-11 on firefox-61 and on the firefox-62
+    candidate, 15 of 15 bare launches.
+
+    And the PREFS ARE HALF OF IT. The engine reads its font list at startup from
+    the manifest an environment variable names (`build_env`); without it the
+    engine lists the fonts of the machine. So an unmarked launch gets the session
+    `InvisiblePlaywright()` composes with the server's defaults (a new seed,
+    humanize off as in `launch_server`): its prefs, with the caller's on top, and
+    the variables of its environment, which `op_launch` adds wherever the caller
+    named none of the same name. A marked launch comes with both already.
+
+    `proxy` is the launch's own (`launch(proxy=...)`): the session is composed
+    through it as `InvisiblePlaywright(proxy=...)` composes, so the egress it
+    measures there is the address WebRTC declares (STEALTHFOX_WEBRTC_PUBLIC_IP),
+    not this machine's. The engine is told the proxy by `op_launch`, as before.
+    """
+    if COMPOSED_PREF in prefs:
+        return dict(prefs), {}
+    from invisible_playwright._session import default_session
+    session_prefs, session_env = default_session(executable, proxy)
+    return dict(session_prefs, **prefs), dict(session_env)
 
 
 def session_draws_pointer(prefs: Dict) -> bool:
@@ -344,6 +386,30 @@ def _remote_value(remote: Dict) -> Any:
 #: Calls what the caller's script produced with the receivers, then the
 #: argument: Playwright's utility script calls `result(...args)` on what
 #: `eval` produced.
+
+# The names a page and a caller use for a permission (`grant_permissions(["geolocation"])`, the ones of
+# `navigator.permissions`) are not the names the engine keeps them under (`geo`, `desktop-notification`): the
+# engine's permission manager knows a grant only by its own name, and a name it does not know is stored as
+# nothing, so the page is still asked, or refused, as if nothing had been granted. This is the table of the
+# Playwright client for this browser (playwright-core `ffBrowser.js`, `doGrantPermissions`), and a name outside
+# it is an error there as it is here: a grant that does nothing, in silence, is worse than a refusal.
+_WEB_PERMISSION_TO_ENGINE = {
+    "geolocation": "geo",
+    "persistent-storage": "persistent-storage",
+    "push": "push",
+    "notifications": "desktop-notification",
+    "screen-wake-lock": "screen-wake-lock",
+}
+
+
+def _engine_permissions(permissions) -> List[str]:
+    engine_names = []
+    for permission in permissions:
+        if permission not in _WEB_PERMISSION_TO_ENGINE:
+            raise ProtocolException("Unknown permission: %s" % (permission,))
+        engine_names.append(_WEB_PERMISSION_TO_ENGINE[permission])
+    return engine_names
+
 _CALL = "(f, ...a) => f(...a)"
 #: Reads a caller's object by value, from the reference that holds it.
 _READ = "o => o"
@@ -891,6 +957,24 @@ class FrameDispatcher(Dispatcher):
         "addScriptTag": "op_add_script_tag",
         "addStyleTag": "op_add_style_tag",
     }
+
+    #: ⛔ A FRAME THAT LEFT THE PAGE STAYS HERE, and answers every call with Playwright's own error. The driver never
+    #: disposes a Frame when it detaches (it disposes the Page, the contexts, the handles; the frames go with the page,
+    #: or are collected when their bucket is full): a call on a detached frame reaches its dispatcher and is refused
+    #: "Frame was detached". Disposing it on detach, as this class did, made the same call a call on a guid that no
+    #: longer exists, and the client read it as `Target page, context or browser has been closed`: the page is not
+    #: closed, and a script that handles "detached" (an iframe a framework removed) never saw it.
+    detached = False
+
+    def detach(self) -> None:
+        """The frame left the page: its handles go (their frame is no more), the frame itself stays and refuses."""
+        self.detached = True
+        self.server.dispose_many(self.server.descendants_of(self), None)
+
+    def call(self, method: str, params: Dict) -> Any:
+        if self.detached:
+            raise ProtocolException("Frame was detached")
+        return super().call(method, params)
 
     def gc_bucket(self) -> str:
         """Playwright counts the main frame and the others apart (`frameDispatcher.ts`)."""
@@ -2747,7 +2831,7 @@ class PageDispatcher(Dispatcher):
             child = self._frames.pop(frame_id, None)
             if child is not None:
                 self.emit("frameDetached", {"frame": child.channel})
-                child.dispose()
+                child.detach()
             return
         if what == "frameAttached":
             # Never the main frame: the lifecycle announces an id it sees for
@@ -4211,8 +4295,8 @@ class BrowserContextDispatcher(Dispatcher):
 
     def op_grant_permissions(self, params: Dict) -> Any:
         self._browser_send("Browser.grantPermissions",
-                           {"origin": params.get("origin") or "",
-                            "permissions": params.get("permissions") or []})
+                           {"origin": params.get("origin") or "*",
+                            "permissions": _engine_permissions(params.get("permissions") or [])})
         return None
 
     def op_clear_permissions(self, params: Dict) -> Any:
@@ -4972,7 +5056,7 @@ class BrowserDispatcher(Dispatcher):
             # accident that works until somebody tightens that condition.
             self._context_send("Browser.grantPermissions",
                            {"browserContextId": context_id, "origin": "*",
-                            "permissions": permissions})
+                            "permissions": _engine_permissions(permissions)})
         viewport = params.get("viewport")
         if viewport:
             # ⛔ `screen` is a SEPARATE option from `viewport` and rides in
@@ -5208,8 +5292,12 @@ class BrowserTypeDispatcher(Dispatcher):
         # raise, and until B223 the removal was registered only after both, so
         # those sessions kept their profile. `after_shutdown` runs once
         # `conn.close` has waited for the browser to exit.
-        files = SessionFiles(params.get("userDataDir"),
-                             _launch_environment(params.get("env")))
+        launch_prefs, session_env = session_for_launch(
+            params.get("firefoxUserPrefs") or {}, executable, params.get("proxy"))
+        environment = _launch_environment(params.get("env"))
+        named = {e["name"] for e in params.get("env") or []}
+        environment.update({k: v for k, v in session_env.items() if k not in named})
+        files = SessionFiles(params.get("userDataDir"), environment)
         self.server.after_shutdown(files.remove)
         env, profile = files.env, files.profile
         # ⛔ THE TYPING SEED TRAVELS IN THE PREFS AND IS TAKEN OUT AGAIN HERE,
@@ -5225,10 +5313,8 @@ class BrowserTypeDispatcher(Dispatcher):
         # means "the patched binary reads this", and a reader who found a
         # typing key under it would go looking in C++ for something that is
         # answered in Python.
-        pointer_draws = session_draws_pointer(
-            params.get("firefoxUserPrefs") or {})
-        prefs, session_seed, motion_budget_s = take_session_motion(
-            params.get("firefoxUserPrefs") or {})
+        pointer_draws = session_draws_pointer(launch_prefs)
+        prefs, session_seed, motion_budget_s = take_session_motion(launch_prefs)
         # The keyboard the session decided, out of the prefs before the
         # profile sees them; without it, the language alone decides.
         keyboard_layout = prefs.pop(KEYBOARD_LAYOUT_PREF, None) or profiles_pref(

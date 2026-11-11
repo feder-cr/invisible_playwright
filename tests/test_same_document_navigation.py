@@ -72,6 +72,9 @@ def _page_with_one_frame():
     page.frame = frame
     page.frame_for = lambda fid: frame
     page.lifecycle = Lifecycle(EventListeners(), "S1")
+    # The engine announces a frame before any event of it, and the lifecycle makes frames of
+    # `Page.frameAttached` alone (an event of a frame it does not know is dropped).
+    page.lifecycle._on_event("Page.frameAttached", {"frameId": "F1"})
     page._hear_lifecycle()
     return page, frame
 

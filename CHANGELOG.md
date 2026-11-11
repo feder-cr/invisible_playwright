@@ -6,6 +6,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.50.0] - 2026-11-11
+
+### Changed
+- Engine firefox-62 through invisible-core 62.63.0, which this version pins: firefox-61 plus Fission
+  and the Juggler for frames in another process. When `goto` returns, the frames below have the
+  address of their first document (an iframe of another site used to be listed with an empty url
+  for a moment); a `goto` to the address the page is already at ends; a late event of a frame that
+  left the page no longer brings it back into `page.frames`.
+- Fission: iframes of another site run in a content process of their own (isolation strategy 1,
+  `fission.autostart` on, four isolated content processes), as in retail Firefox on desktop. The
+  strategy comes from the invisible-core baseline of the firefox-62 engine, whose Juggler reaches a
+  frame in another process like any other. The tests that held strategy 0
+  (`tests/test_cross_origin_iframe.py`) now hold strategy 1, and the Fission end-to-end tests
+  (frame tree, element to frame, geometry, input, crash of an iframe process, identity of the
+  iframe and of its page) run on that engine.
+
+### Fixed
+- A launch that names no session (Playwright's own `BrowserType.launch` against the server) gets a
+  session composed the way `InvisiblePlaywright()` composes one: prefs, environment and, behind a
+  proxy, the egress the page reads as its WebRTC address. It used to come up with Mozilla's
+  defaults, and on Linux its first `new_page` failed with "Unexpected number of tabs in the new
+  window: 2".
+- A frame that left the page (an iframe a script removed) answers a call with "Frame was
+  detached", as Playwright does, not "Target page, context or browser has been closed".
+- `grant_permissions` uses the permission names of the engine. `geolocation` and `notifications` used
+  to reach the engine under the web names while it keeps a grant under `geo` and
+  `desktop-notification`, so a page of a context that had been granted geolocation and given a
+  position was still denied. The names are those of the Playwright client for this browser
+  (`geolocation`, `persistent-storage`, `push`, `notifications`, `screen-wake-lock`); any other name
+  raises `Unknown permission`, as it does there, and a grant with no origin is a grant for every
+  origin.
+
 ## [0.49.1] - 2026-11-10
 
 ### Changed
