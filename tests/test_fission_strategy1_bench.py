@@ -107,9 +107,11 @@ def cross_site_loop():
     routes["/shown"] = lambda host: ("<!doctype html><title>shown</title><script>addEventListener('pageshow', e => "
                                      "fetch('/report/pageshow?persisted=' + e.persisted + '&top=' + (window === top)))</script>")
     routes["/top-shown"] = lambda host: ('<!doctype html><title>top-shown</title><iframe id="b" src="%s"></iframe>' % at("b.test", "/shown"))
+    # a page and one iframe of another site, named, with nothing else in it
+    routes["/one-iframe"] = lambda host: ('<!doctype html><title>one</title><iframe id="f" name="f" src="%s"></iframe>' % at("b.test", "/plain"))
     routes["/plain"] = lambda host: "<!doctype html><title>plain</title><p>plain"
     try:
-        yield {"top": at("a.test", "/top"), "deep": at("a.test", "/deep0"), "top_shown": at("a.test", "/top-shown"), "mid": at("b.test", "/mid"), "leaf": at("a.test", "/leaf"),
+        yield {"top": at("a.test", "/top"), "one_iframe": at("a.test", "/one-iframe"), "deep": at("a.test", "/deep0"), "top_shown": at("a.test", "/top-shown"), "mid": at("b.test", "/mid"), "leaf": at("a.test", "/leaf"),
                "same_site": at("a.test", "/same-site"), "plain": at("a.test", "/plain"),
                "reports": reports, "origin_mid": "http://b.test:%d" % port, "origin_top": "http://a.test:%d" % port}
     finally:
@@ -420,3 +422,20 @@ def test_oop_frame_comes_out_of_the_back_forward_cache_with_the_top(page, cross_
     page.go_back(wait_until="load")
     assert wait_for(page, lambda: any(r["path"] == "/report/pageshow" and r["query"]["persisted"] == ["true"] and
                                       r["query"]["top"] == ["false"] for r in cross_site_loop["reports"])),         cross_site_loop["reports"]
+
+
+@pytest.mark.e2e
+def test_the_frames_have_their_urls_when_goto_returns(browser, cross_site_loop, engine_at_least):
+    """Red until the load of a frame waits for the commit of the frames below it: the embedder's process says `load` of the
+    top while the commit of the iframe of another site waits for the name of its <iframe> (asked of that same process), and
+    the frames read right after `goto` had an empty url 3 times in 20 (at 50 runs the chance of seeing it is 1 - 0.85^50). Nothing here waits: the frames are read at once."""
+    engine_at_least("firefox-62")
+    empty = []
+    for i in range(50):
+        page = browser.new_context().new_page()
+        page.goto(cross_site_loop["one_iframe"] + "?i=%d" % i, wait_until="load")
+        urls = [frame.url for frame in page.frames]
+        if "" in urls or len(urls) < 2:
+            empty.append((i, urls))
+        page.context.close()
+    assert not empty, "frames with no url right after goto, in %d of 50 runs: %s" % (len(empty), empty[:3])
