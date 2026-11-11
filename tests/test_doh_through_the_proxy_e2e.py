@@ -24,7 +24,8 @@ How each test sees it, with nothing but loopback:
 * `Watcher` samples the connections of every browser process from before the launch: one to a non-loopback address is
   a direct connection;
 * `ResolverTrap` (Linux, root) points /etc/resolv.conf at a counting resolver: one question is a leak to the resolver
-  of the machine. Where it cannot run, its assertions are skipped, not the test.
+  of the machine. Where it cannot run, its assertions are skipped, not the test - unless the gate sets
+  INVPW_REQUIRE_TRAP=1: then a trap that cannot run, or whose port 53 cannot be bound, is a failure.
 
 Pages are served by a local HTTP server on 127.0.0.1 and reached by NAMES only the FakeDoh can resolve. The browser must
 accept the FakeDoh certificate: the pages are opened in contexts made with `ignore_https_errors=True`, which the engine
@@ -56,6 +57,7 @@ from invisible_core import SessionGeo, decide_session_locale
 from invisible_playwright import InvisiblePlaywright
 
 import _doh_servers as ds
+import _trap_policy
 from _doh_servers import DOH_BOOTSTRAP, DOH_HOST, DOH_PORT, QTYPE_A, DohGateway, FakeDoh
 from _http_proxy import HttpProxy, basic
 from _leaks import ResolverTrap, Watcher
@@ -112,14 +114,23 @@ def gateway(doh):
 
 @pytest.fixture
 def trap():
-    """The resolver trap, counting every question the machine's resolver is asked; None where it cannot run."""
+    """The resolver trap, counting every question the machine's resolver is asked.
+
+    None only where it cannot run AND the gate does not require it (a developer's machine). With INVPW_REQUIRE_TRAP=1
+    (the gate's Linux leg) a trap that is unavailable or whose port 53 cannot be bound is a failure with its reason."""
     if not ResolverTrap.available:
+        why = _trap_policy.failure(None, False, ResolverTrap.reason)
+        if why:
+            pytest.fail(why)
         yield None
         return
     resolver = ResolverTrap()
     try:
         resolver.__enter__()
-    except OSError:  # port 53 taken (another worker holds the trap)
+    except OSError as exc:  # port 53 taken (another worker holds the trap)
+        why = _trap_policy.failure(None, True, bind_error=exc)
+        if why:
+            pytest.fail(why)
         yield None
         return
     try:
@@ -406,6 +417,9 @@ def test_a_session_without_a_proxy_resolves_with_the_system_resolver(firefox_bin
     question; where it cannot (Windows) the page is reached by a name the system resolves by itself, and the trap's
     assertion is the only one that is not made."""
     trapped = ResolverTrap.available
+    why = _trap_policy.failure(None, trapped, ResolverTrap.reason)
+    if why:
+        pytest.fail(why)
     name = "page-d.test" if trapped else "localhost"
     session = InvisiblePlaywright(seed=42, binary_path=firefox_binary, proxy=None)
     session._timezone, session._locale = GEO.timezone, GEO.locale
