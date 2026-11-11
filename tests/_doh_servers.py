@@ -47,6 +47,7 @@ from _socks_servers import EXIT, Gateway, WEB_NAME, WHOAMI4, WHOAMI6
 try:  # the HTTP/2 side needs it; a test that wants h2 says pytest.importorskip("h2")
     import h2.config
     import h2.connection
+    import h2.errors
     import h2.events
     import h2.exceptions
     H2_AVAILABLE = True
@@ -68,7 +69,7 @@ DOH_PROVIDER_PREFS = {"network.trr.uri": "https://%s%s" % (DOH_HOST, DOH_PATH),
 DOH_TARGETS = frozenset({(DOH_BOOTSTRAP, DOH_PORT), (DOH_HOST, DOH_PORT)})
 
 QTYPE_A, QTYPE_AAAA = 1, 28
-RCODE_OK, RCODE_NXDOMAIN, RCODE_REFUSED = 0, 3, 5
+RCODE_OK, RCODE_SERVFAIL, RCODE_NXDOMAIN, RCODE_REFUSED = 0, 2, 3, 5
 DOH_TTL = 30
 
 
@@ -173,13 +174,40 @@ def make_certificate(directory: Path, dns_names: Tuple[str, ...] = (DOH_HOST,),
 
 
 _REASONS = {200: "OK", 400: "Bad Request", 404: "Not Found", 405: "Method Not Allowed",
-            415: "Unsupported Media Type"}
+            415: "Unsupported Media Type", 503: "Service Unavailable"}
 
 
 class DohQuery(NamedTuple):
     name: str
     qtype: int
     via: str
+
+
+#: The ways :class:`FakeDoh` can refuse a query (``fail_first``). All three are failures of the lookup for Firefox's TRR:
+#: ``close`` ends the exchange with no answer (an h2 stream reset, or a closed connection over HTTP/1.1): a failure of
+#: the CHANNEL, the kind ``TRRService::ConfirmationContext::RecordTRRStatus`` counts (``NS_FAILED(channelStatus)``);
+#: ``http503`` answers an HTTP error (``TRR_SERVER_RESPONSE_ERR``); ``servfail`` answers a well-formed DNS message with
+#: rcode 2 (``TRR_RCODE_FAIL``).
+FAILURE_KINDS = ("close", "http503", "servfail")
+
+
+class DohAnswer(NamedTuple):
+    """What the FakeDoh did with one query: ``outcome`` is ``"answered"`` or a failure kind, ``delay`` the seconds
+    between the arrival of the query and the moment its answer (or its refusal) was sent."""
+    name: str
+    qtype: int
+    via: str
+    outcome: str
+    delay: float
+
+
+class _Reply(NamedTuple):
+    status: int
+    body: bytes
+    content_type: str
+    delay: float = 0.0
+    close: bool = False      # no answer at all: reset the stream / close the connection
+    record: Optional[Tuple[str, int, str, str]] = None   # (name, qtype, via, outcome), logged when it is sent
 
 
 class FakeDoh:
@@ -190,9 +218,26 @@ class FakeDoh:
     package is importable.
     """
 
-    def __init__(self, names: Optional[Dict[str, str]] = None, *, h2: Optional[bool] = None):
+    def __init__(self, names: Optional[Dict[str, str]] = None, *, h2: Optional[bool] = None,
+                 delay_s: float = 0.0, delay_names: Optional[Dict[str, float]] = None,
+                 fail_first: Optional[Dict[str, str]] = None):
         self.names: Dict[str, str] = {k.lower(): v for k, v in (names or {}).items()}
         self.offers_h2 = H2_AVAILABLE if h2 is None else (h2 and H2_AVAILABLE)
+        #: Latency of EVERY answer, in seconds (each response is held that long after its query arrived, not only the
+        #: connection set-up); ``delay_names`` overrides it per name (a name or any name under it). Both can be changed
+        #: while the server runs. Over h2 the answers are held independently, so the A and the AAAA of one lookup come
+        #: back together after the delay, not one after the other.
+        self.delay_s = delay_s
+        self.delay_names: Dict[str, float] = {k.lower().rstrip("."): v for k, v in (delay_names or {}).items()}
+        #: ``{name: kind}`` (kind in :data:`FAILURE_KINDS`): the FIRST query of each type (A, AAAA...) for ``name`` is
+        #: refused in that way; every later one is served as usual. Can be changed while the server runs.
+        self.fail_first: Dict[str, str] = {k.lower().rstrip("."): v for k, v in (fail_first or {}).items()}
+        for kind in self.fail_first.values():
+            if kind not in FAILURE_KINDS:
+                raise ValueError("unknown failure kind %r, expected one of %s" % (kind, FAILURE_KINDS))
+        #: What was done with every query, in the order it was SENT (see :class:`DohAnswer`).
+        self.answers: List[DohAnswer] = []
+        self._failed: Set[Tuple[str, int]] = set()
         #: Every query, in order.
         self.queries: List[DohQuery] = []
         #: Every TLS connection served: (via, negotiated protocol).
@@ -225,6 +270,11 @@ class FakeDoh:
     def vias_of(self, name: str, qtype: Optional[int] = None) -> Set[str]:
         """The set of roads (gateway names) a name was asked by."""
         return {q.via for q in self.queries_for(name, qtype)}
+
+    def answers_for(self, name: str, qtype: Optional[int] = None) -> List[DohAnswer]:
+        name = name.lower().rstrip(".")
+        with self._lock:
+            return [a for a in self.answers if a.name == name and (qtype is None or a.qtype == qtype)]
 
     def seen_names(self) -> List[str]:
         with self._lock:
@@ -290,13 +340,24 @@ class FakeDoh:
                     pass
         return len(victims)
 
-    def _answer(self, via: str, method: str, target: str, content_type: str,
-                body: bytes) -> Tuple[int, bytes, str]:
-        """(status, body, content type) of one HTTP request, recording the DNS query it carries."""
-        def bad(status: int) -> Tuple[int, bytes, str]:
+    def _delay_of(self, name: str) -> float:
+        for key, seconds in self.delay_names.items():
+            if name == key or name.endswith("." + key):
+                return seconds
+        return self.delay_s
+
+    def _record(self, record: Optional[Tuple[str, int, str, str]], received: float) -> None:
+        """Log that an answer is being sent now (``received`` is the monotonic time its query arrived)."""
+        if record is not None:
+            with self._lock:
+                self.answers.append(DohAnswer(*record, time.monotonic() - received))
+
+    def _answer(self, via: str, method: str, target: str, content_type: str, body: bytes) -> _Reply:
+        """What to send for one HTTP request, recording the DNS query it carries."""
+        def bad(status: int) -> _Reply:
             with self._lock:
                 self.bad_requests.append((via, method, target, status))
-            return status, b"", "text/plain"
+            return _Reply(status, b"", "text/plain")
 
         split = urlsplit(target)
         if split.path != DOH_PATH:
@@ -322,7 +383,20 @@ class FakeDoh:
         with self._lock:
             self.queries.append(DohQuery(query.name, query.qtype, via))
             names = dict(self.names)
-        return 200, answer_for(names, query), "application/dns-message"
+            kind = self.fail_first.get(query.name)
+            if kind is not None and (query.name, query.qtype) in self._failed:
+                kind = None
+            elif kind is not None:
+                self._failed.add((query.name, query.qtype))
+        delay = self._delay_of(query.name)
+        record = (query.name, query.qtype, via, kind or "answered")
+        if kind == "close":
+            return _Reply(0, b"", "", delay, True, record)
+        if kind == "http503":
+            return _Reply(503, b"", "text/plain", delay, False, record)
+        if kind == "servfail":
+            return _Reply(200, build_response(query, RCODE_SERVFAIL), "application/dns-message", delay, False, record)
+        return _Reply(200, answer_for(names, query), "application/dns-message", delay, False, record)
 
     def _serve_h1(self, tls: ssl.SSLSocket, via: str) -> None:
         buffer = b""
@@ -346,7 +420,14 @@ class FakeDoh:
                     return
                 buffer += chunk
             body, buffer = buffer[:length], buffer[length:]
-            status, payload, content_type = self._answer(via, method, target, headers.get("content-type", ""), body)
+            received = time.monotonic()
+            reply = self._answer(via, method, target, headers.get("content-type", ""), body)
+            if reply.delay:
+                time.sleep(reply.delay)
+            self._record(reply.record, received)
+            if reply.close:
+                return
+            status, payload, content_type = reply.status, reply.body, reply.content_type
             close = headers.get("connection", "").lower() == "close"
             tls.sendall(("HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %d\r\nCache-Control: max-age=%d\r\n"
                          "%s\r\n" % (status, _REASONS.get(status, "Status"), content_type, len(payload), DOH_TTL,
@@ -360,10 +441,43 @@ class FakeDoh:
         connection.initiate_connection()
         tls.sendall(connection.data_to_send())
         streams: Dict[int, dict] = {}
+        #: Answers being held back: (due monotonic time, stream id, reply, monotonic time the query arrived). One thread
+        #: reads, holds and writes, so the TLS socket never has a reader and a writer at once, and the answers of one
+        #: connection are held independently of each other (the A and the AAAA of a lookup both wait ``delay``).
+        held: List[Tuple[float, int, _Reply, float]] = []
+        tls.settimeout(0.05)
+        last_activity = time.monotonic()
+
+        def send(stream_id: int, reply: _Reply, received: float) -> None:
+            self._record(reply.record, received)
+            try:
+                if reply.close:
+                    connection.reset_stream(stream_id, error_code=h2.errors.ErrorCodes.INTERNAL_ERROR)
+                else:
+                    connection.send_headers(stream_id, [
+                        (":status", str(reply.status)), ("content-type", reply.content_type),
+                        ("content-length", str(len(reply.body))), ("cache-control", "max-age=%d" % DOH_TTL)])
+                    connection.send_data(stream_id, reply.body, end_stream=True)
+            except h2.exceptions.H2Error:  # the client reset the stream while its answer was held
+                pass
+
         while True:
-            data = tls.recv(65536)
+            now = time.monotonic()
+            for item in [h for h in held if h[0] <= now]:
+                held.remove(item)
+                send(item[1], item[2], item[3])
+            pending = connection.data_to_send()
+            if pending:
+                tls.sendall(pending)
+            try:
+                data = tls.recv(65536)
+            except (socket.timeout, ssl.SSLWantReadError):
+                if not held and time.monotonic() - last_activity > 60:
+                    return
+                continue
             if not data:
                 return
+            last_activity = time.monotonic()
             for event in connection.receive_data(data):
                 if isinstance(event, h2.events.RequestReceived):
                     streams[event.stream_id] = {"headers": dict(event.headers), "body": b""}
@@ -373,20 +487,19 @@ class FakeDoh:
                 elif isinstance(event, h2.events.StreamEnded):
                     request = streams.pop(event.stream_id)
                     headers = request["headers"]
-                    status, payload, content_type = self._answer(
+                    received = time.monotonic()
+                    reply = self._answer(
                         via, headers.get(":method", ""), headers.get(":path", ""),
                         headers.get("content-type", ""), request["body"])
-                    connection.send_headers(event.stream_id, [
-                        (":status", str(status)), ("content-type", content_type),
-                        ("content-length", str(len(payload))), ("cache-control", "max-age=%d" % DOH_TTL)])
-                    connection.send_data(event.stream_id, payload, end_stream=True)
+                    if reply.delay:
+                        held.append((received + reply.delay, event.stream_id, reply, received))
+                    else:
+                        send(event.stream_id, reply, received)
                 elif isinstance(event, h2.events.StreamReset):
                     streams.pop(event.stream_id, None)
+                    held[:] = [h for h in held if h[1] != event.stream_id]
                 elif isinstance(event, h2.events.ConnectionTerminated):
                     return
-            pending = connection.data_to_send()
-            if pending:
-                tls.sendall(pending)
 
     def close(self) -> None:
         self._closed = True
@@ -603,7 +716,8 @@ def _recv_exact(s: socket.socket, n: int) -> bytes:
 
 __all__ = [
     "DOH_BOOTSTRAP", "DOH_HOST", "DOH_PATH", "DOH_PORT", "DOH_PROVIDER_PREFS", "DOH_TARGETS", "DOH_TTL", "H2_AVAILABLE", "QTYPE_A",
-    "QTYPE_AAAA", "RCODE_NXDOMAIN", "RCODE_OK", "RCODE_REFUSED", "DohGateway", "DohQuery", "FakeDoh", "Query",
+    "QTYPE_AAAA", "RCODE_NXDOMAIN", "RCODE_OK", "RCODE_REFUSED", "RCODE_SERVFAIL", "DohAnswer", "DohGateway", "DohQuery",
+    "FAILURE_KINDS", "FakeDoh", "Query",
     "answer_for", "build_response", "encode_query", "is_loopback", "make_certificate", "parse_query", "pump",
     "relay", "wait_until",
 ]
