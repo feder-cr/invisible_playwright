@@ -18,5 +18,9 @@
   "leaving_beacons": "idle",
   "leaving_beacons_subframe": "idle",
   "cancel_among_beacons": "idle"
+ },
+ "journey_p4": {
+  "comment": "Profile P4 (tests/fakeweb/profile_p4.py): the steps on which stock Firefox does NOT reach networkidle within the timeout, because the page holds a request open on purpose: 7 and 8 (a fetch held until step 9, on the category page), 12 (a keepalive fetch held until step 13, on the search results). Stock Firefox idles on every other step, and every step is ok.",
+  "not_idle_steps": [7, 8, 12]
  }
 }
