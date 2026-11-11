@@ -2,18 +2,23 @@
 
 Hermetic: loopback only, no DNS, no internet. Nothing here knows about the product.
 
-What a proxied session declares (core-19) is that every name the browser resolves goes to the DoH of Firefox
-(``network.trr.mode`` 3), at ``https://mozilla.cloudflare-dns.com/dns-query``, found with no DNS at the address
-``network.trr.bootstrapAddr`` (162.159.61.4), and that the DoH request is a channel like any other, so it leaves
-THROUGH the proxy of the context of the lookup. A test of that needs three things this file builds:
+What the core declares (core-19), for every session, is the DoH of Firefox at
+``https://mozilla.cloudflare-dns.com/dns-query``, found with no DNS at the address ``network.trr.bootstrapAddr``
+(162.159.61.4). A test does NOT impersonate that host: Firefox refuses a certificate override for an HSTS-preloaded or
+pinned host (``mozilla.cloudflare-dns.com`` is one), so a self-signed certificate for it can never be accepted, whatever
+``ignore_https_errors`` says. The test declares its own provider instead, through the core's ``extra_prefs`` overlay:
+``network.trr.uri`` = ``https://doh.gateway.test/dns-query`` (a ``.test`` name, never preloaded) and
+``network.trr.bootstrapAddr`` = ``192.0.2.53`` (TEST-NET-1, so nothing real is addressed). With a proxy the engine turns it on (``network.trr.mode`` 3, derived from the proxies it receives, never
+written by the core), so every name the browser resolves goes to it; the DoH request is a channel like any other, so it
+leaves THROUGH the proxy of the context of the lookup. A test of that needs three things this file builds:
 
 * :class:`FakeDoh` - the DoH server. RFC 8484 (POST ``application/dns-message`` and GET ``?dns=base64url``) over TLS
-  with a certificate for ``mozilla.cloudflare-dns.com`` and ``127.0.0.1``, written by hand: the question is parsed from
+  with a certificate for ``doh.gateway.test`` and ``127.0.0.1``, written by hand: the question is parsed from
   its labels and the answer is built byte by byte (header, the question copied, one A record, TTL 30). It answers
   HTTP/2 when the ``h2`` package is importable and ALPN selects it (Firefox's TRR speaks h2), HTTP/1.1 otherwise.
   Every query is recorded as ``(name, qtype, via)``.
 * :class:`DohGateway` - a SOCKS5 gateway (the ``Gateway`` of ``_socks_servers``) whose CONNECT to the DoH address
-  (``162.159.61.4:443``, or ``mozilla.cloudflare-dns.com:443`` by name) is handed to the FakeDoh of the test, with the
+  (``192.0.2.53:443``, or ``doh.gateway.test:443`` by name) is handed to the FakeDoh of the test, with the
   gateway's name as ``via``; every other CONNECT to a loopback address is relayed for real. It never resolves a name
   itself and never reaches a non-loopback address: a CONNECT that asks for one is refused and recorded, so a test run
   cannot leak anything and cannot be mistaken for leaking.
@@ -48,11 +53,17 @@ try:  # the HTTP/2 side needs it; a test that wants h2 says pytest.importorskip(
 except ImportError:  # pragma: no cover - depends on the environment
     H2_AVAILABLE = False
 
-#: The host name of the DoH the session declares, and the address it is found at without DNS.
-DOH_HOST = "mozilla.cloudflare-dns.com"
-DOH_BOOTSTRAP = "162.159.61.4"
+#: The host name of the DoH the TEST declares (``network.trr.uri``) and the address it is found at without DNS
+#: (``network.trr.bootstrapAddr``). Not the core's default provider: that host is HSTS-preloaded/pinned, so Firefox
+#: refuses any certificate override for it and a fake could never be accepted. A ``.test`` name is on no preload list;
+#: 192.0.2.0/24 is TEST-NET-1 (RFC 5737), reserved for documentation, so the address cannot reach anything real.
+DOH_HOST = "doh.gateway.test"
+DOH_BOOTSTRAP = "192.0.2.53"
 DOH_PORT = 443
 DOH_PATH = "/dns-query"
+#: The two prefs that make a session use the FakeDoh as its provider (applied with ``extra_prefs``).
+DOH_PROVIDER_PREFS = {"network.trr.uri": "https://%s%s" % (DOH_HOST, DOH_PATH),
+                      "network.trr.bootstrapAddr": DOH_BOOTSTRAP}
 #: Every CONNECT target the gateways hand to the FakeDoh.
 DOH_TARGETS = frozenset({(DOH_BOOTSTRAP, DOH_PORT), (DOH_HOST, DOH_PORT)})
 
@@ -591,7 +602,7 @@ def _recv_exact(s: socket.socket, n: int) -> bytes:
 
 
 __all__ = [
-    "DOH_BOOTSTRAP", "DOH_HOST", "DOH_PATH", "DOH_PORT", "DOH_TARGETS", "DOH_TTL", "H2_AVAILABLE", "QTYPE_A",
+    "DOH_BOOTSTRAP", "DOH_HOST", "DOH_PATH", "DOH_PORT", "DOH_PROVIDER_PREFS", "DOH_TARGETS", "DOH_TTL", "H2_AVAILABLE", "QTYPE_A",
     "QTYPE_AAAA", "RCODE_NXDOMAIN", "RCODE_OK", "RCODE_REFUSED", "DohGateway", "DohQuery", "FakeDoh", "Query",
     "answer_for", "build_response", "encode_query", "is_loopback", "make_certificate", "parse_query", "pump",
     "relay", "wait_until",

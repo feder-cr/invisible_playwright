@@ -4,7 +4,7 @@ The counterpart of :class:`_doh_servers.DohGateway` for the ``http`` scheme:
 
 * a request without a valid ``Proxy-Authorization: Basic`` gets ``407`` with ``Proxy-Authenticate: Basic`` (the
   connection is closed, as many real proxies do); the right credentials get through;
-* ``CONNECT`` to the DoH address (``162.159.61.4:443`` or ``mozilla.cloudflare-dns.com:443``) is answered ``200``
+* ``CONNECT`` to the DoH address (``192.0.2.53:443`` or ``doh.gateway.test:443``) is answered ``200``
   and handed to the FakeDoh with ``via=name``; ``CONNECT`` to a loopback address is relayed for real; any other
   CONNECT is refused (``403``) and recorded;
 * a plain ``GET http://host:port/path`` (the form a browser sends to an HTTP proxy for an ``http`` page: the NAME
