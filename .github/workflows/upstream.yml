@@ -20,11 +20,19 @@
 # recorded with. The clone is checked against a commit SHA, so a tag that moves
 # cannot change what is measured.
 #
-# How it is split. The sync arm is ~700 tests and ~15 minutes in one process.
-# It runs as 4 shards per OS, and a shard owns the test FILES whose path hashes
-# to it (scripts/upstream_baseline.py --shard K/N), so a file always lands in
-# the same shard. The `verdict` job merges the shards of each OS and judges
-# them; a shard job only has to deliver its report.
+# How it is split. The sync arm is ~700 tests and ~35 minutes of work. It runs
+# as 6 shards on Linux and 8 on Windows (14 jobs), and a shard owns whole test
+# FILES (scripts/upstream_baseline.py --shard K/N). Which files is decided by
+# how long each took in a recorded run (tests/gates/upstream_weights.json,
+# heaviest file first into the lightest shard), not by a hash of the path: the
+# time of this suite sits in a handful of tests that wait for a timeout (and
+# are run four times), so a hash gave shards of 3, 7, 14 and more than 16
+# minutes. The weights predict each shard at 7 minutes or less of tests
+# (tests/test_upstream_shards.py checks it); the step limit is about twice
+# that. When the plan changes, update `include:` below and the VERDICT line in
+# the verdict job; the unit test names whichever disagrees. The `verdict` job
+# merges the shards of each OS and judges them; a shard job only has to
+# deliver its report.
 #
 # What makes it fail (the verdict job):
 #   - a shard job did not succeed, or its junit report is missing or unreadable;
@@ -80,21 +88,36 @@ jobs:
     uses: ./.github/workflows/core-on-index.yml
 
   upstream:
-    name: upstream ${{ matrix.os }} ${{ matrix.shard }}/4
+    name: upstream ${{ matrix.os }} ${{ matrix.shard }}/${{ matrix.of }}
     needs: core-on-index
     if: needs.core-on-index.outputs.available == 'true'
     runs-on: ${{ matrix.os }}
-    # Measured at ~15 minutes for the whole sync arm in one process, so a
-    # quarter of it plus the install fits with room. A hang must be a failed
-    # job with a log, not a run that sits until somebody notices.
+    # The test step is limited below (`limit`, about twice the predicted time
+    # of the heaviest shard); this adds the install and the clone. A hang must
+    # be a failed job with a log, not a run that sits until somebody notices.
     timeout-minutes: 20
     strategy:
       # One red cell must not hide the others: the verdict needs every report.
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-latest]
-        # The verdict job and tests/test_upstream_shards.py both assume 4.
-        shard: [1, 2, 3, 4]
+        # One entry per job. `of` is the shard count of that OS, `limit` the
+        # minutes the test step may take: Windows is slower per test and gets
+        # more shards, Linux is held up by its single heaviest file.
+        include:
+          - { os: ubuntu-24.04, shard: 1, of: 6, limit: 14 }
+          - { os: ubuntu-24.04, shard: 2, of: 6, limit: 14 }
+          - { os: ubuntu-24.04, shard: 3, of: 6, limit: 14 }
+          - { os: ubuntu-24.04, shard: 4, of: 6, limit: 14 }
+          - { os: ubuntu-24.04, shard: 5, of: 6, limit: 14 }
+          - { os: ubuntu-24.04, shard: 6, of: 6, limit: 14 }
+          - { os: windows-latest, shard: 1, of: 8, limit: 12 }
+          - { os: windows-latest, shard: 2, of: 8, limit: 12 }
+          - { os: windows-latest, shard: 3, of: 8, limit: 12 }
+          - { os: windows-latest, shard: 4, of: 8, limit: 12 }
+          - { os: windows-latest, shard: 5, of: 8, limit: 12 }
+          - { os: windows-latest, shard: 6, of: 8, limit: 12 }
+          - { os: windows-latest, shard: 7, of: 8, limit: 12 }
+          - { os: windows-latest, shard: 8, of: 8, limit: 12 }
     # On Windows GitHub runs `run:` blocks with PowerShell by default; these
     # are bash, as in e2e-hunt.yml.
     defaults:
@@ -163,7 +186,7 @@ jobs:
           rm -rf .upstream-src
       - name: Run this shard of the sync arm
         # Bounded below the job ceiling so the upload step still gets to run.
-        timeout-minutes: 16
+        timeout-minutes: ${{ matrix.limit }}
         env:
           PYTHONUNBUFFERED: "1"
           MOZ_CRASHREPORTER_DISABLE: "1"
@@ -174,7 +197,7 @@ jobs:
           junit="upstream-${RUNNER_OS}-${{ matrix.shard }}.xml"
           set +e
           $PRE python -u scripts/upstream_baseline.py "$FF" --which sync \
-            --shard "${{ matrix.shard }}/4" --junit-xml "$junit"
+            --shard "${{ matrix.shard }}/${{ matrix.of }}" --junit-xml "$junit"
           code=$?
           set -e
           # pytest exits 1 whenever one test fails, and most of this suite is
@@ -245,9 +268,12 @@ jobs:
             echo
             echo "The baseline was recorded on Linux; Windows is judged against the same file."
           } >> "$GITHUB_STEP_SUMMARY"
-          for os in Linux Windows; do
+          # VERDICT: the shard count of each OS, as in `include:` above.
+          for plan in Linux:6 Windows:8; do
+            os="${plan%%:*}"
+            count="${plan##*:}"
             files=()
-            for k in 1 2 3 4; do
+            for k in $(seq 1 "$count"); do
               f="junit/upstream-junit-$os-$k/upstream-$os-$k.xml"
               if [ ! -s "$f" ]; then
                 echo "::error::$os shard $k delivered no junit report ($f)"
@@ -259,8 +285,9 @@ jobs:
             if [ "$os" = "Windows" ] && [ -s merged-Linux.json ]; then
               extra=(--compare-to merged-Linux.json --diff-out "differs-$os.txt")
             fi
-            # 0.95: losing one shard (the smallest owns about 20% of the
-            # recorded tests) fails it, a few tests renamed upstream does not.
+            # 0.95: a few tests renamed upstream do not trip it. A lost shard
+            # does not need it: its job fails, and a missing report is an
+            # error above, whatever share of the tests it owned.
             python scripts/upstream_regressions.py --check --min-fraction 0.95 \
               --save-merged "merged-$os.json" "${extra[@]}" "${files[@]}" \
               > "report-$os.txt" 2>&1 || { status=1; echo "::error::$os did not pass the comparison"; }

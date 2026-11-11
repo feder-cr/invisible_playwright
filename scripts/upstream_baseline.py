@@ -28,20 +28,32 @@ failure that reads as a product defect for a whole afternoon.
 
     python scripts/upstream_baseline.py <firefox-binary>
     python scripts/upstream_baseline.py <firefox-binary> --which sync
-    python scripts/upstream_baseline.py <firefox-binary> --shard 2/4
+    python scripts/upstream_baseline.py <firefox-binary> --shard 2/6
+
+A shard owns whole test FILES, chosen by the time each file took in a recorded
+run (tests/gates/upstream_weights.json), so the jobs finish at about the same
+time. After a run, refresh the weights from its reports:
+
+    python scripts/upstream_baseline.py --write-weights --run-id <id>         upstream-Linux-*.xml upstream-Windows-*.xml
 """
 from __future__ import annotations
 
 import argparse
+import datetime
 import importlib
+import json
 import pathlib
+import platform
 import re
+import statistics
 import subprocess
 import sys
-import zlib
+import xml.etree.ElementTree as ET
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SUITE = ROOT / "tests" / "playwright-upstream"
+#: Seconds each test file took, per OS, in a recorded CI run.
+WEIGHTS = ROOT / "tests" / "gates" / "upstream_weights.json"
 
 #: Every `playwright.*` module the suite imports, counted from its own source.
 #: ⛔ Read from the suite rather than listed by hand: a name added upstream must
@@ -67,29 +79,156 @@ def parse_shard(text: str) -> tuple:
     return k, n
 
 
-def shard_of(rel: str, count: int) -> int:
-    """Which shard (0-based) a test file belongs to, from its path alone.
+# ── how the files are spread over the jobs ──────────────────────────────────
+#
+# The first version handed a file to the shard its path hashed to. That is
+# balanced by count and not by time, and time is what a job is bounded by: in
+# the first CI run the same four shards took 3.6, 7 and 14 minutes, and the
+# fourth did not finish in 16. The time of this suite is not spread evenly over
+# its tests: a test that fails by waiting for a 30 s timeout is run four times
+# (the suite's conftest turns on three reruns), so ~120 s each, and 9 tests of
+# 558 were 63% of the time. The best predictor of a file's time is that file's
+# time in an earlier run, so that is what is committed and what the assignment
+# uses.
 
-    A hash of the PATH and nothing else, so a file lands in the same shard on
-    every machine, on every OS and on every run, whatever else is collected
-    around it. crc32 and not `hash()`: the builtin is salted per process, so
-    two jobs would disagree about who owns a file and some files would run
-    twice and some never. The path is the posix form relative to the suite, so
-    Windows and Linux agree too.
+def current_os() -> str:
+    """"Linux" or "Windows"; anything else is planned as the slower Windows."""
+    name = platform.system()
+    return name if name in ("Linux", "Windows") else "Windows"
+
+
+def file_of(classname: str) -> str:
+    """Suite-relative posix path of the file a junit `classname` lives in.
+
+    `tests.sync.test_page_clock.TestRunFor` -> `tests/sync/test_page_clock.py`:
+    the class, when there is one, is not part of the path.
     """
-    return zlib.crc32(rel.replace("\\", "/").encode("utf-8")) % count
+    parts = []
+    for part in classname.split("."):
+        parts.append(part)
+        if part.startswith("test_"):
+            break
+    return "/".join(parts) + ".py"
 
 
-def in_shard(rel: str, shard: tuple) -> bool:
-    k, n = shard
-    return shard_of(rel, n) == k - 1
+def load_weights(path=None) -> dict:
+    return json.loads(pathlib.Path(path or WEIGHTS).read_text(encoding="utf-8"))
 
 
-def shard_files(target: str, shard: tuple) -> list:
-    """The test files under `target` that belong to `shard`, suite-relative."""
+def planned_seconds(weights: dict, os_name: str, rels) -> dict:
+    """file -> seconds a job spends on it (its tests plus the per-file cost).
+
+    A file the weights do not know gets the MEDIAN of the ones they do: no
+    better guess exists for a file nobody has timed, and the mean is dragged up
+    by the few files that wait for timeouts.
+    """
+    known = weights["seconds"][os_name]
+    median = statistics.median(known.values()) if known else 0.0
+    per_file = weights["overhead_per_file"][os_name]
+    return {r: known.get(r, median) + per_file for r in rels}
+
+
+def assign(seconds: dict, count: int) -> dict:
+    """file -> shard index (0-based): heaviest file first, into the lightest shard.
+
+    Greedy longest-processing-time. Fully determined by the (file, seconds)
+    pairs: ties in weight are broken by path, ties in load by shard index, so
+    every job of a run computes the same split on its own.
+    """
+    load = [0.0] * count
+    owner = {}
+    for rel in sorted(seconds, key=lambda r: (-seconds[r], r)):
+        k = min(range(count), key=lambda i: (load[i], i))
+        owner[rel] = k
+        load[k] += seconds[rel]
+    return owner
+
+
+def shard_loads(seconds: dict, count: int) -> list:
+    """Predicted seconds of each shard."""
+    load = [0.0] * count
+    for rel, k in assign(seconds, count).items():
+        load[k] += seconds[rel]
+    return load
+
+
+def suite_files(target: str) -> list:
     found = sorted(SUITE.joinpath(target).rglob("test_*.py"))
-    rels = [str(f.relative_to(SUITE)).replace("\\", "/") for f in found]
-    return [r for r in rels if in_shard(r, shard)]
+    return [str(f.relative_to(SUITE)).replace("\\", "/") for f in found]
+
+
+def shard_files(target: str, shard: tuple, os_name=None, weights=None) -> list:
+    """The test files under `target` that belong to `shard`, suite-relative."""
+    rels = suite_files(target)
+    w = weights if weights is not None else load_weights()
+    owner = assign(planned_seconds(w, os_name or current_os(), rels), shard[1])
+    return [r for r in rels if owner[r] == shard[0] - 1]
+
+
+# ── the weights, from junit reports ─────────────────────────────────────────
+
+def junit_seconds(path) -> tuple:
+    """(file -> seconds of its testcases, seconds outside any testcase).
+
+    A test that was rerun has one testcase per attempt, and all of them count:
+    the time is real. The second number is the suite time the report states
+    minus what its testcases add up to: collection, session fixtures, module
+    imports.
+    """
+    root = ET.parse(str(path)).getroot()
+    per_file = {}
+    for case in root.iter("testcase"):
+        f = file_of(case.get("classname", ""))
+        per_file[f] = per_file.get(f, 0.0) + float(case.get("time") or 0)
+    suite = root.find("testsuite")
+    stated = float(suite.get("time") or 0) if suite is not None else 0.0
+    return per_file, max(0.0, stated - sum(per_file.values()))
+
+
+def os_of_report(path) -> str:
+    name = pathlib.Path(path).name.lower()
+    for candidate in ("linux", "windows"):
+        if candidate in name:
+            return candidate.capitalize()
+    raise ValueError("cannot tell the OS of %s: name it ...Linux... or "
+                     "...Windows..., or pass --weights-os" % path)
+
+
+def write_weights(reports: list, run_id: str, date: str, os_name=None,
+                  path=None) -> dict:
+    """Fold junit reports into the weights file and return what was written.
+
+    Files seen in a report take the measured time; files in no report keep
+    what they had. The per-file cost is re-measured from the same reports.
+    """
+    target = pathlib.Path(path or WEIGHTS)
+    if target.exists():
+        data = json.loads(target.read_text(encoding="utf-8"))
+    else:
+        data = {"format": 1, "runs": {}, "overhead_per_file": {},
+                "seconds": {}, "estimated": {}}
+    by_os = {}
+    for r in reports:
+        by_os.setdefault(os_name or os_of_report(r), []).append(r)
+    for name, paths in by_os.items():
+        secs = data["seconds"].setdefault(name, {})
+        est = set(data["estimated"].get(name, []))
+        outside, files = 0.0, 0
+        for p in paths:
+            per_file, extra = junit_seconds(p)
+            for f, t in per_file.items():
+                secs[f] = round(t, 1)
+                est.discard(f)
+            outside += extra
+            files += len(per_file)
+        if files:
+            data["overhead_per_file"][name] = round(outside / files, 1)
+        data["estimated"][name] = sorted(est)
+        data["runs"][name] = {"run_id": str(run_id), "date": date}
+        data["seconds"][name] = dict(sorted(secs.items()))
+    target.write_text(json.dumps(data, indent=1) + "\n", encoding="utf-8",
+                      newline="\n")
+    return data
 
 
 PLUGIN = '''
@@ -198,7 +337,8 @@ def write_plugin() -> pathlib.Path:
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("binary")
+    p.add_argument("binary", nargs="?",
+                   help="the engine binary (not needed with --write-weights)")
     p.add_argument("--which", default="sync", choices=("sync", "async", "all"),
                    help="the sync arm first: it is the one our own API mirrors")
     p.add_argument("-k", dest="selection", default=None)
@@ -208,14 +348,42 @@ def main() -> int:
                         "this suite produces, and `upstream_regressions.py` "
                         "needs it")
     p.add_argument("--shard", default=None, metavar="K/N",
-                   help="run only the test FILES whose path hashes to shard K "
-                        "of N (K from 1): the files are split by a stable hash "
-                        "of the path, so CI can spread one suite over N jobs "
+                   help="run only the test FILES that shard K of N owns (K from "
+                        "1): the files are split by the time each took in a "
+                        "recorded run (tests/gates/upstream_weights.json), "
+                        "heaviest first into the lightest shard, so CI can "
+                        "spread one suite over N jobs of about the same length "
                         "and a file always lands in the same one")
     p.add_argument("--per-file", action="store_true",
                    help="one pytest process per file: mandatory on the async "
                         "arm, see `_per_file`")
+    p.add_argument("--weights-os", choices=("Linux", "Windows"), default=None,
+                   help="whose weights plan the shards (default: this OS); "
+                        "with --write-weights, the OS of the reports "
+                        "(default: read from their file names)")
+    p.add_argument("--write-weights", nargs="+", metavar="JUNIT", default=None,
+                   help="do not run anything: fold these junit reports into "
+                        "tests/gates/upstream_weights.json (seconds per test "
+                        "file) and exit")
+    p.add_argument("--run-id", default="local",
+                   help="with --write-weights: the CI run the reports came from")
+    p.add_argument("--date", default=None,
+                   help="with --write-weights: its date (default: today, UTC)")
     a = p.parse_args()
+    if a.write_weights:
+        date = a.date or datetime.datetime.now(
+            datetime.timezone.utc).strftime("%Y-%m-%d")
+        data = write_weights(a.write_weights, a.run_id, date, a.weights_os)
+        for name in sorted(data["seconds"]):
+            print("%s: %d files, %.0f s in all, %.1f s per file outside the "
+                  "tests, run %s" % (
+                      name, len(data["seconds"][name]),
+                      sum(data["seconds"][name].values()),
+                      data["overhead_per_file"][name],
+                      data["runs"][name]["run_id"]))
+        return 0
+    if not a.binary:
+        p.error("the engine binary is required (or use --write-weights)")
     shard = None
     if a.shard is not None:
         try:
@@ -232,13 +400,15 @@ def main() -> int:
     # Without --shard the target stays the directory, exactly as before. With
     # it, the files this shard owns replace the directory on the command line.
     if shard and not a.per_file:
-        targets = shard_files(target, shard)
+        targets = shard_files(target, shard, a.weights_os)
         if not targets:
             # An empty shard would pass as "0 tests, exit 5" in some jobs and
             # as a green nothing in others: say it is a configuration error.
             p.error("shard %d/%d owns no test file under %s"
                     % (shard[0], shard[1], target))
-        print("shard %d/%d: %d files" % (shard[0], shard[1], len(targets)))
+        print("shard %d/%d: %d files (planned with the %s weights)"
+              % (shard[0], shard[1], len(targets),
+                 a.weights_os or current_os()))
     else:
         targets = [target]
     argv = [sys.executable, "-m", "pytest", *targets,
@@ -268,10 +438,11 @@ def main() -> int:
         r = subprocess.run(argv, cwd=SUITE, env=env)
         return r.returncode
 
-    return _per_file(argv, target, env, shard)
+    return _per_file(argv, target, env, shard, a.weights_os)
 
 
-def _per_file(argv: list, target: str, env: dict, shard=None) -> int:
+def _per_file(argv: list, target: str, env: dict, shard=None,
+              weights_os=None) -> int:
     """One pytest process per FILE, and the reason is structural.
 
     The async arm cannot be measured in a single process. `pytest-asyncio` runs
@@ -291,9 +462,9 @@ def _per_file(argv: list, target: str, env: dict, shard=None) -> int:
     """
     files = sorted((SUITE / target).glob("test_*.py"))
     if shard:
+        owned = set(shard_files(target, shard, weights_os))
         files = [f for f in files
-                 if in_shard(str(f.relative_to(SUITE)).replace("\\", "/"),
-                             shard)]
+                 if str(f.relative_to(SUITE)).replace("\\", "/") in owned]
     print("per-file: %d files, one process each" % len(files),
           flush=True)
     totals = {"passed": 0, "failed": 0, "error": 0, "skipped": 0}
