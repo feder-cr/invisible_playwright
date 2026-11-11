@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>local STUN probe</title></head>
+<body>
+<h1>local STUN probe</h1>
+<pre id="status">starting</pre>
+<script>
+// Own RTCPeerConnection, two public STUN servers by name, no TURN (none available).
+// Gathering starts from createOffer + setLocalDescription, as a plain page does.
+const out = document.getElementById('status');
+const lines = [];
+function show(s) { lines.push(s); out.textContent = lines.join('\n'); }
+const pc = new RTCPeerConnection({iceServers: [
+  {urls: 'stun:stun.l.google.com:19302'},
+  {urls: 'stun:stun.cloudflare.com:3478'}
+]});
+pc.createDataChannel('probe');
+pc.addEventListener('icecandidate', e => {
+  const c = e.candidate;
+  if (!c) { show('gathering end (null candidate)'); return; }
+  show('candidate ' + c.type + ' ' + c.protocol + ' ' + c.address + ' ' + c.port);
+});
+pc.addEventListener('icecandidateerror', e =>
+  show('icecandidateerror url=' + e.url + ' code=' + e.errorCode + ' text=' + e.errorText));
+pc.addEventListener('icegatheringstatechange', () => show('gathering state: ' + pc.iceGatheringState));
+pc.createOffer().then(o => pc.setLocalDescription(o)).catch(err => show('offer error: ' + err));
+</script>
+</body></html>
