@@ -125,6 +125,14 @@ def engine_dir(firefox_binary):
     return str(Path(firefox_binary).resolve().parent)
 
 
+#: The engine keeps spare content processes (dom.ipc.processPrelaunch: three with Fission) and starts a new one whenever one is
+#: taken, at a moment that depends on the machine. Stock Firefox does the same. A test that counts the processes would count a
+#: spare that appeared a second after the page it watches, so the count is taken with the spares off: every process it sees was
+#: started for a page. (Measured on the Linux runner, 20 runs each: with the spares on the service-worker test failed 7 times in 20,
+#: always as 2 processes and then 5, three more at once; with them off, 0 in 20.)
+NO_SPARE_PROCESSES = {"dom.ipc.processPrelaunch.enabled": False}
+
+
 def content_processes(engine_dir):
     """The pids of the engine's web content processes (`-contentproc ... tab`) below this test."""
     import psutil
@@ -161,7 +169,7 @@ def browser(firefox_binary):
     from invisible_playwright import InvisiblePlaywright
 
     with InvisiblePlaywright(seed=42, binary_path=firefox_binary, humanize=False, headless=True,
-                             extra_prefs=FISSION_ON) as browser:
+                             extra_prefs={**FISSION_ON, **NO_SPARE_PROCESSES}) as browser:
         yield browser
 
 

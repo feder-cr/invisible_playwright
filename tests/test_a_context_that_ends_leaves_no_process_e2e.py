@@ -7,10 +7,11 @@ four such contexts left four more processes (8 web content processes at the end 
 BrowserContext now waits a few seconds for the processes of its container once its pages are gone, and kills the
 ones that stay.
 
-The test closes five such contexts in a row and counts the web content processes under the engine after each.
-The first context may add ONE process that is not the leak (the engine starts a spare content process when the
-first page takes one, and Linux keeps it), so the count after the fifth must not be above the count after the
-SECOND: a flat line from there on (on the old engine every context adds one: [4, 5, 6, 7, 8]).
+The test closes five such contexts in a row and counts the web content processes under the engine after each,
+with the engine's spare content processes off (dom.ipc.processPrelaunch): with them on, the engine starts three spares at once
+whenever it has taken one, at a moment that depends on the machine (the Linux runner counted 2, 2, 2, 5, 5 in 7 runs of 20, and 2, 2,
+2, 2, 2 in the others), and the test counted a spare. Without them every process is a page's. The count after the fifth must not
+be above the count after the SECOND: a flat line (on the old engine every context adds one: [4, 5, 6, 7, 8]).
 
 The engine that does it is not published when this file is written: `engine_at_least` makes the test wait for
 it, and on an older engine it is skipped, never passed.
@@ -112,7 +113,8 @@ def test_closed_contexts_with_a_never_stopping_service_worker_leave_no_process(f
 
     server, base = _serve()
     launched = launch_server(host="127.0.0.1", port=0, headless=True, virtual_display=False, humanize=False,
-                             seed=4266, binary_path=firefox_binary, launch_timeout_ms=180_000)
+                             seed=4266, binary_path=firefox_binary, launch_timeout_ms=180_000,
+                             extra_prefs={"dom.ipc.processPrelaunch.enabled": False})
 
     async def drive():
         counts = []
