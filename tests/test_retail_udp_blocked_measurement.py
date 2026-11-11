@@ -19,6 +19,7 @@ WORKFLOW = ROOT / ".github" / "workflows" / "retail-udp-blocked.yml"
 sys.path.insert(0, str(SCRIPTS))
 
 import report  # noqa: E402
+import h3_fallback as h3  # noqa: E402
 import verify_udp_block as vub  # noqa: E402
 import webrtc_gather as wg  # noqa: E402
 
@@ -40,13 +41,29 @@ def test_the_workflow_runs_on_a_pr_that_touches_it_and_can_be_reused():
     assert re.search(r"timeout-minutes: \d+", text)
 
 
-def test_the_blocked_condition_is_proved_before_it_is_measured_and_the_rule_is_removed_on_failure():
+def test_the_four_conditions_run_in_order_and_the_rule_is_on_only_for_the_blocked_two():
     text = WORKFLOW.read_text(encoding="utf-8")
-    cond = (SCRIPTS / "run_condition.ps1").read_text(encoding="utf-8")
-    assert cond.index("verify_udp_block.py") < cond.index("webrtc_gather.py") < cond.index("h3_fallback.py")
-    assert text.index("-Action enable") < text.index("-Condition blocked")
+    order = [text.index(k) for k in ("-Name control", "-Name doh-free", "-Action enable", "-Name blocked", "-Name doh-blocked")]
+    assert order == sorted(order), order
+    assert text.index("-Action disable") > order[-1]
     tail = text[text.index("-Action disable") - 200:]
     assert "if: always()" in tail.split("-Action disable")[0]
+    assert re.search(r"GECKODRIVER_WIN64_ZIP_SHA256: [0-9a-f]{64}$", text, re.MULTILINE), "the geckodriver zip must be pinned"
+
+
+def test_each_condition_is_proved_before_it_is_measured():
+    cond = (SCRIPTS / "run_condition.ps1").read_text(encoding="utf-8")
+    first = cond.index("Invoke-Logged 'verify_udp_block.py'")
+    assert first < cond.index("Invoke-Logged 'webrtc_gather.py'") < cond.index("Invoke-Logged 'h3_fallback.py'")
+    assert cond.rindex("Invoke-Logged 'verify_udp_block.py'") > cond.index("Invoke-Logged 'h3_fallback.py'")
+
+
+def test_the_doh_conditions_force_mode_3_with_the_products_provider_and_require_the_proof():
+    cond = (SCRIPTS / "run_condition.ps1").read_text(encoding="utf-8")
+    for need in ("network.trr.mode=3", "network.trr.uri=https://mozilla.cloudflare-dns.com/dns-query",
+                 "network.trr.bootstrapAddr=162.159.61.4", "--require-doh"):
+        assert need in cond, need
+    assert "if (-not $doh)" in cond  # the WebRTC gather is not part of the DoH conditions
 
 
 def test_the_measurement_never_fails_on_a_measured_value():
@@ -121,3 +138,42 @@ def test_the_report_counts_what_was_measured(tmp_path):
     meta = json.loads((tmp_path / "meta.json").read_text(encoding="utf-8"))
     assert meta["proof_of_condition"] == {"control": True, "blocked": True}
     assert (tmp_path / "summary.json").exists()
+
+
+def test_doh_is_proven_only_by_the_browsers_own_state():
+    ev = {"prefs": {"network.trr.mode": 3}, "dns_service": {"currentTrrMode": 3},
+          "lookup": {"isTRR": False}, "cache_entries": [{"hostname": "www.example.org", "trr": True}]}
+    assert h3.doh_proven(ev, "www.example.org")[0]
+    assert h3.doh_proven({**ev, "cache_entries": []}, "www.example.org")[0] is False
+    assert h3.doh_proven({**ev, "cache_entries": [], "lookup": {"isTRR": True}}, "www.example.org")[0]
+    assert h3.doh_proven({**ev, "prefs": {"network.trr.mode": 0}}, "www.example.org")[0] is False
+    assert h3.doh_proven({**ev, "dns_service": {"currentTrrMode": 5}}, "www.example.org")[0] is False
+    assert h3.doh_proven({"error": "NoSuchContextError"}, "www.example.org")[0] is False
+    assert h3.doh_proven(None, "www.example.org")[0] is False
+
+
+def test_an_extra_pref_is_typed_like_json_and_falls_back_to_a_string():
+    assert h3.parse_pref("network.trr.mode=3") == ("network.trr.mode", 3)
+    assert h3.parse_pref("a.b=true") == ("a.b", True)
+    assert h3.parse_pref("network.trr.uri=https://x.example/dns-query") == ("network.trr.uri", "https://x.example/dns-query")
+    assert h3.parse_pref("network.trr.bootstrapAddr=203.0.113.5") == ("network.trr.bootstrapAddr", "203.0.113.5")
+    with pytest.raises(SystemExit):
+        h3.parse_pref("no-equals")
+
+
+def test_the_summary_shows_the_load_time_of_visit_1_per_condition_and_site(tmp_path):
+    for cond, loads in (("control", (400, 500, 900)), ("doh-blocked", (1400, 1500, 1900))):
+        h = tmp_path / cond / "h3" / "google"
+        h.mkdir(parents=True)
+        for n, le in enumerate(loads, 1):
+            (h / f"run{n}.json").write_text(json.dumps({"doh_proven": cond.startswith("doh"), "dns_evidence": {
+                "prefs": {"network.trr.mode": 3 if cond.startswith("doh") else 0}}, "visits": [
+                {"visit": 1, "wall_ms": le + 10, "nav": {"nextHopProtocol": "h3", "loadEventEnd": le}},
+                {"visit": 2, "wall_ms": 50, "nav": {"nextHopProtocol": "h3", "loadEventEnd": 40}}]}), encoding="utf-8")
+    s = report.h3_summary(tmp_path / "doh-blocked")["sites"]["google"]
+    assert s["load_event_end_ms_by_visit"]["1"] == {"n": 3, "min": 1400.0, "median": 1500.0, "max": 1900.0}
+    assert s["wall_ms_by_visit"]["1"]["max"] == 1910.0 and s["doh_proven_sessions"] == 3 and s["trr_mode_seen"] == {"3": 3}
+    assert report.h3_summary(tmp_path / "control")["sites"]["google"]["doh_proven_sessions"] == 0
+    report.main(["--out", str(tmp_path)])
+    md = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
+    assert list(md["conditions"]) == ["control", "doh-blocked"]

@@ -7,14 +7,14 @@ New for the Windows reference (the Linux captures were summarised by hand). Read
   <condition>/firewall_rule.txt                       the rule text (blocked only)
   commands.txt                                        the command lines run_condition.ps1 ran
   <condition>/webrtc/local-stun/run<N>/timeline.json  WebRTC gather (webrtc_gather.py)
-  <condition>/h3/<site>/run<N>.json                   HTTP/3 visits (h3_fallback.py)
-with <condition> in control, blocked. Writes --out/summary.json and --out/meta.json, prints the markdown to stdout and
+  <condition>/h3/<site>/run<N>.json                   HTTP/3 visits (h3_fallback.py), with the DNS evidence of the session
+with <condition> in control, doh-free, blocked, doh-blocked (the two doh-* have no WebRTC gather). Writes --out/summary.json and --out/meta.json, prints the markdown to stdout and
 appends it to $GITHUB_STEP_SUMMARY when set. It reports what was measured; it never judges it, and its exit code is 0.
 """
 import argparse, collections, datetime, json, os, platform, statistics, sys
 from pathlib import Path
 
-CONDITIONS = ["control", "blocked"]
+CONDITIONS = ["control", "doh-free", "blocked", "doh-blocked"]
 
 
 def load(path):
@@ -77,20 +77,29 @@ def h3_summary(cond_dir):
         seqs = collections.Counter()
         per_visit = collections.defaultdict(collections.Counter)
         walls = collections.defaultdict(list)
+        loads = collections.defaultdict(list)
         errors = 0
+        doh_ok = 0
+        modes = collections.Counter()
         for r in runs:
+            doh_ok += 1 if r.get("doh_proven") else 0
+            modes[str(((r.get("dns_evidence") or {}).get("prefs") or {}).get("network.trr.mode"))] += 1
             proto = []
             for v in r["visits"]:
                 p = (v.get("nav") or {}).get("nextHopProtocol") or ("error" if v.get("error") else "none")
                 proto.append(p)
                 per_visit[v["visit"]][p] += 1
                 walls[v["visit"]].append(v.get("wall_ms"))
+                le = (v.get("nav") or {}).get("loadEventEnd")
+                loads[v["visit"]].append(le if le else None)
                 errors += 1 if v.get("error") else 0
             seqs[",".join(proto)] += 1
         sites[site_dir.name] = {
             "sessions": len(runs), "sequences": dict(seqs),
             "protocol_by_visit": {str(k): dict(v) for k, v in sorted(per_visit.items())},
             "wall_ms_by_visit": {str(k): stats(v) for k, v in sorted(walls.items())},
+            "load_event_end_ms_by_visit": {str(k): stats(v) for k, v in sorted(loads.items())},
+            "doh_proven_sessions": doh_ok, "trr_mode_seen": dict(modes),
             "visit_errors": errors,
         }
     total_seq = collections.Counter()
@@ -100,7 +109,7 @@ def h3_summary(cond_dir):
 
 
 def markdown(summary):
-    L = ["## Retail Firefox on Windows, outbound UDP free vs blocked", ""]
+    L = ["## Retail Firefox on Windows, outbound UDP free vs blocked, native DNS vs DNS over HTTPS", ""]
     for cond in CONDITIONS:
         c = summary["conditions"].get(cond)
         if not c:
@@ -111,30 +120,34 @@ def markdown(summary):
         L.append("- condition proof: %s%s" % ("ok" if proof.get("ok") else "MISSING OR FAILED",
                                               ", block mode: %s" % proof["block_mode"] if proof.get("block_mode") else ""))
         w = c["webrtc"]
-        L.append("")
-        L.append("WebRTC gather, %d sessions" % w["sessions"])
-        L.append("")
-        L.append("| candidates by type/protocol (all sessions) | gather end after pc (ms) min / median / max |")
-        L.append("|---|---|")
-        L.append("| %s | %s |" % (", ".join("%s %d" % kv for kv in sorted(w["candidates_by_type_protocol"].items())) or "none",
-                                  fmt_stats(w["gathering_end_since_pc_created_ms"])))
-        L.append("")
-        L.append("| icecandidateerror code | count | time after pc (ms) min / median / max |")
-        L.append("|---|---|---|")
-        for code, e in w["errors_by_code"].items():
-            L.append("| %s | %d | %s |" % (code, e["count"], fmt_stats(e["since_pc_created_ms"])))
-        if not w["errors_by_code"]:
-            L.append("| none | 0 | - |")
+        if w["sessions"]:
+            L.append("")
+            L.append("WebRTC gather, %d sessions" % w["sessions"])
+            L.append("")
+            L.append("| candidates by type/protocol (all sessions) | gather end after pc (ms) min / median / max |")
+            L.append("|---|---|")
+            L.append("| %s | %s |" % (", ".join("%s %d" % kv for kv in sorted(w["candidates_by_type_protocol"].items())) or "none",
+                                      fmt_stats(w["gathering_end_since_pc_created_ms"])))
+            L.append("")
+            L.append("| icecandidateerror code | count | time after pc (ms) min / median / max |")
+            L.append("|---|---|---|")
+            for code, e in w["errors_by_code"].items():
+                L.append("| %s | %d | %s |" % (code, e["count"], fmt_stats(e["since_pc_created_ms"])))
+            if not w["errors_by_code"]:
+                L.append("| none | 0 | - |")
         h = c["h3"]
         L.append("")
-        L.append("HTTP/3 visits (nextHopProtocol of visit 1, 2, 3 in one session)")
+        L.append("HTTP/3 visits (nextHopProtocol of visit 1, 2, 3 in one session; times of visit 1 in ms, min / median / max)")
         L.append("")
-        L.append("| site | sessions | sequence: count |")
-        L.append("|---|---|---|")
+        L.append("| site | sessions | sequence: count | visit 1 load event end | visit 1 wall (driver.get) | DoH shown in use |")
+        L.append("|---|---|---|---|---|---|")
         for site, s in h["sites"].items():
-            L.append("| %s | %d | %s |" % (site, s["sessions"], "; ".join("%s: %d" % kv for kv in sorted(s["sequences"].items()))))
-        L.append("| all | %s | %s |" % (sum(s["sessions"] for s in h["sites"].values()),
-                                        "; ".join("%s: %d" % kv for kv in sorted(h["sequences_all_sites"].items()))))
+            L.append("| %s | %d | %s | %s | %s | %d of %d (trr.mode seen: %s) |" % (
+                site, s["sessions"], "; ".join("%s: %d" % kv for kv in sorted(s["sequences"].items())),
+                fmt_stats((s["load_event_end_ms_by_visit"] or {}).get("1")), fmt_stats((s["wall_ms_by_visit"] or {}).get("1")),
+                s["doh_proven_sessions"], s["sessions"], ", ".join("%s: %d" % kv for kv in sorted(s["trr_mode_seen"].items())) or "-"))
+        L.append("| all | %s | %s | | | |" % (sum(s["sessions"] for s in h["sites"].values()),
+                                              "; ".join("%s: %d" % kv for kv in sorted(h["sequences_all_sites"].items()))))
         L.append("")
     return "\n".join(L) + "\n"
 
@@ -163,7 +176,12 @@ def main(argv=None):
     fx = load(out / "firefox_info.json") or {}
     gd = load(out / "geckodriver_info.json") or {}
     meta = {
-        "what": "retail (Mozilla-built) Firefox on Windows, outbound UDP free (control) and blocked by a Windows Firewall rule",
+        "what": "retail (Mozilla-built) Firefox on Windows, outbound UDP free (control) and blocked by a Windows Firewall rule, each with native DNS and with DNS over HTTPS forced (doh-free, doh-blocked: HTTP/3 visits only)",
+        "doh": {"network.trr.mode": 3, "network.trr.uri": "https://mozilla.cloudflare-dns.com/dns-query",
+                "network.trr.bootstrapAddr": "162.159.61.4",
+                "provider_declared_in": "invisible_core src/invisible_core/prefs.py (network.trr.uri, network.trr.bootstrapAddr)",
+                "evidence": "dns_evidence in every h3/<site>/run<N>.json of every condition: trr prefs, nsIDNSService current TRR mode, "
+                            "a fresh lookup of the site host with its record's TRR flag, about:networking#dns cache entries with trr"},
         "date_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
         "firefox": fx,
         "geckodriver": gd,

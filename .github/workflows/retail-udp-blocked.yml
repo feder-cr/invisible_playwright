@@ -10,6 +10,13 @@
 #   - blocked: the same datagram must get no answer, TCP and name resolution work
 # The proof runs before and after the measurements of each condition.
 #
+# Four conditions, in this order: control (UDP free), DoH forced + UDP free,
+# then the firewall rule goes on: UDP blocked, DoH forced + UDP blocked. The DoH
+# ones use the DNS-over-HTTPS provider the product declares (network.trr.mode=3,
+# the provider URI and bootstrap address of invisible_core) and measure only the
+# HTTP/3 visits; each of their sessions must show DoH in use in the browser's own
+# DNS state, or the step fails instead of measuring native name resolution.
+#
 # It is the Windows side of the Linux reference (retail Firefox 159.0 in a
 # container, outbound UDP dropped with tc netem). The probes, the sites and the
 # output fields are the same ones, so a Linux capture and a Windows capture
@@ -52,9 +59,9 @@ env:
   FIREFOX_EXE_SHA256: d8b5ed82fcd9c0f159dc86dc1c4526ceae981c4d9651f21908b6de90d0a56d85
   XUL_DLL_SHA256: fec21f3e7c281c836ff4fb9658bf321857e101750bc4a6280d1b419996ce7e29
   GECKODRIVER_VERSION: '0.37.1'
-  # sha256 of geckodriver-v0.37.1-win64.zip. Empty until the first run printed it: the step then
-  # checks the digest GitHub records for the asset and warns (see install_geckodriver.ps1).
-  GECKODRIVER_WIN64_ZIP_SHA256: ''
+  # sha256 of geckodriver-v0.37.1-win64.zip, recorded by the first run and equal to the digest
+  # GitHub records for the asset (install_geckodriver.ps1 checks both).
+  GECKODRIVER_WIN64_ZIP_SHA256: dfed9315abe8d2fbc1b6161a2ee8002452e79cf05ee92fdc653a4e26bc35edd8
   SELENIUM_VERSION: '4.52.0'
   PSUTIL_VERSION: '7.0.0'
 
@@ -62,9 +69,10 @@ jobs:
   measure:
     name: retail Firefox, UDP free then blocked (windows)
     runs-on: windows-latest
-    # About 30 minutes expected: installs 3, then per condition 5 WebRTC sessions of
-    # about 70 s and 15 HTTP/3 sessions of about 25 s, plus the proofs.
-    timeout-minutes: 60
+    # The first run, with the two conditions control and blocked, took 24 minutes. The two DoH
+    # conditions add only the HTTP/3 sessions (15 each) and the DNS evidence, about 6 minutes each:
+    # about 36 minutes expected.
+    timeout-minutes: 72
     defaults:
       run:
         shell: pwsh
@@ -93,21 +101,36 @@ jobs:
           -WorkDir $env:WORK_DIR -OutDir $env:OUT_DIR
 
       - name: Install geckodriver
+        id: geckodriver
         run: >
           ./scripts/retail_udp_blocked/install_geckodriver.ps1
           -Version $env:GECKODRIVER_VERSION -ZipSha256 $env:GECKODRIVER_WIN64_ZIP_SHA256
           -WorkDir $env:WORK_DIR -OutDir $env:OUT_DIR
 
-      - name: Condition A - control, outbound UDP free
-        run: ./scripts/retail_udp_blocked/run_condition.ps1 -Condition control -OutDir $env:OUT_DIR
+      # The measurement steps run one after the other even when an earlier one failed (a failed proof or a failed
+      # DoH evidence turns the job red at the end, but does not throw away the other conditions), and never when
+      # the tools did not install.
+      - name: Condition 1 - control, outbound UDP free
+        if: ${{ !cancelled() && steps.geckodriver.outcome == 'success' }}
+        run: ./scripts/retail_udp_blocked/run_condition.ps1 -Name control -OutDir $env:OUT_DIR
+
+      - name: Condition 2 - DNS over HTTPS forced, outbound UDP free
+        if: ${{ !cancelled() && steps.geckodriver.outcome == 'success' }}
+        run: ./scripts/retail_udp_blocked/run_condition.ps1 -Name doh-free -OutDir $env:OUT_DIR
 
       - name: Block outbound UDP with a Windows Firewall rule
+        if: ${{ !cancelled() && steps.geckodriver.outcome == 'success' }}
         run: >
           ./scripts/retail_udp_blocked/udp_block.ps1 -Action enable
           -OutFile (Join-Path $env:OUT_DIR 'blocked/firewall_rule.txt')
 
-      - name: Condition B - outbound UDP blocked
-        run: ./scripts/retail_udp_blocked/run_condition.ps1 -Condition blocked -OutDir $env:OUT_DIR
+      - name: Condition 3 - outbound UDP blocked
+        if: ${{ !cancelled() && steps.geckodriver.outcome == 'success' }}
+        run: ./scripts/retail_udp_blocked/run_condition.ps1 -Name blocked -OutDir $env:OUT_DIR
+
+      - name: Condition 4 - DNS over HTTPS forced, outbound UDP blocked
+        if: ${{ !cancelled() && steps.geckodriver.outcome == 'success' }}
+        run: ./scripts/retail_udp_blocked/run_condition.ps1 -Name doh-blocked -OutDir $env:OUT_DIR
 
       - name: Remove the firewall rule and stop what is left of the browser
         if: always()
