@@ -6,7 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-## [0.50.0] - 2026-11-11
+## [0.50.1] - 2026-11-11
+
+0.50.0 was tagged and never published: its end-to-end gate was red on two tests that counted processes.
+0.50.1 is 0.50.0 with those tests corrected.
 
 ### Changed
 - Engine firefox-62 through invisible-core 62.63.0, which this version pins: firefox-61 plus Fission
@@ -37,6 +40,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   (`geolocation`, `persistent-storage`, `push`, `notifications`, `screen-wake-lock`); any other name
   raises `Unknown permission`, as it does there, and a grant with no origin is a grant for every
   origin.
+- The end-to-end tests that count content processes count the ones that host a site, not every content
+  process that is new. The engine keeps a pool of preallocated processes and refills it whenever it gets
+  to it, so a refill landing between two reads looked like a process the test had caused (a same-site
+  frame, a closed context with a service worker that never stops). Measured on firefox-62: a closed context
+  leaves no process of its site. On Linux the process is named by the site it hosts; elsewhere these
+  tests skip.
 
 ## [0.49.1] - 2026-11-10
 
