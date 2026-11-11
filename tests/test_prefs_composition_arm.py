@@ -40,6 +40,11 @@ DELIBERATE_VS_PUBLIC_API = {
     # 10 ms, which measured gave 79% of the intervals between two `mousemove`
     # tighter than a real 60 Hz can deliver.
     "stealthfox.humanize.stepMs",
+    # Not a pref of the browser: the server's mark that this dict IS a composed
+    # session (server.COMPOSED_PREF). `op_launch` takes it out before `user.js`
+    # and composes a session for a launch that does not carry it; the public API
+    # returns prefs for a caller's own launch, which has no such server.
+    "invisible.server.composed",
 }
 
 

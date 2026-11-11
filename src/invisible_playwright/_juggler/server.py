@@ -232,6 +232,11 @@ MOTION_BUDGET_PREF = "invisible.server.motion_budget_ms"
 #: pointer is the engine's own (`binary`) or nobody's (`off`): drawing a path
 #: here as well would humanise twice.
 POINTER_PREF = "invisible.server.pointer"
+
+#: Set by the launcher's `build_prefs` on every pref dict it composes, and taken
+#: out here like the three above: the profile a launch writes is a composed
+#: session, or the server composes one (`session_prefs_for_launch`).
+COMPOSED_PREF = "invisible.server.composed"
 #: The persona's keyboards, as Windows writes its input profiles (LANGID:KLID
 #: joined by semicolons, the language's first), decided by the core from the
 #: session's language AND country (`keyboard.profiles_for`). Server-only, like
@@ -258,9 +263,34 @@ def take_session_motion(prefs: Dict) -> tuple:
     seed = rest.pop(SESSION_SEED_PREF, None)
     budget_ms = rest.pop(MOTION_BUDGET_PREF, None)
     rest.pop(POINTER_PREF, None)
+    rest.pop(COMPOSED_PREF, None)
     return (rest,
             (None if seed is None else int(seed)),
             (None if budget_ms is None else int(budget_ms) / 1000.0))
+
+
+def session_prefs_for_launch(prefs: Dict, executable: str) -> Dict:
+    """The prefs a launch writes into its profile: always a composed session.
+
+    ⛔ A LAUNCH THAT NAMES NO SESSION IS FIREFOX READING THE HOST. The launcher
+    (`InvisiblePlaywright`, `launch_server`) composes the session and marks it
+    (COMPOSED_PREF); a bare `BrowserType.launch` from any other client of this
+    server named only the prefs it chose, usually none, and `user.js` held
+    nothing of the core's. That browser was the engine with Mozilla's defaults:
+    no persona, every value a page reads taken from the machine, and on Linux
+    the first-run policy tab of TelemetryReportingPolicy (the Terms of Use not
+    accepted), a second tab in the first window that `Browser.newPage` refuses
+    with "Unexpected number of tabs in the new window: 2". Measured 2026-11-11
+    on firefox-61 and on the firefox-62 candidate, 15 of 15 bare launches.
+
+    So an unmarked launch gets the session `InvisiblePlaywright()` composes
+    with the server's defaults (a new seed, humanize off as in
+    `launch_server`), and the caller's own prefs go on top of it.
+    """
+    if COMPOSED_PREF in prefs:
+        return dict(prefs)
+    from invisible_playwright._session import default_session_prefs
+    return dict(default_session_prefs(executable), **prefs)
 
 
 def session_draws_pointer(prefs: Dict) -> bool:
@@ -5267,10 +5297,10 @@ class BrowserTypeDispatcher(Dispatcher):
         # means "the patched binary reads this", and a reader who found a
         # typing key under it would go looking in C++ for something that is
         # answered in Python.
-        pointer_draws = session_draws_pointer(
-            params.get("firefoxUserPrefs") or {})
-        prefs, session_seed, motion_budget_s = take_session_motion(
-            params.get("firefoxUserPrefs") or {})
+        launch_prefs = session_prefs_for_launch(
+            params.get("firefoxUserPrefs") or {}, executable)
+        pointer_draws = session_draws_pointer(launch_prefs)
+        prefs, session_seed, motion_budget_s = take_session_motion(launch_prefs)
         # The keyboard the session decided, out of the prefs before the
         # profile sees them; without it, the language alone decides.
         keyboard_layout = prefs.pop(KEYBOARD_LAYOUT_PREF, None) or profiles_pref(

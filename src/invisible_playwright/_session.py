@@ -26,7 +26,7 @@ from ._cursor import (ENGINE_BINARY,
                       enable_for as _enable_cursor_engine,
                       max_seconds_for as _cursor_max_seconds)
 from ._engine import resolve_executable
-from ._juggler.server import MOTION_BUDGET_PREF, POINTER_PREF, SESSION_SEED_PREF
+from ._juggler.server import COMPOSED_PREF, MOTION_BUDGET_PREF, POINTER_PREF, SESSION_SEED_PREF
 from typing import Any, Dict, Optional
 
 from invisible_core import compose_session_prefs, context_geometry, make_virtual_display
@@ -63,6 +63,25 @@ __all__ = ["build_prefs", "true_headless_requested", "TRUE_HEADLESS_ENV",
 #: deliberate choice of a different rendering path. Full account:
 #: `71-bug-archive.md` [B150].
 TRUE_HEADLESS_ENV = "INVPW_TRUE_HEADLESS"
+
+
+def session_geo(timezone: str, proxy: Optional[Dict[str, str]], locale: Any):
+    """`invisible_core.prepare_session_geo`, the one network step of composing a
+    session (the egress IP). One name, so a hermetic test replaces it alone."""
+    from invisible_core import prepare_session_geo
+    return prepare_session_geo(timezone, proxy, locale)
+
+
+def default_session_prefs(executable: Optional[str] = None) -> Dict[str, Any]:
+    """The prefs `InvisiblePlaywright()` composes with the server's defaults: a
+    new seed, no proxy, locale "auto", humanize off (the default of
+    `launch_server`, the other entry that is a server). What the server writes
+    for a launch that names no session (`server.session_prefs_for_launch`)."""
+    from .launcher import InvisiblePlaywright
+    session = InvisiblePlaywright(binary_path=executable, humanize=False)
+    geo = session_geo(session._timezone, session._proxy, session._locale_requested)
+    session._timezone, session._locale = geo.timezone, geo.locale
+    return session._build_prefs()
 
 
 def true_headless_requested(env: Optional[Dict[str, str]] = None) -> bool:
@@ -238,6 +257,7 @@ def build_prefs(
     # `ui.textScaleFactor` had.
     # The persona's keyboards are in the prefs already: the core declares them
     # with the language and country (invisible_core.prefs._apply_locale).
+    prefs[COMPOSED_PREF] = True
     if session_seed is not None and humanize:
         prefs[SESSION_SEED_PREF] = int(session_seed)
         prefs[POINTER_PREF] = cursor_engine == ENGINE_PYTHON

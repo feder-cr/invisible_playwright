@@ -126,6 +126,24 @@ def _require_package():
             f"venv; any other test needs `pip install -e .`")
 
 
+@pytest.fixture(autouse=True)
+def _offline_session_geo(request, monkeypatch):
+    """Outside the e2e, the one network step of composing a session (the egress
+    IP, `_session.session_geo`) answers a fixed geo: New York, en-US. A launch
+    that names no session composes one on the server (`session_prefs_for_launch`),
+    and a unit test that drives `op_launch` must not ask the network who it is."""
+    if request.node.get_closest_marker("e2e") is not None:
+        return
+    try:
+        from invisible_playwright import _session
+        from invisible_core import decide_session_locale
+        from invisible_core._geo import SessionGeo
+    except Exception:  # the package is absent: the tests that need it say so
+        return
+    geo = SessionGeo("America/New_York", None, locale=decide_session_locale("en-US"))
+    monkeypatch.setattr(_session, "session_geo", lambda *_a, **_k: geo)
+
+
 @pytest.fixture
 def deterministic_rng():
     """Seeded RNG for reproducible tests."""

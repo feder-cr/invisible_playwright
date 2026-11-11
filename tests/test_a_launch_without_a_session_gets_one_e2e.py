@@ -1,0 +1,91 @@
+"""A browser launched without a session is still a session, on the engine (see the unit file of the same name).
+
+A bare `firefox.launch()` on the server's client (`invisible_playwright._pw`, the client Playwright's own
+suite drives) wrote no prefs of the core: the engine came up with Mozilla's defaults. On Linux its first
+window then held the first-run policy tab next to the page's (the Terms of Use, which the core declares
+accepted, were not), and the first `new_page` failed with "Browser.newPage: Unexpected number of tabs in
+the new window: 2", 15 times in 15 on firefox-61 and on the firefox-62 candidate. Every value a page read
+was the engine's own default, not a persona: the Linux engine said "X11; Linux" where every session says
+Windows.
+
+And the remote transport (`launch_server`, what Tetra runs): every context a client opens on the served
+browser lives in the profile the server composed, so each says the same Windows machine.
+"""
+from __future__ import annotations
+
+import pytest
+
+pytestmark = pytest.mark.e2e
+
+_READ = "() => [navigator.userAgent, navigator.platform, navigator.hardwareConcurrency]"
+
+
+def test_a_bare_launch_has_one_tab_and_a_persona(firefox_binary):
+    from invisible_playwright._pw.sync_api import sync_playwright
+
+    for attempt in range(3):     # the policy tab came in every first window: three are three chances
+        with sync_playwright() as p:
+            browser = p.firefox.launch(executable_path=firefox_binary, headless=True)
+            try:
+                context = browser.new_context()
+                page = context.new_page()        # refused before: "Unexpected number of tabs: 2"
+                agent, platform, cores = page.evaluate(_READ)
+                assert len(context.pages) == 1
+                assert "Windows NT" in agent and platform == "Win32", (
+                    "a bare launch is the engine's defaults, not a session: %r %r" % (agent, platform))
+                context.close()
+            finally:
+                browser.close()
+
+
+async def _two_contexts(endpoint):
+    """Two contexts on the served browser, a page in each, what each page reads; a client written on
+    `websockets` alone, as in test_a_served_browser_answers_a_plain_client_e2e.py."""
+    import json
+    from websockets.asyncio.client import connect
+
+    objects, counter = {}, [0]
+    async with connect(endpoint, max_size=None) as ws:
+        async def call(guid, method, params=None):
+            counter[0] += 1
+            await ws.send(json.dumps({"id": counter[0], "guid": guid, "method": method,
+                                      "params": params or {}, "metadata": {}}))
+            while True:
+                m = json.loads(await ws.recv())
+                if m.get("method") == "__create__":
+                    objects[m["params"]["guid"]] = m["params"]
+                if m.get("id") == counter[0]:
+                    assert "error" not in m, m
+                    return m.get("result")
+
+        await call("", "initialize", {"sdkLanguage": "python"})
+        browser = [g for g, p in objects.items() if p["type"] == "Browser"][0]
+        seen = []
+        for _ in range(2):
+            ctx = (await call(browser, "newContext", {}))["context"]["guid"]
+            page = (await call(ctx, "newPage", {}))["page"]["guid"]
+            frame = objects[page]["initializer"]["mainFrame"]["guid"]
+            value = (await call(frame, "evaluateExpression", {
+                "expression": "() => JSON.stringify([navigator.userAgent, navigator.platform, "
+                              "navigator.hardwareConcurrency])",
+                "isFunction": True, "arg": {"value": {"v": "undefined"}, "handles": []}}))["value"]
+            seen.append(json.loads(value["s"]))
+            await call(ctx, "close", {})
+        return seen
+
+
+def test_every_context_of_a_served_browser_is_the_session(firefox_binary):
+    import asyncio
+
+    pytest.importorskip("websockets")
+    from invisible_playwright._juggler.remote import launch_server
+
+    server = launch_server(headless=True, binary_path=firefox_binary, locale="en-US",
+                           timezone="America/New_York")
+    try:
+        seen = asyncio.run(asyncio.wait_for(_two_contexts(server.ws_endpoint), 120))
+    finally:
+        server.close()
+    assert seen[0] == seen[1], "two contexts of one served session are two machines: %r" % seen
+    agent, platform, _ = seen[0]
+    assert "Windows NT" in agent and platform == "Win32", seen[0]
