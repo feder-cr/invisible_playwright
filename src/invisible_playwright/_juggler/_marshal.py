@@ -189,7 +189,8 @@ def _headers_array(raw) -> List[Dict[str, str]]:
 #: Juggler's `cause` and `internalCause` are `nsIContentPolicy` constant names
 #: (`causeTypeToString` in NetworkObserver.js), so they arrive as
 #: `TYPE_XMLHTTPREQUEST`, never `xmlhttprequest`. This is the table the
-#: Playwright driver's ffNetworkManager uses for the same event.
+#: Playwright driver's ffNetworkManager uses for the same event (the pinned driver's table is read by
+#: tests/test_resource_types_match_the_pinned_driver.py: a beacon is `beacon`, a CSP report `cspreport`).
 _CAUSE_TO_RESOURCE_TYPE = {
     "TYPE_INVALID": "other", "TYPE_OTHER": "other",
     "TYPE_SCRIPT": "script", "TYPE_IMAGE": "image",
@@ -198,8 +199,8 @@ _CAUSE_TO_RESOURCE_TYPE = {
     "TYPE_REFRESH": "document", "TYPE_XBL": "other", "TYPE_PING": "other",
     "TYPE_XMLHTTPREQUEST": "xhr", "TYPE_OBJECT_SUBREQUEST": "other",
     "TYPE_DTD": "other", "TYPE_FONT": "font", "TYPE_MEDIA": "media",
-    "TYPE_WEBSOCKET": "websocket", "TYPE_CSP_REPORT": "other",
-    "TYPE_XSLT": "other", "TYPE_BEACON": "other", "TYPE_FETCH": "fetch",
+    "TYPE_WEBSOCKET": "websocket", "TYPE_CSP_REPORT": "cspreport",
+    "TYPE_XSLT": "other", "TYPE_BEACON": "beacon", "TYPE_FETCH": "fetch",
     "TYPE_IMAGESET": "image", "TYPE_WEB_MANIFEST": "manifest",
 }
 _INTERNAL_CAUSE_TO_RESOURCE_TYPE = {
