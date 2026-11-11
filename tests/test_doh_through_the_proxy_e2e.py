@@ -86,7 +86,7 @@ def _hermetic_session(monkeypatch):
     BROWSER's roads, so the answer is declared: the same facts (timezone, locale, position, an exit address) the
     lookup would have returned.
     """
-    monkeypatch.setattr("invisible_playwright.launcher.prepare_session_geo", lambda tz, proxy, locale: GEO)
+    monkeypatch.setattr("invisible_playwright.launcher.prepare_session_geo", lambda tz, proxy, locale, **_kw: GEO)
     monkeypatch.setattr(InvisiblePlaywright, "_assert_uscita_invariata", lambda self: None)
 
 

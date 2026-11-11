@@ -109,11 +109,13 @@ class InvisiblePlaywright(_session.CommonLaunch):
         # session keeps the core's DECISION (a SessionLocale). See the sync
         # launcher.
         _geo = await asyncio.to_thread(
-            prepare_session_geo, self._timezone, self._proxy, self._locale_requested
+            prepare_session_geo, self._timezone, self._proxy, self._locale_requested,
+            seed=self.seed,
         )
         self._timezone = _geo.timezone
         self._locale = _geo.locale
         self._webrtc_egress_ip = _geo.egress_ip
+        self._geolocation = _geo.geolocation_override()
         # binary_path= never reaches ensure_binary(), so the engine check lives
         # on the resolved executable rather than inside the fetcher.
         executable = resolve_executable(self._binary_path)

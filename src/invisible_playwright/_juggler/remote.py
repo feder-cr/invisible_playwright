@@ -721,10 +721,11 @@ def _launch_params(session: Any, *, virtual_display: bool, headless: bool,
     from invisible_playwright._reaper import SessionToken
 
     geo = prepare_session_geo(session._timezone, session._proxy,
-                              session._locale_requested)
+                              session._locale_requested, seed=session.seed)
     session._timezone = geo.timezone
     session._locale = geo.locale
     session._webrtc_egress_ip = geo.egress_ip
+    session._geolocation = geo.geolocation_override()
     executable = resolve_executable(session._binary_path)
     pw_headless = bool(headless)
     if not headless and virtual_display:

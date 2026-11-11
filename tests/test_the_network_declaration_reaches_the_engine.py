@@ -49,7 +49,7 @@ def test_the_server_default_session_declares_the_network_of_its_seed(monkeypatch
         seeds.append(self.seed)
 
     monkeypatch.setattr(InvisiblePlaywright, "__init__", spy)
-    monkeypatch.setattr(_session, "session_geo", lambda tz, px, loc: SessionGeo(
+    monkeypatch.setattr(_session, "session_geo", lambda tz, px, loc, **_kw: SessionGeo(
         "America/New_York", None, locale=decide_session_locale("en-US")))
     _prefs, env = _session.default_session(None, proxy)
     assert env[NETWORK] == network_to_declare(seeds[0])

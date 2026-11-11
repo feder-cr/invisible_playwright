@@ -257,10 +257,12 @@ class InvisiblePlaywright(_session.CommonLaunch):
         # The language is decided in the same call, from the same egress: the
         # core resolves "auto" and applies Firefox's language table, and this
         # session keeps the DECISION (a SessionLocale), never a tag of its own.
-        _geo = prepare_session_geo(self._timezone, self._proxy, self._locale_requested)
+        _geo = prepare_session_geo(self._timezone, self._proxy, self._locale_requested,
+                                   seed=self.seed)
         self._timezone = _geo.timezone
         self._locale = _geo.locale
         self._webrtc_egress_ip = _geo.egress_ip
+        self._geolocation = _geo.geolocation_override()
         # binary_path= never reaches ensure_binary(), so the engine check lives
         # on the resolved executable rather than inside the fetcher.
         executable = resolve_executable(self._binary_path)

@@ -65,11 +65,13 @@ __all__ = ["build_prefs", "true_headless_requested", "TRUE_HEADLESS_ENV",
 TRUE_HEADLESS_ENV = "INVPW_TRUE_HEADLESS"
 
 
-def session_geo(timezone: str, proxy: Optional[Dict[str, str]], locale: Any):
+def session_geo(timezone: str, proxy: Optional[Dict[str, str]], locale: Any,
+                seed: Optional[int] = None):
     """`invisible_core.prepare_session_geo`, the one network step of composing a
-    session (the egress IP). One name, so a hermetic test replaces it alone."""
+    session (the egress IP). One name, so a hermetic test replaces it alone.
+    The seed places the session on the map (the declared position)."""
     from invisible_core import prepare_session_geo
-    return prepare_session_geo(timezone, proxy, locale)
+    return prepare_session_geo(timezone, proxy, locale, seed=seed)
 
 
 def default_session(executable: Optional[str] = None,
@@ -83,8 +85,10 @@ def default_session(executable: Optional[str] = None,
     What `server.session_for_launch` gives a launch that names no session."""
     from .launcher import InvisiblePlaywright
     session = InvisiblePlaywright(binary_path=executable, humanize=False, proxy=proxy or None)
-    geo = session_geo(session._timezone, session._proxy, session._locale_requested)
+    geo = session_geo(session._timezone, session._proxy, session._locale_requested,
+                      seed=session.seed)
     session._timezone, session._locale = geo.timezone, geo.locale
+    session._geolocation = geo.geolocation_override()
     prefs = session._build_prefs()
     env = build_env(network_declared=declared_network(session), profile=session._profile,
                     executable=executable, base_env={})
@@ -386,8 +390,15 @@ class CommonLaunch:
     `_lifetime_guard`, `_locale` (the core's SessionLocale, None until
     `__enter__` decides it), `_profile`, `_session_token`, `_show_cursor`,
     `_network_declared`, `_timezone` and `_virtual_display` in their own
-    `__init__`. They already did, identically, which is why this works at all.
+    `__init__`; `_geolocation` (the position the session declares, the
+    ``geolocation`` object of a context, None until `__enter__` decides it
+    and when the exit has no point) is the class default below. They already did, identically, which is why this works at all.
     """
+
+    #: The position this session declares to the engine
+    #: (``SessionGeo.geolocation_override()``: latitude, longitude, accuracy),
+    #: or None. Set by `__enter__` from the egress, like `_timezone`.
+    _geolocation: Optional[Dict[str, float]] = None
 
     def _resolve_headless(self) -> bool:
         """Translate the user's ``headless`` flag.
@@ -444,6 +455,16 @@ class CommonLaunch:
         # None before __enter__ has decided.
         if self._locale is not None:
             kwargs["locale"] = self._locale.primary
+        # The position the core declares for this machine. It travels as the
+        # standard `geolocation` context option, so the engine gets
+        # `Browser.setGeolocationOverride` for EVERY context (the default one
+        # and each `new_context`/`new_page`), a caller's own `geolocation=`
+        # wins like any other default, and the PERMISSION is not granted here:
+        # the page's grant (the caller's `grant_permissions`) is what makes the
+        # engine answer. The override belongs to each context (Juggler keys it
+        # by `browserContextId`), so a context that closes takes its own with it.
+        if self._geolocation is not None:
+            kwargs["geolocation"] = dict(self._geolocation)
         return kwargs
 
     def _build_env(self, prefs: Dict[str, Any]) -> Dict[str, str]:

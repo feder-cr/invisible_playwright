@@ -111,7 +111,7 @@ def test_a_bare_launch_behind_a_proxy_is_composed_through_it(firefox_binary, mon
     monkeypatch.delenv("STEALTHFOX_WEBRTC_NETWORK", raising=False)
     measured = []
 
-    def through_the_proxy(timezone, proxy, locale):
+    def through_the_proxy(timezone, proxy, locale, **_kw):
         measured.append(proxy)
         return SessionGeo("America/New_York", egress,
                           locale=decide_session_locale("en-US"))
