@@ -32,9 +32,10 @@ failure that reads as a product defect for a whole afternoon.
 
 A shard owns whole test FILES, chosen by the time each file took in a recorded
 run (tests/gates/upstream_weights.json), so the jobs finish at about the same
-time. After a run, refresh the weights from its reports:
+time. After a run, refresh the weights from its reports (a shard that was
+killed left no .xml, but its --record file, .jsonl, is read the same way):
 
-    python scripts/upstream_baseline.py --write-weights --run-id <id>         upstream-Linux-*.xml upstream-Windows-*.xml
+    python scripts/upstream_baseline.py --write-weights --run-id <id> upstream-Linux-*.xml upstream-Windows-*.xml upstream-*.jsonl
 """
 from __future__ import annotations
 
@@ -194,12 +195,76 @@ def os_of_report(path) -> str:
                      "...Windows..., or pass --weights-os" % path)
 
 
+def record_seconds(path) -> tuple:
+    """(file -> seconds, file in progress when the record ends) from a record.
+
+    The record is the JSON lines `scripts/upstream_record.py` appends while a
+    shard runs; it exists even when the shard was killed. Files run one after
+    the other, so every file but the last one named is complete; the last one
+    may have been cut off, and its seconds are a lower bound. A line cut in
+    half by the kill is ignored.
+    """
+    per_file: dict = {}
+    last = None
+    for line in pathlib.Path(path).read_text(encoding="utf-8",
+                                             errors="replace").splitlines():
+        try:
+            row = json.loads(line)
+            f = row["id"].split("::")[0].replace("\\", "/")
+            per_file[f] = per_file.get(f, 0.0) + float(row["duration"])
+        except (ValueError, KeyError, TypeError):
+            continue
+        last = f
+    return per_file, last
+
+
+def _ratio(secs_a: dict, secs_b: dict, skip_a: set, skip_b: set):
+    """Sum of A over sum of B on the files both systems really measured."""
+    both = [f for f in secs_a if f in secs_b and f not in skip_a
+            and f not in skip_b]
+    total_b = sum(secs_b[f] for f in both)
+    return sum(secs_a[f] for f in both) / total_b if total_b else None
+
+
+def fill_from_other_os(data: dict) -> None:
+    """Give a file that one system never measured the other system's time.
+
+    The two systems run different shards, so a file that is unmeasured on one
+    is usually measured on the other. Its time there, times the ratio of the
+    two systems over the files both measured, is a better guess than any
+    model. The file stays under `estimated` (it was not measured on this OS),
+    and is named under `scaled` so a later report can replace it.
+    """
+    systems = [n for n in ("Linux", "Windows") if n in data["seconds"]]
+    if len(systems) < 2:
+        return
+    est = {n: set(data["estimated"].get(n, [])) for n in systems}
+    for a, b in ((systems[0], systems[1]), (systems[1], systems[0])):
+        ratio = _ratio(data["seconds"][a], data["seconds"][b], est[a], est[b])
+        scaled = set()
+        if ratio:
+            for f, t in data["seconds"][b].items():
+                if f in est[b]:
+                    continue
+                if f not in data["seconds"][a] or f in est[a]:
+                    data["seconds"][a][f] = round(t * ratio, 1)
+                    est[a].add(f)
+                    scaled.add(f)
+        data.setdefault("scaled", {})[a] = sorted(scaled)
+        data["estimated"][a] = sorted(est[a])
+        data["seconds"][a] = dict(sorted(data["seconds"][a].items()))
+
+
 def write_weights(reports: list, run_id: str, date: str, os_name=None,
                   path=None) -> dict:
-    """Fold junit reports into the weights file and return what was written.
+    """Fold junit reports (and records) into the weights file; return it.
 
-    Files seen in a report take the measured time; files in no report keep
-    what they had. The per-file cost is re-measured from the same reports.
+    Files seen in a junit report take the measured time; files in no report
+    keep what they had. A record (`*.jsonl`) of a shard with no junit gives its
+    complete files the same way, and the file it ended on a lower bound that
+    is kept as an estimate (listed under `lower_bound`) unless a measured
+    value is already there. The per-file cost is re-measured from the junit
+    reports (averaged with the last figure). What neither OS measured is then filled from the other OS.
     """
     target = pathlib.Path(path or WEIGHTS)
     if target.exists():
@@ -207,25 +272,58 @@ def write_weights(reports: list, run_id: str, date: str, os_name=None,
     else:
         data = {"format": 1, "runs": {}, "overhead_per_file": {},
                 "seconds": {}, "estimated": {}}
+    data.setdefault("lower_bound", {})
     by_os = {}
     for r in reports:
-        by_os.setdefault(os_name or os_of_report(r), []).append(r)
+        by_os.setdefault(os_name or os_of_report(r), []).append(str(r))
     for name, paths in by_os.items():
         secs = data["seconds"].setdefault(name, {})
         est = set(data["estimated"].get(name, []))
+        low = set(data["lower_bound"].get(name, []))
         outside, files = 0.0, 0
-        for p in paths:
+        measured = set()
+        for p in (p for p in paths if not p.endswith(".jsonl")):
             per_file, extra = junit_seconds(p)
             for f, t in per_file.items():
                 secs[f] = round(t, 1)
                 est.discard(f)
+                low.discard(f)
+                measured.add(f)
             outside += extra
             files += len(per_file)
+        for p in (p for p in paths if p.endswith(".jsonl")):
+            per_file, last = record_seconds(p)
+            for f, t in per_file.items():
+                if f in measured:
+                    continue
+                if f != last:
+                    secs[f] = round(t, 1)
+                    est.discard(f)
+                    low.discard(f)
+                    measured.add(f)
+                elif f in est or f not in secs:
+                    secs[f] = round(max(t, secs.get(f, 0.0)), 1)
+                    est.add(f)
+                    low.add(f)
         if files:
-            data["overhead_per_file"][name] = round(outside / files, 1)
+            # Averaged with the previous figure: it moves a lot from shard to
+            # shard (4 to 13 s per file), and one run should not set it alone.
+            now = outside / files
+            before = data["overhead_per_file"].get(name)
+            data["overhead_per_file"][name] = round(
+                now if before is None else (before + now) / 2, 1)
         data["estimated"][name] = sorted(est)
-        data["runs"][name] = {"run_id": str(run_id), "date": date}
+        data["lower_bound"][name] = sorted(low)
+        old = data["runs"].get(name)
+        entry = {"run_id": str(run_id), "date": date}
+        also = list(old.get("also", [])) if old else []
+        if old and old["run_id"] != str(run_id):
+            also.append(old["run_id"])
+        if also:
+            entry["also"] = also
+        data["runs"][name] = entry
         data["seconds"][name] = dict(sorted(secs.items()))
+    fill_from_other_os(data)
     target.write_text(json.dumps(data, indent=1) + "\n", encoding="utf-8",
                       newline="\n")
     return data
@@ -354,6 +452,11 @@ def main() -> int:
                         "heaviest first into the lightest shard, so CI can "
                         "spread one suite over N jobs of about the same length "
                         "and a file always lands in the same one")
+    p.add_argument("--record", default=None, metavar="FILE",
+                   help="append one JSON line per test report to FILE as the "
+                        "tests run (scripts/upstream_record.py): a shard that "
+                        "is killed before pytest writes its JUnit XML still "
+                        "leaves this, and --write-weights reads it")
     p.add_argument("--per-file", action="store_true",
                    help="one pytest process per file: mandatory on the async "
                         "arm, see `_per_file`")
@@ -362,9 +465,10 @@ def main() -> int:
                         "with --write-weights, the OS of the reports "
                         "(default: read from their file names)")
     p.add_argument("--write-weights", nargs="+", metavar="JUNIT", default=None,
-                   help="do not run anything: fold these junit reports into "
-                        "tests/gates/upstream_weights.json (seconds per test "
-                        "file) and exit")
+                   help="do not run anything: fold these junit reports (and "
+                        "--record files, *.jsonl, of shards that left no "
+                        "junit) into tests/gates/upstream_weights.json "
+                        "(seconds per test file) and exit")
     p.add_argument("--run-id", default="local",
                    help="with --write-weights: the CI run the reports came from")
     p.add_argument("--date", default=None,
@@ -413,6 +517,7 @@ def main() -> int:
         targets = [target]
     argv = [sys.executable, "-m", "pytest", *targets,
             "-o", "addopts=", "-p", "scripts._upstream_alias",
+            "-p", "scripts.upstream_record",
             "--browser", "firefox", "-p", "no:cacheprovider",
             "--timeout", a.timeout, "--timeout-method", "thread",
             "-q", "--no-header", "-rN"]
@@ -426,6 +531,12 @@ def main() -> int:
     import os
     env = dict(os.environ)
     env["INVPW_BINARY_PATH"] = a.binary
+    if a.record:
+        # ⛔ Absolute (pytest runs with `cwd=SUITE`) and started empty: a record
+        # left by an earlier run would be read as this one's.
+        record = pathlib.Path(a.record).resolve()
+        record.write_text("", encoding="utf-8")
+        env["INVPW_RECORD"] = str(record)
     # ⛔ THIS CHECKOUT'S `src` TOO, or the suite measures whatever wrapper is
     # INSTALLED: `ROOT` alone only makes `scripts._upstream_alias` importable,
     # and `invisible_playwright` then resolves to the editable install, which

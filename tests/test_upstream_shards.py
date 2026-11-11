@@ -41,19 +41,25 @@ def _baseline_files() -> list:
     return sorted({base.file_of(k.split("::")[0]) for k in BASELINE})
 
 
-def _plan() -> dict:
-    """{OS name: (shard count, step limit in minutes)} as the workflow runs it."""
+def _jobs() -> dict:
+    """{OS name: {shard: (step limit, job limit)}} as the workflow runs it."""
     entries = re.findall(
-        r"- \{ os: (\S+), shard: (\d+), of: (\d+), limit: (\d+) \}", _workflow())
-    plan: dict = {}
-    for runner, shard, of, limit in entries:
+        r"- \{ os: (\S+), shard: (\d+), of: (\d+), limit: (\d+), job: (\d+) \}",
+        _workflow())
+    jobs: dict = {}
+    counts: dict = {}
+    for runner, shard, of, limit, job in entries:
         name = "Windows" if runner.startswith("windows") else "Linux"
-        got = plan.setdefault(name, {"shards": [], "of": of, "limit": limit})
-        assert (got["of"], got["limit"]) == (of, limit), "one OS, one plan"
-        got["shards"].append(int(shard))
-    for name, got in plan.items():
-        assert got["shards"] == list(range(1, int(got["of"]) + 1)), name
-    return {n: (int(g["of"]), int(g["limit"])) for n, g in plan.items()}
+        assert counts.setdefault(name, of) == of, "one OS, one shard count"
+        jobs.setdefault(name, {})[int(shard)] = (int(limit), int(job))
+    for name, per_shard in jobs.items():
+        assert sorted(per_shard) == list(range(1, int(counts[name]) + 1)), name
+    return jobs
+
+
+def _plan() -> dict:
+    """{OS name: shard count} as the workflow runs it."""
+    return {name: len(per_shard) for name, per_shard in _jobs().items()}
 
 
 def _universe(os_name: str) -> list:
@@ -154,26 +160,62 @@ def test_the_committed_weights_cover_the_recorded_suite(os_name):
     assert WEIGHTS["runs"][os_name]["run_id"] and WEIGHTS["runs"][os_name]["date"]
 
 
+def _lone(os_name: str) -> list:
+    """Shard indexes (1-based) that hold ONE file heavier than the budget.
+
+    A file that alone is over 8 minutes cannot be balanced; it gets its own
+    shard and its own limit, and the balance rules apply to the others.
+    """
+    secs = _seconds(os_name)
+    owner = base.assign(secs, _plan()[os_name])
+    out = []
+    for k in range(_plan()[os_name]):
+        mine = [f for f, o in owner.items() if o == k]
+        if len(mine) == 1 and secs[mine[0]] > 8 * 60:
+            out.append(k + 1)
+    return out
+
+
 @pytest.mark.parametrize("os_name", ["Linux", "Windows"])
 def test_the_planned_shards_are_balanced_and_fit_the_budget(os_name):
-    count, limit = _plan()[os_name]
-    loads = base.shard_loads(_seconds(os_name), count)
-    assert min(loads) > 0
-    assert max(loads) / min(loads) < 1.5, [round(x) for x in loads]
-    # 8 minutes of tests at most, and the step limit is about twice the heaviest
-    assert max(loads) <= 8 * 60, [round(x) for x in loads]
-    assert 1.6 <= limit * 60 / max(loads) <= 2.5, (limit, max(loads) / 60)
+    loads = base.shard_loads(_seconds(os_name), _plan()[os_name])
+    lone = _lone(os_name)
+    rest = [x for k, x in enumerate(loads, 1) if k not in lone]
+    assert min(rest) > 0
+    assert max(rest) / min(rest) < 1.5, [round(x) for x in loads]
+    # 8 minutes of tests at most for every shard that can be balanced
+    assert max(rest) <= 8 * 60, [round(x) for x in loads]
 
 
-def test_no_single_file_is_over_the_budget_of_a_shard():
+@pytest.mark.parametrize("os_name", ["Linux", "Windows"])
+def test_each_step_limit_is_about_twice_the_predicted_time_of_its_shard(os_name):
+    loads = base.shard_loads(_seconds(os_name), _plan()[os_name])
+    lone = _lone(os_name)
+    rest_max = max(x for k, x in enumerate(loads, 1) if k not in lone)
+    for k, (limit, job) in _jobs()[os_name].items():
+        own = loads[k - 1]
+        assert limit * 60 >= 1.6 * own, (os_name, k, limit, own / 60)
+        # a shard that can be balanced shares the limit of the heaviest of them
+        ceiling = own if k in lone else rest_max
+        assert limit * 60 <= 2.5 * ceiling, (os_name, k, limit, ceiling / 60)
+        assert job >= limit + 5, (os_name, k, limit, job)
+
+
+def test_only_files_that_cannot_fit_a_shard_are_alone_in_one():
     for os_name in ("Linux", "Windows"):
-        assert max(_seconds(os_name).values()) <= 8 * 60, os_name
+        secs = _seconds(os_name)
+        too_big = sorted(f for f, t in secs.items() if t > 8 * 60)
+        owner = base.assign(secs, _plan()[os_name])
+        assert too_big, "the heavy files of the weights are the reason for this"
+        for f in too_big:
+            assert [g for g, k in owner.items() if k == owner[f]] == [f], f
+        assert len(_lone(os_name)) == len(too_big)
 
 
 def test_the_plan_fits_in_sixteen_jobs_and_names_both_systems():
     plan = _plan()
     assert set(plan) == {"Linux", "Windows"}
-    assert sum(count for count, _ in plan.values()) <= 16
+    assert sum(plan.values()) <= 16
 
 
 def test_the_old_hash_split_would_have_been_far_off_these_weights():
@@ -267,9 +309,14 @@ def test_write_weights_sums_every_attempt_of_a_file_and_keeps_the_rest(tmp_path)
     assert secs["tests/sync/test_old.py"] == 9.0      # not in this run: kept
     assert data["estimated"]["Linux"] == ["tests/sync/test_old.py"]
     assert data["runs"]["Linux"] == {"run_id": "777", "date": "2026-12-01"}
-    # 30 s of suite - 25 s of testcases = 5 s outside, over 2 files
-    assert data["overhead_per_file"]["Linux"] == 2.5
+    # 30 s of suite - 25 s of testcases = 5 s outside, over 2 files = 2.5 s,
+    # averaged with the 1.0 s it had
+    assert data["overhead_per_file"]["Linux"] == 1.8
     assert json.loads(target.read_text(encoding="utf-8")) == data
+    # a later run is remembered next to the latest
+    again = base.write_weights([one], "888", "2026-12-02", path=target)
+    assert again["runs"]["Linux"] == {"run_id": "888", "date": "2026-12-02",
+                                      "also": ["777"]}
 
 
 def test_write_weights_reads_the_os_from_the_file_name(tmp_path):
@@ -283,6 +330,168 @@ def test_write_weights_reads_the_os_from_the_file_name(tmp_path):
     assert data["seconds"]["Windows"] == {"tests/sync/test_a.py": 6.0}
     with pytest.raises(ValueError):
         base.os_of_report("upstream-1.xml")
+
+
+def _record(path: Path, *rows: tuple, torn: bool = False) -> str:
+    """A record as upstream_record.py writes it: (nodeid, seconds) per report."""
+    lines = [json.dumps({"id": i, "when": "call", "outcome": "passed",
+                         "duration": d, "at": 1.0}) for i, d in rows]
+    text = "\n".join(lines) + "\n"
+    if torn:
+        text += '{"id": "tests/sync/test_torn.py::t", "dura'   # killed mid-line
+    path.write_text(text, encoding="utf-8")
+    return str(path)
+
+
+def test_the_record_hook_appends_a_line_per_report_and_only_when_asked(
+        tmp_path, monkeypatch):
+    import upstream_record as rec
+
+    class Report:
+        nodeid = "tests/sync/test_a.py::test_x[firefox]"
+        when = "call"
+        outcome = "rerun"
+        duration = 1.23456
+
+    out = tmp_path / "r.jsonl"
+    monkeypatch.delenv("INVPW_RECORD", raising=False)
+    rec.pytest_runtest_logreport(Report())
+    assert not out.exists()
+    monkeypatch.setenv("INVPW_RECORD", str(out))
+    rec.pytest_runtest_logreport(Report())
+    rec.pytest_runtest_logreport(Report())
+    rows = [json.loads(x) for x in out.read_text(encoding="utf-8").splitlines()]
+    assert [r["id"] for r in rows] == [Report.nodeid] * 2
+    assert rows[0]["outcome"] == "rerun" and rows[0]["duration"] == 1.235
+
+
+def test_a_record_gives_complete_files_and_a_lower_bound_for_the_last(tmp_path):
+    rec = _record(tmp_path / "upstream-Linux-3.jsonl",
+                  ("tests/sync/test_a.py::t1", 10.0),
+                  ("tests/sync/test_a.py::t1", 10.0),
+                  ("tests/sync/test_b.py::t2", 5.0),
+                  ("tests/sync/test_c.py::t3", 50.0), torn=True)
+    per_file, last = base.record_seconds(rec)
+    assert per_file == {"tests/sync/test_a.py": 20.0, "tests/sync/test_b.py": 5.0,
+                        "tests/sync/test_c.py": 50.0}
+    assert last == "tests/sync/test_c.py"       # the torn line is ignored
+
+
+def test_write_weights_reads_the_record_of_a_shard_that_left_no_junit(tmp_path):
+    target = tmp_path / "w.json"
+    target.write_text(json.dumps({
+        "format": 1, "runs": {}, "overhead_per_file": {"Linux": 1.0},
+        "seconds": {"Linux": {"tests/sync/test_a.py": 1.0,
+                              "tests/sync/test_b.py": 1.0,
+                              "tests/sync/test_c.py": 1.0,
+                              "tests/sync/test_d.py": 7.0}},
+        "estimated": {"Linux": ["tests/sync/test_a.py", "tests/sync/test_b.py",
+                                "tests/sync/test_c.py"]},
+    }), encoding="utf-8")
+    rec = _record(tmp_path / "upstream-Linux-3.jsonl",
+                  ("tests/sync/test_a.py::t1", 10.0),
+                  ("tests/sync/test_b.py::t2", 5.0),
+                  ("tests/sync/test_c.py::t3", 50.0),
+                  ("tests/sync/test_d.py::t4", 99.0))
+    # a file the junit of the same OS covers wins over the record
+    junit = _timed_junit(tmp_path / "upstream-Linux-1.xml", 3.0,
+                         ("tests.sync.test_a", "t1", 2.0))
+    data = base.write_weights([junit, rec], "9", "2026-12-01", path=target)
+    secs = data["seconds"]["Linux"]
+    assert secs["tests/sync/test_a.py"] == 2.0       # the junit
+    assert secs["tests/sync/test_b.py"] == 5.0       # complete in the record
+    assert secs["tests/sync/test_c.py"] == 50.0      # complete: d came after it
+    # d is the file the record ends on, but it already has a measured value,
+    # which a cut-off file must not lower or replace
+    assert secs["tests/sync/test_d.py"] == 7.0
+    assert data["estimated"]["Linux"] == []
+    assert data["lower_bound"]["Linux"] == []
+
+
+def test_the_file_a_killed_shard_was_in_is_a_lower_bound_not_a_measurement(
+        tmp_path):
+    target = tmp_path / "w.json"
+    target.write_text(json.dumps({
+        "format": 1, "runs": {}, "overhead_per_file": {"Linux": 1.0},
+        "seconds": {"Linux": {"tests/sync/test_c.py": 20.0}},
+        "estimated": {"Linux": ["tests/sync/test_c.py"]},
+    }), encoding="utf-8")
+    rec = _record(tmp_path / "upstream-Linux-3.jsonl",
+                  ("tests/sync/test_b.py::t2", 5.0),
+                  ("tests/sync/test_c.py::t3", 50.0))
+    data = base.write_weights([rec], "9", "2026-12-01", path=target)
+    assert data["seconds"]["Linux"]["tests/sync/test_b.py"] == 5.0
+    assert data["seconds"]["Linux"]["tests/sync/test_c.py"] == 50.0
+    assert data["estimated"]["Linux"] == ["tests/sync/test_c.py"]
+    assert data["lower_bound"]["Linux"] == ["tests/sync/test_c.py"]
+    # a later junit that covers it replaces the bound
+    junit = _timed_junit(tmp_path / "upstream-Linux-3.xml", 80.0,
+                         ("tests.sync.test_c", "t3", 70.0))
+    data = base.write_weights([junit], "10", "2026-12-02", path=target)
+    assert data["seconds"]["Linux"]["tests/sync/test_c.py"] == 70.0
+    assert data["estimated"]["Linux"] == [] and data["lower_bound"]["Linux"] == []
+
+
+def test_a_file_one_system_never_timed_takes_the_other_systems_time_scaled(
+        tmp_path):
+    target = tmp_path / "w.json"
+    lin = _timed_junit(tmp_path / "upstream-Linux-1.xml", 10.0,
+                       ("tests.sync.test_a", "t", 10.0),
+                       ("tests.sync.test_only_linux", "t", 4.0))
+    win = _timed_junit(tmp_path / "upstream-Windows-1.xml", 25.0,
+                       ("tests.sync.test_a", "t", 20.0),
+                       ("tests.sync.test_only_windows", "t", 6.0))
+    data = base.write_weights([lin, win], "1", "2026-12-01", path=target)
+    # ratio Windows/Linux over the file both measured: 2.0
+    assert data["seconds"]["Windows"]["tests/sync/test_only_linux.py"] == 8.0
+    assert data["seconds"]["Linux"]["tests/sync/test_only_windows.py"] == 3.0
+    assert data["estimated"]["Windows"] == ["tests/sync/test_only_linux.py"]
+    assert data["scaled"]["Linux"] == ["tests/sync/test_only_windows.py"]
+    # and a measurement on that system replaces the scaled figure
+    win2 = _timed_junit(tmp_path / "upstream-Windows-2.xml", 12.0,
+                        ("tests.sync.test_only_linux", "t", 9.0))
+    data = base.write_weights([win2], "2", "2026-12-02", path=target)
+    assert data["seconds"]["Windows"]["tests/sync/test_only_linux.py"] == 9.0
+    assert data["estimated"]["Windows"] == []
+
+
+def test_the_committed_unknown_files_are_marked_and_weighted_above_their_bound():
+    for os_name in ("Linux", "Windows"):
+        unknown = set(WEIGHTS["estimated"][os_name]) - set(
+            WEIGHTS["scaled"][os_name])
+        assert unknown <= set(WEIGHTS["lower_bound"][os_name]), unknown
+        # the shard that timed out held test_request_intercept; the known
+        # files and per-file cost of that shard left it at least this long
+        bound = {"Linux": 549, "Windows": 481}[os_name]
+        assert WEIGHTS["seconds"][os_name][
+            "tests/sync/test_request_intercept.py"] >= 1.3 * bound
+
+
+def test_the_record_option_sets_the_variable_the_hook_reads(tmp_path,
+                                                            monkeypatch):
+    seen = []
+
+    def fake_run(argv, **kw):
+        seen.append((argv, kw["env"]))
+
+        class R:
+            returncode = 0
+        return R()
+
+    monkeypatch.setattr(base, "SUITE", tmp_path)
+    (tmp_path / "tests" / "sync").mkdir(parents=True)
+    (tmp_path / "tests" / "sync" / "test_a.py").write_text("", encoding="utf-8")
+    monkeypatch.setattr(base, "write_plugin", lambda: tmp_path / "p.py")
+    monkeypatch.setattr(base.subprocess, "run", fake_run)
+    out = tmp_path / "shard.jsonl"
+    out.write_text("old\n", encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["upstream_baseline.py", "ff", "--record",
+                                      str(out)])
+    assert base.main() == 0
+    argv, env = seen[-1]
+    assert "scripts.upstream_record" in argv
+    assert env["INVPW_RECORD"] == str(out.resolve())
+    assert out.read_text(encoding="utf-8") == ""     # a stale record is cleared
 
 
 def test_the_write_weights_option_runs_nothing_and_asks_for_no_binary(
@@ -383,7 +592,7 @@ def test_the_floor_is_met_when_everything_recorded_was_collected(
 def test_the_floor_of_the_real_baseline_loses_a_big_shard_but_not_a_rename():
     n = len(BASELINE)
     floor = reg.floor_of(n, 0.95)
-    for os_name, (count, _) in _plan().items():
+    for os_name, count in _plan().items():
         owner = base.assign(_seconds(os_name), count)
         per_shard = [0] * count
         for k in BASELINE:
@@ -432,10 +641,16 @@ def test_the_workflow_matrix_matches_the_counts_it_passes_and_the_verdict_expect
     assert set(re.findall(r'--shard "\$\{\{ matrix\.shard \}\}/([^"]+)"',
                           text)) == {"${{ matrix.of }}"}
     assert "timeout-minutes: ${{ matrix.limit }}" in text
+    assert "timeout-minutes: ${{ matrix.job }}" in text
+    # every job leaves its record next to its junit, and uploads both
+    assert '--record "$record"' in text
+    assert 'record="upstream-${RUNNER_OS}-${{ matrix.shard }}.jsonl"' in text
+    assert "upstream-${{ runner.os }}-${{ matrix.shard }}.jsonl" in text
+    assert "upstream-${{ runner.os }}-${{ matrix.shard }}.xml" in text
     # the verdict collects exactly the reports those jobs write
     verdict = re.search(r"for plan in ((?:\w+:\d+ ?)+); do", text)
     assert verdict, "the verdict must loop over the OS:count plan"
-    expected = {os_name: count for os_name, (count, _) in plan.items()}
+    expected = dict(plan)
     got = dict((a, int(b)) for a, b in
                (x.split(":") for x in verdict.group(1).split()))
     assert got == expected
