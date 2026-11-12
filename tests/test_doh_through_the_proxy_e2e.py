@@ -83,7 +83,7 @@ import _trap_policy
 from _doh_servers import DOH_BOOTSTRAP, DOH_HOST, DOH_PORT, DOH_PROVIDER_PREFS, QTYPE_A, DohGateway, FakeDoh
 from _http_proxy import HttpProxy, basic
 from _leaks import ResolverTrap, Watcher
-from _doh_support import ZONE, Pages  # noqa: F401  (Pages and ZONE are imported by name by the sibling tests)
+from _doh_support import ZONE, Pages, a_display_when_the_host_has_none  # noqa: F401  (Pages and ZONE are imported by name by the sibling tests)
 from _servers import LocalServer  # noqa: F401
 
 pytestmark = [pytest.mark.e2e, pytest.mark.usefixtures("the_udp_line")]
@@ -119,7 +119,8 @@ def _hermetic_session(monkeypatch):
 
 # --------------------------------------------------------------------------------------------------------- helpers
 def _launch(binary, proxy, **kwargs):
-    return InvisiblePlaywright(seed=42, binary_path=binary, proxy=proxy, extra_prefs=dict(PREFS), **kwargs)
+    return InvisiblePlaywright(seed=42, binary_path=binary, proxy=proxy, extra_prefs=dict(PREFS),
+                               **{**a_display_when_the_host_has_none(), **kwargs})
 
 
 def _page_in(browser, proxy=None):

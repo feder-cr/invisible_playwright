@@ -64,9 +64,11 @@ SHORT_NEGATIVE_CACHE = {"network.dnsNegativeCacheExpiration": 1, "network.dnsNeg
 
 def _launch_with_a_short_negative_cache(binary):
     """A session without a launch proxy (the proxy is the context's) whose DNS negative cache is 1 s."""
+    from _doh_support import a_display_when_the_host_has_none
     from invisible_playwright import InvisiblePlaywright
     from test_doh_through_the_proxy_e2e import PREFS
-    return InvisiblePlaywright(seed=42, binary_path=binary, proxy=None, extra_prefs={**PREFS, **SHORT_NEGATIVE_CACHE})
+    return InvisiblePlaywright(seed=42, binary_path=binary, proxy=None, extra_prefs={**PREFS, **SHORT_NEGATIVE_CACHE},
+                               **a_display_when_the_host_has_none())
 
 
 def _navigate(context, url, timeout_ms):

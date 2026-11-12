@@ -2,9 +2,20 @@
 from __future__ import annotations
 
 import http.server
+import os
+import sys
 import threading
 
 from _servers import LocalServer
+
+def a_display_when_the_host_has_none() -> dict:
+    """The launch arguments that give a browser a screen on a Linux machine that has none (a CI runner, a root
+    shell under ``sudo``): ``headless=True`` is a headed browser on a virtual display the wrapper starts itself. A
+    machine with a display of its own, and Windows, are left as they are."""
+    if sys.platform.startswith("linux") and not os.environ.get("DISPLAY"):
+        return {"headless": True}
+    return {}
+
 
 #: The zone of the FakeDoh: every name a test uses, all pointing at the loopback where the page server is.
 ZONE = {"page-a.test": "127.0.0.1", "page-b.test": "127.0.0.1", "page-c.test": "127.0.0.1",
