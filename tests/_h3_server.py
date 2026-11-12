@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import datetime
 import ipaddress
+import random
 import socket
 import socketserver
 import ssl
@@ -47,10 +48,44 @@ def _certificate(address: str, directory: Path):
 #: The one document every path answers, over TCP and over QUIC.
 PAGE = b"<!doctype html><meta charset=utf-8><title>h3</title><p>ok</p>"
 
+# How many port numbers are tried, and where the ones after the system's own pick are drawn from: the same as the witness's.
+from _witness import DRAW_FROM as _WITNESS_DRAW_FROM, TRIES as _WITNESS_TRIES  # noqa: E402
+
 
 class _TcpServer(socketserver.ThreadingTCPServer):
     allow_reuse_address = True
     daemon_threads = True
+
+
+def _tcp_server_on_a_port_udp_binds(address: str):
+    """A TCP server on a port number that UDP can bind too, as ``(server, port)``.
+
+    The first try is the system's own pick (port 0); the others are drawn at random below the dynamic range. Windows hands out
+    ephemeral TCP ports in sequence and keeps excluded ranges of a hundred ports for UDP inside the same zone, so asking the
+    system again lands in the same refused range again and again (run 43230437094, ``wrapper.e2e.web`` on Windows: fifty
+    consecutive picks refused, three tests red; the witness had the same defect and the same remedy,
+    ``test_the_witness_picks_a_port_both_sockets_bind.py``)."""
+    draw = random.Random()
+    refusals: List[str] = []
+    for attempt in range(_WITNESS_TRIES):
+        wanted = 0 if attempt == 0 else draw.randint(*_WITNESS_DRAW_FROM)
+        try:
+            tcp = _TcpServer((address, wanted), _TcpHandler)
+        except OSError as exc:
+            refusals.append("%s: %s" % (wanted or "system pick", exc))
+            continue
+        port = tcp.server_address[1]
+        probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            probe.bind((address, port))
+            return tcp, port
+        except OSError as exc:
+            refusals.append("%s: %s" % (port, exc))
+            tcp.server_close()
+        finally:
+            probe.close()
+    raise RuntimeError("no port free for both TCP and UDP on %s after %d tries; the last refusals: %s"
+                       % (address, _WITNESS_TRIES, "; ".join(refusals[-3:])))
 
 
 class _TcpHandler(socketserver.BaseRequestHandler):
@@ -157,19 +192,7 @@ class H3Server:
         server = self
 
         # One port for both: the TCP port first, then the same number for UDP.
-        for _ in range(50):
-            tcp = _TcpServer((address, 0), _TcpHandler)
-            port = tcp.server_address[1]
-            probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            try:
-                probe.bind((address, port))
-                probe.close()
-                break
-            except OSError:
-                probe.close()
-                tcp.server_close()
-        else:
-            raise RuntimeError("no port free for both TCP and UDP")
+        tcp, port = _tcp_server_on_a_port_udp_binds(address)
         self.port = port
         #: What the TCP answer says about HTTP/3: the same port, for an hour.
         self.alt_svc = 'h3=":%d"; ma=3600' % port

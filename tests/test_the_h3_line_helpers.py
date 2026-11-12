@@ -358,3 +358,77 @@ def test_the_fake_stun_of_a_relay_that_leaves_from_the_address_of_the_host_answe
         finally:
             control.close()
             client.close()
+
+
+# -- the port the server takes -------------------------------------------------------------------------------------------
+# The known-bad case, seen on the Windows runner (run 43230437094, wrapper.e2e.web: three tests red with "no port free for both TCP
+# and UDP", and on a work machine twice): Windows hands out ephemeral TCP ports in sequence and keeps excluded ranges of a hundred
+# ports for UDP in the same zone, so the old loop (fifty times "the system's pick") got fifty consecutive numbers inside one
+# refused range and gave up. A fake socket layer does the same here, without the machine.
+_REFUSED_UDP = range(50000, 50200)
+
+
+class _FakeTcpServer:
+    """A TCP server whose port 0 is the next number of a sequence (50000, 50001, ...), as Windows picks."""
+
+    next_pick = 50000
+    opened: list = []
+
+    def __init__(self, where, handler):
+        address, port = where
+        if port == 0:
+            port = _FakeTcpServer.next_pick
+            _FakeTcpServer.next_pick += 1
+        self.server_address = (address, port)
+        self.closed = False
+        _FakeTcpServer.opened.append(self)
+
+    def server_close(self):
+        self.closed = True
+
+
+class _FakeUdpSocket:
+    tried: list = []
+
+    def __init__(self, family, kind):
+        pass
+
+    def bind(self, where):
+        _FakeUdpSocket.tried.append(where[1])
+        if where[1] in _REFUSED_UDP or _FakeUdpSocket.refuse_all:
+            raise PermissionError(10013, "An attempt was made to access a socket in a way forbidden by its access permissions")
+
+    refuse_all = False
+
+    def close(self):
+        pass
+
+
+def _fake_layer(monkeypatch, refuse_all=False):
+    import types
+
+    import _h3_server
+
+    _FakeTcpServer.next_pick, _FakeTcpServer.opened = 50000, []
+    _FakeUdpSocket.tried, _FakeUdpSocket.refuse_all = [], refuse_all
+    monkeypatch.setattr(_h3_server, "_TcpServer", _FakeTcpServer)
+    monkeypatch.setattr(_h3_server, "socket", types.SimpleNamespace(
+        AF_INET=socket.AF_INET, SOCK_DGRAM=socket.SOCK_DGRAM, socket=_FakeUdpSocket))
+    return _h3_server
+
+
+def test_the_server_takes_a_number_both_tcp_and_udp_bind_outside_a_refused_udp_range(monkeypatch):
+    module = _fake_layer(monkeypatch)
+    server, port = module._tcp_server_on_a_port_udp_binds("127.0.0.1")
+    assert port not in _REFUSED_UDP, "the server took a number UDP refuses: %d" % port
+    assert server.server_address[1] == port
+    assert _FakeUdpSocket.tried[0] in _REFUSED_UDP, "the fake did not make the system's first pick a refused one"
+    assert all(s.closed for s in _FakeTcpServer.opened if s is not server), "a TCP server of a refused number was left open"
+
+
+def test_a_server_that_can_bind_nothing_says_so_after_a_bounded_number_of_tries(monkeypatch):
+    module = _fake_layer(monkeypatch, refuse_all=True)
+    with pytest.raises(RuntimeError) as raised:
+        module._tcp_server_on_a_port_udp_binds("127.0.0.1")
+    assert "both TCP and UDP" in str(raised.value) and "127.0.0.1" in str(raised.value), str(raised.value)
+    assert len(_FakeUdpSocket.tried) == module._WITNESS_TRIES, len(_FakeUdpSocket.tried)
