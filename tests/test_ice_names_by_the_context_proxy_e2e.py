@@ -85,10 +85,9 @@ def tcp_only_proxy(doh, gateway, request):
 
 def _launch(binary, proxy):
     """Like the DoH e2e's `_launch`, with the baseline's mDNS host candidates declared as the realness test does."""
-    from _doh_support import a_display_when_the_host_has_none
     from invisible_playwright import InvisiblePlaywright
 
-    return InvisiblePlaywright(seed=42, binary_path=binary, proxy=proxy, **a_display_when_the_host_has_none(),
+    return InvisiblePlaywright(seed=42, binary_path=binary, proxy=proxy, headless=True,
                                extra_prefs={**PREFS, "media.peerconnection.ice.obfuscate_host_addresses": True})
 
 
