@@ -1,10 +1,10 @@
-"""The e2e tests that count processes count the ones that host a site, not every new content process. No browser.
+"""The e2e tests that look at processes ask for the processes of a site by its name. No browser.
 
-The engine keeps preallocated content processes and starts one to refill the pool after it hands one to a site,
-whenever it gets to it. The bench counted every `-contentproc ... tab` pid, so a refill that landed between its
-two reads was "a process the same-site frame started" (test_same_site_other_port_stays_in_process, red on the
-e2e of the commit of 0.50.0: `[13443]`). The processes below are the ones measured on firefox-62 (Linux):
-names and command lines as /proc gives them.
+With `fission.processSiteNames` on, a content process that hosts a site is named by that site, and on Linux the name
+is cut at 15 characters. The browser starts processes of its own (the pool refill, a process for a Mozilla site
+started by the New Tab page), so a test that compared two counts of processes read them as the effect of the frame
+under test (test_same_site_other_port_stays_in_process, red in 14 of 30 runs of the e2e suite). The names below are
+the ones measured on firefox-62 (Linux), with command lines as /proc gives them.
 """
 import _processes
 import pytest
@@ -13,10 +13,11 @@ pytestmark = pytest.mark.unit
 
 ENGINE = "/cache/firefox-62/firefox"
 DIR = "/cache/firefox-62"
+A, B = "http://a.test", "http://b.test"
 
 
 class _Proc:
-    def __init__(self, pid, name, kind, exe=ENGINE):
+    def __init__(self, pid, name, kind="tab", exe=ENGINE):
         self.pid, self._name, self._exe = pid, name, exe
         self._cmd = [exe, "-contentproc", "-isForBrowser", "-prefsLen", "1", "-parentBuildID", "20261111073531",
                      "-appDir", DIR + "/browser", str(pid), kind]
@@ -31,35 +32,57 @@ class _Proc:
         return self._cmd
 
 
-def _engine_at_plain():
-    """a.test/plain shown: one process for the site, three preallocated, and the engine's other children."""
-    return [_Proc(184, "Socket Process", "socket"), _Proc(200, "WebExtensions", "tab"),
-            _Proc(334, "Isolated Web Co", "tab"), _Proc(377, "Privileged Cont", "tab"),
-            _Proc(433, "Web Content", "tab"), _Proc(438, "Web Content", "tab"), _Proc(460, "Web Content", "tab")]
+def _engine_at_a():
+    """a.test shown: its process, the one the New Tab page started, and the engine's other children."""
+    return [_Proc(184, "Socket Process", "socket"), _Proc(200, "WebExtensions"), _Proc(334, "http://a.test^u"),
+            _Proc(377, "Privileged Cont"), _Proc(410, "mozgcp.net"), _Proc(433, "Web Content"),
+            _Proc(438, "Web Content")]
 
 
-def test_a_preallocated_process_that_arrives_is_not_a_site():
-    before = _processes.site_pids(_engine_at_plain(), DIR)
-    after = _processes.site_pids(_engine_at_plain() + [_Proc(549, "Web Content", "tab")], DIR)
+def test_a_process_named_by_the_site_is_the_sites():
+    assert _processes.site_pids(_engine_at_a(), A, DIR) == {334}
+
+
+@pytest.mark.parametrize("name", ["mozgcp.net", "Web Content", "Privileged Cont", "WebExtensions", "Isolated Web Co"])
+def test_a_process_with_another_name_is_not_the_sites(name):
+    assert _processes.site_pids([_Proc(1, name)], A) == set()
+
+
+def test_the_process_of_another_site_is_not_the_sites():
+    assert _processes.site_pids([_Proc(1, "http://b.test^u")], A) == set()
+    assert _processes.site_pids([_Proc(1, "http://b.test^u")], B) == {1}
+
+
+def test_the_process_the_browser_starts_for_itself_does_not_move_the_sites():
+    """The measured flaw: a second isolated process (mozgcp.net) arriving between two reads changed the old count."""
+    before = _processes.site_pids(_engine_at_a(), A, DIR)
+    after = _processes.site_pids(_engine_at_a() + [_Proc(549, "mozgcp.net"), _Proc(550, "Web Content")], A, DIR)
     assert before == after == {334}
 
 
-def test_a_preallocated_process_given_to_a_site_is_a_new_site_process():
-    """A cross-site frame: 433 leaves the pool for b.test (and is renamed), 549 refills the pool."""
-    procs = [p for p in _engine_at_plain() if p.pid != 433]
-    procs += [_Proc(433, "Isolated Web Co", "tab"), _Proc(549, "Web Content", "tab")]
-    assert _processes.site_pids(procs, DIR) - _processes.site_pids(_engine_at_plain(), DIR) == {433}
+def test_https_is_dropped_from_the_site():
+    assert _processes.name_of_site("https://example.com") == "example.com"
+    assert _processes.hosts_site("example.com", "https://example.com")
+    assert _processes.hosts_site("example.com^use", "https://example.com")
+
+
+def test_a_site_longer_than_the_name_matches_on_its_first_15_characters():
+    site = "http://a-very-long-site.example"
+    assert _processes.name_of_site(site) == "http://a-very-l"
+    assert _processes.hosts_site("http://a-very-l", site)
+    assert not _processes.hosts_site("http://a-very-x", site)
+
+
+def test_a_site_that_starts_like_another_is_not_the_other():
+    assert not _processes.hosts_site("http://a.testin", A)
+    assert not _processes.hosts_site("http://a.testing.example", A)
+    assert _processes.hosts_site("http://a.test^u", A)
 
 
 def test_a_process_of_another_firefox_is_not_counted():
-    other = _Proc(900, "Isolated Web Co", "tab", exe="/usr/lib/firefox/firefox")
-    assert _processes.site_pids(_engine_at_plain() + [other], DIR) == {334}
+    other = _Proc(900, "http://a.test^u", exe="/usr/lib/firefox/firefox")
+    assert _processes.site_pids(_engine_at_a() + [other], A, DIR) == {334}
 
 
-def test_the_pool_refilled_behind_a_closed_context_is_not_a_process_left():
-    """After the fourth closed context of test_a_context_that_ends_leaves_no_process_e2e, as measured: three
-    preallocated processes and no site. Counting every content process said 5 ([2, 2, 2, 5, 5])."""
-    left = [_Proc(1219, "WebExtensions", "tab"), _Proc(1382, "Privileged Cont", "tab"),
-            _Proc(1739, "Web Content", "tab"), _Proc(1744, "Web Content", "tab"), _Proc(1821, "Web Content", "tab")]
-    assert _processes.site_pids(left) == set()
-    assert _processes.site_pids(left + [_Proc(1900, "Isolated Web Co", "tab")]) == {1900}
+def test_a_process_that_is_not_a_tab_is_not_counted():
+    assert _processes.site_pids([_Proc(1, "http://a.test^u", kind="gpu")], A) == set()
