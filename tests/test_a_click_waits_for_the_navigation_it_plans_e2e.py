@@ -20,15 +20,21 @@ Known-bad inputs, each run against this file before it was trusted:
 
 * click and press without `_waiting_after` -> the form and the Enter tests go
   red on a 157 engine (no request, the old URL);
-* `_waiting_after` that ignores `noWaitAfter` -> the last test goes red: the
-  click waits for the slow page.
+* `_waiting_after` that ignores `noWaitAfter` -> the `no_wait_after` test goes
+  red: the click comes back after the held answer, not before it.
+
+**No clock in the last two tests.** `/slow` is an answer the server HOLDS until
+the test lets it go, and what is asserted is the order of two events: the click
+coming back, and the server answering. A limit in seconds (the click "in under
+2.5 s") measured the runner: on a loaded one the click alone took longer and
+the test went red with nothing wrong (2 of 30 suite runs, and every run on one
+CPU).
 """
 from __future__ import annotations
 
 import http.server
 import socket
 import threading
-import time
 
 import pytest
 
@@ -38,7 +44,18 @@ FORM = (b"<form method='POST' action='/post'>"
         b"<a id='slow' href='/slow'>slow</a>")
 
 
-def _serve():
+class _Held:
+    """The answer to `/slow`, held by the server until `release` is set, and the order in which things happened."""
+
+    GIVES_UP_AFTER = 25      # seconds; only so that a click that wrongly waits ends, and the test fails on the order
+
+    def __init__(self):
+        self.arrived = threading.Event()
+        self.release = threading.Event()
+        self.order = []
+
+
+def _serve(held=None):
     sock = socket.socket()
     sock.bind(("127.0.0.1", 0))
     port = sock.getsockname()[1]
@@ -55,8 +72,10 @@ def _serve():
             self.wfile.write(body)
 
         def do_GET(self):
-            if self.path == "/slow":
-                time.sleep(3)
+            if self.path == "/slow" and held is not None:
+                held.arrived.set()
+                held.release.wait(held.GIVES_UP_AFTER)
+                held.order.append("answered")
             self._page(FORM if self.path == "/" else b"<title>%s</title>" % self.path.encode())
 
         def do_POST(self):
@@ -101,18 +120,55 @@ def test_a_click_that_submits_a_form_returns_on_the_posted_page(firefox_binary):
 
 @pytest.mark.e2e
 def test_no_wait_after_returns_without_waiting_for_the_navigation(firefox_binary):
+    """The click comes back while the server is still holding the answer of the page it navigates to."""
     from invisible_playwright import InvisiblePlaywright
 
-    srv, url = _serve()
+    held = _Held()
+    srv, url = _serve(held)
     try:
         with InvisiblePlaywright(seed=4242, binary_path=firefox_binary,
                                  headless=True) as browser:
             page = browser.new_context().new_page()
             page.goto(url, wait_until="load", timeout=30_000)
-            started = time.monotonic()
             page.click("#slow", no_wait_after=True, timeout=30_000)
-            assert time.monotonic() - started < 2.5, (
-                "no_wait_after=True waited for the navigation")
+            held.order.append("click returned")
+            assert held.order == ["click returned"], (
+                "no_wait_after=True waited for the navigation: %r" % held.order)
+            assert page.url == url, "the page moved on with its answer still held: %s" % page.url
+            held.release.set()
             page.wait_for_url(url + "slow", timeout=30_000)
+            assert held.order == ["click returned", "answered"], held.order
     finally:
+        held.release.set()
+        srv.shutdown()
+
+
+@pytest.mark.e2e
+def test_a_plain_click_on_the_same_link_stays_until_the_held_answer_is_given(firefox_binary):
+    """The other half, which makes the test above mean something: without `no_wait_after` the same click does NOT come
+    back while the answer is held. The answer is let go only once the request has reached the server, from another
+    thread, and the click returns after it, already on the new page."""
+    from invisible_playwright import InvisiblePlaywright
+
+    held = _Held()
+    srv, url = _serve(held)
+
+    def let_go_once_asked():
+        if held.arrived.wait(30):
+            held.order.append("let go")
+            held.release.set()
+
+    threading.Thread(target=let_go_once_asked, daemon=True).start()
+    try:
+        with InvisiblePlaywright(seed=4242, binary_path=firefox_binary,
+                                 headless=True) as browser:
+            page = browser.new_context().new_page()
+            page.goto(url, wait_until="load", timeout=30_000)
+            page.click("#slow", timeout=30_000)
+            held.order.append("click returned")
+            assert held.order == ["let go", "answered", "click returned"], (
+                "a plain click came back before the answer of its navigation: %r" % held.order)
+            assert page.url == url + "slow", page.url
+    finally:
+        held.release.set()
         srv.shutdown()

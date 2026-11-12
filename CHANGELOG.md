@@ -62,6 +62,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   frame, a closed context with a service worker that never stops). Measured on firefox-62: a closed context
   leaves no process of its site. On Linux the process is named by the site it hosts; elsewhere these
   tests skip.
+- A popup (a `target=_blank` link, `window.open`) reaches the client as it does with Playwright's own Firefox: when its
+  destination answers, with no limit of time, with the destination's address as its url, and with `load` reachable on
+  it. It used to be given up on after 20 s, could be announced with `about:blank` as its url, and about one in a
+  hundred was never announced. A destination that never becomes a page (a 204, a server that never answers) is not
+  announced, as on stock. Measured against stock destination by destination, with answers after 4 s and after 25 s: 18
+  cases of 18; and 128 popups announced of 128 across the two transports (the library client, a stock client over
+  `launch_server`).
+- For a popup whose answer is a download, the opener's `download` event comes after the popup's `page` event, as on
+  stock. With little CPU the download could arrive and the page never be announced. Measured on a runner limited to
+  one CPU: 8 runs red of 10 before, 0 of 10 after.
+
+### Known differences from stock Playwright
+Measured against Playwright's own Firefox with the same script, on this version. None of them is a value a page
+reads; they are what a script that drives the browser can observe.
+
+- **The url of a popup that turns into a download.** A link or a `window.open` whose answer is an attachment gives, as on
+  stock, a `page` event, a `download` event on the opener, and a popup that closes at once. The popup's `url` at the `page`
+  event is `about:blank` here and the empty string on stock. Measured: 8 cases of 8 (link and `window.open`, the library
+  client and a stock client over `launch_server`), against 4 of 4 on stock.
+- **The url of a frame of another site at the page's `DOMContentLoaded`.** A frame of another site runs in another process,
+  as in a retail Firefox, and commits its navigation after the page's `DOMContentLoaded`; stock Playwright keeps frames in
+  the page's process. So `frame.url` read right after `goto(..., wait_until="domcontentloaded")` can be the empty string.
+  After `load` it is always set. Measured, 30 runs each: after `load` the url was there 30 times here and 30 on stock; at
+  `DOMContentLoaded` once here and 30 times on stock. Wait for `load`, or for the frame's own navigation, before reading it.
+- **A click takes longer with the library client.** From `click()` on a link to the `page` event of the popup it opens:
+  0.8 to 1.7 s more than stock with the library client, and the same as stock (within 0.1 s) with a stock client over
+  `launch_server`. Measured on 64 popups per transport and on destinations that answer after 4 s and after 25 s. The
+  same run with `humanize=False` was not measured.
+- **Back and forward restore the page from the back-forward cache.** As in a retail Firefox, `go_back` and `go_forward`
+  bring the page back as it was; Playwright's own Firefox loads it again. So a script that runs when the page loads does
+  not run again here. Measured on a 17-step journey with the same script on both: on its three back and forward steps
+  the page's load-time requests were sent again on stock (6 beacons each) and not here (0, 2 and 0, the two being the
+  ones a page sends when it is left); every step ended on the same page, and the other 14 steps sent the same requests.
 
 ## [0.49.1] - 2026-11-10
 
