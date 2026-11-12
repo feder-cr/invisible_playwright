@@ -2578,6 +2578,24 @@ class RouteDispatcher(Dispatcher):
 
 
 # ── page ────────────────────────────────────────────────────────────────────
+
+# --- hunt scaffolding (never merged): the birth of every page, per session -----------------------------------------
+_HUNT_TRACE_PATH = os.environ.get("INVPW_HUNT_POPUP_TRACE") or ""
+_HUNT_TRACE_LOCK = threading.Lock()
+
+
+def _hunt_trace(**row) -> None:
+    if not _HUNT_TRACE_PATH:
+        return
+    row["t"] = round(time.time(), 4)
+    row["pid"] = os.getpid()
+    try:
+        with _HUNT_TRACE_LOCK, open(_HUNT_TRACE_PATH, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row) + "\n")
+    except Exception:
+        pass
+
+
 class _Adoption:
     """ONE ENGINE TARGET ON ITS WAY TO THE CLIENT: the single record of where it is, and the only thing an event about it may change.
 
@@ -4796,6 +4814,11 @@ class BrowserDispatcher(Dispatcher):
                 self._pages_ready.wait(left)
 
     def _route_browser_event(self, method: str, params: Dict, session) -> None:
+        if _HUNT_TRACE_PATH and (method in _Adoption.TRACED or method in ("Page.eventFired", "Browser.attachedToTarget", "Page.linkClicked")):
+            info = params.get("targetInfo") or {}
+            _hunt_trace(session=session or params.get("sessionId"), method=method, frame=params.get("frameId"),
+                        url=params.get("url") or info.get("url"), nav=params.get("navigationId"), name=params.get("name"),
+                        target=info.get("targetId"), opener=info.get("openerId"), error=params.get("errorText"))
         if session and method in _Adoption.TRACED:
             with self._targets_lock:
                 for adoption in self._adoptions.values():
@@ -4933,6 +4956,12 @@ class BrowserDispatcher(Dispatcher):
         point (the close is announced right after the page, so the client always sees the page before its close) and the downloads that
         waited for the page to be announced."""
         page.announce(context, replay=not adoption.requested)
+        try:
+            _hunt_trace(session=adoption.session, method="ANNOUNCED", target=adoption.target_id,
+                        url=getattr(page, "url", None) if not callable(getattr(page, "url", None)) else None,
+                        requested=adoption.requested, trace=adoption.trace)
+        except Exception:
+            pass
         with self._targets_lock:
             adoption.state = "announced"
             adoption.note("announced" + (" (gone)" if adoption.gone else ""))
