@@ -4248,6 +4248,16 @@ class BrowserContextDispatcher(Dispatcher):
         handle = DisposableDispatcher(self.server, self, undo)
         return {"disposable": handle.channel}
 
+    def released(self) -> None:
+        """⛔ THE BROWSER'S LIST LET GO TOO. Every way a context ends passes
+        here, and `browser.contexts` kept each one - with its options, its
+        owner (the connection that made it, and through it the socket) and
+        its init scripts - for the life of the browser."""
+        try:
+            self.browser.contexts.remove(self)
+        except ValueError:
+            pass
+
     def op_context_init_script(self, params: Dict) -> Any:
         """The same, for every page of this context - present and future.
 
