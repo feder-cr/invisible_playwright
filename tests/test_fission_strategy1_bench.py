@@ -502,14 +502,14 @@ def test_diag_cross_site_load(rep, page, cross_site_loop, engine_dir):
 
 @pytest.mark.e2e
 @pytest.mark.parametrize("rep", range(DIAG_REPS))
-@pytest.mark.parametrize("arm", ["log", "nolog"])
+@pytest.mark.parametrize("arm", (os.environ.get("DIAG_ARMS") or "log,nolog").split(","))
 def test_diag_same_site(arm, rep, firefox_binary, cross_site_loop, engine_dir, monkeypatch):
     from invisible_playwright import InvisiblePlaywright
 
     tag = "%s_%02d_%s" % (arm, rep, os.environ.get("PYTEST_XDIST_WORKER", "gw"))
     log_base = os.path.join(DIAG_DIR, "moz_" + tag)
     if arm == "log":
-        monkeypatch.setenv("MOZ_LOG", "Process:5,ProcessIsolation:5,timestamp")
+        monkeypatch.setenv("MOZ_LOG", "Process:5,ProcessIsolation:5,timestamp,sync")
         monkeypatch.setenv("MOZ_LOG_FILE", log_base)
     rec = {"tag": tag, "arm": arm, "worker_pid": os.getpid(), "t": {}, "tables": {}}
 
@@ -517,6 +517,29 @@ def test_diag_same_site(arm, rep, firefox_binary, cross_site_loop, engine_dir, m
         rec["t"][key] = round(time.time(), 3)
 
     mark("start")
+    names, stop = [], threading.Event()
+
+    def sample():       # every content process below the worker, each time its name changes (a process is renamed by its type)
+        import psutil
+
+        seen = {}
+        while not stop.is_set():
+            try:
+                for proc in psutil.Process(os.getpid()).children(recursive=True):
+                    try:
+                        cmd = proc.cmdline()
+                        if "-contentproc" in cmd and cmd[-1] == "tab" and seen.get(proc.pid) != proc.name():
+                            seen[proc.pid] = proc.name()
+                            names.append({"t": round(time.time(), 3), "pid": proc.pid, "name": seen[proc.pid],
+                                          "born": round(proc.create_time(), 3)})
+                    except (psutil.Error, IndexError):
+                        continue
+            except psutil.Error:
+                pass
+            stop.wait(0.05)
+
+    sampler = threading.Thread(target=sample, daemon=True)
+    sampler.start()
     try:
         with InvisiblePlaywright(seed=42, binary_path=firefox_binary, humanize=False, headless=True,
                                  extra_prefs=dict(FISSION_ON, **{"dom.ipc.processPrelaunch.fission.number": 0})) as browser:
@@ -547,9 +570,12 @@ def test_diag_same_site(arm, rep, firefox_binary, cross_site_loop, engine_dir, m
                 rec["frames"] = [frame.url for frame in page.frames]
     finally:
         mark("closed")
+        stop.set()
+        sampler.join(2)
+        rec["names"] = names
         if DIAG_DIR:
             Path(DIAG_DIR, "rec_%s.json" % tag).write_text(json.dumps(rec, indent=1), encoding="utf-8")
-            if not rec.get("changed") and rep >= 2:        # keep the engine's log of the red runs and of two green ones
+            if not rec.get("changed") and rep >= 3:        # keep the engine's log of the red runs and of two green ones
                 for path in Path(DIAG_DIR).glob("moz_%s*" % tag):
                     path.unlink()
     assert rec["leaf_reported"]

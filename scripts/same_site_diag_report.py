@@ -28,13 +28,22 @@ def main(argv):
     for arm in sorted({r["arm"] for r in recs}):
         print("| %s | %d | %d |" % (arm, by_arm[(arm, True)] + by_arm[(arm, False)], by_arm[(arm, True)]))
     print()
+    shown_green = 0
     for r in recs:
         if not r.get("changed"):
-            continue
+            if shown_green >= 2 or not glob.glob(os.path.join(folder, "moz_%s*" % r["tag"])):
+                continue
+            shown_green += 1
         t = r["t"]
+        print("#### %s (%s): instants and names" % (r["tag"], "RED" if r.get("changed") else "green, for comparison"))
+        print("- instants from start: %s" % {k: round(v - t["start"], 2) for k, v in t.items()})
+        print("- names over time (pid, name, seen at, born at): %s"
+              % [(n["pid"], n["name"], round(n["t"] - t["start"], 2), round(n["born"] - t["start"], 2)) for n in r.get("names", [])])
         rows = r["tables"].get("after", [])
         after = {row["pid"]: row for row in rows}
         parents = [row for row in rows if row["kind"] == "parent"]
+        r.setdefault("before", [])
+        r.setdefault("after", [])
         print("### %s: %s -> %s\n" % (r["tag"], r["before"], r["after"]))
         print("- browsers below the worker at the second read: %s"
               % [(p["pid"], "born %+.1f s" % (p["born"] - t["start"])) for p in parents])
@@ -63,10 +72,10 @@ def main(argv):
                 continue
             with open(path, encoding="utf-8", errors="replace") as fh:
                 keep = [line.rstrip() for line in fh if ABOUT_PROCESSES.search(line)]
-            print("\n<details><summary>%s: %d lines about processes (last 120)</summary>\n\n```"
+            print("\n<details><summary>%s: %d lines about processes (first 260)</summary>\n\n```"
                   % (os.path.basename(path), len(keep)))
-            for line in keep[-120:]:
-                print(line[:400])
+            for line in keep[:260]:
+                print(line[:420])
             print("```\n</details>\n")
         print()
     return 0
