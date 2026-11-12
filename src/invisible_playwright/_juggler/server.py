@@ -1012,6 +1012,11 @@ class FrameDispatcher(Dispatcher):
     detached = False
 
     def emit(self, method: str, params: Optional[Dict] = None) -> None:
+        if method == "loadstate" and params:
+            if params.get("add"):
+                self.told_states.add(params["add"])
+            if params.get("remove"):
+                self.told_states.discard(params["remove"])
         if method == "loadstate" and params and params.get("add") in ("domcontentloaded", "load"):
             page = self.page
             with page._announce_lock:
@@ -1047,6 +1052,9 @@ class FrameDispatcher(Dispatcher):
         #: `navigated` events. A frame created before it navigates keeps an
         #: empty url forever unless something updates this.
         self.url = url
+        #: The load states the client has been told this frame has (the initializer's, then each `loadstate`): what the hand-over of the
+        #: page from its buffer to its dispatcher compares the lifecycle's states with (`PageDispatcher._reconcile_frame`).
+        self.told_states = set(load_states or ["commit"])
         #: Same reason, and both navigation events report it: a same-document
         #: navigation carries no name, so it has to repeat the one the frame
         #: already has rather than blank it.
@@ -2864,6 +2872,8 @@ class PageDispatcher(Dispatcher):
         replayed = context.browser.replay(session, conn.dispatch_event)
         self.replayed_events = replayed
         self._frames: Dict[str, Any] = {}
+        #: The child frames the client was told of (`frameAttached`), to tell it of the ones born before the hook was in.
+        self._told_attached: set = set()
         self._requests: Dict[str, Any] = {}
         #: navigationId -> the document RequestDispatcher of that navigation.
         #: ⛔ AN INDEX, NOT A SECOND COPY: the response itself keeps living on
@@ -3015,6 +3025,13 @@ class PageDispatcher(Dispatcher):
                         self._deliver(method, params)
                     except Exception:
                         pass
+        # ⛔ THE HAND-OVER IS ONE STEP, UNDER THE LIFECYCLE'S LOCK (`_hear_lifecycle`). What the client is told of a frame comes from two
+        # places: the initializer, a snapshot of what the lifecycle knew when the frame dispatcher was made, and the lifecycle's own
+        # announcements through a hook installed here. An event the lifecycle heard AFTER the snapshot and BEFORE the hook was told to
+        # nobody - the commit of a popup's destination left its frame at `about:blank` for good - and the `DOMContentLoaded`/`load` held
+        # at the same time were dropped with every held event that is not a `Network.*` one. Now the hook goes in and what the client was
+        # not told is said in the same step, with the lock held: an event the lifecycle has heard is compared with what the client was
+        # told, and the difference is said; one it has not heard yet waits for the lock and is announced by the hook.
         self._hear_lifecycle()
 
     def _hear_lifecycle(self) -> None:
@@ -3028,8 +3045,60 @@ class PageDispatcher(Dispatcher):
         `expect_navigation(wait_until="networkidle")` - which wait for exactly
         that event - timed out on a loaded, silent page. One definition, two
         consumers: `goto`'s wait and this event.
+
+        The hook is installed and the frames are reconciled with what the client was told in the same step, with the lifecycle's lock held
+        (not while the held events are delivered: their handlers may ask the engine, and the reader thread that answers needs the lock).
         """
-        self.lifecycle.announce = self._on_lifecycle
+        with self.lifecycle._cv:
+            self.lifecycle.announce = self._on_lifecycle
+            self._reconcile_frames()
+
+    CANON_STATES = ("commit", "domcontentloaded", "load", "networkidle")
+
+    def _forget_said_before_announcement(self, frame: "FrameDispatcher") -> None:
+        """The load states a frame said before the page was announced belong to the document it had then: a commit drops them."""
+        with self._announce_lock:
+            if not self._announced:
+                self._said_before_announcement = [e for e in self._said_before_announcement if e[0] is not frame]
+
+    def _reconcile_frames(self) -> None:
+        """Say to the client what the lifecycle heard between the snapshot of the initializer and the hook: the frames born or gone, the
+        document a frame committed, the load states it reached. Under the lifecycle's lock."""
+        lifecycle = self.lifecycle
+        for frame_id in list(self._frames):
+            if frame_id not in lifecycle.frames:
+                child = self._frames.pop(frame_id, None)
+                if frame_id in self._told_attached:
+                    self._told_attached.discard(frame_id)
+                    self.emit("frameDetached", {"frame": child.channel})
+                child.detach()
+        for frame_id in sorted(lifecycle.frames, key=lifecycle._depth):
+            if frame_id == self.frame.frame_id:
+                continue
+            child = self.frame_for(frame_id)
+            if frame_id not in self._told_attached:
+                self._told_attached.add(frame_id)
+                self.emit("frameAttached", {"frame": child.channel})
+        for frame_id, known in list(lifecycle.frames.items()):
+            frame = self.frame if frame_id == self.frame.frame_id else self._frames.get(frame_id)
+            if frame is not None:
+                self._reconcile_frame(frame, known)
+
+    def _reconcile_frame(self, frame: "FrameDispatcher", known: Any) -> None:
+        url, name = known.url or "", known.name or ""
+        if url and (url, name) != (frame.url, frame.name):     # no address yet: nothing committed, nothing to say
+            # a document the client was not told: what a commit says (`_on_lifecycle`), once
+            self._forget_said_before_announcement(frame)
+            for state in self.CANON_STATES:
+                frame.emit("loadstate", {"remove": state})
+            frame.url, frame.name = url, name
+            navigation = known._commits[-1][1] if known._commits else None
+            frame.emit("navigated", {"url": url, "name": name, "newDocument": self.navigation_document(navigation)})
+        for state in self.CANON_STATES:
+            if state in known.states and state not in frame.told_states:
+                frame.emit("loadstate", {"add": state})
+            elif state not in known.states and state in frame.told_states and state != "commit":
+                frame.emit("loadstate", {"remove": state})
 
     def _on_lifecycle(self, what: str, frame_id: str,
                       url: Optional[str] = None, *, name: str = "",
@@ -3044,6 +3113,7 @@ class PageDispatcher(Dispatcher):
         # `page.frames` held eight entries for two frames (2026-10-12).
         if what == "frameDetached":
             child = self._frames.pop(frame_id, None)
+            self._told_attached.discard(frame_id)
             if child is not None:
                 self.emit("frameDetached", {"frame": child.channel})
                 child.detach()
@@ -3053,6 +3123,7 @@ class PageDispatcher(Dispatcher):
             # the first time, and this page is built after its main frame was
             # seen (`wait_for_main_frame`); the initializer carries it.
             child = self.frame_for(frame_id)
+            self._told_attached.add(frame_id)
             self.emit("frameAttached", {"frame": child.channel})
             return
         child = self.frame_for(frame_id)
@@ -3093,6 +3164,7 @@ class PageDispatcher(Dispatcher):
             # the page is closed: `_deliver` would not have delivered it.
             if self._announced_closed:
                 return
+            self._forget_said_before_announcement(child)
             for state in ("commit", "domcontentloaded", "load", "networkidle"):
                 child.emit("loadstate", {"remove": state})
             child.url = url or ""
