@@ -204,8 +204,8 @@ def test_two_connections_on_one_page_connect_in_the_time_of_retail(local_https_p
       * the data channel opens and echoes (a responder that cannot hear itself, or an OS list that is empty, kills it);
       * each connection gathered a UDP host candidate named by mDNS (a run without UDP is the reserved-port failure: the
         socket could not bind and the connection fell back to TCP, about 600 ms on average);
-      * the nominated pair is host to host over UDP at both ends (no fall back to TCP; a pair that SUCCEEDED means the mDNS
-        name of the other connection was resolved: the browser keeps naming it in its statistics, so the name is no signal);
+      * the nominated pair is direct and local over UDP at both ends: host or peer-reflexive, never relay or server-reflexive, never
+        TCP (a peer-reflexive end is legitimate: the other connection's mDNS name was not resolved yet and its check came first);
       * it opens in less than the responder's first retry (3 s): a name that does not come back opens only at the retry.
 
     The time itself is printed with the retail window beside it: a fast machine shows 30-55 ms, a runner shows more, and
@@ -226,8 +226,12 @@ def test_two_connections_on_one_page_connect_in_the_time_of_retail(local_https_p
         assert pair, "run %d: the browser reports no nominated pair: %r" % (n, res)
         assert pair["local"] == "udp" and pair["remote"] == "udp", (
             "run %d: the connection did not take UDP at both ends (the road through TCP): %r" % (n, pair))
-        assert pair["localType"] == "host" and pair["remoteType"] == "host", (
-            "run %d: the pair is not host to host (a relay or a reflexive road): %r" % (n, pair))
+        # DIRECT and local: each end is a host candidate, or a peer-reflexive one. The remote end is prflx when the other connection's mDNS
+        # name was not resolved yet and its connectivity check arrived first: the address the check came from is learned as prflx, and
+        # that is the same road. What it must never be is a relay or a server-reflexive candidate (a road through the proxy or the
+        # network), and never TCP (checked above).
+        assert pair["localType"] in ("host", "prflx") and pair["remoteType"] in ("host", "prflx"), (
+            "run %d: the pair is not direct and local (a relay or a server-reflexive road): %r" % (n, pair))
         assert res["opened"] < MDNS_RETRY_MS, "run %d: opened after %d ms, at the responder's retry" % (n, res["opened"])
     times = sorted(r["opened"] for r in runs)
     low, high = RETAIL_MEDIAN_WINDOW_MS
