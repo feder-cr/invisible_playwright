@@ -1,13 +1,12 @@
-"""Tiny downloads through a served browser are saved by a stock client, every one.
+"""A proof of use, not of the order: on one connection the engine says a download's creation before its end, so this test does not force a finish before the announcement (the unit test test_a_download_finished_before_it_was_announced_is_finished.py does). It shows that tiny downloads, the case where the end comes soonest, are saved whole through a served browser.
 
-A download of a few bytes ends in the engine before the server has handled its announcement, so the server meets
-`Browser.downloadFinished` first. A download that succeeded has no error, and the old code read "finished with no
-error" as "nothing recorded": the artifact was never marked finished and `save_as` waited forever.
+Tiny downloads through a served browser are saved by a stock client, every one.
 
 One served browser, a stock Playwright client, a page that links to a 300-byte attachment and to a 1-byte one:
 ten downloads of each, each saved and compared byte for byte.
 
-Known-bad input: the server before the fix -> a `save_as` of an early-finished download never returns.
+Not a known-bad input for the order: it is not expected to be red on the server before the fix (the unit test is the proof of
+the fix); it guards the use.
 """
 from __future__ import annotations
 

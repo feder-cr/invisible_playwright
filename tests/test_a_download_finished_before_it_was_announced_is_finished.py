@@ -8,7 +8,7 @@ waited forever on a complete file (seen on tiny downloads, where the transfer en
 No browser and no socket: the two real methods run on a stand-in that carries the attributes they read, and the
 artifact is a fake that records what it was told.
 
-Known-bad input: the old code -> (a) and (d) are red.
+Known-bad input: the code before 6a50ad1 -> (a) and (d) are red; the code of 6a50ad1 -> (e), (f) and (g) are red.
 """
 from __future__ import annotations
 
@@ -51,6 +51,7 @@ def browser(monkeypatch, tmp_path):
         _gone_openers={},
         _artifacts={},
         _finished_early={},
+        _download_contexts={},
         server=object(),
         _downloads_dir=lambda context_id: str(tmp_path),
     )
@@ -112,3 +113,36 @@ def test_an_early_finish_of_a_context_that_does_not_exist_is_not_kept(browser):
     _created(browser, "u6", context="gone")
     assert "u6" not in browser._artifacts
     assert browser._finished_early == {}
+
+
+def test_e_a_finish_after_the_announcement_of_a_gone_context_keeps_nothing(browser):
+    """(e) The context was already closed when the download was announced: no artifact, and the finish that follows has no
+    reader. It used to be kept as an early finish for the life of the browser."""
+    _created(browser, "u7", context="ctx-gone")
+    _finished(browser, "u7")
+    assert browser._finished_early == {} and browser._download_contexts == {}
+
+
+def test_f_a_finish_after_the_artifact_was_released_keeps_nothing(browser):
+    """(f) The client released the artifact (its index entry is gone) before the engine said the download ended."""
+    _created(browser, "u8")
+    browser._artifacts.pop("u8")              # what ArtifactDispatcher.released() does
+    _finished(browser, "u8")
+    assert browser._finished_early == {} and browser._download_contexts == {}
+
+
+def test_g_finishes_never_announced_are_bounded(browser):
+    """(g) uuids the engine never announced: their early finishes are dropped once newer ones push them out."""
+    for n in range(juggler_server._EARLY_FINISHES_KEPT + 10):
+        _finished(browser, "never-%d" % n)
+    assert len(browser._finished_early) == juggler_server._EARLY_FINISHES_KEPT
+    assert "never-0" not in browser._finished_early and "never-%d" % (juggler_server._EARLY_FINISHES_KEPT + 9) in browser._finished_early
+
+
+def test_h_the_end_of_a_context_forgets_its_unfinished_downloads(browser):
+    """(h) A download announced and never finished: the end of its context forgets it (no growth across contexts)."""
+    browser._forget_downloads_of = lambda context_id: BrowserDispatcher._forget_downloads_of(browser, context_id)
+    _created(browser, "u9")
+    _created(browser, "u10", context="ctx-gone")
+    BrowserDispatcher._forget_downloads_of(browser, CONTEXT)
+    assert list(browser._download_contexts) == ["u10"]

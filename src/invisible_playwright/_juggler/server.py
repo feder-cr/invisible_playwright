@@ -186,6 +186,8 @@ _HANDLE = "<element handle>"
 #: marked finished and `save_as`, `path` and `failure` waited forever on a download that was complete. This
 #: marker is what a pop returns when nothing was recorded, so the two are told apart.
 _NOT_FINISHED_EARLY = object()
+#: How many finishes of downloads not announced yet a browser keeps (see `BrowserDispatcher._on_download_finished`).
+_EARLY_FINISHES_KEPT = 64
 
 
 def _key_delay(params: Dict) -> Optional[float]:
@@ -4311,6 +4313,9 @@ class BrowserContextDispatcher(Dispatcher):
             self.browser.contexts.remove(self)
         except ValueError:
             pass
+        forget = getattr(self.browser, "_forget_downloads_of", None)
+        if forget is not None:
+            forget(self.context_id)
 
     def op_context_init_script(self, params: Dict) -> Any:
         """The same, for every page of this context - present and future.
@@ -4721,6 +4726,12 @@ class BrowserDispatcher(Dispatcher):
         self.contexts: List[BrowserContextDispatcher] = []
         self._artifacts: Dict[str, "ArtifactDispatcher"] = {}
         self._finished_early: Dict[str, Optional[str]] = {}
+        # ⛔ EVERY DOWNLOAD THE ENGINE ANNOUNCED, WITH ITS CONTEXT, UNTIL IT FINISHES OR ITS CONTEXT ENDS. A finish whose
+        # artifact is gone (its context was already closed when it was announced, or the client released the artifact)
+        # is told apart from a finish that came before its announcement by this, and writes nothing: the early entry is
+        # only for a download not announced yet. Emptied by the finish and by the end of the context, so it holds at
+        # most the downloads in flight.
+        self._download_contexts: Dict[str, Optional[str]] = {}
         self._downloads_root: Optional[str] = None
         # ⛔ Adoptions start HERE, not at `add_listener` above. Anything the
         # engine attached in between predates every context (see the note on
@@ -5466,6 +5477,8 @@ class BrowserDispatcher(Dispatcher):
         # Popped BEFORE the context check: a download of a context that is gone leaves no artifact to finish, and its
         # early entry would stay in the dict for the life of the browser.
         early = self._finished_early.pop(params["uuid"], _NOT_FINISHED_EARLY)
+        if early is _NOT_FINISHED_EARLY:
+            self._download_contexts[params["uuid"]] = params.get("browserContextId")
         if context is None:
             return
         directory = self._downloads_dir(params.get("browserContextId"))
@@ -5509,12 +5522,28 @@ class BrowserDispatcher(Dispatcher):
             artifact.report_finished(early)
 
     def _on_download_finished(self, params: Dict) -> None:
+        uuid = params.get("uuid")
         error = params.get("error") or ("canceled" if params.get("canceled") else None)
-        artifact = self._artifacts.get(params.get("uuid"))
-        if artifact is None:
-            self._finished_early[params.get("uuid")] = error
-        else:
+        announced = uuid in self._download_contexts
+        self._download_contexts.pop(uuid, None)
+        artifact = self._artifacts.get(uuid)
+        if artifact is not None:
             artifact.report_finished(error)
+        elif not announced:
+            # Not announced yet: kept for its announcement. ⛔ BOUNDED: the engine says a download's creation before its
+            # end on one connection, so an entry can only wait for the handling of the event before it; one whose
+            # announcement never comes (a uuid the engine never announced) is dropped once newer ones push it out,
+            # instead of staying for the life of the browser.
+            self._finished_early[uuid] = error
+            while len(self._finished_early) > _EARLY_FINISHES_KEPT:
+                self._finished_early.pop(next(iter(self._finished_early)))
+        # else: announced, and its artifact is gone (its context was already closed, or the client released it):
+        # nobody can read this finish, so nothing is kept.
+
+    def _forget_downloads_of(self, context_id: Optional[str]) -> None:
+        """The end of a context: the downloads it announced and that never finished are forgotten with it."""
+        for uuid in [u for u, c in self._download_contexts.items() if c == context_id]:
+            self._download_contexts.pop(uuid, None)
 
     def _context_send(self, command: str, params: Dict) -> Any:
         """A `Browser.*` command about one context. The literal dicts above
