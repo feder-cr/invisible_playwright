@@ -29,8 +29,7 @@ import statistics
 
 import pytest
 
-from test_webrtc_realness import (_e2e_binary, _launch, candidates, decode_priority, host_candidates,
-                                  is_mdns, local_https_page, socks5_tcp_only)  # noqa: F401  (fixtures)
+from test_webrtc_realness import _e2e_binary, _launch, candidates, decode_priority, host_candidates, is_mdns  # noqa: F401
 
 pytestmark = [pytest.mark.e2e, pytest.mark.usefixtures("the_udp_line")]
 

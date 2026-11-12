@@ -24,8 +24,9 @@ import time
 
 import pytest
 
-from test_doh_through_the_proxy_e2e import (  # noqa: F401  (fixtures are used by name)
-    _hermetic_session, _launch, _page_in, _text, doh, gateway, pages, trap, watcher)
+from test_doh_through_the_proxy_e2e import (  # noqa: F401  (the hermetic session is autouse and imported by name; the
+    # other fixtures of the DoH e2e are in conftest.py)
+    _hermetic_session, _launch, _page_in, _text)
 
 pytestmark = pytest.mark.e2e
 

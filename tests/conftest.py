@@ -343,3 +343,149 @@ def fixture_server():
     finally:
         httpd.shutdown()
         httpd.server_close()
+
+
+# ======================================================================================================================
+#  Fixtures shared by several e2e files. They live here, not in one file that the others import from: an imported fixture
+#  that a test then names as an argument is a redefinition (ruff F811, the lint of the `tests` job).
+# ======================================================================================================================
+@pytest.fixture
+def doh():
+    import h2  # noqa: F401 - the dev extra installs it: a missing one is a failure, never a skip
+    from _doh_servers import FakeDoh
+    from _doh_support import ZONE
+
+    server = FakeDoh(ZONE)
+    yield server
+    server.close()
+
+
+@pytest.fixture
+def gateway(doh):
+    from _doh_servers import DohGateway
+
+    made = []
+
+    def make(name, **kwargs):
+        gw = DohGateway(name, doh, **kwargs)
+        made.append(gw)
+        return gw
+
+    yield make
+    for gw in made:
+        gw.close()
+
+
+@pytest.fixture
+def trap():
+    """The resolver trap, counting every question the machine's resolver is asked.
+
+    None only where it cannot run AND the gate does not require it (a developer's machine). With INVPW_REQUIRE_TRAP=1
+    (the gate's Linux leg) a trap that is unavailable or whose port 53 cannot be bound is a failure with its reason."""
+    import _trap_policy
+    from _leaks import ResolverTrap
+
+    if not ResolverTrap.available:
+        why = _trap_policy.failure(None, False, ResolverTrap.reason)
+        if why:
+            pytest.fail(why)
+        yield None
+        return
+    resolver = ResolverTrap()
+    try:
+        resolver.__enter__()
+    except OSError as exc:  # port 53 taken (another worker holds the trap)
+        why = _trap_policy.failure(None, True, bind_error=exc)
+        if why:
+            pytest.fail(why)
+        yield None
+        return
+    try:
+        yield resolver
+    finally:
+        resolver.__exit__(None, None, None)
+
+
+@pytest.fixture
+def watcher(firefox_binary):
+    """Started BEFORE the test body, so before any launch; stopped by the test or here."""
+    from pathlib import Path
+
+    from _leaks import Watcher
+
+    w = Watcher(match=("firefox", Path(firefox_binary).stem.lower())).start()
+    yield w
+    w.stop()
+
+
+@pytest.fixture
+def pages():
+    from _doh_support import Pages
+
+    server = Pages()
+    yield server
+    server.close()
+
+
+@pytest.fixture
+def socks5_tcp_only():
+    from _socks_servers import Socks5TcpOnly
+
+    srv = Socks5TcpOnly()
+    yield srv
+    srv.close()
+
+
+@pytest.fixture
+def local_https_page():
+    """A trivial localhost page (used by the no-proxy srflx test)."""
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    class H(BaseHTTPRequestHandler):
+        #: A silent socket no longer pins a thread down: after five seconds it drops.
+        timeout = 5
+
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.end_headers()
+            self.wfile.write(b"<html><body>wrtc</body></html>")
+
+        def log_message(self, *a):
+            pass
+
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), H)
+    httpd.daemon_threads = True
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{httpd.server_address[1]}/"
+    httpd.shutdown()
+
+
+@pytest.fixture(scope="module", params=["in-process", "stock-client"])
+def browser(request, firefox_binary):
+    """One browser per transport for the whole file (the popup tests of two files use it)."""
+    import importlib
+    if request.param == "in-process":
+        from invisible_playwright import InvisiblePlaywright
+
+        with InvisiblePlaywright(binary_path=firefox_binary, headless=True) as b:
+            yield b
+        return
+    try:     # the stock client (a pinned dev dependency), imported by name: the fork's guard forbids a static import
+        sync_playwright = importlib.import_module("playwright.sync_api").sync_playwright
+    except ImportError as exc:
+        pytest.fail("the stock Playwright client is missing (%s): install the wrapper with its dev extra" % exc,
+                    pytrace=False)
+    from invisible_playwright._juggler.remote import launch_server
+
+    server = launch_server(headless=True, binary_path=firefox_binary, locale="en-US", timezone="Europe/Rome")
+    try:
+        with sync_playwright() as p:
+            b = p.firefox.connect(server.ws_endpoint)
+            try:
+                yield b
+            finally:
+                b.close()
+    finally:
+        server.close()

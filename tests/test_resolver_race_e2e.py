@@ -38,10 +38,10 @@ from __future__ import annotations
 
 import pytest
 
-from test_doh_through_the_proxy_e2e import (  # noqa: F401  (fixtures are used by name)
-    DOH_ADDRESSES, Pages, _asked_outside, _assert_every_connection_went_through_the_gateway,
-    _assert_stayed_home, _direct_to_the_doh, _hermetic_session, _is_address, _launch, _page_in, _text, _why, doh, gateway,
-    pages, trap, watcher)
+from test_doh_through_the_proxy_e2e import (  # noqa: F401  (the hermetic session is autouse and imported by name; the
+    # other fixtures of the DoH e2e are in conftest.py)
+    DOH_ADDRESSES, Pages, _asked_outside, _assert_every_connection_went_through_the_gateway, _assert_stayed_home,
+    _direct_to_the_doh, _hermetic_session, _is_address, _launch, _page_in, _text, _why)
 
 from _doh_servers import DOH_HOST, QTYPE_A
 

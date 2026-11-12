@@ -24,7 +24,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
-from test_webrtc_realness import _Socks5TcpOnly, _e2e_binary, _launch  # noqa: F401
+from _socks_servers import Socks5TcpOnly
+from test_webrtc_realness import _e2e_binary, _launch  # noqa: F401
 
 pytestmark = pytest.mark.e2e
 
@@ -133,7 +134,7 @@ def test_a_turn_server_over_tcp_is_connected_to_and_waited_for(local_page, monke
         pytest.fail("no patched binary: set STEALTHFOX_E2E_BINARY", pytrace=False)
     monkeypatch.setenv("STEALTHFOX_WEBRTC_NETWORK", DECLARED)
     turn = _TurnTcp(N_MS)
-    socks = _Socks5TcpOnly() if through_socks5 else None
+    socks = Socks5TcpOnly() if through_socks5 else None
     kw = {}
     if socks:
         monkeypatch.setenv("STEALTHFOX_WEBRTC_PUBLIC_IP", "203.0.113.7")

@@ -45,6 +45,7 @@ ASSOCIATE, the relay or the round trip.
 from __future__ import annotations
 
 import os
+import select
 import socket
 import struct
 import threading
@@ -476,3 +477,113 @@ def silent_udp(*, exit_ip: str = EXIT, user: Optional[str] = None, password: Opt
     ``unmeasured``."""
     return Gateway(udp="relay", tcp_exit=exit_ip, udp_exit=exit_ip, user=user, password=password,
                    relay_host=relay_host, stun_answers=False)
+
+
+# ----------------------------------------------------------------------------------------------------------------
+#  A tiny TCP-only SOCKS5 server for the e2e tests (the fixture `socks5_tcp_only` of conftest.py makes one).
+# ----------------------------------------------------------------------------------------------------------------
+class Socks5TcpOnly:
+    """Minimal SOCKS5: no-auth, CONNECT (TCP) relayed, UDP ASSOCIATE refused.
+
+    Reproduces a residential TCP-only proxy: pages load over TCP, but WebRTC's
+    UDP path is dead - which (for a no-camera page in default_address_only mode)
+    is exactly what made the default-route probe fail and ICE return zero
+    candidates before Fix C.
+    """
+
+    def __init__(self):
+        self._srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._srv.bind(("127.0.0.1", 0))
+        self._srv.listen(16)
+        self.port = self._srv.getsockname()[1]
+        self.udp_associate_attempts = 0
+        self._stop = False
+        self._t = threading.Thread(target=self._serve, daemon=True)
+        self._t.start()
+
+    def _serve(self):
+        while not self._stop:
+            try:
+                conn, _ = self._srv.accept()
+            except OSError:
+                break
+            threading.Thread(target=self._handle, args=(conn,), daemon=True).start()
+
+    def _recv_exact(self, sock, n):
+        buf = b""
+        while len(buf) < n:
+            chunk = sock.recv(n - len(buf))
+            if not chunk:
+                return None
+            buf += chunk
+        return buf
+
+    def _handle(self, conn):
+        try:
+            head = self._recv_exact(conn, 2)
+            if not head or head[0] != 0x05:
+                conn.close()
+                return
+            nmethods = head[1]
+            self._recv_exact(conn, nmethods)
+            conn.sendall(b"\x05\x00")  # no-auth
+            req = self._recv_exact(conn, 4)
+            if not req:
+                conn.close()
+                return
+            ver, cmd, _, atyp = req
+            if atyp == 0x01:
+                addr = socket.inet_ntoa(self._recv_exact(conn, 4))
+            elif atyp == 0x03:
+                ln = self._recv_exact(conn, 1)[0]
+                addr = self._recv_exact(conn, ln).decode("ascii", "ignore")
+            elif atyp == 0x04:
+                addr = socket.inet_ntop(socket.AF_INET6, self._recv_exact(conn, 16))
+            else:
+                conn.close()
+                return
+            port = struct.unpack("!H", self._recv_exact(conn, 2))[0]
+            if cmd != 0x01:  # not CONNECT (e.g. UDP ASSOCIATE) → refuse
+                self.udp_associate_attempts += 1
+                conn.sendall(b"\x05\x07\x00\x01\x00\x00\x00\x00\x00\x00")  # cmd not supported
+                conn.close()
+                return
+            try:
+                upstream = socket.create_connection((addr, port), timeout=15)
+            except OSError:
+                conn.sendall(b"\x05\x04\x00\x01\x00\x00\x00\x00\x00\x00")  # host unreachable
+                conn.close()
+                return
+            conn.sendall(b"\x05\x00\x00\x01\x00\x00\x00\x00\x00\x00")  # success
+            self._relay(conn, upstream)
+        except Exception:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+    def _relay(self, a, b):
+        try:
+            while True:
+                r, _, _ = select.select([a, b], [], [], 30)
+                if not r:
+                    break
+                for s in r:
+                    data = s.recv(65536)
+                    if not data:
+                        return
+                    (b if s is a else a).sendall(data)
+        finally:
+            for s in (a, b):
+                try:
+                    s.close()
+                except Exception:
+                    pass
+
+    def close(self):
+        self._stop = True
+        try:
+            self._srv.close()
+        except Exception:
+            pass

@@ -36,9 +36,10 @@ import pytest
 
 # The fixtures and the helpers of the DoH e2e (imported, not copied): the hermetic session (autouse), the resolver trap, the
 # watcher, the page server, the gateway factory, and the accounting of the connections to the FakeDoh.
-from test_doh_through_the_proxy_e2e import (  # noqa: F401  (fixtures are used by name)
+from test_doh_through_the_proxy_e2e import (  # noqa: F401  (the hermetic session is autouse and imported by name; the
+    # other fixtures of the DoH e2e are in conftest.py)
     DOH_ADDRESSES, ZONE, _asked_outside, _assert_every_connection_went_through_the_gateway, _direct_to_the_doh,
-    _hermetic_session, _is_address, _launch, _page_in, _text, _why, doh, gateway, pages, trap, watcher)
+    _hermetic_session, _is_address, _launch, _page_in, _text, _why)
 
 import _doh_servers as ds
 from _doh_servers import DOH_BOOTSTRAP, DOH_HOST, DOH_PORT, QTYPE_A

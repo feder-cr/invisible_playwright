@@ -105,7 +105,8 @@ def test_a_bare_launch_behind_a_proxy_is_composed_through_it(firefox_binary, mon
     from invisible_core._geo import SessionGeo
     from invisible_playwright import _session
     from invisible_playwright._pw.sync_api import sync_playwright
-    from test_webrtc_realness import _PROBE_JS, _Socks5TcpOnly, candidates, host_is_mdns
+    from _socks_servers import Socks5TcpOnly
+    from test_webrtc_realness import _PROBE_JS, candidates, host_is_mdns
 
     egress = "203.0.113.7"
     monkeypatch.delenv("STEALTHFOX_WEBRTC_NETWORK", raising=False)
@@ -132,7 +133,7 @@ def test_a_bare_launch_behind_a_proxy_is_composed_through_it(firefox_binary, mon
 
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), Page)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    socks = _Socks5TcpOnly()
+    socks = Socks5TcpOnly()
     try:
         with sync_playwright() as p:
             browser = p.firefox.launch(executable_path=firefox_binary, headless=True,

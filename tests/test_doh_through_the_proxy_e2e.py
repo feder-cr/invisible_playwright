@@ -83,13 +83,11 @@ import _trap_policy
 from _doh_servers import DOH_BOOTSTRAP, DOH_HOST, DOH_PORT, DOH_PROVIDER_PREFS, QTYPE_A, DohGateway, FakeDoh
 from _http_proxy import HttpProxy, basic
 from _leaks import ResolverTrap, Watcher
-from _servers import LocalServer
+from _doh_support import ZONE, Pages  # noqa: F401  (Pages and ZONE are imported by name by the sibling tests)
+from _servers import LocalServer  # noqa: F401
 
 pytestmark = [pytest.mark.e2e, pytest.mark.usefixtures("the_udp_line")]
 
-#: The zone of the FakeDoh: every name a test uses, all pointing at the loopback where the page server is.
-ZONE = {"page-a.test": "127.0.0.1", "page-b.test": "127.0.0.1", "page-c.test": "127.0.0.1",
-        "stun-a.test": "127.0.0.1"}
 #: Loopback targets go through the proxy too (as in test_proxy_socks_auth_e2e.py), so the road of a page is observable.
 #: The two `network.trr.*` entries replace the core's default provider (a preloaded host whose certificate cannot be
 #: overridden) with the FakeDoh's: https://doh.gateway.test/dns-query, found at 192.0.2.53 with no DNS.
@@ -101,6 +99,7 @@ GEO = SessionGeo("America/New_York", "203.0.113.7", latitude=40.7128, longitude=
 
 
 # ------------------------------------------------------------------------------------------------------- fixtures
+# `doh`, `gateway`, `trap`, `watcher` and `pages` are in conftest.py: the sibling files use them without importing them.
 @pytest.fixture(autouse=True)
 def _hermetic_session(monkeypatch):
     """No egress lookup on the internet, and no egress drift check through the proxy.
@@ -112,103 +111,6 @@ def _hermetic_session(monkeypatch):
     """
     monkeypatch.setattr("invisible_playwright.launcher.prepare_session_geo", lambda tz, proxy, locale, **_kw: GEO)
     monkeypatch.setattr(InvisiblePlaywright, "_assert_uscita_invariata", lambda self: None)
-
-
-@pytest.fixture
-def doh():
-    import h2  # noqa: F401 - the dev extra installs it: a missing one is a failure, never a skip
-    server = FakeDoh(ZONE)
-    yield server
-    server.close()
-
-
-@pytest.fixture
-def gateway(doh):
-    made = []
-
-    def make(name, **kwargs):
-        gw = DohGateway(name, doh, **kwargs)
-        made.append(gw)
-        return gw
-
-    yield make
-    for gw in made:
-        gw.close()
-
-
-@pytest.fixture
-def trap():
-    """The resolver trap, counting every question the machine's resolver is asked.
-
-    None only where it cannot run AND the gate does not require it (a developer's machine). With INVPW_REQUIRE_TRAP=1
-    (the gate's Linux leg) a trap that is unavailable or whose port 53 cannot be bound is a failure with its reason."""
-    if not ResolverTrap.available:
-        why = _trap_policy.failure(None, False, ResolverTrap.reason)
-        if why:
-            pytest.fail(why)
-        yield None
-        return
-    resolver = ResolverTrap()
-    try:
-        resolver.__enter__()
-    except OSError as exc:  # port 53 taken (another worker holds the trap)
-        why = _trap_policy.failure(None, True, bind_error=exc)
-        if why:
-            pytest.fail(why)
-        yield None
-        return
-    try:
-        yield resolver
-    finally:
-        resolver.__exit__(None, None, None)
-
-
-@pytest.fixture
-def watcher(firefox_binary):
-    """Started BEFORE the test body, so before any launch; stopped by the test or here."""
-    w = Watcher(match=("firefox", Path(firefox_binary).stem.lower())).start()
-    yield w
-    w.stop()
-
-
-class Pages:
-    """A local HTTP server: every path answers a page that says which Host it was asked for."""
-
-    def __init__(self):
-        outer = self
-        self.hits = []
-
-        class Handler(http.server.BaseHTTPRequestHandler):
-            def do_GET(self):  # noqa: N802
-                host = self.headers.get("Host", "")
-                outer.hits.append((host, self.path))
-                body = ("<!doctype html><title>page</title><body>HOST=%s</body>" % host).encode()
-                self.send_response(200)
-                self.send_header("Content-Type", "text/html; charset=utf-8")
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
-
-            def log_message(self, *args):
-                pass
-
-        self._server = LocalServer(("127.0.0.1", 0), Handler)
-        self.port = self._server.server_address[1]
-        threading.Thread(target=self._server.serve_forever, daemon=True).start()
-
-    def url(self, name):
-        return "http://%s:%d/" % (name, self.port)
-
-    def close(self):
-        self._server.shutdown()
-        self._server.server_close()
-
-
-@pytest.fixture
-def pages():
-    server = Pages()
-    yield server
-    server.close()
 
 
 # --------------------------------------------------------------------------------------------------------- helpers

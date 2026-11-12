@@ -39,9 +39,9 @@ import pytest
 
 # The fixtures and the helpers of the DoH e2e (imported, not copied): the hermetic session (autouse), the resolver
 # trap, the watcher, the page server, the gateway factory, and the checks of the end-of-test accounting.
-from test_doh_through_the_proxy_e2e import (  # noqa: F401  (fixtures are used by name)
-    PREFS, ZONE, _assert_stayed_home, _create_a_peer_connection_for, _hermetic_session,
-    _page_in, _why, gateway, pages, trap, watcher)
+from test_doh_through_the_proxy_e2e import (  # noqa: F401  (the hermetic session is autouse and imported by name; the
+    # other fixtures of the DoH e2e are in conftest.py)
+    PREFS, ZONE, _assert_stayed_home, _create_a_peer_connection_for, _hermetic_session, _page_in, _why)
 # The page-side probe of the realness test: one STUN server, the candidates, the ICE errors, the timeline in ms
 # (`at_ms`: host/srflx/error/complete from the offer) and the end of the gather. Imported, not edited.
 from test_webrtc_realness import _RELAY_PROBE_JS, candidates

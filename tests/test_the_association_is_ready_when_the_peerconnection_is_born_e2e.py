@@ -23,7 +23,7 @@ import time
 import pytest
 
 from _socks_servers import STUN_NUMBER, STUN_PORT, coherent
-from test_webrtc_realness import _e2e_binary, _launch, local_https_page  # noqa: F401  (fixture)
+from test_webrtc_realness import _e2e_binary, _launch  # noqa: F401
 
 pytestmark = pytest.mark.e2e
 

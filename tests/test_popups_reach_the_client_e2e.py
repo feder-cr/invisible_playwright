@@ -74,34 +74,6 @@ def site():
     srv.server_close()
 
 
-@pytest.fixture(scope="module", params=["in-process", "stock-client"])
-def browser(request, firefox_binary):
-    """One browser per transport for the whole file."""
-    if request.param == "in-process":
-        from invisible_playwright import InvisiblePlaywright
-
-        with InvisiblePlaywright(binary_path=firefox_binary, headless=True) as b:
-            yield b
-        return
-    try:     # the stock client (a pinned dev dependency), imported by name: the fork's guard forbids a static import
-        sync_playwright = importlib.import_module("playwright.sync_api").sync_playwright
-    except ImportError as exc:
-        pytest.fail("the stock Playwright client is missing (%s): install the wrapper with its dev extra" % exc,
-                    pytrace=False)
-    from invisible_playwright._juggler.remote import launch_server
-
-    server = launch_server(headless=True, binary_path=firefox_binary, locale="en-US", timezone="Europe/Rome")
-    try:
-        with sync_playwright() as p:
-            b = p.firefox.connect(server.ws_endpoint)
-            try:
-                yield b
-            finally:
-                b.close()
-    finally:
-        server.close()
-
-
 def _route(context):
     context.route("**/*", lambda route: route.abort() if route.request.resource_type in ("image", "media")
                   else route.continue_())
