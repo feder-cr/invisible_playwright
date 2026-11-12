@@ -64,7 +64,10 @@ jobs:
         run: |
           python -m venv pub
           pub/bin/python -m pip install --quiet "invisible-core==62.65.0" "invisible-playwright==0.50.1" pytest
-          PUB_EXE="$(pub/bin/python -m invisible_playwright fetch | tail -1)"
+          # the seal of the gate run is in GITHUB_ENV: the published engine is fetched without it (its own, published seal)
+          env -u INVISIBLE_SEAL_FILE pub/bin/python -m invisible_playwright fetch | tee fetch.out
+          LAST="$(tail -1 fetch.out)"
+          if [ -d "$LAST" ]; then PUB_EXE="$(find "$LAST" -maxdepth 3 -name firefox -type f | head -1)"; else PUB_EXE="$LAST"; fi
           echo "PUB_PY=$PWD/pub/bin/python" >> "$GITHUB_ENV"
           echo "PUB_EXE=$PUB_EXE" >> "$GITHUB_ENV"
           "$PWD/pub/bin/python" -c "from importlib.metadata import version; print('published core', version('invisible-core'), 'wrapper', version('invisible-playwright'))"
@@ -78,7 +81,7 @@ jobs:
       - name: The table
         if: always()
         run: |
-          { echo '## root-gather-diag2'; echo '```'; cat diag2/pytest-A/summary.txt 2>/dev/null; echo; cat diag2/probes.txt 2>/dev/null | tail -12; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          { echo '## root-gather-diag2'; echo '```'; cat diag2/pytest-A/summary.txt 2>/dev/null; echo; echo "-- engine copied to /opt/ff (root, 755):"; cat diag2/pytest-A-rootcopy/summary.txt 2>/dev/null; echo; cat diag2/probes.txt 2>/dev/null | tail -12; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload what was written down
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

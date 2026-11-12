@@ -27,15 +27,15 @@ after_the_run() {  # dir
     echo "== lines with Sandbox / seccomp / violation / SIGSYS / crashed in the browser output"; grep -h -i -E "sandbox|seccomp|violation|SIGSYS|crash|terminated|died" "$d"/browser-*.log 2>/dev/null | sort | uniq -c | sort -rn | head -80; } > "$d/sandbox-lines.txt"
 }
 
-case "$MODE" in
-pytest)
-  D="$OUT/pytest-A"; rm -rf "$D"; mkdir -p "$D/moz"
+run_pytest_A() {   # NAME EXE: step A of the first run with the binary EXE; the files go to diag2/NAME
+  local NAME="$1" EXE="$2"
+  D="$OUT/$NAME"; rm -rf "$D"; mkdir -p "$D/moz"
   export DIAG_OUT="$D"
   export MOZ_CRASHREPORTER_DISABLE=1 MOZ_SANDBOX_LOGGING=1
   # MOZ_LOG goes to STDERR (no MOZ_LOG_FILE): the sandboxed socket process cannot create a file, and its stderr is the pipe the wrapper reads
   export MOZ_LOG="timestamp,sync,SOCKS-UDP:5,mtransport:5,SandboxBroker:5,SandboxTarget:5"
   unset MOZ_LOG_FILE
-  export INVPW_BINARY_PATH="$FF_EXE" STEALTHFOX_E2E_BINARY="$FF_EXE" INVISIBLE_CORE_AUTOFIX=off INVISIBLE_CORE_PIN=allow
+  export INVPW_BINARY_PATH="$EXE" STEALTHFOX_E2E_BINARY="$EXE" INVISIBLE_CORE_AUTOFIX=off INVISIBLE_CORE_PIN=allow
   ( sudo -H -E env -u PYTEST_ADDOPTS -u XDG_RUNTIME_DIR INVPW_REQUIRE_TRAP=1 "PATH=$PATH" "PYTHONPATH=$ROOT/scripts/diag_plugin" "DIAG_OUT=$D" \
       python -m pytest tests/test_realness_behind_a_declared_exit_e2e.py -k germany -p diag_browser_output -m e2e -o addopts='' -o junit_family=xunit2 -q -p no:cacheprovider -p no:rerunfailures -rs ) > "$D/pytest.log" 2>&1 &
   pid=$!
@@ -48,6 +48,15 @@ pytest)
     grep -h 'seccomp sandbox violation' "$D"/browser-*.log 2>/dev/null | sed -E 's/pid [0-9]+, tid [0-9]+/pid N, tid M/' | sort | uniq -c | sort -rn | head -10;
     echo "  socket processes in the last ps (unclipped, type is the last word):"; grep -h -E "contentproc.* socket( |$)" "$D/ps.txt" | tail -3 | cut -c1-200; } > "$D/summary.txt"
   cat "$D/summary.txt"
+}
+
+case "$MODE" in
+pytest)
+  run_pytest_A pytest-A "$FF_EXE"
+  # the same step with the engine in a directory of root (755), not under the runner's home: is it the environment of the gate or the engine?
+  sudo rm -rf /opt/ff && sudo mkdir -p /opt/ff && sudo cp -a "$(dirname "$FF_EXE")/." /opt/ff/ && sudo chown -R root:root /opt/ff && sudo chmod 755 /opt /opt/ff
+  ls -ld "$(dirname "$FF_EXE")" "$(dirname "$(dirname "$FF_EXE")")" /opt/ff > "$OUT/rootcopy-perms.txt" 2>&1
+  run_pytest_A pytest-A-rootcopy /opt/ff/firefox
   ;;
 probe)
   export MOZ_CRASHREPORTER_DISABLE=1 MOZ_SANDBOX_LOGGING=1

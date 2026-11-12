@@ -57,11 +57,10 @@ try:
         kwargs["proxy"] = gateway.proxy
         if "udp_stun_servers" in inspect.signature(InvisiblePlaywright.__init__).parameters:
             kwargs["udp_stun_servers"] = gateway.measure_servers
-        exit_ip = "203.0.113.7"
-    else:
-        exit_ip = "203.0.113.7"
+    import _realness_support as rs      # the tests' own exit addresses: ones the geo database knows
+    exit_ip = rs.EXITS["germany"]
     _geo.discover_egress_ip = lambda *a, **k: exit_ip      # no echo service is reachable in a lab: the question is the gather
-    with InvisiblePlaywright(seed=42, headless=True, binary_path=exe, **kwargs) as browser:
+    with InvisiblePlaywright(seed=42, headless=True, binary_path=exe, timezone="Europe/Berlin", locale="de-DE", **kwargs) as browser:
         page = browser.new_context().new_page()
         page.goto("about:blank", timeout=30000)
         stun = ("stun:%s:%d" % ("198.51.100.6", 19302)) if with_proxy else None
