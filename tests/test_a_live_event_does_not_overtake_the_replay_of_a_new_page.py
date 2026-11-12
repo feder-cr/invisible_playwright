@@ -163,3 +163,28 @@ def test_a_gate_that_is_never_let_go_costs_the_reader_one_wait_and_is_said():
     finally:
         release.set()
         world.close()
+
+
+def test_a_page_built_while_the_reader_is_stuck_in_a_handler_is_built_all_the_same_and_it_is_said():
+    import warnings
+
+    world = World()
+    held, release = threading.Event(), threading.Event()
+    try:
+        world.browser.PAGE_GATE_WAIT_S = 0.2
+
+        def stuck_reader():
+            with world.browser.events_gate():
+                held.set()
+                release.wait(10)
+        t = threading.Thread(target=stuck_reader, daemon=True)
+        t.start()
+        assert held.wait(5)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            with world.browser.events_gate():
+                pass
+        assert any("held for more than" in str(w.message) for w in caught), [str(w.message) for w in caught]
+    finally:
+        release.set()
+        world.close()

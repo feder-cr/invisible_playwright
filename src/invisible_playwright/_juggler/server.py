@@ -4784,6 +4784,8 @@ class BrowserDispatcher(Dispatcher):
 
     #: How long the engine's reader waits for the gate of the events before it delivers the event anyway (see `events_gate`).
     GATE_WAIT_S = 5.0
+    #: How long a page that is being built waits for the gate before it is built without it.
+    PAGE_GATE_WAIT_S = 30.0
 
     def __init__(self, server, browser_type: "BrowserTypeDispatcher",
                  conn: Any, version: str, session_seed: Any = None,
@@ -5103,8 +5105,17 @@ class BrowserDispatcher(Dispatcher):
     def events_gate(self):
         """Hold the delivery of the events of every session: the engine's reader waits (at most `GATE_WAIT_S`) at its next event of a
         session. For a short step that waits for no event and no reply: a page subscribes its readers and is handed the events it missed."""
-        with self._events_gate:
+        got = self._events_gate.acquire(timeout=self.PAGE_GATE_WAIT_S)
+        if not got:
+            # the reader is stuck inside a handler: the page is built all the same (the old, unordered way), and it is said
+            warnings.warn("invisible_playwright: the engine's events were held for more than %.0f s by a handler; a page is built without "
+                          "the gate of the events (its replay may be overtaken by a live event)" % self.PAGE_GATE_WAIT_S,
+                          RuntimeWarning, stacklevel=3)
+        try:
             yield
+        finally:
+            if got:
+                self._events_gate.release()
 
     def replay(self, session: str, deliver) -> int:
         """Hand a new consumer the events of its session that it missed.
