@@ -7,6 +7,7 @@ Standard library only: the plan job runs it before anything is installed.
     python scripts/hunt_report.py run-line  --log L --out J ...       # one full suite run -> one line + json
     python scripts/hunt_report.py suite-summary DIR                   # table of the runs one job made
     python scripts/hunt_report.py suite-tally DIR                     # all jobs, all runs, distinct messages
+    python scripts/hunt_report.py popups-tally DIR                    # per commit: reds, messages, attachment vs other
     python scripts/hunt_report.py webgl-run --log L --out J ...       # one pytest process -> pass/fail + message
     python scripts/hunt_report.py webgl-tally DIR                     # n failed of N, distinct reasons
 
@@ -26,12 +27,15 @@ import re
 import sys
 from pathlib import Path
 
-__all__ = ["make_plan", "parse_pytest_log", "run_record", "suite_summary", "suite_tally",
+__all__ = ["classify_popup_failure", "popups_tally", "make_plan", "parse_pytest_log", "run_record", "suite_summary", "suite_tally",
            "webgl_record", "webgl_tally", "normalise"]
 
 # ── the plan ────────────────────────────────────────────────────────────────
 
 HUNTS = ("suite", "webgl", "launch")
+#: Chosen by name only: `all` does not include it, because it needs commits to test.
+EXPLICIT_ONLY = ("popups",)
+_POPUP_RUN_MIN = 45
 #: Minutes one full suite run may take; a run is 18-20 on four CPUs. The job
 #: ceiling must never be the thing that stops a hunt, so it is generous.
 _SUITE_RUN_MIN = 30
@@ -46,15 +50,17 @@ def _which(which: str) -> set[str]:
         raise ValueError("`which` is empty: use all, suite, webgl, launch or a comma list")
     if "all" in names:
         names = set(HUNTS) | (names - {"all"})
-    bad = sorted(names - set(HUNTS))
+    bad = sorted(names - set(HUNTS) - set(EXPLICIT_ONLY))
     if bad:
-        raise ValueError("`which` names %s; the hunts are %s, or all" % (bad, ", ".join(HUNTS)))
+        raise ValueError("`which` names %s; the hunts are %s, popups (by name only), or all"
+                         % (bad, ", ".join(HUNTS)))
     return names
 
 
 def make_plan(*, which: str, suite_jobs: int, suite_runs_each: int, onecpu_runs: int,
               webgl_rounds: int, webgl_procs: int, launch_jobs: int,
-              launch_cycles_each: int) -> dict:
+              launch_cycles_each: int, popup_shas: str = "", popup_jobs_each: int = 5,
+              popup_runs_each: int = 2) -> dict:
     """What one dispatch runs: three flags and the matrices.
 
     The suite matrix has `suite_jobs` ordinary legs of `suite_runs_each` runs, and one
@@ -83,6 +89,23 @@ def make_plan(*, which: str, suite_jobs: int, suite_runs_each: int, onecpu_runs:
                     "start": (k - 1) * launch_cycles_each + 1,
                     "timeout": min(_MAX_JOB_MIN, 60 + launch_cycles_each // 2)}
                    for k in range(1, launch_jobs + 1)] if launch_cycles_each > 0 else []
+    popup_legs = []
+    if "popups" in names:
+        shas = []
+        for sha in popup_shas.split(","):
+            sha = sha.strip()
+            if sha and sha not in shas:
+                shas.append(sha)
+        if not shas:
+            raise ValueError("`which` has popups but `popup_shas` names no commit")
+        if popup_jobs_each <= 0 or popup_runs_each <= 0:
+            raise ValueError("popup_jobs_each and popup_runs_each must be positive")
+        for sha in shas:
+            for k in range(1, popup_jobs_each + 1):
+                popup_legs.append({"sha": sha, "short": sha[:7], "job": k, "runs": popup_runs_each,
+                                   "label": "popups %s #%d x%d" % (sha[:7], k, popup_runs_each),
+                                   "slug": "popups-%s-%d" % (sha[:7], k),
+                                   "timeout": min(_MAX_JOB_MIN, popup_runs_each * _POPUP_RUN_MIN + 30)})
     run_suite = "suite" in names and bool(legs)
     run_webgl = "webgl" in names and webgl_rounds > 0 and webgl_procs > 0
     run_launch = "launch" in names and bool(launch_legs)
@@ -92,6 +115,8 @@ def make_plan(*, which: str, suite_jobs: int, suite_runs_each: int, onecpu_runs:
         "launch": str(run_launch).lower(),
         "suite_matrix": json.dumps(legs if run_suite else []),
         "launch_matrix": json.dumps(launch_legs if run_launch else []),
+        "popups": str(bool(popup_legs)).lower(),
+        "popup_matrix": json.dumps(popup_legs),
         "webgl_timeout": str(min(_MAX_JOB_MIN, 40 + webgl_rounds * 4)),
     }
 
@@ -196,7 +221,7 @@ def parse_pytest_log(text: str) -> dict:
 
 
 def run_record(log_text: str, *, run: int, of: int, label: str, cpus: str, exit_code: int,
-               seconds: int) -> dict:
+               seconds: int, sha: str = "") -> dict:
     p = parse_pytest_log(log_text)
     ended = p["summaries"] > 0 and exit_code in (0, 1)
     if not ended:
@@ -205,7 +230,7 @@ def run_record(log_text: str, *, run: int, of: int, label: str, cpus: str, exit_
         verdict = "green"
     else:
         verdict = "red"
-    return {"run": run, "of": of, "label": label, "cpus": cpus, "exit": exit_code,
+    return {"run": run, "of": of, "label": label, "cpus": cpus, "sha": sha, "exit": exit_code,
             "seconds": seconds, "verdict": verdict, **{k: p[k] for k in (
                 "passed", "failed", "errors", "skipped", "rerun", "failed_ids", "rerun_ids",
                 "failures")}}
@@ -297,6 +322,51 @@ def suite_tally(records: list[dict]) -> str:
     return "\n".join(out) + "\n"
 
 
+# ── the popups hunt ─────────────────────────────────────────────────────────
+
+ATTACHMENT = "attachment / run.popups empty"
+
+
+def classify_popup_failure(test_id: str, message: str) -> str:
+    """`attachment`: the download event on the opener came before the `page` event, so the
+    popup was never announced: the test's own text about it, or an empty `run.popups`.
+    Anything else is `other`."""
+    low = message.lower()
+    if "stock announces the popup" in low or ".popups" in low:
+        return "attachment"
+    return "other"
+
+
+def popups_tally(records: list[dict]) -> str:
+    """Per commit: runs, runs with a red, each failed test and its whole messages, and one
+    line per red run saying whether it is the attachment failure or something else."""
+    shas: list[str] = []
+    for r in records:
+        if r.get("sha", "") not in shas:
+            shas.append(r.get("sha", ""))
+    out = ["# Popups hunt tally (ONE CPU: taskset -c 0)", "",
+           "Caught failures are the result of the hunt, not a failure of it. A run without a verdict is broken."]
+    for sha in shas:
+        mine = [r for r in records if r.get("sha", "") == sha]
+        reds = [r for r in mine if r["verdict"] == "red"]
+        out += ["", "## commit %s" % (sha or "(unknown)"), "", "```",
+                "runs total: %d" % len(mine),
+                "runs with at least one red: %d" % len(reds)]
+        out += _group_tally(mine)[1:]
+        out += ["", "each red run:"]
+        for r in sorted(reds, key=lambda r: (r["label"], r["run"])):
+            kinds = {i: classify_popup_failure(i, r["failures"].get(i, "")) for i in r["failed_ids"]}
+            kind = ATTACHMENT if kinds and set(kinds.values()) == {"attachment"} else "other"
+            mixed = kind == "other" and "attachment" in kinds.values()
+            note = " (also %d attachment)" % list(kinds.values()).count("attachment") if mixed else ""
+            out.append("- %s run %d/%d: %s%s: %s" % (r["label"], r["run"], r["of"], kind, note,
+                                                    ", ".join(r["failed_ids"]) or "-"))
+        if not reds:
+            out.append("- none")
+        out.append("```")
+    return "\n".join(out) + "\n"
+
+
 # ── the webgl hunt ──────────────────────────────────────────────────────────
 
 
@@ -351,6 +421,9 @@ def main(argv: list[str]) -> int:
     p = sub.add_parser("plan")
     p.add_argument("--hunt", default="release-triple")
     p.add_argument("--which", default="all")
+    p.add_argument("--popup-shas", default="")
+    p.add_argument("--popup-jobs-each", type=int, default=5)
+    p.add_argument("--popup-runs-each", type=int, default=2)
     for name, default in (("suite-jobs", 6), ("suite-runs-each", 5), ("onecpu-runs", 2),
                           ("webgl-rounds", 13), ("webgl-procs", 4), ("launch-jobs", 3),
                           ("launch-cycles-each", 100)):
@@ -362,9 +435,10 @@ def main(argv: list[str]) -> int:
     p.add_argument("--of", type=int, required=True)
     p.add_argument("--label", required=True)
     p.add_argument("--cpus", default="all")
+    p.add_argument("--sha", default="")
     p.add_argument("--exit", type=int, required=True, dest="exit_code")
     p.add_argument("--seconds", type=int, required=True)
-    for name in ("suite-summary", "suite-tally", "webgl-tally"):
+    for name in ("suite-summary", "suite-tally", "popups-tally", "webgl-tally"):
         q = sub.add_parser(name)
         q.add_argument("dir")
     p = sub.add_parser("webgl-run")
@@ -386,7 +460,9 @@ def main(argv: list[str]) -> int:
                              suite_runs_each=args.suite_runs_each, onecpu_runs=args.onecpu_runs,
                              webgl_rounds=args.webgl_rounds, webgl_procs=args.webgl_procs,
                              launch_jobs=args.launch_jobs,
-                             launch_cycles_each=args.launch_cycles_each)
+                             launch_cycles_each=args.launch_cycles_each,
+                             popup_shas=args.popup_shas, popup_jobs_each=args.popup_jobs_each,
+                             popup_runs_each=args.popup_runs_each)
         except ValueError as exc:
             print("::error::%s" % exc)
             return 2
@@ -398,7 +474,7 @@ def main(argv: list[str]) -> int:
     if args.cmd == "run-line":
         text = Path(args.log).read_text(encoding="utf-8", errors="replace")
         rec = run_record(text, run=args.run, of=args.of, label=args.label, cpus=args.cpus,
-                         exit_code=args.exit_code, seconds=args.seconds)
+                         exit_code=args.exit_code, seconds=args.seconds, sha=args.sha)
         Path(args.out).write_text(json.dumps(rec, indent=1), encoding="utf-8")
         print(run_line(rec))
         if rec["verdict"] == "no-verdict":
@@ -413,6 +489,12 @@ def main(argv: list[str]) -> int:
     if args.cmd == "suite-tally":
         records = _load(Path(args.dir), "run_*.json")
         text = suite_tally(records)
+        sys.stdout.write(text)
+        _append(summary, text)
+        return 0 if records else 1
+    if args.cmd == "popups-tally":
+        records = _load(Path(args.dir), "run_*.json")
+        text = popups_tally(records)
         sys.stdout.write(text)
         _append(summary, text)
         return 0 if records else 1

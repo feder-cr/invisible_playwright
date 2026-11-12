@@ -389,3 +389,94 @@ def test_no_local_path_and_no_product_name_in_the_hunt_files():
     for text in (HUNT, (ROOT / "scripts" / "hunt_report.py").read_text(encoding="utf-8"),
                  (ROOT / "scripts" / "hunt_launch_close.py").read_text(encoding="utf-8")):
         assert not re.search(r"[A-Za-z]:[\\/](?:Users|ff)\b|/Users/|C:\\\\", text)
+
+
+# ── the popups hunt (which=popups) ───────────────────────────────────────────
+
+SHA_A = "a90dadc204ac2de807038531c3f03a80729328cf"
+SHA_B = "b" * 40
+ATTACH_LOG = LOG.replace("AssertionError: stock announces the popup",
+                         "AssertionError: stock announces the popup (its url is empty) before it closes")
+
+
+def test_popups_is_chosen_by_name_and_never_part_of_all():
+    plan = report.make_plan(**dict(PLAN, popup_shas=SHA_A))
+    assert plan["popups"] == "false" and plan["popup_matrix"] == "[]"
+    plan = report.make_plan(**dict(PLAN, which="popups", popup_shas=SHA_A))
+    assert (plan["suite"], plan["webgl"], plan["launch"], plan["popups"]) == ("false",) * 3 + ("true",)
+
+
+def test_popups_plans_jobs_for_every_sha_in_parallel_with_the_runs_each():
+    plan = report.make_plan(**dict(PLAN, which="popups", popup_shas="%s, %s,%s" % (SHA_A, SHA_B, SHA_A),
+                                   popup_jobs_each=5, popup_runs_each=2))
+    legs = json.loads(plan["popup_matrix"])
+    assert len(legs) == 10 and sum(leg["runs"] for leg in legs) == 20      # 10 runs per sha, a repeated sha once
+    assert {leg["sha"] for leg in legs} == {SHA_A, SHA_B}
+    assert len({leg["slug"] for leg in legs}) == 10
+    assert all(leg["timeout"] >= 2 * 30 + 30 for leg in legs)
+
+
+def test_popups_can_run_together_with_another_hunt():
+    plan = report.make_plan(**dict(PLAN, which="popups,webgl", popup_shas=SHA_A))
+    assert (plan["popups"], plan["webgl"], plan["suite"]) == ("true", "true", "false")
+
+
+@pytest.mark.parametrize("kwargs", [dict(popup_shas=""), dict(popup_shas=" , "),
+                                    dict(popup_shas=SHA_A, popup_jobs_each=0),
+                                    dict(popup_shas=SHA_A, popup_runs_each=0)])
+def test_popups_without_a_commit_or_runs_is_refused_before_any_runner_is_spent(kwargs):
+    with pytest.raises(ValueError):
+        report.make_plan(**dict(PLAN, which="popups", **kwargs))
+
+
+def test_the_attachment_failure_is_told_from_the_others():
+    attach = "AssertionError: stock announces the popup (its url is empty) before it closes\nassert []"
+    assert report.classify_popup_failure("t", attach) == "attachment"
+    assert report.classify_popup_failure("t", "assert []\n + where [] = <_Run object>.popups") == "attachment"
+    assert report.classify_popup_failure("t", "Error: BrowserType.launch: [Errno 32] Broken pipe") == "other"
+    assert report.classify_popup_failure("t", "") == "other"
+
+
+def _popup_rec(log, sha, run, label="popups aaaaaaa #1 x2", exit_code=1):
+    return report.run_record(log, run=run, of=2, label=label, cpus="1", exit_code=exit_code,
+                             seconds=600, sha=sha)
+
+
+def test_the_popups_tally_is_per_commit_with_whole_messages_and_one_line_per_red_run():
+    attachment_only = ATTACH_LOG.replace("FAILED tests/test_launch.py::test_launch", "PASSED x")
+    records = [_popup_rec(attachment_only.replace("\n_____________ test_launch _____________", "\n"), SHA_A, 1),
+               _popup_rec(LOG, SHA_A, 2),
+               _popup_rec(GREEN_LOG, SHA_B, 1, label="popups bbbbbbb #1 x2", exit_code=0),
+               _popup_rec(GREEN_LOG, SHA_B, 2, label="popups bbbbbbb #1 x2", exit_code=0)]
+    text = report.popups_tally(records)
+    first, second = text.split("## commit %s" % SHA_B)
+    assert "runs total: 2" in first and "runs with at least one red: 2" in first
+    assert "ready never" in first                                          # the whole message, with its events
+    assert "order of events: click +0.00s, popup target +0.21s" in first
+    assert "run 2/2: other (also 1 attachment): " in first                 # the second red run has a launch failure too
+    assert "run 1/2: " in first
+    assert "runs total: 2" in second and "runs with at least one red: 0" in second and "- none" in second
+
+
+def test_a_run_with_only_the_attachment_failure_is_classified_as_that():
+    log = ("=== FAILURES ===\n___ test_a ___\nE   AssertionError: stock announces the popup (its url is empty)\n"
+           "E   assert []\n=== short test summary info ===\nFAILED tests/t.py::test_a - AssertionError\n"
+           "=== 1 failed, 20 passed in 5.00s ===\n")
+    text = report.popups_tally([_popup_rec(log, SHA_A, 1)])
+    assert "run 1/2: attachment / run.popups empty: tests/t.py::test_a" in text
+
+
+def test_the_popups_job_checks_out_the_commit_but_takes_this_file_from_the_dispatch_ref():
+    job = _job("popups")
+    assert "ref: \"${{ matrix.sha }}\"" in job and "path: code" in job and "path: hunt-tools" in job
+    assert "./code[dev]" in job and "hunt-tools/scripts/hunt_report.py" in job
+    assert "tests/test_popup_destinations_e2e.py tests/test_popups_reach_the_client_e2e.py" in job
+    # the suite's own entry (its options are the commit's), on one CPU, four workers, in a row
+    assert re.search(r"taskset -c 0 xvfb-run -a python -u scripts/run_e2e\.py \"\$FF\"", job)
+    assert not re.search(r"run_e2e\.py[^\n]*\s-n\b", job)
+    assert "-n 4" in job.split("Preflight")[1].split("- name:")[0]
+    assert re.search(r"Upload the evidence\n\s+if: always\(\)\n\s+uses: actions/upload-artifact@", job)
+    assert "break" not in job and "--sha \"$SHA\"" in job
+    assert "if: always() && needs.plan.outputs.popups == 'true'" in _job("popups-tally")
+    assert "popup_shas" in HUNT.split("permissions:")[0]
+    assert "origin/${x}^{commit}" in _job("plan") and "fetch-depth: 0" in _job("plan")
