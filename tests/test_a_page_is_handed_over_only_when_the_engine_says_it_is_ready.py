@@ -305,19 +305,22 @@ def test_a_popup_is_announced_with_the_address_of_the_commit_that_came_with_its_
     assert urls == [url], "the popup was announced with %r, not with the address of the commit that came with its ready" % (urls,)
 
 
-def test_a_download_started_by_a_popup_that_is_not_announced_is_reported_on_its_opener(late_browser):
-    """`<a target=_blank href=file>` with `Content-Disposition: attachment`: the new tab never gets a Page.ready and the engine closes it
-    at once. Playwright reports the download on the OPENER (ffBrowser._onDownloadCreated); looking only among the announced pages
-    lost it (no `download` event anywhere)."""
+def test_a_download_started_by_a_popup_that_is_not_announced_is_reported_on_its_opener_after_the_popup(late_browser):
+    """`<a target=_blank href=file>` with `Content-Disposition: attachment`: the new tab never gets a Page.ready and the engine closes it at
+    once. Playwright reports the download on the OPENER (ffBrowser._onDownloadCreated) and the popup before it; looking only among the
+    announced pages lost the download, and saying it at once put it before the popup (a client that read the popup the moment the
+    download arrived found none on a loaded machine)."""
     server, conn = late_browser.server, late_browser.conn
     context = _new_context(late_browser)
     conn.released = {"s1"}
     server.handle({"guid": context.guid, "method": "newPage", "params": {"pageNumber": 1}})
     opener_target = next(iter(conn.sessions))
     opener = next(o for o in server._objects.values() if o.TYPE == "Page" and o.target_id == opener_target)
-    said = []
-    original = opener.emit
-    opener.emit = lambda event, params=None: (said.append((event, params)), original(event, params))[1]
+    order = []
+    original_opener = opener.emit
+    opener.emit = lambda event, params=None: (order.append(event), original_opener(event, params))[1]
+    original_context = context.emit
+    context.emit = lambda event, params=None: (order.append("context:" + event), original_context(event, params))[1]
     target, session = conn.popup_born(opener_target, context.context_id, 1)
     deadline = time.monotonic() + 5
     while not (target in late_browser._adoptions and late_browser._adoptions[target].state == "waiting") and time.monotonic() < deadline:
@@ -325,9 +328,14 @@ def test_a_download_started_by_a_popup_that_is_not_announced_is_reported_on_its_
     conn.dispatch_event("Browser.downloadCreated", {
         "uuid": "u1", "browserContextId": context.context_id, "pageTargetId": target, "frameId": "f" + target,
         "url": "http://127.0.0.1/file", "suggestedFileName": "f.bin"}, None)
-    downloads = [p for e, p in said if e == "download"]
-    assert len(downloads) == 1, "the download of the popup was not reported on its opener: %r" % (said,)
-    assert downloads[0]["suggestedFilename"] == "f.bin"
+    assert "download" not in order, "the download was said before the popup it came from: %r" % (order,)
+    conn.dispatch_event("Browser.detachedFromTarget", {"targetId": target, "sessionId": session}, None)   # the tab is closed
+    deadline = time.monotonic() + 5
+    while "download" not in order and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert "download" in order, "the download of the popup was not reported on its opener: %r" % (order,)
+    assert order.index("context:page") < order.index("download"), "the download came before the popup: %r" % (order,)
+
 
 
 def test_the_load_of_a_popup_said_before_its_announcement_is_said_again_right_after_it(late_browser, monkeypatch):

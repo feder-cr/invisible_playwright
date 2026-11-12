@@ -2579,7 +2579,7 @@ class _Adoption:
     the build, between the build and the wait, and a command answered 'cannot find session').
     """
 
-    __slots__ = ("target_id", "opener", "context_id", "requested", "state", "gone", "page", "session", "trace", "t0")
+    __slots__ = ("target_id", "opener", "context_id", "requested", "state", "gone", "page", "session", "trace", "t0", "downloads")
 
     #: What the engine says about a target that the trace keeps (the events of its page's birth and of its disappearance).
     TRACED = ("Page.frameAttached", "Page.navigationStarted", "Page.navigationCommitted", "Page.navigationAborted",
@@ -2597,6 +2597,9 @@ class _Adoption:
         #: of the events is what decides the outcome of an adoption).
         self.t0 = time.monotonic()
         self.trace: List[str] = ["attached +0ms"]
+        #: The `download` events for the opener of a tab not announced yet, in order: said right after the `page` event of the tab, as
+        #: Playwright's server says them (the popup is reported, then the download of the opener).
+        self.downloads: List = []
         self.requested: Optional[bool] = None
         self.state = "attached"
         self.gone = False
@@ -4913,6 +4916,18 @@ class BrowserDispatcher(Dispatcher):
             self._pages_ready.notify_all()
         return gone
 
+    def _flush_downloads(self, adoption: Optional["_Adoption"]) -> None:
+        """Say the downloads that waited for the tab to be announced (or to be dropped: they are never lost)."""
+        if adoption is None:
+            return
+        with self._targets_lock:
+            pending, adoption.downloads = adoption.downloads, []
+        for origin, payload in pending:
+            try:
+                origin.emit("download", payload)
+            except Exception:
+                pass
+
     def _adopt_target(self, target_id: str, session_id: Optional[str],
                       browser_context_id: Optional[str],
                       opener: Optional[PageDispatcher],
@@ -4960,6 +4975,7 @@ class BrowserDispatcher(Dispatcher):
                     self._dropped.append((target_id, adoption.trace_text()))
                     self._adoptions.pop(target_id, None)
                     self._pages_ready.notify_all()
+                self._flush_downloads(adoption)
                 return
             # ⛔ THE EVENTS THAT COME WITH THE READY ARE APPLIED FIRST. The engine says Page.ready and, in the same turn, the commit of
             # the document that made the page ready: announced between the two, the page tells its client `about:blank` (3 of 4 popups
@@ -4968,7 +4984,9 @@ class BrowserDispatcher(Dispatcher):
             page.settle_events()
             # ⛔ `page` BEFORE the registration, on purpose: the client always sees the page before its close, never a close for a page it
             # has not met.
-            if self._enter_announced(adoption, page, context):
+            gone_at_announce = self._enter_announced(adoption, page, context)
+            self._flush_downloads(adoption)
+            if gone_at_announce:
                 page.announce_closed()
         except Exception as failure:
             if page is not None:
@@ -4977,6 +4995,7 @@ class BrowserDispatcher(Dispatcher):
                     page.announce_closed()
                 except Exception:
                     pass
+            self._flush_downloads(adoption)
             with self._targets_lock:
                 trace = adoption.trace_text() if adoption is not None else "no record of the target"
                 self._dropped.append((target_id, trace))
@@ -5408,9 +5427,21 @@ class BrowserDispatcher(Dispatcher):
                     "frameId": frame.id, "navigationId": frame.navigation,
                     "errorText": "Download is starting"})
             if origin is not None:
-                origin.emit("download", {"url": params.get("url") or "",
-                                         "suggestedFilename": params.get("suggestedFileName") or "",
-                                         "artifact": artifact.channel})
+                payload = {"url": params.get("url") or "",
+                           "suggestedFilename": params.get("suggestedFileName") or "",
+                           "artifact": artifact.channel}
+                deferred = False
+                with self._targets_lock:
+                    # ⛔ AFTER THE `page` EVENT OF THE TAB, NOT BEFORE IT. The download of a tab that is not announced yet is said on its
+                    # opener, and the tab is announced a few milliseconds after the engine says the download (the adoption thread announces
+                    # it when the tab goes away): said at once, the client got the download first and the popup after, the order the
+                    # other way round from Playwright's, and a client that reads the popup the moment the download arrives found none
+                    # on a loaded machine.
+                    if announced is None and adoption is not None and self._adoptions.get(target) is adoption:
+                        adoption.downloads.append((origin, payload))
+                        deferred = True
+                if not deferred:
+                    origin.emit("download", payload)
         if early is not None:
             artifact.report_finished(early)
 
