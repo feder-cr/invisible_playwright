@@ -316,17 +316,25 @@ def test_post_message_between_two_sibling_frames_of_other_sites_goes_through_the
     sites.route("C", "/right", "<!doctype html><title>right</title><script>window.__in = [];"
                 "addEventListener('message', e => { __in.push({origin: e.origin, data: e.data});"
                 "e.source.postMessage({to: 'left', text: 'hi from right'}, e.origin); });</script>")
-    sites.route("A", "/relay", "<!doctype html><title>relay</title>"
-                "<iframe id='left' src='%s'></iframe><iframe id='right' src='%s'></iframe><script>"
-                "window.__hops = [];"
+    # The top relays a message only once the frame it is for has loaded: the two frames load in two processes, in no
+    # fixed order, and a message posted to a frame whose document is not there yet is lost in any browser. The first
+    # version relayed at once, and one CI run in three never saw the answer.
+    sites.route("A", "/relay", "<!doctype html><title>relay</title><script>"
+                "window.__hops = []; window.__loaded = {}; window.__waiting = [];"
                 "const win = id => document.getElementById(id).contentWindow;"
+                "function deliver() { __waiting = __waiting.filter(m => {"
+                "  if (!__loaded[m.to]) return true; win(m.to).postMessage(m.message, m.origin); return false; }); }"
+                "function loaded(id) { __loaded[id] = true; deliver(); }"
                 "addEventListener('message', e => {"
                 "  const from = e.source === win('left') ? 'left' : e.source === win('right') ? 'right' : '?';"
                 "  __hops.push({from, origin: e.origin, data: e.data});"
-                "  if (e.data.to) win(e.data.to).postMessage({relayed: e.data.text, by: from},"
-                "                                          from === 'left' ? %s : %s);"
-                "});</script>" % (sites.url("B", "/left"), sites.url("C", "/right"),
-                                  json.dumps(sites.url("C")), json.dumps(sites.url("B"))))
+                "  if (e.data.to) { __waiting.push({to: e.data.to, message: {relayed: e.data.text, by: from},"
+                "                                   origin: from === 'left' ? %s : %s}); deliver(); }"
+                "});</script>"
+                "<iframe id='left' onload=\"loaded('left')\" src='%s'></iframe>"
+                "<iframe id='right' onload=\"loaded('right')\" src='%s'></iframe>"
+                % (json.dumps(sites.url("C")), json.dumps(sites.url("B")),
+                   sites.url("B", "/left"), sites.url("C", "/right")))
     page.goto(sites.url("A", "/relay"), wait_until="load")
     left = wait_frame(page, sites.url("B"), "/left")
     right = wait_frame(page, sites.url("C"), "/right")
