@@ -1,0 +1,167 @@
+name: fakeweb-p4 (engine of a series run)
+
+# The fake web, profile P4 (a user journey of 17 steps over two sites, 127.0.0.1 and localhost), on the Linux engine a RUN of the
+# series repository built (its `asset-linux-x86_64` artifact), in ONE job: Playwright's own Firefox first, our engine second, both
+# driven by the stock Playwright client, three walks each. The verdict is "the same outcome as stock", step by step. The series
+# repository is public, so `gh run download` needs no secret. To run it on another engine, change ENGINE_RUN_ID (and CORE_REF and
+# SEAL_TAG, which are the run's own: the core and the seal tag its `plan` job printed) and push: this workflow starts on a push
+# that touches this file (a hunt, not a gate), like fakeweb-p2.yml.
+
+on:
+  push:
+    paths:
+      - '.github/workflows/fakeweb-p4.yml'
+  workflow_dispatch:
+    inputs:
+      engine_run_id:
+        description: 'run of feder-cr/firefox_antidetect_patch whose asset-linux-x86_64 artifact is the engine'
+        required: false
+        default: ''
+      core_ref:
+        description: 'ref of feder-cr/invisible_core that run built the engine with (its core_ref input)'
+        required: false
+        default: ''
+      seal_tag:
+        description: 'seal tag of that run (its seal_tag output)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GITHUB_TOKEN: ${{ github.token }}
+  GH_TOKEN: ${{ github.token }}
+  ENGINE_RUN_ID: ${{ inputs.engine_run_id || '43164943499' }}
+  ENGINE_REPO: feder-cr/firefox_antidetect_patch
+  CORE_REF: ${{ inputs.core_ref || 'candidate/core-63-r3' }}
+  SEAL_TAG: ${{ inputs.seal_tag || 'firefox-63-candidate' }}
+  # The core's own switches: no import-time repair of the core to the wrapper's pin, a pin mismatch only warns. The core under
+  # test is the one the engine was built with, whatever this wrapper pins.
+  INVISIBLE_CORE_AUTOFIX: 'off'
+  INVISIBLE_CORE_PIN: allow
+
+jobs:
+  p4:
+    name: fakeweb P4 (linux, engine of run ${{ inputs.engine_run_id || '43164943499' }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with: { fetch-depth: 1 }
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: { python-version: '3.11' }
+      - name: System deps (xvfb + Firefox runtime libs)
+        run: |
+          python -m pip install --quiet --upgrade pip
+          python -m pip install --quiet "playwright==$(cat scripts/playwright_pin.txt)"
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+          sudo "$(which python)" -m playwright install-deps firefox
+      - name: The core of the run, the wrapper of this branch, and Playwright's own Firefox as the control
+        run: |
+          # The core goes in first, from git, the wrapper after it, and the core again over it: what runs is exactly CORE_REF
+          # (the order and the check are the engine repository's gate).
+          CORE_GIT="git+https://github.com/feder-cr/invisible_core@$CORE_REF"
+          python -m pip install --quiet "$CORE_GIT"
+          python -m pip install --quiet ".[dev]"
+          python -m pip install --quiet --force-reinstall "$CORE_GIT"
+          python -m pip install --quiet "playwright==$(cat scripts/playwright_pin.txt)"
+          python - <<'PY'
+          import json, os, subprocess, sys
+          from importlib.metadata import distribution, version
+          ref = os.environ["CORE_REF"]
+          rows = [line.split() for line in subprocess.run(
+              ["git", "ls-remote", "https://github.com/feder-cr/invisible_core", ref, ref + "^{}"],
+              capture_output=True, text=True, check=True).stdout.splitlines() if line.strip()]
+          peeled = [s for s, r in rows if r.endswith("^{}")]
+          want = (peeled or [s for s, _ in rows] or [""])[0]
+          import invisible_playwright  # noqa: F401 - the import-time pin check runs here, as under pytest
+          raw = distribution("invisible-core").read_text("direct_url.json")
+          got = (json.loads(raw).get("vcs_info") or {}).get("commit_id") if raw else None
+          print("core under test: %s from %s" % (version("invisible-core"), got or "the index"))
+          if not want or got != want:
+              sys.exit("THE CORE UNDER TEST IS NOT CORE_REF %s: installed from %s, the ref is %s" % (ref, got or "the index", want or "unknown"))
+          PY
+          python -m playwright install firefox
+      - name: The engine of the run
+        run: |
+          mkdir -p engine/archive engine/x
+          gh run download "$ENGINE_RUN_ID" --repo "$ENGINE_REPO" --name asset-linux-x86_64 --dir engine/archive
+          ls -la engine/archive
+          set -- engine/archive/firefox-*-stealth-linux-x86_64.tar.gz
+          [ "$#" -eq 1 ] && [ -e "$1" ] || { echo "expected one firefox-*-stealth-linux-x86_64.tar.gz in engine/archive, found: $*"; exit 1; }
+          tar xzf "$1" -C engine/x
+          chmod +x engine/x/firefox
+          python -m invisible_core seal --binary engine/x/firefox --tag "$SEAL_TAG" -o "$PWD/engine/seal.json"
+          echo "INVPW_BINARY_PATH=$PWD/engine/x/firefox" >> "$GITHUB_ENV"
+          echo "INVISIBLE_SEAL_FILE=$PWD/engine/seal.json" >> "$GITHUB_ENV"
+      - name: The journey, stock first and ours second, three walks
+        timeout-minutes: 25
+        run: |
+          {
+            echo "Engine: run $ENGINE_RUN_ID of $ENGINE_REPO (asset-linux-x86_64), seal tag $SEAL_TAG, core $CORE_REF, wrapper $GITHUB_SHA"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+          set +e
+          xvfb-run -a python -u scripts/run_fakeweb.py --profile p4 --binary "$INVPW_BINARY_PATH" --repetitions 3 \
+            --out fakeweb-p4.json 2>&1 | tee fakeweb-p4.log
+          echo "runner exited ${PIPESTATUS[0]}"
+          python scripts/fakeweb_p4_report.py journey fakeweb-p4.json > fakeweb-p4-summary.md
+          rc=$?
+          cat fakeweb-p4-summary.md >> "$GITHUB_STEP_SUMMARY"
+          cat fakeweb-p4-summary.md
+          echo "JOURNEY_REPORT_EXIT=$rc" >> "$GITHUB_ENV"
+          exit 0
+      - name: Request types of our browser (one traced walk)
+        if: always()
+        timeout-minutes: 10
+        run: |
+          set +e
+          xvfb-run -a python -u scripts/run_fakeweb.py --profile p4 --binary "$INVPW_BINARY_PATH" --repetitions 1 --no-stock --trace \
+            --out fakeweb-p4-trace.json 2>&1 | tee fakeweb-p4-trace.log
+          echo "runner exited ${PIPESTATUS[0]}"
+          python scripts/fakeweb_p4_report.py trace fakeweb-p4-trace.json > fakeweb-p4-trace-summary.md
+          rc=$?
+          cat fakeweb-p4-trace-summary.md >> "$GITHUB_STEP_SUMMARY"
+          cat fakeweb-p4-trace-summary.md
+          echo "TRACE_REPORT_EXIT=$rc" >> "$GITHUB_ENV"
+          exit 0
+      - name: Upload the numbers
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: fakeweb-p4-${{ github.run_id }}
+          path: |
+            fakeweb-p4.json
+            fakeweb-p4.log
+            fakeweb-p4-trace.json
+            fakeweb-p4-trace.log
+            fakeweb-p4-summary.md
+            fakeweb-p4-trace-summary.md
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Verdict of the fake web run
+        if: always()
+        run: |
+          red=0
+          case "${JOURNEY_REPORT_EXIT:-unset}" in
+            0) echo "journey: green, ours equals stock on every step";;
+            1) echo "journey: RED, ours differs from stock on a step of a walk whose control is sound"; red=1;;
+            2) echo "journey: RED, BROKEN CONTROL: stock Firefox is not as tests/fakeweb/pages.json declares (not a finding about ours)"; red=1;;
+            3) echo "journey: RED, ours differs from stock, and a control is broken"; red=1;;
+            4) echo "journey: RED, the runner wrote no report"; red=1;;
+            *) echo "journey: RED, the journey step did not finish (${JOURNEY_REPORT_EXIT:-unset})"; red=1;;
+          esac
+          case "${TRACE_REPORT_EXIT:-unset}" in
+            0) echo "request types: green";;
+            *) echo "request types: RED (${TRACE_REPORT_EXIT:-the trace step did not finish}), see the summary"; red=1;;
+          esac
+          exit "$red"

@@ -25,3 +25,13 @@ A fetch that the page aborts can end on stock Firefox without a `requestfinished
 stays in flight for ever and holds `networkidle` back. Our client closes such a fetch with `requestfailed`. This is kept as
 it is (the correction of a standard API); the noise avoids the case (its aborts cannot race: the server has sent the headers
 before the page aborts), so the verdict does not depend on it.
+
+## On the engine of a series run
+
+`.github/workflows/fakeweb-p4.yml` runs the journey in one job on `ubuntu-24.04`: the Linux engine of a run of the series
+repository, the core that run was built with, the wrapper of the pushed branch, stock Firefox of the pinned Playwright; stock
+first, ours second, three walks (`--repetitions 3`). The step summary has one table per walk (step, stock ok / idle, ours ok /
+idle, equal or different), the FAIL lines and whether the control is sound (`scripts/fakeweb_p4_report.py journey`). The job is
+red when ours differs on a step of a walk whose control is sound, and red with another message when a control is broken. A second
+step walks once with `--trace` (ours only) and prints, from `scripts/fakeweb_p4_report.py trace`, the resource types the client
+reported for `sendBeacon` and how many keepalive requests the client reported against the server's count.
