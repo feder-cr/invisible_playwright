@@ -27,7 +27,7 @@ from invisible_playwright._juggler._marshal import _resource_type
     ("TYPE_MEDIA", "media"),
     ("TYPE_WEBSOCKET", "websocket"),
     ("TYPE_WEB_MANIFEST", "manifest"),
-    ("TYPE_BEACON", "other"),
+    ("TYPE_BEACON", "beacon"),
     ("TYPE_OTHER", "other"),
 ])
 def test_the_cause_juggler_sends_names_the_resource(cause, expected):

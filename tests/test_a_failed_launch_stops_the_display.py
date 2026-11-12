@@ -40,7 +40,7 @@ def display(monkeypatch):
     geo = types.SimpleNamespace(timezone="Europe/Rome",
                                 locale=SessionLocale.of("it-IT"),
                                 egress_ip=None,
-                                srflx_to_declare=lambda: None)
+                                geolocation_override=lambda: None)
 
     def refuse(**_kw):
         raise FontManifestMismatch("the engine does not carry these faces")
@@ -53,7 +53,7 @@ def display(monkeypatch):
     monkeypatch.setattr(_session, "resolve_executable", lambda _p: "firefox")
     monkeypatch.setattr(_session, "build_env", refuse)
     for mod in (launcher, async_api):
-        monkeypatch.setattr(mod, "prepare_session_geo", lambda *_a: geo)
+        monkeypatch.setattr(mod, "prepare_session_geo", lambda *_a, **_k: geo)
         monkeypatch.setattr(mod, "resolve_executable", lambda _p: "firefox")
     monkeypatch.setattr(launcher, "sync_playwright", no_playwright)
     monkeypatch.setattr(async_api, "async_playwright", no_playwright)

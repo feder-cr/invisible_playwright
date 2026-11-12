@@ -713,7 +713,7 @@ def _launch_params(session: Any, *, virtual_display: bool, headless: bool,
     """`InvisiblePlaywright.__enter__` up to the launch, as protocol params.
 
     The same calls in the same order, so the served browser is the one the
-    wrapper would have launched: geo (egress, timezone, locale, srflx), the
+    wrapper would have launched: geo (egress, timezone, locale), the
     hidden display, the prefs, the proxy, the session token and the env."""
     from invisible_core import configure_proxy, prepare_session_geo
     from invisible_core import make_virtual_display
@@ -721,11 +721,12 @@ def _launch_params(session: Any, *, virtual_display: bool, headless: bool,
     from invisible_playwright._reaper import SessionToken
 
     geo = prepare_session_geo(session._timezone, session._proxy,
-                              session._locale_requested)
+                              session._locale_requested, seed=session.seed,
+                              udp_stun_servers=session._udp_stun_servers)
     session._timezone = geo.timezone
     session._locale = geo.locale
     session._webrtc_egress_ip = geo.egress_ip
-    session._srflx_declared = geo.srflx_to_declare()
+    session._geolocation = geo.geolocation_override()
     executable = resolve_executable(session._binary_path)
     pw_headless = bool(headless)
     if not headless and virtual_display:
@@ -768,6 +769,7 @@ def launch_server(host: str = DEFAULT_HOST, port: int = 0, *,
                   humanize: Any = False,
                   motion_budget_s: Optional[float] = None,
                   show_cursor: Optional[bool] = None,
+                  preload_newtab: Optional[bool] = None,
                   locale: str = "auto",
                   timezone: str = "",
                   extra_args: Optional[List[str]] = None,
@@ -778,6 +780,7 @@ def launch_server(host: str = DEFAULT_HOST, port: int = 0, *,
                   context_options_override: bool = False,
                   launch_timeout_ms: Optional[int] = 60000,
                   on_engine_closed: Optional[Callable[[], None]] = None,
+                  udp_stun_servers: Optional[List[str]] = None,
                   ) -> RemoteServer:
     """Launch ONE browser and serve it on a WebSocket; return when it listens
     and the browser is ready.
@@ -789,7 +792,7 @@ def launch_server(host: str = DEFAULT_HOST, port: int = 0, *,
     pin                 fingerprint fields forced (see docs/pinning.md).
     proxy               `{"server", "username", "password"}`, fixed after the
                         launch; the egress (exit IP -> timezone, locale
-                        "auto", srflx/WebRTC; the GeoIP database offline from
+                        "auto"; the GeoIP database offline from
                         STEALTHFOX_GEOIP_MMDB) is measured here through it.
     headless            True = true headless; False = headed.
     virtual_display     with headless=False: a private virtual display (Xvfb
@@ -806,6 +809,9 @@ def launch_server(host: str = DEFAULT_HOST, port: int = 0, *,
                         `context_options_override=True`.
     on_engine_closed    called, from another thread, when the engine dies
                         (not when `close()` ends it).
+    udp_stun_servers    where a SOCKS5 proxy's UDP exit is measured from: "ip:port" IPv4 literals, None for the
+                        two public defaults. Kept on the session, so the launch and every context proxy a client
+                        later gives measure from the same list. Python only: nothing reaches the browser.
     The engine is the sealed one (`ensure_binary`, INVISIBLE_PLAYWRIGHT_ENGINE_DIR)
     and the launch FAILS if the version it reports is not the seal's.
     """
@@ -818,7 +824,8 @@ def launch_server(host: str = DEFAULT_HOST, port: int = 0, *,
         seed, pin=pin, headless=headless, proxy=proxy, extra_args=extra_args,
         humanize=humanize, locale=locale, timezone=timezone,
         extra_prefs=extra_prefs, binary_path=binary_path,
-        show_cursor=show_cursor)
+        show_cursor=show_cursor, udp_stun_servers=udp_stun_servers,
+        preload_newtab=preload_newtab)
     notes: List[str] = []
     server = _SharedServer()
     endpoint: Optional[RemoteEndpoint] = None

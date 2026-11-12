@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Sequence, Union
 
 from invisible_playwright._pw.async_api import Browser, BrowserContext, Playwright, async_playwright
 from invisible_playwright._pw._impl._browser_context import page_number_reserved
@@ -37,6 +37,8 @@ class InvisiblePlaywright(_session.CommonLaunch):
         profile_dir: Optional[Union[str, Path]] = None,
         prep_recaptcha: bool = False,
         show_cursor: Optional[bool] = None,
+        udp_stun_servers: Optional[Sequence[str]] = None,
+        preload_newtab: Optional[bool] = None,
     ) -> None:
         # See sync launcher: `zoom.stealth.fpp.hw_seed` is int32_t - clamp.
         # One place decides the seed, and a profile directory remembers it
@@ -45,6 +47,8 @@ class InvisiblePlaywright(_session.CommonLaunch):
         self._pin = pin
         self._headless = headless
         self._proxy = proxy
+        # See the sync launcher: validated now, kept for the launch and for every context proxy.
+        self._udp_stun_servers = _session.udp_stun_list(udp_stun_servers)
         self._extra_args = list(extra_args or [])
         self._humanize = humanize
         # See the sync launcher: who draws the cursor path (this package by
@@ -59,6 +63,8 @@ class InvisiblePlaywright(_session.CommonLaunch):
         # it.
         self._show_cursor = (None if show_cursor is None
                              else bool(show_cursor))
+        self._preload_newtab = (None if preload_newtab is None
+                                else bool(preload_newtab))
         # What the caller ASKED for: "auto" or a tag. The decision is the
         # core's, made in __enter__ from the egress (prepare_session_geo),
         # and there is none before it.
@@ -88,13 +94,11 @@ class InvisiblePlaywright(_session.CommonLaunch):
         # otherwise. Nothing was red because no test enters this context manager.
         self._session_token = SessionToken()
         self._lifetime_guard = guard_for()
-        # Proxy egress IP (WebRTC srflx override); discovered in __aenter__.
+        # Proxy egress IP, discovered in __aenter__: the guard against drift
+        # compares it with the egress now. None without a proxy.
         self._webrtc_egress_ip: Optional[str] = None
-        #: The DECISION about the srflx, distinct from the fact above.
-        #: Starts as None like it: `_build_env` can be called before
-        #: the geo path has resolved, and in that case nothing is
-        #: declared.
-        self._srflx_declared: Optional[str] = None
+        #: The host network the engine reads, drawn from the seed.
+        self._network_declared: str = _session.declared_network(self)
         #: See the twin in `launcher.py`: starts at 0 because the first
         #: context must be able to check right away.
         self._ultimo_controllo_uscita: float = 0.0
@@ -111,22 +115,13 @@ class InvisiblePlaywright(_session.CommonLaunch):
         # session keeps the core's DECISION (a SessionLocale). See the sync
         # launcher.
         _geo = await asyncio.to_thread(
-            prepare_session_geo, self._timezone, self._proxy, self._locale_requested
+            prepare_session_geo, self._timezone, self._proxy, self._locale_requested,
+            seed=self.seed, udp_stun_servers=self._udp_stun_servers,
         )
         self._timezone = _geo.timezone
         self._locale = _geo.locale
         self._webrtc_egress_ip = _geo.egress_ip
-        # ⛔ TWO DIFFERENT THINGS, and they used to be a single field.
-        # `_webrtc_egress_ip` is the FACT: where we exit from. It feeds
-        # the guard against drift, which compares the current egress
-        # against the one at launch.
-        # `_srflx_declared` is the DECISION: what the engine must
-        # announce. It is None when the egress has proven, consistent
-        # UDP, because there the real srflx is already correct and
-        # declaring one would add a candidate with no matching
-        # allocation - the signal a detector running its own TURN reads.
-        # The core takes it in a single spot.
-        self._srflx_declared = _geo.srflx_to_declare()
+        self._geolocation = _geo.geolocation_override()
         # binary_path= never reaches ensure_binary(), so the engine check lives
         # on the resolved executable rather than inside the fetcher.
         executable = resolve_executable(self._binary_path)
@@ -191,7 +186,7 @@ class InvisiblePlaywright(_session.CommonLaunch):
     #: session gets rejected. One alone would be too strict - a timeout
     #: happens - but unlimited would be declared blindness: after three
     #: silent checks at 120 s each, that is six minutes in which nothing
-    #: is confirming the address the engine announces on every page.
+    #: is confirming that the timezone and the locale still match the egress.
     _MAX_USCITE_NON_MISURABILI = 3
 
     async def _assert_uscita_invariata(self) -> None:
@@ -210,19 +205,19 @@ class InvisiblePlaywright(_session.CommonLaunch):
         if outcome == _session.USCITA_DERIVATA:
             raise _session.ProxyEgressDrifted(
                 "the proxy's egress IP changed during the session: "
-                "at launch it was %s, now it is %s. The WebRTC srflx "
-                "candidate still declares the first one, so from this "
-                "moment the page exits from one address and WebRTC "
-                "announces another - the disagreement detectors look "
-                "for. This proxy does not hold the session sticky for "
+                "at launch it was %s, now it is %s. The timezone and the "
+                "locale still describe the first one, so from this moment "
+                "the page exits from one place and they say another. "
+                "This proxy does not hold the session sticky for "
                 "the required duration: use one that guarantees it, or "
                 "shorten the session."
                 % (self._webrtc_egress_ip, current))
         if outcome == _session.USCITA_NON_MISURABILE:
             # This is NOT "holds", which is why there are three outcomes. A
             # probe that fails ONCE is the network; one that always fails is
-            # blindness: from that moment the engine keeps declaring an
-            # address on every page that nobody is confirming anymore. It is
+            # blindness: from that moment the timezone and the locale stay
+            # declared on every page with nobody confirming them against the
+            # egress anymore. It is
             # counted, instead of ignored, and rejected only if it repeats.
             self._uscite_non_misurabili += 1
             if self._uscite_non_misurabili >= self._MAX_USCITE_NON_MISURABILI:
@@ -230,8 +225,8 @@ class InvisiblePlaywright(_session.CommonLaunch):
                     "the egress IP could not be verified for %d checks in "
                     "a row. It is not drift - the probe did not respond at "
                     "all - but it is not agreement either: from here on "
-                    "the engine would be declaring an address on every "
-                    "page that nobody confirms anymore. Check that the "
+                    "the timezone and the locale go unconfirmed on every "
+                    "page. Check that the "
                     "proxy is reachable, then relaunch the session."
                     % self._uscite_non_misurabili)
             return

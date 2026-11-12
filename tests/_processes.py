@@ -1,16 +1,26 @@
-"""Which of the engine's processes host a site: what the e2e tests that count processes read.
+"""Which of the engine's processes host a site, told by the name of the site: what the e2e tests that look at processes read.
 
-A content process is not a site's by being new. The engine keeps preallocated content processes
-(`dom.ipc.processPrelaunch.fission.number`, 3), hands one to a site when a site needs a process, and starts
-another to refill the pool whenever it gets to it, so a pid that appears between two reads is often that refill.
-On Linux the process says which it is: `ContentChild::SetProcessName` names it by its remote type with
-`prctl(PR_SET_NAME)` (ipc/glue/ProcessUtils_linux.cpp), "Isolated Web Co" once it hosts a site of strategy 1
-(`webIsolated=<site>`), "Web Content" while it is preallocated. Windows names no process
-(ProcessUtils_none.cpp): a test that counts sites skips there and says so.
+Counting processes between two reads does not tell a site's process from the browser's own. The browser starts
+content processes for itself: it refills the pool of preallocated ones (`dom.ipc.processPrelaunch.fission.number`)
+whenever it gets to it, and the New Tab page starts a process for a Mozilla site of its own (remote type
+`webIsolated=https://mozgcp.net`, born about a second after the process of the New Tab page, with any page, even
+about:blank). Under load that process arrives after the first read of a test, and "the set of processes changed"
+read it as the effect of the frame under test: the same-site control was red in 14 of 30 runs of the whole e2e suite
+(`[P] -> [P, P2]`), and "at least one new process" for a cross-site frame was satisfied by that process alone.
 
-Measured on firefox-62 (Linux): a cross-site frame renames one preallocated process and a new "Web Content"
-refills the pool; a same-site frame changes neither; a closed context leaves no "Isolated Web Co", while the
-pool of "Web Content" fills up behind it in about half the runs.
+So a test asks for the processes of ONE site, by name. With the pref `fission.processSiteNames` on (`NAMED_BY_SITE`,
+test-only: the product never sets it) a content process that hosts a site is named by that site
+(`ContentChild::SetProcessName`, dom/ipc/ContentChild.cpp: a leading `https://` is dropped), and on Linux
+`prctl(PR_SET_NAME)` keeps 15 characters (ipc/glue/ProcessUtils_linux.cpp). Measured on firefox-62 (Linux):
+
+- the process of `http://a.test` in a Playwright context is named `http://a.test^u`: the site, then the start of
+  `^userContextId=N`, cut at 15 characters;
+- the process the New Tab page starts is named `mozgcp.net`;
+- a process with no site keeps its type: `Web Content`, `Privileged Cont`, `WebExtensions`.
+
+The process gets its name before any document loads in it, so when a page of the site has run, its process already
+answers to the site. Windows names no process (ProcessUtils_none.cpp): a test that looks at sites skips there and
+says so.
 """
 from __future__ import annotations
 
@@ -19,14 +29,37 @@ import sys
 
 import pytest
 
-#: The name a content process of strategy 1 takes once it hosts a site (PR_SET_NAME keeps 15 characters of
-#: "Isolated Web Content"). A preallocated one is "Web Content" until a site is given to it.
-SITE_PROCESS_NAME = "Isolated Web Co"
+#: The pref overlay that names a content process by the site it hosts. Test-only.
+NAMED_BY_SITE = {"fission.processSiteNames": True}
+
+#: What PR_SET_NAME keeps of a process name on Linux.
+NAME_LENGTH = 15
 
 
-def site_pids(processes, engine_dir=None):
-    """The pids, among `processes` (psutil-like), of the content processes that host a site; with `engine_dir`,
-    only those of the engine in that directory."""
+def name_of_site(site):
+    """What the process name of `site` starts with: the site without a leading `https://`, cut at 15 characters."""
+    if site.startswith("https://"):
+        site = site[len("https://"):]
+    return site[:NAME_LENGTH]
+
+
+def hosts_site(name, site):
+    """True when a process called `name` is a process of `site`.
+
+    The name is the prefix itself, or the prefix followed by `^` (the start of `^userContextId=N`). When the prefix is
+    shorter than 15 characters the next character has to be `^`, so `http://a.test` does not match a process of
+    `http://a.testing.example`."""
+    prefix = name_of_site(site)
+    if name == prefix:
+        return True
+    if not name.startswith(prefix):
+        return False
+    return len(prefix) >= NAME_LENGTH or name[len(prefix)] == "^"
+
+
+def site_pids(processes, site, engine_dir=None):
+    """The pids, among `processes` (psutil-like), of the content processes (`-contentproc ... tab`) that host `site`;
+    with `engine_dir`, only those of the engine in that directory."""
     import psutil
 
     pids = set()
@@ -37,13 +70,13 @@ def site_pids(processes, engine_dir=None):
             name, cmd = proc.name(), proc.cmdline()
         except psutil.Error:
             continue
-        if "-contentproc" in cmd and cmd and cmd[-1] == "tab" and name == SITE_PROCESS_NAME:
+        if "-contentproc" in cmd and cmd and cmd[-1] == "tab" and hosts_site(name, site):
             pids.add(proc.pid)
     return pids
 
 
-def site_processes_below(root_pid, engine_dir=None):
-    """The pids of the processes below `root_pid` that host a site. Off Linux the test skips: no name says it."""
+def site_processes_below(root_pid, site, engine_dir=None):
+    """The pids of the processes below `root_pid` that host `site`. Off Linux the test skips: no name says it."""
     import psutil
 
     if not sys.platform.startswith("linux"):
@@ -52,4 +85,4 @@ def site_processes_below(root_pid, engine_dir=None):
         children = psutil.Process(root_pid).children(recursive=True)
     except psutil.Error:
         return set()
-    return site_pids(children, engine_dir)
+    return site_pids(children, site, engine_dir)

@@ -71,6 +71,7 @@ from ._marshal import (_js_number, _as_script, _button, _caller_timeout,
 # here for the length of one fix. Two readings of what a proxy is would be
 # the same duplication that produced the defect, one layer down.
 from invisible_core import SessionLocale, parse_proxy
+from invisible_core._udp_exit import context_proxy_command, launch_proxy_command, stun_servers
 
 from invisible_core import write_user_js
 from invisible_core.juggler import (SessionFiles, domain_matches, host_of,
@@ -179,6 +180,15 @@ class APIRequestContextDispatcher(RefusingDispatcher):
 #: what the alternative reads like.
 _HANDLE = "<element handle>"
 
+#: ⛔ ABSENT, NOT "FINISHED WITH NO ERROR". `BrowserDispatcher._finished_early` keeps the error of a download the
+#: engine finished before it announced it, and a download that SUCCEEDED has `None` for an error: popping with a
+#: `None` default and testing `is not None` read a success as "nothing was recorded", so the artifact was never
+#: marked finished and `save_as`, `path` and `failure` waited forever on a download that was complete. This
+#: marker is what a pop returns when nothing was recorded, so the two are told apart.
+_NOT_FINISHED_EARLY = object()
+#: How many finishes of downloads not announced yet a browser keeps (see `BrowserDispatcher._on_download_finished`).
+_EARLY_FINISHES_KEPT = 64
+
 
 def _key_delay(params: Dict) -> Optional[float]:
     """The caller's `delay` for a key operation, in milliseconds, or None.
@@ -238,6 +248,12 @@ POINTER_PREF = "invisible.server.pointer"
 #: out here like the three above: the profile a launch writes is a composed
 #: session, or the server composes one (`session_for_launch`).
 COMPOSED_PREF = "invisible.server.composed"
+#: WHERE THE SESSION MEASURES A SOCKS5 PROXY'S UDP EXIT FROM (`udp_stun_servers=` of the launch, "ip:port" joined by
+#: commas). Like the seed it rides in the prefs the launcher composes, because that dict is the one thing that
+#: reaches this server from the session, and it is taken out in `op_launch` before the profile is written: it is
+#: a parameter of the Python launch, never a browser declaration. The server keeps it on the browser, so the launch
+#: and every later `new_context(proxy=...)` measure with the SAME list.
+UDP_STUN_PREF = "invisible.server.udp_stun_servers"
 #: The persona's keyboards, as Windows writes its input profiles (LANGID:KLID
 #: joined by semicolons, the language's first), decided by the core from the
 #: session's language AND country (`keyboard.profiles_for`). Server-only, like
@@ -265,9 +281,36 @@ def take_session_motion(prefs: Dict) -> tuple:
     budget_ms = rest.pop(MOTION_BUDGET_PREF, None)
     rest.pop(POINTER_PREF, None)
     rest.pop(COMPOSED_PREF, None)
+    rest.pop(UDP_STUN_PREF, None)
     return (rest,
             (None if seed is None else int(seed)),
             (None if budget_ms is None else int(budget_ms) / 1000.0))
+
+
+def session_udp_stun_servers(prefs: Dict) -> Optional[list]:
+    """The STUN servers the launcher named (`UDP_STUN_PREF`), validated again, or None for the defaults. Read
+    BEFORE `take_session_motion` takes the key out."""
+    value = prefs.get(UDP_STUN_PREF)
+    if not value:
+        return None
+    return ["%s:%d" % server for server in stun_servers(str(value).split(","))]
+
+
+def refuse_the_launch_counter(prefs: Dict) -> None:
+    """The launch counter is part of the package and a client of this server cannot turn it off or point it elsewhere.
+
+    ⛔ The core refuses `invisible_firefox.usage_ping.enabled` and `.url` in `extra_prefs` (invisible_core.prefs), but a client of
+    this server sends `firefoxUserPrefs` straight into `session_for_launch`: a stock Playwright `launch(firefox_user_prefs=...)`
+    is put on TOP of the session the server composes, and a launch marked as composed is taken as it comes. Either road would
+    have carried the two prefs past the core. The only thing allowed is the address the core itself wrote, in a composed launch."""
+    from invisible_core.prefs import USAGE_PING_PREFS, USAGE_PING_REFUSAL, USAGE_PING_URL
+    composed = COMPOSED_PREF in prefs
+    for key in USAGE_PING_PREFS:
+        if key not in prefs:
+            continue
+        if composed and key.endswith(".url") and prefs[key] == USAGE_PING_URL:
+            continue
+        raise ValueError("%s: %s" % (key, USAGE_PING_REFUSAL))
 
 
 def session_for_launch(prefs: Dict, executable: str, proxy: Optional[Dict] = None) -> tuple:
@@ -296,9 +339,10 @@ def session_for_launch(prefs: Dict, executable: str, proxy: Optional[Dict] = Non
 
     `proxy` is the launch's own (`launch(proxy=...)`): the session is composed
     through it as `InvisiblePlaywright(proxy=...)` composes, so the egress it
-    measures there is the address WebRTC declares (STEALTHFOX_WEBRTC_PUBLIC_IP),
+    measures there (timezone, locale) and the network it declares are the proxy's,
     not this machine's. The engine is told the proxy by `op_launch`, as before.
     """
+    refuse_the_launch_counter(prefs)
     if COMPOSED_PREF in prefs:
         return dict(prefs), {}
     from invisible_playwright._session import default_session
@@ -4287,6 +4331,9 @@ class BrowserContextDispatcher(Dispatcher):
             self.browser.contexts.remove(self)
         except ValueError:
             pass
+        forget = getattr(self.browser, "_forget_downloads_of", None)
+        if forget is not None:
+            forget(self.context_id)
 
     def op_context_init_script(self, params: Dict) -> Any:
         """The same, for every page of this context - present and future.
@@ -4564,8 +4611,12 @@ class BrowserDispatcher(Dispatcher):
                  conn: Any, version: str, session_seed: Any = None,
                  motion_budget_s: Any = None,
                  service_workers_enabled: bool = True,
-                 layout: str = "us", pointer_draws: bool = False) -> None:
+                 layout: str = "us", pointer_draws: bool = False,
+                 udp_stun_servers: Optional[list] = None) -> None:
         self.conn = conn
+        #: Where this session measures a proxy's UDP exit from (the launch's `udp_stun_servers`, "ip:port"
+        #: strings; None = the two public defaults): the launch and every context proxy use the same list.
+        self.udp_stun_servers = udp_stun_servers
         #: Whether this browser's pages walk the pointer onto their targets
         #: (`pointer.py`): the launcher chose the Python generator. Off for a
         #: browser built without saying so, which acts as the caller wrote.
@@ -4649,8 +4700,10 @@ class BrowserDispatcher(Dispatcher):
         self._adoptions: Dict[str, _Adoption] = {}
         #: The last 16 targets that were NOT announced (dropped with their context, or failed), with their trace: for whoever looks.
         self._dropped: "collections.deque" = collections.deque(maxlen=16)
-        #: The opener of the last 16 targets whose adoption ended WITHOUT announcing them: a download that comes after the record is gone is
-        #: still said on the opener (it is never lost, whichever step of the adoption it falls between).
+        #: The opener of the targets whose adoption ended WITHOUT announcing them while the engine still had the target (at most the last
+        #: 16): a download that comes after the record is gone is still said on the opener (it is never lost, whichever step of the
+        #: adoption it falls between). The entry lives until the engine detaches the target (`_handle_detach`), and none is made for a
+        #: target already detached: no download can come from it any more.
         self._gone_openers: "collections.OrderedDict" = collections.OrderedDict()
         #: Adoption failures, by target. The `newPage` waiter re-raises (and
         #: pops) them; capped because a spontaneous popup nobody waits for
@@ -4691,6 +4744,12 @@ class BrowserDispatcher(Dispatcher):
         self.contexts: List[BrowserContextDispatcher] = []
         self._artifacts: Dict[str, "ArtifactDispatcher"] = {}
         self._finished_early: Dict[str, Optional[str]] = {}
+        # ⛔ EVERY DOWNLOAD THE ENGINE ANNOUNCED, WITH ITS CONTEXT, UNTIL IT FINISHES OR ITS CONTEXT ENDS. A finish whose
+        # artifact is gone (its context was already closed when it was announced, or the client released the artifact)
+        # is told apart from a finish that came before its announcement by this, and writes nothing: the early entry is
+        # only for a download not announced yet. Emptied by the finish and by the end of the context, so it holds at
+        # most the downloads in flight.
+        self._download_contexts: Dict[str, Optional[str]] = {}
         self._downloads_root: Optional[str] = None
         # ⛔ Adoptions start HERE, not at `add_listener` above. Anything the
         # engine attached in between predates every context (see the note on
@@ -4923,7 +4982,7 @@ class BrowserDispatcher(Dispatcher):
 
     def _remember_opener(self, adoption: Optional["_Adoption"]) -> None:
         """Under `_targets_lock`, in the step that removes the record of a target that is NOT announced."""
-        if adoption is not None and adoption.opener is not None:
+        if adoption is not None and adoption.opener is not None and not adoption.gone:
             self._gone_openers[adoption.target_id] = adoption.opener
             while len(self._gone_openers) > 16:
                 self._gone_openers.popitem(last=False)
@@ -5113,6 +5172,8 @@ class BrowserDispatcher(Dispatcher):
             return
         waiting = None
         with self._targets_lock:
+            # The target is gone: nothing comes from it any more, so the opener kept for its downloads goes too.
+            self._gone_openers.pop(target_id, None)
             adoption = self._adoptions.get(target_id)
             if adoption is not None:
                 adoption.gone = True
@@ -5309,7 +5370,13 @@ class BrowserDispatcher(Dispatcher):
         # a context whose proxy cannot be expressed must not come back usable.
         if params.get("proxy"):
             try:
-                proxy = parse_proxy(params["proxy"]).as_engine_command()
+                # ⛔ MEASURED BEFORE IT IS SENT. The proxy's UDP exit (does its UDP leave from the address of its TCP?)
+                # travels in this very command, as `udp`, and without it the engine drops the UDP of every SOCKS5
+                # proxy. The core discovers the TCP exit through the proxy and measures the UDP beside it, once per
+                # proxy (cached by endpoint, a hash of the credentials and the servers), from the STUN servers the
+                # SESSION was launched with: this is the ONE place a context's proxy is applied, for the sync and
+                # async clients and for a remote one alike. A `udp` key in what the caller wrote is not read.
+                proxy = context_proxy_command(params["proxy"], self.udp_stun_servers)
             except ValueError as exc:
                 raise ProtocolException(
                     "new_context(proxy=...) cannot be applied: %s" % exc)
@@ -5425,13 +5492,17 @@ class BrowserDispatcher(Dispatcher):
             # "if it's a new window download, report it on the pop-up's opener"); looking only among the announced pages, as this did,
             # lost the download altogether.
             origin = announced or (adoption.opener if adoption is not None else self._gone_openers.get(target))
+        # Popped BEFORE the context check: a download of a context that is gone leaves no artifact to finish, and its
+        # early entry would stay in the dict for the life of the browser.
+        early = self._finished_early.pop(params["uuid"], _NOT_FINISHED_EARLY)
+        if early is _NOT_FINISHED_EARLY:
+            self._download_contexts[params["uuid"]] = params.get("browserContextId")
         if context is None:
             return
         directory = self._downloads_dir(params.get("browserContextId"))
         artifact = ArtifactDispatcher(self.server, context, params["uuid"],
                                       os.path.join(directory, params["uuid"]))
         self._artifacts[params["uuid"]] = artifact
-        early = self._finished_early.pop(params["uuid"], None)
         if page is not None or origin is not None:
             # ⛔ THE ENGINE ENDS A NAVIGATION THAT BECAME A DOWNLOAD WITH NO
             # EVENT AT ALL (no navigationCommitted, no navigationAborted), so
@@ -5465,16 +5536,32 @@ class BrowserDispatcher(Dispatcher):
                         deferred = True
                 if not deferred:
                     origin.emit("download", payload)
-        if early is not None:
+        if early is not _NOT_FINISHED_EARLY:
             artifact.report_finished(early)
 
     def _on_download_finished(self, params: Dict) -> None:
+        uuid = params.get("uuid")
         error = params.get("error") or ("canceled" if params.get("canceled") else None)
-        artifact = self._artifacts.get(params.get("uuid"))
-        if artifact is None:
-            self._finished_early[params.get("uuid")] = error
-        else:
+        announced = uuid in self._download_contexts
+        self._download_contexts.pop(uuid, None)
+        artifact = self._artifacts.get(uuid)
+        if artifact is not None:
             artifact.report_finished(error)
+        elif not announced:
+            # Not announced yet: kept for its announcement. ⛔ BOUNDED: the engine says a download's creation before its
+            # end on one connection, so an entry can only wait for the handling of the event before it; one whose
+            # announcement never comes (a uuid the engine never announced) is dropped once newer ones push it out,
+            # instead of staying for the life of the browser.
+            self._finished_early[uuid] = error
+            while len(self._finished_early) > _EARLY_FINISHES_KEPT:
+                self._finished_early.pop(next(iter(self._finished_early)))
+        # else: announced, and its artifact is gone (its context was already closed, or the client released it):
+        # nobody can read this finish, so nothing is kept.
+
+    def _forget_downloads_of(self, context_id: Optional[str]) -> None:
+        """The end of a context: the downloads it announced and that never finished are forgotten with it."""
+        for uuid in [u for u, c in self._download_contexts.items() if c == context_id]:
+            self._download_contexts.pop(uuid, None)
 
     def _context_send(self, command: str, params: Dict) -> Any:
         """A `Browser.*` command about one context. The literal dicts above
@@ -5625,6 +5712,8 @@ class BrowserTypeDispatcher(Dispatcher):
         # `conn.close` has waited for the browser to exit.
         launch_prefs, session_env = session_for_launch(
             params.get("firefoxUserPrefs") or {}, executable, params.get("proxy"))
+        # Read BEFORE `take_session_motion` takes it out: it never reaches the profile.
+        udp_stun_servers = session_udp_stun_servers(launch_prefs)
         environment = _launch_environment(params.get("env"))
         named = {e["name"] for e in params.get("env") or []}
         environment.update({k: v for k, v in session_env.items() if k not in named})
@@ -5675,15 +5764,17 @@ class BrowserTypeDispatcher(Dispatcher):
         proxy = None
         if params.get("proxy"):
             try:
-                proxy = parse_proxy(params["proxy"]).as_engine_command()
+                # The measure is the one the launch's geo step remembered for this proxy and these servers (nothing is
+                # asked of the network here): `unmeasured` when there is none, never a claimed `coherent`.
+                proxy = launch_proxy_command(params["proxy"], udp_stun_servers)
             except ValueError as exc:
                 raise ProtocolException("launch(proxy=...) cannot be applied: "
                                         "%s" % exc)
         # ⛔ THE PROXY IS SET BY THE CORE'S `launch`, before any page exists,
         # and a proxy the engine refuses closes the browser there: the driver
         # once accepted `proxy=` and dropped it, and a page went out on the
-        # host address while the session's timezone, locale and WebRTC
-        # candidate had been resolved THROUGH the proxy (2026-08-30). Until
+        # host address while the session's timezone and locale
+        # had been resolved THROUGH the proxy (2026-08-30). Until
         # 0.34.0 this method sent the command itself, as Selenium's and
         # Puppeteer's launch did, each with the same fixed 10 s.
         conn = juggler.launch(executable, profile,
@@ -5704,7 +5795,8 @@ class BrowserTypeDispatcher(Dispatcher):
                 # The persona's keyboard: the one a Windows install gives the
                 # session's language in its country (German in Switzerland
                 # types on the Swiss keyboard).
-                layout=keyboard_layout, pointer_draws=pointer_draws)
+                layout=keyboard_layout, pointer_draws=pointer_draws,
+                udp_stun_servers=udp_stun_servers)
         except BaseException:
             conn.close()
             raise

@@ -68,9 +68,9 @@ _LEAKS = ("PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV",
           "INVISIBLE_DOWNLOAD_DEADLINE", "STEALTHFOX_GITHUB_TOKEN", "GITHUB_TOKEN",
           "INVISIBLE_SEAL_FILE", "INVISIBLE_CORE_PIN", "INVISIBLE_CORE_AUTOFIX",
           "INVISIBLE_CORE_AUTOFIX_TIMEOUT", "UV", "STEALTHFOX_GEOIP_MMDB",
-          "STEALTHFOX_FONT_MANIFEST", "STEALTHFOX_WEBRTC_PUBLIC_IP",
+          "STEALTHFOX_FONT_MANIFEST", "STEALTHFOX_WEBRTC_NETWORK",
           "INVPW_CURSOR_TIMER", "INVISIBLE_CORE_AUTOFIX_ATTEMPTED",
-          "INVPW_SESSION_TOKEN", "INVPW_DESKTOP", "STEALTHFOX_WEBRTC_DISABLE_IPV6")
+          "INVPW_SESSION_TOKEN", "INVPW_DESKTOP")
 
 
 def _clean_env(base=None):
@@ -195,6 +195,13 @@ def _pinned_core(py: Path) -> str:
     return m.group(1)
 
 
+def _previous_and_latest(released: list[str]) -> tuple[str, str]:
+    """The release to upgrade FROM and the one to upgrade TO, both from the one listing the install then uses: the two
+    newest of ``released`` (newest last). A bare ``--upgrade`` asks the index again for "the latest", and an index page
+    that lags (run of the ledger of 0.50.1: the listing had 0.50.1, the upgrade resolved 0.49.1) answers with the old one."""
+    return released[-2], released[-1]
+
+
 def _released_versions(py: Path, dist: str) -> list[str]:
     """Versions the index will serve, newest last. Read from pip itself so the
     test does not carry a hardcoded list that goes stale on the next release."""
@@ -230,7 +237,7 @@ def test_upgrading_from_the_previous_release_moves_the_core_too(workspace: Path)
     released = _released_versions(py, WRAPPER)
     if len(released) < 2:
         pytest.skip("only one release on the index; nothing to upgrade FROM")
-    previous = released[-2]
+    previous, latest = _previous_and_latest(released)
 
     _run([str(py), "-m", "pip", "install", "--no-cache-dir",
           f"{WRAPPER}=={previous}"], timeout=900)
@@ -238,10 +245,10 @@ def test_upgrading_from_the_previous_release_moves_the_core_too(workspace: Path)
     assert before["wrapper"] == previous
 
     _run([str(py), "-m", "pip", "install", "--no-cache-dir", "--upgrade",
-          WRAPPER], timeout=900)
+          f"{WRAPPER}=={latest}"], timeout=900)
     after = _versions(py)
 
-    assert after["wrapper"] != previous, "the upgrade did not move the wrapper"
+    assert after["wrapper"] == latest, "the upgrade did not move the wrapper to %s: %s" % (latest, after["wrapper"])
     _run([str(py), "-m", "pip", "check"], timeout=180)
 
     declared = _run([str(py), "-c",

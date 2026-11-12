@@ -168,7 +168,7 @@ def no_geo_lookup(monkeypatch):
     # Before, `resolve_session_locale` was a separate network call imported
     # inside __enter__, and stubbing only the geo left these tests at 34 s.
     monkeypatch.setattr("invisible_playwright.launcher.prepare_session_geo",
-                        lambda tz, proxy, locale: SessionGeo(
+                        lambda tz, proxy, locale, **_kw: SessionGeo(
                             "America/New_York", "198.51.100.4",
                             locale=decide_session_locale("en-US")))
     # And the lifetime guard. `bind` waits for the browser tree to APPEAR -

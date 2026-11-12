@@ -56,7 +56,6 @@ _REQUIRED_PREFS_KEYS = (
     "intl.accept_languages",
     "intl.locale.requested",
     "zoom.stealth.fpp.hw_seed",
-    "zoom.stealth.webrtc.host_ip",
     "zoom.stealth.webgl.renderer",
     "zoom.stealth.webgl.vendor",
     "webgl.msaa-samples",
@@ -120,7 +119,9 @@ def test_socks5_proxy_mutates_prefs_then_pipeline_still_valid():
                  "network.proxy.socks_username", "network.proxy.socks_password",
                  "network.proxy.http", "network.proxy.ssl"):
         assert name not in prefs, name
-    assert prefs["zoom.stealth.dns.no_local_resolution"] is True
+    # Names are resolved by Firefox's own DoH, through the session proxy: no gate of ours; the core declares the provider only.
+    assert "zoom.stealth.dns.no_local_resolution" not in prefs
+    assert "network.trr.mode" not in prefs and "network.trr.uri" in prefs   # the provider is the core's, the state the engine's
 
     # Profile-derived keys must still be present after proxy mutation.
     #
@@ -359,7 +360,9 @@ def test_linux_xvfb_workarounds_with_socks_proxy(monkeypatch):
     # The proxy layer no longer writes any endpoint, and what it does write - the
     # leak-channel prefs - does not trample the Linux prefs above.
     assert "network.proxy.type" not in prefs
-    assert prefs["zoom.stealth.dns.no_local_resolution"] is True
+    # Names are resolved by Firefox's own DoH, through the session proxy: no gate of ours; the core declares the provider only.
+    assert "zoom.stealth.dns.no_local_resolution" not in prefs
+    assert "network.trr.mode" not in prefs and "network.trr.uri" in prefs   # the provider is the core's, the state the engine's
 
 
 # ──────────────────────────────────────────────────────────────────────

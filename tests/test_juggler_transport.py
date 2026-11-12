@@ -1085,6 +1085,10 @@ def test_the_launch_handler_hands_the_named_environment_to_the_engine(monkeypatc
         assert env.pop("TEMP") == tmp and env.pop("TMPDIR") == tmp
         from invisible_playwright import _session
         _, session_env = _session.default_session("x")
+        # The network is drawn from the seed of each session, and each unmarked
+        # launch is a new session: it is there.
+        assert env.pop("STEALTHFOX_WEBRTC_NETWORK").startswith("v4=")
+        session_env.pop("STEALTHFOX_WEBRTC_NETWORK")
         assert env == dict(session_env, DISPLAY=":123")
         assert "WAYLAND_DISPLAY" not in env
     finally:

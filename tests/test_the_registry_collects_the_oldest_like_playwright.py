@@ -15,7 +15,7 @@ import json
 
 import pytest
 
-pytest.importorskip("websockets")
+import websockets  # noqa: F401 - the dev extra installs it: a missing one is a failure, never a skip
 
 from websockets.asyncio.client import connect  # noqa: E402
 

@@ -982,6 +982,14 @@ _EXPECTED_SIGNATURE = [
     # has nothing to arrive through - it is a property of the session, decided
     # before the first window is built, so it has to be said at construction.
     ("show_cursor", inspect.Parameter.KEYWORD_ONLY),
+    # Added 2026-11-11 on the owner's order, by name: where a SOCKS5 proxy's UDP exit is measured from ("ip:port"
+    # IPv4 literals; None = the two public defaults). A parameter of the Python launch, kept on the session so the
+    # launch and every later context proxy use the same list; it is not a browser declaration and reaches neither
+    # its environment, argv, prefs nor pipe. Both entry points get it.
+    ("udp_stun_servers", inspect.Parameter.KEYWORD_ONLY),
+    # Added 2026-11-12 on the owner's decision: the New Tab page a retail Firefox keeps preloaded is turned off only on request
+    # (False); None leaves the engine's default. Passed to the core, a choice of the session; both entry points get it.
+    ("preload_newtab", inspect.Parameter.KEYWORD_ONLY),
 ]
 
 

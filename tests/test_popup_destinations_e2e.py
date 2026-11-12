@@ -27,8 +27,6 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
-from test_popups_reach_the_client_e2e import browser  # noqa: F401  (the two-transport fixture of the sibling file)
-
 pytestmark = pytest.mark.e2e
 
 SLOW_SECONDS = 4
@@ -124,7 +122,7 @@ class _Run:
 
 
 @pytest.mark.parametrize("how", ["open", "link"])
-def test_a_popup_to_a_204_is_never_announced(browser, site, how):      # noqa: F811
+def test_a_popup_to_a_204_is_never_announced(browser, site, how):
     run = _Run(browser, site, how, "1")
     try:
         assert not run.wait_until(lambda: run.popups, NO_EVENT_SECONDS), \
@@ -135,7 +133,7 @@ def test_a_popup_to_a_204_is_never_announced(browser, site, how):      # noqa: F
 
 
 @pytest.mark.parametrize("how", ["open", "link"])
-def test_a_popup_to_a_server_that_never_answers_is_never_announced(browser, site, how):      # noqa: F811
+def test_a_popup_to_a_server_that_never_answers_is_never_announced(browser, site, how):
     run = _Run(browser, site, how, "3")
     try:
         assert not run.wait_until(lambda: run.popups, NO_EVENT_SECONDS), \
@@ -146,7 +144,7 @@ def test_a_popup_to_a_server_that_never_answers_is_never_announced(browser, site
 
 
 @pytest.mark.parametrize("how", ["open", "link"])
-def test_a_popup_to_a_slow_page_is_announced_when_it_answers(browser, site, how):      # noqa: F811
+def test_a_popup_to_a_slow_page_is_announced_when_it_answers(browser, site, how):
     run = _Run(browser, site, how, "2")
     try:
         assert run.wait_until(lambda: run.popups, SLOW_SECONDS + 6), "the slow popup never arrived"
@@ -161,7 +159,7 @@ def test_a_popup_to_a_slow_page_is_announced_when_it_answers(browser, site, how)
 
 
 @pytest.mark.parametrize("how", ["open", "link"])
-def test_a_popup_to_an_attachment_reports_the_download_on_the_opener_and_closes(browser, site, how):      # noqa: F811
+def test_a_popup_to_an_attachment_reports_the_download_on_the_opener_and_closes(browser, site, how):
     run = _Run(browser, site, how, "4")
     try:
         assert run.wait_until(lambda: run.downloads, 10), "no `download` event on the opener (stock gives one)"

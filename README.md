@@ -214,6 +214,11 @@ not carry raises, and the error lists the ones it does.
 
 Full list of pinnable keys, how pinning interacts with the Bayesian sampler, and common patterns are in **[docs/pinning.md](docs/pinning.md)**.
 
+
+### Launch counter
+
+The engine counts launches with an anonymous GET to the `usage-counter` release of the engine's repository (`feder-cr/firefox_antidetect_patch`) on GitHub. This package's launcher and server refuse the two prefs that govern it, `invisible_firefox.usage_ping.enabled` and `invisible_firefox.usage_ping.url`, in `extra_prefs`.
+
 ---
 
 ## CLI

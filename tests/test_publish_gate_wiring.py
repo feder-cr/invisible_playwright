@@ -38,14 +38,39 @@ def test_the_gate_is_importable_from_the_pinned_core():
     assert hasattr(release, "resolve_project_identity")
 
 
+def _own_distribution_name() -> str:
+    """The name this project declares in ITS pyproject, read here independently of the gate."""
+    import tomllib
+
+    with (_REPO / "pyproject.toml").open("rb") as fh:
+        return tomllib.load(fh)["project"]["name"]
+
+
 def test_the_gate_recognises_THIS_project_and_not_the_core():
     """One gate, several projects: the identity comes from our pyproject.
-    Reading the core's would gate the wrong package and pass every time."""
+    Reading the core's would gate the wrong package and pass every time.
+
+    The name is compared with what OUR pyproject declares, not with the name of the folder the checkout sits in:
+    a worktree (``wrapper-p6``, ``wt/foo``) is the same project, and the folder name is nothing the gate reads."""
     from invisible_core.release import resolve_project_identity
 
     dist, pkg = resolve_project_identity(_REPO)
-    assert dist.replace("-", "_") == _REPO.name
+    assert dist == _own_distribution_name()
+    assert dist.replace("-", "_") != "invisible_core", "the gate read the core's identity"
     assert (_REPO / "src" / pkg).is_dir()
+
+
+def test_the_identity_does_not_depend_on_the_name_of_the_folder(tmp_path):
+    """The same project under another folder name (what any worktree is) resolves to the same identity."""
+    import shutil
+
+    from invisible_core.release import resolve_project_identity
+
+    moved = tmp_path / "some-worktree-with-another-name"
+    moved.mkdir()
+    shutil.copy(_REPO / "pyproject.toml", moved / "pyproject.toml")
+    assert resolve_project_identity(moved) == resolve_project_identity(_REPO)
+    assert moved.name != _own_distribution_name().replace("-", "_")
 
 
 @pytest.mark.skipif(not _HOOK.exists(), reason="not a source checkout")

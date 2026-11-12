@@ -4,15 +4,13 @@ Two layers, both runnable on GitHub CI:
 
 * **unit** (`@pytest.mark.unit`) - pure SDP/candidate assertions against golden
   samples. No browser, no proxy, no network. These lock in every rule we found
-  on 2026-06-06: host must be mDNS ``.local``; the synthetic srflx must carry the
-  egress IP with a GENUINE nICEr priority (never ``local_pref == 0xFFFF``) and a
+  on 2026-06-06: host must be mDNS ``.local``; an srflx must carry a
+  GENUINE nICEr priority (never ``local_pref == 0xFFFF``) and a
   stable, distinct foundation; CreepJS's resolver must return the egress, and a
   host-only SDP must read as "blocked". They run in the standard ``tests.yml``.
 
 * **e2e** (`@pytest.mark.e2e`) - launch the patched binary and verify the live
   ICE gather. "Being behind a proxy" is faked WITHOUT any external proxy provider:
-    - the egress IP is injected via ``STEALTHFOX_WEBRTC_PUBLIC_IP`` (RFC 5737
-      TEST-NET, so it never collides with a real IP);
     - the "behind a TCP-only SOCKS proxy" condition is reproduced by a tiny
       in-process SOCKS5 server that relays TCP CONNECT but refuses UDP ASSOCIATE
       (exactly a residential TCP-only proxy → WebRTC's default-route UDP probe
@@ -31,6 +29,10 @@ import threading
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler, HTTPServer
 
 import pytest
+
+from _host_address import this_host_address
+from _socks_servers import MEASURE_NUMBER, STUN_PORT, Socks5TcpOnly
+from _udp_line import declared_udp, egress_by_proxy, measure_servers
 
 # ──────────────────────────────────────────────────────────────────────────
 #  Pure SDP / ICE-candidate helpers (no I/O) - the heart of the sentinels.
@@ -240,27 +242,14 @@ def test_shipped_webrtc_baseline_is_the_validated_config():
     # without a proxy the pref did.
     assert "zoom.stealth.webrtc.disable_ipv6" not in prefs
     assert "media.peerconnection.ice.disableIPv6" not in prefs
-    # The single source is the environment, and it turns on ONLY behind a proxy.
-    #
-    # Measured on 2026-08-25 against the installed retail Firefox, same
-    # connection (dual-stack, no VPN): retail emits 6 candidates - host UDP x2
-    # and host TCP x2 obfuscated mDNS, plus srflx v4 and **srflx v6 with the
-    # real global address IN THE CLEAR** (mDNS only covers the hosts). We
-    # emitted 3, because we always filtered IPv6: we looked like an IPv4-only
-    # machine where the reference is dual-stack.
-    #
-    # Behind an IPv4 proxy the filter is genuinely useful (that IPv6 would be a
-    # leak and an inconsistency with the HTTP IP); without a proxy it protects
-    # nothing and only costs realism.
+    # The single source is the environment (STEALTHFOX_WEBRTC_NETWORK, drawn from
+    # the seed), declared with or without a proxy.
+    from invisible_core import network_to_declare
     from invisible_core.launch import build_launch_env
     from invisible_playwright._session import build_env
     for build_fn in (lambda **k: build_launch_env({}, **k), build_env):
-        env_with = build_fn(srflx_declared="203.0.113.77", base_env={})
-        assert env_with["STEALTHFOX_WEBRTC_DISABLE_IPV6"] == "1"
-        assert env_with["STEALTHFOX_WEBRTC_PUBLIC_IP"] == "203.0.113.77"
-        env_without = build_fn(srflx_declared=None, base_env={})
-        assert "STEALTHFOX_WEBRTC_DISABLE_IPV6" not in env_without
-        assert "STEALTHFOX_WEBRTC_PUBLIC_IP" not in env_without
+        env = build_fn(network_declared=network_to_declare(42), base_env={})
+        assert env["STEALTHFOX_WEBRTC_NETWORK"] == network_to_declare(42)
     # peerconnection stays ON (a disabled WebRTC is itself a tell).
     assert prefs["media.peerconnection.enabled"] is True
 
@@ -278,115 +267,8 @@ def test_no_orphan_prefs_in_baseline():
 
 
 # ──────────────────────────────────────────────────────────────────────────
-#  Fake-proxy infrastructure for e2e: a tiny TCP-only SOCKS5 server.
+#  Fake-proxy infrastructure for e2e: a tiny TCP-only SOCKS5 server (Socks5TcpOnly, in _socks_servers.py).
 # ──────────────────────────────────────────────────────────────────────────
-class _Socks5TcpOnly:
-    """Minimal SOCKS5: no-auth, CONNECT (TCP) relayed, UDP ASSOCIATE refused.
-
-    Reproduces a residential TCP-only proxy: pages load over TCP, but WebRTC's
-    UDP path is dead - which (for a no-camera page in default_address_only mode)
-    is exactly what made the default-route probe fail and ICE return zero
-    candidates before Fix C.
-    """
-
-    def __init__(self):
-        self._srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self._srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self._srv.bind(("127.0.0.1", 0))
-        self._srv.listen(16)
-        self.port = self._srv.getsockname()[1]
-        self.udp_associate_attempts = 0
-        self._stop = False
-        self._t = threading.Thread(target=self._serve, daemon=True)
-        self._t.start()
-
-    def _serve(self):
-        while not self._stop:
-            try:
-                conn, _ = self._srv.accept()
-            except OSError:
-                break
-            threading.Thread(target=self._handle, args=(conn,), daemon=True).start()
-
-    def _recv_exact(self, sock, n):
-        buf = b""
-        while len(buf) < n:
-            chunk = sock.recv(n - len(buf))
-            if not chunk:
-                return None
-            buf += chunk
-        return buf
-
-    def _handle(self, conn):
-        try:
-            head = self._recv_exact(conn, 2)
-            if not head or head[0] != 0x05:
-                conn.close()
-                return
-            nmethods = head[1]
-            self._recv_exact(conn, nmethods)
-            conn.sendall(b"\x05\x00")  # no-auth
-            req = self._recv_exact(conn, 4)
-            if not req:
-                conn.close()
-                return
-            ver, cmd, _, atyp = req
-            if atyp == 0x01:
-                addr = socket.inet_ntoa(self._recv_exact(conn, 4))
-            elif atyp == 0x03:
-                ln = self._recv_exact(conn, 1)[0]
-                addr = self._recv_exact(conn, ln).decode("ascii", "ignore")
-            elif atyp == 0x04:
-                addr = socket.inet_ntop(socket.AF_INET6, self._recv_exact(conn, 16))
-            else:
-                conn.close()
-                return
-            port = struct.unpack("!H", self._recv_exact(conn, 2))[0]
-            if cmd != 0x01:  # not CONNECT (e.g. UDP ASSOCIATE) → refuse
-                self.udp_associate_attempts += 1
-                conn.sendall(b"\x05\x07\x00\x01\x00\x00\x00\x00\x00\x00")  # cmd not supported
-                conn.close()
-                return
-            try:
-                upstream = socket.create_connection((addr, port), timeout=15)
-            except OSError:
-                conn.sendall(b"\x05\x04\x00\x01\x00\x00\x00\x00\x00\x00")  # host unreachable
-                conn.close()
-                return
-            conn.sendall(b"\x05\x00\x00\x01\x00\x00\x00\x00\x00\x00")  # success
-            self._relay(conn, upstream)
-        except Exception:
-            try:
-                conn.close()
-            except Exception:
-                pass
-
-    def _relay(self, a, b):
-        try:
-            while True:
-                r, _, _ = select.select([a, b], [], [], 30)
-                if not r:
-                    break
-                for s in r:
-                    data = s.recv(65536)
-                    if not data:
-                        return
-                    (b if s is a else a).sendall(data)
-        finally:
-            for s in (a, b):
-                try:
-                    s.close()
-                except Exception:
-                    pass
-
-    def close(self):
-        self._stop = True
-        try:
-            self._srv.close()
-        except Exception:
-            pass
-
-
 # Same per-event probe CreepJS runs (kept tiny; raw string = one escape level).
 _PROBE_JS = r"""async () => {
   const pc = new RTCPeerConnection({iceCandidatePoolSize:1, iceServers:[{urls:[
@@ -416,35 +298,6 @@ def _e2e_binary():
     return None
 
 
-@pytest.fixture
-def socks5_tcp_only():
-    srv = _Socks5TcpOnly()
-    yield srv
-    srv.close()
-
-
-@pytest.fixture
-def local_https_page():
-    """A trivial localhost page (used by the no-proxy srflx test)."""
-    class H(BaseHTTPRequestHandler):
-        #: A silent socket no longer pins a thread down: after five seconds it drops.
-        timeout = 5
-        def do_GET(self):
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html")
-            self.end_headers()
-            self.wfile.write(b"<html><body>wrtc</body></html>")
-
-        def log_message(self, *a):
-            pass
-
-    httpd = ThreadingHTTPServer(("127.0.0.1", 0), H)
-    httpd.daemon_threads = True
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    yield f"http://127.0.0.1:{httpd.server_address[1]}/"
-    httpd.shutdown()
-
-
 def _launch(**extra):
     from invisible_playwright import InvisiblePlaywright
 
@@ -453,20 +306,29 @@ def _launch(**extra):
           # discovery through the (fake) proxy - irrelevant here, we inject the
           # egress IP directly and want the launch deterministic/offline.
           "timezone": "America/New_York",
+          # Where the core measures the UDP exit of a SOCKS5 proxy from (an explicit launch parameter, never the public
+          # defaults in a hermetic test): a documentation address only the relay of a test gateway answers.
+          "udp_stun_servers": ["%s:%d" % (MEASURE_NUMBER, STUN_PORT)],
           "extra_prefs": {"media.peerconnection.ice.obfuscate_host_addresses": True}}
     kw.update(extra)
     return InvisiblePlaywright(**kw)
 
 
+def _launch_behind(gateway, **extra):
+    """The launch behind a test gateway: its proxy, and the STUN server its relay answers for the measurement of its UDP
+    exit (``udp_stun_servers``). ONE place for every e2e that needs the relay."""
+    return _launch(proxy=gateway.proxy, udp_stun_servers=measure_servers(gateway), **extra)
+
+
 @pytest.mark.e2e
-def test_srflx_is_real_and_resolvable(local_https_page):
-    """No proxy needed: the egress is faked via the env. Asserts the live srflx
-    is genuine (Fix A/B) and that CreepJS's resolver returns it (not blocked)."""
+@pytest.mark.usefixtures("the_udp_line")
+def test_the_gather_is_real_without_a_proxy(local_https_page):
+    """No proxy: the engine keeps the real network. The gather completes, the
+    host is mDNS, and an srflx, when one is born, is genuine (Fix A/B) and
+    resolvable by the resolver of a studied system (not blocked)."""
     binary = _e2e_binary()
     if not binary:
         pytest.skip("no patched binary (set STEALTHFOX_E2E_BINARY)")
-    os.environ["STEALTHFOX_WEBRTC_PUBLIC_IP"] = _FAKE_EGRESS
-    os.environ["STEALTHFOX_WEBRTC_DISABLE_IPV6"] = "1"
     with _launch(binary_path=binary) as browser:
         page = browser.new_context().new_page()
         page.goto(local_https_page, wait_until="domcontentloaded", timeout=60000)
@@ -474,97 +336,365 @@ def test_srflx_is_real_and_resolvable(local_https_page):
     cands = candidates(res["candidates"])
     assert cands, "ICE produced ZERO candidates (blocked)"
     assert host_is_mdns(cands), [c["address"] for c in host_candidates(cands)]
-    srflx = [c for c in srflx_candidates(cands) if c["address"] == _FAKE_EGRESS]
-    assert srflx, f"no synthetic srflx with {_FAKE_EGRESS}: {res['candidates']}"
-    ok, reasons = srflx_realness(srflx[0], expected_ip=_FAKE_EGRESS)
-    assert ok, reasons
+    srflx = srflx_candidates(cands)
+    for c in srflx:
+        ok, reasons = srflx_realness(c, expected_ip=c["address"])
+        assert ok, reasons
     # Two srflx for the same base must share ONE stable foundation (Fix B).
-    assert len({c["foundation"] for c in srflx}) == 1
-    assert creep_get_ipaddress(res["sdp"]) == _FAKE_EGRESS
+    assert len({c["foundation"] for c in srflx}) <= 1
 
 
 @pytest.mark.e2e
 def test_not_blocked_behind_tcp_only_socks(socks5_tcp_only):
-    """Fix C sentinel: behind a TCP-only SOCKS proxy on a remote origin, ICE
-    must still complete (host .local + synthetic srflx), not return zero
-    candidates. Without Fix C this page is fully 'blocked'."""
+    """Behind a TCP-only SOCKS proxy on a remote origin, ICE must still complete
+    (host .local candidates), not return zero candidates: a fully blocked
+    WebRTC is itself a tell. The session declares its network from the seed
+    (STEALTHFOX_WEBRTC_NETWORK); that variable is read by the new engine only."""
     binary = _e2e_binary()
     if not binary:
         pytest.skip("no patched binary (set STEALTHFOX_E2E_BINARY)")
-    os.environ["STEALTHFOX_WEBRTC_PUBLIC_IP"] = _FAKE_EGRESS
-    os.environ["STEALTHFOX_WEBRTC_DISABLE_IPV6"] = "1"
     proxy = {"server": f"socks5://127.0.0.1:{socks5_tcp_only.port}"}
     try:
         with _launch(binary_path=binary, proxy=proxy) as browser:
             page = browser.new_context().new_page()
             # remote origin loaded THROUGH the local SOCKS proxy (not localhost,
-            # so no proxy-bypass) → WebRTC proxy config active → Fix C path.
+            # so no proxy-bypass) -> WebRTC proxy config active.
             page.goto("https://example.com/", wait_until="domcontentloaded", timeout=70000)
             res = page.evaluate(_PROBE_JS)
     except Exception as exc:  # network/proxy unavailable in this environment
         pytest.skip(f"proxy/network path unavailable: {exc!r}")
     cands = candidates(res["candidates"])
-    # Hard regression check: ZERO candidates means WebRTC is fully blocked behind
-    # the SOCKS proxy - that's the Fix C regression this sentinel exists to catch.
-    assert cands, "behind SOCKS the gather returned ZERO candidates - Fix C regressed (blocked)"
+    assert cands, "behind SOCKS the gather returned ZERO candidates (blocked)"
     assert host_is_mdns(cands)
-    # A missing synthetic srflx used to be a skip, blamed on "a datacenter CI
-    # box". That was wrong, and the skip hid a real defect on every Linux run:
-    # behind a SOCKS proxy with remote DNS the document channel reports
-    # 0.0.0.0 as the server address, and Firefox hands that wildcard to nICEr's
-    # default-route probe. Windows refuses a UDP connect() to 0.0.0.0, so Fix C
-    # fires and the synthetic srflx is born; Linux accepts it and answers
-    # 127.0.0.1, so Fix C never fired, no srflx was born, and real sites saw
-    # WebRTC as blocked. firefox-35 rejects a wildcard target in nICEr itself,
-    # so Linux takes the Windows path. From that engine on, a missing srflx is
-    # the defect this sentinel exists for, on every platform, and it FAILS.
-    # Only an engine older than firefox-35 still skips, naming the known defect.
-    srflx = [c for c in srflx_candidates(cands) if c["address"] == _FAKE_EGRESS]
-    if not srflx:
-        revision = _engine_revision()
-        if revision is not None and revision < 35:
-            pytest.skip(f"engine firefox-{revision} predates the nICEr wildcard "
-                        "fix: behind SOCKS on Linux no synthetic srflx is born "
-                        "(known defect B236, fixed in firefox-35)")
-        pytest.fail("behind SOCKS the gather has no synthetic srflx with "
-                    f"{_FAKE_EGRESS} on engine {_engine_tag()}: real sites see "
-                    f"WebRTC as blocked (B236). Candidates: {res['candidates']}")
-    assert creep_get_ipaddress(res["sdp"]) == _FAKE_EGRESS
 
 
-def _engine_tag() -> str:
-    """The release tag of the engine just launched. The launch refuses a binary
-    the active seal does not describe (`verify_engine`), so after a launch the
-    active seal's tag IS the binary's revision."""
-    from invisible_core.seal import active_seal
-    return active_seal().tag
+# The gather the next tests read: one STUN server, by number, and everything the engine says about it.
+_RELAY_PROBE_JS = r"""async (stun) => {
+  const t0 = performance.now();
+  const pc = new RTCPeerConnection({iceServers: [{urls: [stun]}]});
+  pc.createDataChannel('');
+  const cands = [], errors = [], at = {};
+  pc.addEventListener('icecandidate', e => {
+    if (e.candidate && e.candidate.candidate) {
+      cands.push(e.candidate.candidate);
+      const typ = (e.candidate.candidate.match(/ typ (\w+)/) || [])[1];
+      if (typ && !(typ in at)) at[typ] = Math.round(performance.now() - t0);
+    }
+  });
+  pc.addEventListener('icecandidateerror', e => { errors.push({code: e.errorCode, text: e.errorText, url: e.url}); at.error = Math.round(performance.now() - t0); });
+  await pc.setLocalDescription(await pc.createOffer());
+  await new Promise(resolve => {
+    const timer = setTimeout(resolve, 25000);
+    pc.addEventListener('icegatheringstatechange', () => {
+      if (pc.iceGatheringState === 'complete') { at.complete = Math.round(performance.now() - t0); clearTimeout(timer); resolve(); }
+    });
+  });
+  const sdp = (pc.localDescription && pc.localDescription.sdp) || '';
+  try { pc.close(); } catch (e) {}
+  return {candidates: cands, errors, sdp, at_ms: at};
+}"""
 
 
-def _engine_revision():
-    """N for a `firefox-N` tag (a local seal may append to it, as in
-    `firefox-34-prfix`), or None when the tag says no revision. None never
-    buys a skip: an engine that cannot say it is old is judged as a new one."""
-    m = re.match(r"firefox-(\d+)", _engine_tag())
-    return int(m.group(1)) if m else None
+# The two prefs that decide where ICE runs are LOCKED to the retail value by the engine (toolkit/xre/nsAppRunner.cpp, after the user
+# prefs are loaded): a caller that asks for the ICE in the process of the page, or for no socket process, gets the socket process all the
+# same, and the srflx is born through the relay. Both rows below are such callers; the first is the default.
+_ICE_PREFS = [
+    {},                                                          # the engine's default: ICE in the socket process
+    {"media.peerconnection.mtransport_process": False},          # a caller asks for the ICE in the process of the page: locked
+    {"network.process.enabled": False},                          # a caller asks for no socket process: locked
+]
+_ICE_IDS = ["ice_in_the_socket_process", "the_caller_asks_for_ice_in_the_content_process_and_the_lock_wins",
+            "the_caller_asks_for_no_socket_process_and_the_lock_wins"]
+
+
+def _gather_behind_a_coherent_gateway(monkeypatch, credentials, ice_prefs, rtt_ms, page_first_ms=None):
+    """Launch the default engine behind a local gateway with coherent UDP, `rtt_ms` away, gather with a STUN server only
+    its relay reaches, and say whether the page's request took the relay and what the gather looked like."""
+    binary = _e2e_binary()
+    if not binary:
+        pytest.skip("no patched binary (set STEALTHFOX_E2E_BINARY)")
+    from invisible_core import _geo
+
+    from _socks_servers import STUN_NUMBER, STUN_PORT, WEB_ADDRESS, coherent
+    stun = f"stun:{STUN_NUMBER}:{STUN_PORT}"
+    user, password = credentials or (None, None)
+    # The relay sits on the address of this host, as a real gateway's does: the engine's ICE sockets are bound to an
+    # interface address, and on Windows such a socket cannot send to a relay on loopback.
+    with coherent(user=user, password=password, relay_host=this_host_address(), rtt_ms=rtt_ms) as gateway:
+        exit_ip = gateway.tcp_exit
+        # The session asks the gateway for its TCP exit over HTTPS, which no local gateway can answer as itself: the
+        # answer is the gateway's. The UDP probe that follows is NOT replaced: it runs through the relay, for real.
+        monkeypatch.setattr(_geo, "discover_egress_ip", egress_by_proxy(gateway))
+        extra_prefs = {"media.peerconnection.ice.obfuscate_host_addresses": True, **ice_prefs}
+        with _launch_behind(gateway, binary_path=binary, extra_prefs=extra_prefs) as browser:
+            page = browser.new_context().new_page()
+            if page_first_ms is None:
+                page.goto("about:blank")
+            else:
+                # A page that is loaded through the gateway, and a while later asks for WebRTC.
+                page.goto("http://%s/" % WEB_ADDRESS)       # by address: the browser resolves names itself
+                page.wait_for_timeout(page_first_ms)
+            res = page.evaluate(_RELAY_PROBE_JS, stun)
+        carried = [(host, port) for host, port, _payload in gateway.datagrams]
+        stun_requests = gateway.stun.requests
+        associates = gateway.associates
+    srflx = [c for c in srflx_candidates(candidates(res["candidates"])) if c["address"] == exit_ip]
+    verdict = (f"srflx with the gateway's exit {exit_ip}: {srflx}; candidates: {res['candidates']}; "
+               f"ICE errors: {res['errors']}; gather timings (ms from the offer): {res['at_ms']}; "
+               f"datagrams the relay carried: {carried}; STUN requests the server answered: {stun_requests}; "
+               f"UDP ASSOCIATEs the gateway saw: {associates}; round trip to the gateway: {rtt_ms} ms")
+    return bool(srflx) and (STUN_NUMBER, STUN_PORT) in carried, verdict, res["at_ms"]
+
+
+@pytest.mark.e2e
+@pytest.mark.parametrize("credentials", [None, ("alice", "s3cret"), ("user~tcp-windows-65535", "not-a-real-password")],
+                         ids=["no_auth", "user_and_password", "user_with_a_tilde"])
+@pytest.mark.parametrize("ice_prefs", _ICE_PREFS, ids=_ICE_IDS)
+@pytest.mark.usefixtures("the_udp_line")
+def test_a_gateway_with_coherent_udp_gives_the_page_a_srflx_born_through_its_relay(monkeypatch, credentials, ice_prefs):
+    """The default engine, a SOCKS5 gateway that relays UDP and whose UDP exit is its TCP exit: the page's STUN request
+    goes THROUGH the relay and the srflx it gets is the gateway's exit.
+
+    ICE runs in the socket process (the sockets are NrSocket's, where the layer is attached) whatever the caller asks:
+    `media.peerconnection.mtransport_process` and `network.process.enabled` are locked to their retail value by the engine,
+    so a caller who sets either to false (rows 2 and 3) gets the same srflx through the relay as the default. Each with a
+    gateway that wants no credentials and with one that does. A request that does not take the relay ends in an ICE
+    error 701 and no srflx; the failure message says what the gateway saw.
+
+    The gateway is local (tests/_socks_servers.py): the TCP exit and the UDP exit it reports are documentation addresses,
+    and the STUN server the page is given is a documentation address too, so the only road to it is the relay. The page
+    reaches the proxy by the session the Juggler holds, as every page does; nothing here sets a pref of the engine."""
+    took_the_relay, verdict, _timings = _gather_behind_a_coherent_gateway(monkeypatch, credentials, ice_prefs, rtt_ms=0)
+    assert took_the_relay, "the page's STUN request did not take the relay. " + verdict
+
+
+@pytest.mark.e2e
+@pytest.mark.usefixtures("the_udp_line")
+def test_a_host_with_ipv6_addresses_gathers_through_an_ipv4_relay(monkeypatch):
+    """The ICE sockets are opened with the family of the host candidate they carry (NrSocket::create, PR_OpenUDPSocket
+    with the address's family): an IPv6 host gets AF_INET6 sockets next to its AF_INET ones, while the relay of the
+    gateway is IPv4. With the host addresses in the clear, the IPv4 STUN server must still be answered through the relay."""
+    took_the_relay, verdict, _timings = _gather_behind_a_coherent_gateway(
+        monkeypatch, ("alice", "s3cret"), {"media.peerconnection.ice.obfuscate_host_addresses": False}, 0)
+    print("[families] " + verdict)
+    assert took_the_relay, "the page's STUN request did not take the relay. " + verdict
+
+
+@pytest.mark.e2e
+@pytest.mark.parametrize("rtt_ms", [80, 150, 250])
+@pytest.mark.parametrize("ice_prefs", _ICE_PREFS, ids=_ICE_IDS)
+@pytest.mark.usefixtures("the_udp_line")
+def test_a_gateway_that_is_far_away_still_gives_the_page_a_srflx_born_through_its_relay(monkeypatch, ice_prefs, rtt_ms):
+    """The same gather with a gateway that is not on loopback: every answer on the control connection waits `rtt_ms`
+    and the relay adds half of it each way. The layer opens one association per ICE socket, one after the other, each
+    with a connect, a greeting, an authentication and the ASSOCIATE; a gather must not be over before they are done."""
+    took_the_relay, verdict, _timings = _gather_behind_a_coherent_gateway(
+        monkeypatch, ("alice", "s3cret"), ice_prefs, rtt_ms)
+    print(f"[gather] rtt {rtt_ms} ms, {_ICE_IDS[_ICE_PREFS.index(ice_prefs)]}: {_timings}")
+    assert took_the_relay, "the page's STUN request did not take the relay. " + verdict
+
+
+@pytest.mark.e2e
+@pytest.mark.parametrize("ice_prefs", _ICE_PREFS, ids=_ICE_IDS)
+@pytest.mark.usefixtures("the_udp_line")
+def test_the_first_candidate_of_a_gather_does_not_wait_for_a_gateway_that_is_far_away(monkeypatch, ice_prefs):
+    """⛔ THE KNOWN-BAD INPUT: a gateway 250 ms away. The layer made its associations one after the other on the thread of
+    the ICE sockets, a connect, a greeting, an authentication and the ASSOCIATE each, so the first candidate of the page
+    came out after about twelve round trips (host candidate at 2.3 s on Linux and 3.0 s on Windows, against well under a
+    second next to the gateway), and a page that times `icecandidate` reads it. A candidate does not wait for the proxy:
+    the host candidate of the far gather comes within a round trip and a quarter of a second of the near one, and the
+    srflx within the handshake (four round trips) and a STUN request (one) of its host candidate."""
+    rtt_ms = 250
+    near_ok, near_verdict, near = _gather_behind_a_coherent_gateway(monkeypatch, ("alice", "s3cret"), ice_prefs, 0)
+    far_ok, far_verdict, far = _gather_behind_a_coherent_gateway(monkeypatch, ("alice", "s3cret"), ice_prefs, rtt_ms)
+    print(f"[first candidate] near {near}, {rtt_ms} ms away {far}")
+    assert near_ok, near_verdict
+    assert far_ok, far_verdict
+    assert far["host"] - near["host"] <= rtt_ms + 250, (
+        f"the first candidate waited for the gateway: host candidate at {far['host']} ms behind a gateway {rtt_ms} ms away, "
+        f"{near['host']} ms next to it. {far_verdict}")
+    assert far["srflx"] - far["host"] <= 5 * rtt_ms + 250, (
+        f"the srflx came {far['srflx'] - far['host']} ms after the host candidate. {far_verdict}")
+
+
+@pytest.mark.e2e
+@pytest.mark.usefixtures("the_udp_line")
+def test_a_gather_after_the_page_loaded_through_the_gateway_costs_only_the_road_to_the_server(monkeypatch):
+    """⛔ THE KNOWN-BAD INPUT: a gateway 250 ms away, a page loaded through it, and two seconds later the page asks for
+    WebRTC. Next to a gateway the srflx comes at once; behind this one it may come later by the road itself, the round
+    trip of the relay to the STUN server and back, and by nothing else: the connect, the greeting, the authentication and
+    the ASSOCIATE of each socket (about 0.56 s against the real driver) are made before the page asks, when the proxy
+    of the context is first used, not after. A target without the proxy has no such cost to show."""
+    rtt_ms = 250
+    near_ok, near_verdict, near = _gather_behind_a_coherent_gateway(
+        monkeypatch, ("alice", "s3cret"), {}, 0, page_first_ms=2000)
+    far_ok, far_verdict, far = _gather_behind_a_coherent_gateway(
+        monkeypatch, ("alice", "s3cret"), {}, rtt_ms, page_first_ms=2500)
+    print(f"[page first] near {near}, {rtt_ms} ms away {far}")
+    assert near_ok, near_verdict
+    assert far_ok, far_verdict
+    assert far["host"] - near["host"] <= 100, f"the host candidate waited: {far_verdict}"
+    assert far["srflx"] - near["srflx"] <= rtt_ms + 250, (
+        f"the srflx came {far['srflx']} ms after the offer behind a gateway {rtt_ms} ms away, {near['srflx']} ms next to "
+        f"it: more than the road to the server ({rtt_ms} ms). {far_verdict}")
+
+
+@pytest.mark.e2e
+@pytest.mark.usefixtures("the_udp_line")
+def test_two_contexts_with_two_proxies_each_gets_the_srflx_of_its_own(monkeypatch):
+    """⛔ THE KNOWN-BAD INPUT: a session whose proxy is one gateway and a context whose proxy is another. The proxy a
+    page's traffic takes is the one of its context, UDP included: the srflx of each context is the exit of its own
+    gateway. (The engine took one proxy for the whole session and handed over nothing when two differed.)"""
+    binary = _e2e_binary()
+    if not binary:
+        pytest.skip("no patched binary (set STEALTHFOX_E2E_BINARY)")
+    from invisible_core import _geo
+
+    from _socks_servers import STUN_NUMBER, STUN_PORT, coherent
+    stun = f"stun:{STUN_NUMBER}:{STUN_PORT}"
+    host = this_host_address()
+    with coherent(exit_ip="203.0.113.7", user="alice", password="s3cret", relay_host=host) as first,             coherent(exit_ip="198.51.100.77", user="bob", password="hunter2", relay_host=host) as second:
+        # Each gateway reports the TCP exit of its own: the context proxy is measured against ITS exit, not the session's.
+        monkeypatch.setattr(_geo, "discover_egress_ip", egress_by_proxy(first, second))
+        extra_prefs = {"media.peerconnection.ice.obfuscate_host_addresses": True}
+        with _launch_behind(first, binary_path=binary, extra_prefs=extra_prefs) as browser:
+            of_the_session = browser.new_context().new_page()
+            of_its_own = browser.new_context(proxy=second.proxy).new_page()
+            res_session = of_the_session.evaluate(_RELAY_PROBE_JS, stun)
+            res_own = of_its_own.evaluate(_RELAY_PROBE_JS, stun)
+
+    def exits(res):
+        return sorted(c["address"] for c in srflx_candidates(candidates(res["candidates"])))
+
+    assert exits(res_session) == [first.tcp_exit], f"the context of the session: {res_session}"
+    assert exits(res_own) == [second.tcp_exit], f"the context with a proxy of its own: {res_own}"
+
+
+@pytest.mark.e2e
+@pytest.mark.usefixtures("the_udp_line")
+def test_the_turn_over_tcp_of_a_context_goes_through_the_proxy_of_that_context(monkeypatch):
+    """⛔ THE KNOWN-BAD INPUT: the proxy lookup of the TCP socket of a TURN server was made with a channel of the system
+    principal, so the filter of the session answered for context 0 and a SOCKS5 proxy of the context was not the one the
+    TURN connection took. The page below sits in a context with a proxy of its own and asks for a TURN server over TCP:
+    the CONNECT must reach the gateway of that context and not the one of the session."""
+    binary = _e2e_binary()
+    if not binary:
+        pytest.skip("no patched binary (set STEALTHFOX_E2E_BINARY)")
+    from invisible_core import _geo
+
+    from _socks_servers import coherent
+    host = this_host_address()
+    turn_host, turn_port = "198.51.100.9", 3478
+    with coherent(exit_ip="203.0.113.7", user="alice", password="s3cret", relay_host=host) as session,             coherent(exit_ip="198.51.100.77", user="bob", password="hunter2", relay_host=host) as context:
+        monkeypatch.setattr(_geo, "discover_egress_ip", egress_by_proxy(session, context))
+        extra_prefs = {"media.peerconnection.ice.obfuscate_host_addresses": True}
+        with _launch_behind(session, binary_path=binary, extra_prefs=extra_prefs) as browser:
+            page = browser.new_context(proxy=context.proxy).new_page()
+            page.goto("about:blank")
+            page.evaluate("""async (turn) => {
+              const pc = new RTCPeerConnection({iceServers: [{urls: [turn], username: 'u', credential: 'p'}]});
+              pc.createDataChannel('');
+              await pc.setLocalDescription(await pc.createOffer());
+              await new Promise(r => setTimeout(r, 6000));
+              pc.close();
+            }""", f"turn:{turn_host}:{turn_port}?transport=tcp")
+        in_context = [c for c in context.connects if c == (turn_host, turn_port)]
+        in_session = [c for c in session.connects if c == (turn_host, turn_port)]
+    assert in_context and not in_session, (
+        f"the TURN connection of the context: by the gateway of the context {context.connects}, "
+        f"by the gateway of the session {session.connects}")
+
+
+def _gather_where_the_udp_is_dropped(gateway, monkeypatch, measured):
+    """Launch behind ``gateway`` (a SOCKS5 proxy whose UDP is not coherent), gather with a STUN server only its relay could
+    reach, and say what the target must look like: a retail Windows at home on a network that blocks UDP.
+
+    The core measured the proxy before the launch declared it, and it is ``measured`` (``no`` or ``unmeasured``): the engine
+    sends the page's UDP nowhere, not to the relay and not direct, so the STUN request retransmits and ends in 701 in nICEr's
+    own time. The page gets host candidates and no srflx: the session does not invent one (a candidate with the exit of TCP and
+    no allocation behind it, raddr 0.0.0.0, is a value no browser makes)."""
+    binary = _e2e_binary()
+    if not binary:
+        pytest.skip("no patched binary (set STEALTHFOX_E2E_BINARY)")
+    from invisible_core import _geo
+
+    from _socks_servers import STUN_NUMBER
+    stun = f"stun:{STUN_NUMBER}:{STUN_PORT}"
+    monkeypatch.setattr(_geo, "discover_egress_ip", egress_by_proxy(gateway))
+    extra_prefs = {"media.peerconnection.ice.obfuscate_host_addresses": True}
+    with _launch_behind(gateway, binary_path=binary, extra_prefs=extra_prefs) as browser:
+        page = browser.new_context().new_page()
+        page.goto("about:blank")
+        res = page.evaluate(_RELAY_PROBE_JS, stun)
+    carried = [(host, port) for host, port, _payload in gateway.datagrams]
+    declared = declared_udp(gateway.proxy, measure_servers(gateway))
+    assert declared == measured, f"the core declared udp={declared} for this proxy, the measurement is {measured}"
+    assert (STUN_NUMBER, STUN_PORT) not in carried, (
+        f"the engine sent the page's UDP to a relay that was not measured coherent: {carried}")
+    typ = [c["typ"] for c in candidates(res["candidates"])]
+    assert "srflx" not in typ and "relay" not in typ, f"a candidate that nothing allocated: {res['candidates']}"
+    assert "host" in typ, f"no host candidate at all: {res['candidates']}"
+    assert [e["code"] for e in res["errors"]] == [701], f"a network that blocks UDP ends the STUN request in 701: {res['errors']}"
+    # The shape of a retail Firefox on a network that drops UDP (notes/retail-udp-blocked-reference.md): udp and tcp host
+    # candidates, and the 701 of the UDP request at nICEr's own time, 11.1-11.3 s, together with the end of the gather: never
+    # an immediate error, never a candidate that nothing allocated.
+    protocols = sorted({c["proto"].upper() for c in candidates(res["candidates"]) if c["typ"] == "host"})
+    assert protocols == ["TCP", "UDP"], f"host candidates of a retail on a network that drops UDP: {res['candidates']}"
+    assert 10_000 <= res["at_ms"]["error"] <= 13_000, (
+        f"the 701 of the UDP request came at {res['at_ms']['error']} ms; nICEr's time on a network that drops UDP is 11.1-11.3 s")
+
+
+@pytest.mark.e2e
+@pytest.mark.usefixtures("the_udp_line")
+def test_a_proxy_that_does_not_relay_udp_gives_no_srflx_at_all(monkeypatch):
+    """⛔ THE KNOWN-BAD INPUT: a gateway that refuses UDP ASSOCIATE (reply 7). The core measures it ``no``: the target is a
+    retail Windows at home on a network that blocks UDP (see :func:`_gather_where_the_udp_is_dropped`)."""
+    from _socks_servers import tcp_only
+    with tcp_only(user="alice", password="s3cret") as gateway:
+        _gather_where_the_udp_is_dropped(gateway, monkeypatch, "no")
+
+
+@pytest.mark.e2e
+@pytest.mark.usefixtures("the_udp_line")
+def test_a_proxy_whose_udp_leaves_from_another_address_gives_no_srflx_at_all(monkeypatch):
+    """⛔ THE KNOWN-BAD INPUT: a gateway that grants UDP ASSOCIATE and answers STUN, but with an address that is not its TCP
+    exit: the classic leak (a srflx that is not the address of the page's HTTP). The core measures it ``no`` and the engine
+    treats it as a router that drops UDP: the relay is granted but the page's datagrams never go to it."""
+    from _socks_servers import mismatched
+    with mismatched(user="alice", password="s3cret", relay_host=this_host_address()) as gateway:
+        _gather_where_the_udp_is_dropped(gateway, monkeypatch, "no")
+
+
+@pytest.mark.e2e
+@pytest.mark.usefixtures("the_udp_line")
+def test_a_proxy_whose_relay_never_answers_gives_no_srflx_at_all(monkeypatch):
+    """⛔ THE KNOWN-BAD INPUT: a gateway that grants UDP ASSOCIATE and carries datagrams, but no STUN server ever answers (a
+    router that drops UDP behind a working handshake). The measurement ends within its budget in ``unmeasured``: not a
+    refusal, but the engine acts on ``coherent`` only, so the page is where it is on a network that blocks UDP."""
+    from _socks_servers import silent_udp
+    with silent_udp(user="alice", password="s3cret", relay_host=this_host_address()) as gateway:
+        _gather_where_the_udp_is_dropped(gateway, monkeypatch, "unmeasured")
+
+
 
 
 # ──────────────────────────────────────────────────────────────────────────
 #  The egress IP must not change MID-SESSION.
 #
 #  Measured on 2026-08-25 on browserleaks, behind a residential proxy: the
-#  page exited from 216.131.76.63 while the WebRTC srflx candidate announced
+#  page exited from 203.0.113.30 while a second reading of the exit said
 #  216.131.76.64, and the site says so plainly ("WebRTC IP doesn't match your
 #  Remote IP"). It was not a regression in the binary - interleaved A/B between
 #  the release binary and the new one: 4 runs out of 4 consistent on both.
 #
-#  The cause is that the IP declared to the engine is photographed ONCE, at
-#  launch, and residential proxies do not promise to keep it: the docs of the
+#  The cause is that the egress behind the timezone and the locale is photographed
+#  ONCE, at launch, and residential proxies do not promise to keep it: the docs of the
 #  two providers tried declare TIME-based sticky sessions (60 minutes max for
 #  one; a sliding timeout for the other, which also expires early if the peer
 #  disconnects). On a long session the drift is a certainty, not a risk - which
 #  is why short probes never saw it.
 #
-#  Owner's decision, 2026-08-25: it is not updated on the fly. A WebRTC IP that
+#  Owner's decision, 2026-08-25: it is not updated on the fly. A timezone that
 #  changes in front of the site's own eyes is as unnatural as the mismatch
 #  itself. A proxy that does not hold the session is not fit for purpose, and
 #  the product must SAY SO instead of carrying on.
@@ -745,3 +875,6 @@ def test_a_burst_of_silent_probes_rejects_the_session():
     assert _session.ProxyEgressNonVerificabile is not _session.ProxyEgressDrifted, (
         "unmeasurable and drifted are two different diagnoses and must be "
         "distinguished by type too, or a catch cannot react differently")
+    # what goes unconfirmed is the timezone and the locale decided from the egress: the engine declares no egress address
+    doc = " ".join(_session.ProxyEgressNonVerificabile.__doc__.split())
+    assert "timezone" in doc and "locale" in doc and "an address" not in doc, doc

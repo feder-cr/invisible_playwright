@@ -21,10 +21,14 @@ test says what the product does not do yet and the step that makes it green:
     9  named world after the OOP frame        step 1a + 2b
     10 console of the OOP frame               step 1a
 
-The oracle for "another process" is the set of the engine's processes that host a site, below the test
-(tests/_processes.py says how a site's process is told from a preallocated one): a cross-site frame adds at
-least one, a same-site one changes nothing. The set is read once it is quiet. Off Linux the two tests that
-count processes skip: no other system names the process.
+The oracle for "another process" is the name of the site (tests/_processes.py): with `fission.processSiteNames`
+on, the engine's process that hosts `http://a.test` is named after it, and the two tests that look at processes
+ask for the processes of one site and never compare two counts. Counting was wrong because the browser starts
+processes of its own: in every run, a second isolated process (remote type `webIsolated=https://mozgcp.net`) is
+born about a second after the process of the New Tab page, with any page, and under load it arrived between the
+two reads (red in 14 of 30 runs of the whole e2e suite, `[P] -> [P, P2]`). A cross-site frame gives a process
+for the frame's site; a same-site one leaves the page's site in its single process. Off Linux the two tests
+skip: no other system names the process.
 """
 from __future__ import annotations
 
@@ -38,14 +42,18 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from _processes import site_processes_below
+from _processes import NAMED_BY_SITE, site_processes_below
 from _servers import LocalServer
+
+SITE_A = "http://a.test"
+SITE_B = "http://b.test"
 
 FISSION_ON = {
     "fission.autostart": True,
     "fission.webContentIsolationStrategy": 1,   # IsolateEverything: site-origin
     "dom.ipc.processCount.webIsolated": 4,      # the desktop default
     "network.dns.localDomains": "a.test,b.test,c.test",
+    **NAMED_BY_SITE,                            # test-only: a process is named by its site (tests/_processes.py)
 }
 
 
@@ -127,23 +135,9 @@ def engine_dir(firefox_binary):
     return str(Path(firefox_binary).resolve().parent)
 
 
-def site_processes(engine_dir):
-    """The pids of the engine's processes below this test that host a site (tests/_processes.py)."""
-    return site_processes_below(os.getpid(), engine_dir)
-
-
-def quiet(engine_dir, seconds=3.0, limit=30.0):
-    """The set of the processes that host a site, once it has not changed for `seconds`."""
-    end = time.time() + limit
-    last, since = site_processes(engine_dir), time.time()
-    while time.time() < end:
-        time.sleep(0.25)
-        now = site_processes(engine_dir)
-        if now != last:
-            last, since = now, time.time()
-        elif time.time() - since >= seconds:
-            break
-    return last
+def processes_of(site, engine_dir):
+    """The pids of the engine's processes below this test that host `site` (named by it, tests/_processes.py)."""
+    return site_processes_below(os.getpid(), site, engine_dir)
 
 
 @pytest.fixture
@@ -161,21 +155,6 @@ def page(browser):
     page.set_default_timeout(3000)
     page.set_default_navigation_timeout(20000)
     return page
-
-
-@pytest.fixture
-def page_without_a_pool(firefox_binary):
-    """A page of a browser that keeps NO preallocated content processes (`dom.ipc.processPrelaunch.fission.number` 0): a process of a
-    site then appears only because a site needed one. The default pool hands a preallocated process to a site whenever it gets to it, so
-    a test that counts the processes of the sites between two reads sees the hand-out of the pool as if the frame had asked for it."""
-    from invisible_playwright import InvisiblePlaywright
-
-    with InvisiblePlaywright(seed=42, binary_path=firefox_binary, humanize=False, headless=True,
-                             extra_prefs=dict(FISSION_ON, **{"dom.ipc.processPrelaunch.fission.number": 0})) as browser:
-        page = browser.new_context().new_page()
-        page.set_default_timeout(3000)
-        page.set_default_navigation_timeout(20000)
-        yield page
 
 
 def wait_for(page, predicate, seconds=8.0):
@@ -216,41 +195,52 @@ def frame_with_origin(page, origin):
 
 @pytest.mark.e2e
 def test_cross_site_iframe_gets_its_own_process(page, cross_site_loop, engine_dir):
-    """Green today: it says the bench separates sites. Two sites in the frame tree add at least one process."""
+    """Green today: it says the bench separates sites. A frame of b.test in a page of a.test has a process of its own.
+
+    The processes are asked for by the name of their site, never counted between two reads (tests/_processes.py): the
+    page of a.test has exactly one, nobody has b.test; once the top has loaded, b.test has one, and a.test still has
+    one (the a.test leaf inside the b.test frame is in the top's process). The pid of a.test is not compared across
+    the navigation: a top-level navigation may land in another process of the same site (`mReplaceBrowsingContext`,
+    dom/ipc/ProcessIsolation.cpp, see the control below)."""
     page.goto(cross_site_loop["plain"])
-    before = quiet(engine_dir)
+    here = processes_of(SITE_A, engine_dir)
+    assert len(here) == 1, "the page of a.test must have one process of its site: %s" % sorted(here)
+    assert not processes_of(SITE_B, engine_dir), "a process for b.test before any page of it"
     page.goto(cross_site_loop["top"], wait_until="load")
     assert wait_for(page, lambda: any(r["path"] == "/report/loaded" and r["host"] == "a.test" and
                                 r["query"]["path"] == ["/leaf"] for r in cross_site_loop["reports"]))
-    after = quiet(engine_dir)
-    assert len(after - before) >= 1, "no new process for a site: before %s, after %s" % (sorted(before), sorted(after))
+    framed = processes_of(SITE_B, engine_dir)
+    assert len(framed) >= 1, "no process for the site of the frame (b.test)"
+    tops = processes_of(SITE_A, engine_dir)
+    assert len(tops) == 1, "the processes of a.test must still be one: %s" % sorted(tops)
 
 
 @pytest.mark.e2e
-def test_same_site_other_port_stays_in_process(page_without_a_pool, cross_site_loop, engine_dir):
-    """Green today, the control: a frame of the page's own site adds no process for a site.
+def test_same_site_other_port_stays_in_process(page, cross_site_loop, engine_dir):
+    """Green today, the control: a frame of the page's own site gets no process, and none for another site.
 
-    The browser here keeps NO preallocated processes (`page_without_a_pool`): with the default pool of three the count of the processes of
-    the sites moved between two reads without the frame having asked for anything - a preallocated process handed to a site later than
-    the first read ([63248] -> [63248, 63386] on a four-worker runner, the third time in a row that this control was red there for the
-    pool and not for the frame: 5402da4, ff2123e, fef0bc5). The frame is in the page's own origin (`a.test/leaf` in `a.test/plain`).
+    The processes of a.test are asked for by name before and after the frame is added: one pid, the same pid. Nothing
+    else is looked at: the browser starts processes of its own (the pool refill, a process for a Mozilla site started
+    by the New Tab page, `webIsolated=https://mozgcp.net`, there in every run and under load born after the first
+    read), and counting every process between two reads took them for the frame's (red in 14 of 30 runs). The frame
+    has run in its process when it reports, and that process got its name before any document loaded in it, so no
+    waiting for quiet is needed. The frame is in the page's own origin (`a.test/leaf` in `a.test/plain`).
 
     The frame is put in the page that is already shown, not reached by a navigation of the top. A top-level
     navigation whose old document may enter the back-forward cache replaces the browsing context
     (`mReplaceBrowsingContext`, dom/ipc/ProcessIsolation.cpp), and the new one may land in another process of
-    the same site (`dom.ipc.processCount.webIsolated` is 4): seen once on the e2e of #451, [10878] -> [10878,
-    11208] after a.test/plain -> a.test/same-site, never in 87 local runs. That is the top's process, not the
-    frame's; a frame of the page's site stays in the page's process."""
-    page = page_without_a_pool
+    the same site (`dom.ipc.processCount.webIsolated` is 4). That is the top's process, not the frame's; a frame of
+    the page's site stays in the page's process."""
     page.goto(cross_site_loop["plain"])
-    before = quiet(engine_dir)
-    assert len(before) >= 1, "the page of a site has no process of its own to compare with: %s" % sorted(before)
+    before = processes_of(SITE_A, engine_dir)
+    assert len(before) == 1, "the page of a.test must have one process of its site: %s" % sorted(before)
     page.evaluate("(u) => { const f = document.createElement('iframe'); f.id = 's'; f.src = u;"
                   " document.body.appendChild(f); }", cross_site_loop["leaf"])
     assert wait_for(page, lambda: any(r["path"] == "/report/loaded" and r["query"]["path"] == ["/leaf"]
                                       for r in cross_site_loop["reports"]))
-    after = quiet(engine_dir)
-    assert after == before, "a same-site frame changed the processes of the sites: %s -> %s" % (sorted(before), sorted(after))
+    after = processes_of(SITE_A, engine_dir)
+    assert after == before, "a same-site frame changed the processes of a.test: %s -> %s" % (sorted(before), sorted(after))
+    assert not processes_of(SITE_B, engine_dir), "a process for b.test, which no page here belongs to"
 
 
 # ── 3 .. 10: what the product does not do yet ──────────────────────────────────

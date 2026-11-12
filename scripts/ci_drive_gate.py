@@ -3,8 +3,20 @@
 
 A raw `firefox --screenshot` proves nothing about automation: a juggler-less
 binary renders a screenshot just fine and ships broken (firefox-8 did exactly
-that). This DRIVES the binary the way users will - Playwright launches it over
-the juggler pipe and exercises real paths.
+that). This DRIVES the binary the way users will - the wrapper (and the core under
+it) launches it over the juggler pipe and exercises real paths.
+
+⛔ THROUGH THE CORE, NOT THROUGH BARE PLAYWRIGHT. Since firefox-63 the engine holds
+every channel that asks the proxy service until the client has said how the
+session leaves the host (`Browser.setBrowserProxy`, or the explicit
+`Browser.setNoBrowserProxy` of a session without a proxy): nothing may leave the
+host before that. Stock Playwright sends the first only when it is given a proxy,
+so a bare `p.firefox.launch_persistent_context(executable_path=...)` navigates
+nowhere: run 43134774602, `Page.goto: Timeout 30000ms` on every leg, three
+attempts. The core's launch sends the decision FIRST, and declares the first run
+(terms of use, pre-onboarding) that this script used to copy into user.js, so
+the copy is gone with it. The job installs the core under test (core_ref, from
+git) and the wrapper, and seals the binary, before this script runs.
 
 Three levels (see `--click` / `--full`):
 
@@ -60,31 +72,9 @@ Exit 0 + "DRIVE GATE OK ..." on success; non-zero with a reason on failure.
 from __future__ import annotations
 
 import http.server
-import json
-import shutil
 import socketserver
 import sys
-import tempfile
 import threading
-from pathlib import Path
-
-# ⛔ THE FIRST RUN IS DECLARED HERE, A COPY OF THE CORE'S, written into the
-# profile's user.js. Since firefox-55 the engine leaves Mozilla's first-run
-# lines and invisible_core declares the state (terms of use accepted long ago,
-# pre-onboarding off). This job installs only Playwright, so nothing declared
-# it: measured 2026-11-02 on run 41388672849, Windows showed the terms-of-use
-# modal ("the page did not handle mouse event") and Linux opened
-# https://www.mozilla.org/en-US/privacy/firefox/ in a second tab (the legacy
-# data-reporting flow) ("Unexpected number of tabs in the new window: 2").
-# Upstream Playwright sends its own defaults in Browser.enable, which this
-# engine refuses, so a raw launch runs on Mozilla's lines alone. With these
-# three in user.js, both legs drive. tests/test_ci_drive_gate_first_run.py
-# ties the copy to the core.
-FIRST_RUN = {
-    "browser.preonboarding.enabled": False,
-    "termsofuse.acceptedVersion": 4,
-    "termsofuse.acceptedDate": "1785573000000",
-}
 
 HTML = (
     "<!doctype html><html><head><title>dt</title></head><body>"
@@ -155,16 +145,12 @@ def _drive(exe: str, url: str, level: str) -> str:
     """One run. `level` is "smoke", "click" or "full". Returns the UA."""
     interacts = level in ("click", "full")
     full = level == "full"
-    from playwright.sync_api import sync_playwright
+    from invisible_playwright import InvisiblePlaywright
 
-    # A user.js is read at startup, before the window that would carry the
-    # modal; a persistent context is the only way to hand Playwright a profile.
-    profile_dir = Path(tempfile.mkdtemp(prefix="ci-drive-gate-"))
-    (profile_dir / "user.js").write_bytes(
-        "".join("user_pref(%s, %s);\n" % (json.dumps(k), json.dumps(v))
-                for k, v in sorted(FIRST_RUN.items())).encode("utf-8"))
-    with sync_playwright() as p:
-        ctx = p.firefox.launch_persistent_context(str(profile_dir), executable_path=exe, headless=True)
+    # The core declares the first run and sends the session's road before anything else; the seal of the binary is
+    # INVISIBLE_SEAL_FILE (the job sets it), and `binary_path` is the binary under test.
+    with InvisiblePlaywright(seed=42, binary_path=exe, headless=True, humanize=False) as browser:
+        ctx = browser.new_context()
         try:
             page = ctx.new_page()
             resp = page.goto(url, wait_until="load")
@@ -192,7 +178,6 @@ def _drive(exe: str, url: str, level: str) -> str:
                 inter["plugins"] = page.evaluate("() => navigator.plugins instanceof PluginArray")
         finally:
             ctx.close()
-            shutil.rmtree(profile_dir, ignore_errors=True)
 
     # SMOKE asserts (always).
     assert "Firefox" in ua, f"unexpected UA (binary not driving correctly): {ua!r}"
