@@ -39,39 +39,69 @@ pytestmark = pytest.mark.e2e
 #: Loopback goes through the proxy too (as in test_doh_through_the_proxy_e2e.py), so the road of the page is observable.
 PREFS = {"network.proxy.allow_hijacking_localhost": True, "network.proxy.no_proxies_on": ""}
 
+#: ⛔ The variant with the lab's exit on loopback (127.0.0.2). The TURN server tells the browser, in the XOR-MAPPED-ADDRESS of its
+#: answer, the address it heard the Allocate from: here a loopback one, and a retail Firefox throws that answer away as "bogus"
+#: (`nr_stun_transport_addr_check` in stun_client_ctx.cpp) unless the ICE context allows loopback, which this pref does. It is the lab's
+#: address, not a behaviour of the product: on the real network the mapped address is the exit's, and the variant above (an exit that
+#: is not loopback, no pref) proves that on Linux. This one runs on Windows too: the exit above is an address added to an interface
+#: (administrator and `ip`), which is Linux only until the runner of Windows does the same (work of the release after firefox-63).
+PREFS_LOOPBACK_EXIT = {**PREFS, "media.peerconnection.ice.loopback": True}
+
+
+def _the_core_is_told_the_exit(monkeypatch, chain):
+    # The probe of the core that asks for the TCP exit goes nowhere (the world has no network but the gateway): it is told
+    # the exit of the chain, the address its datagrams leave from. The core's UDP measurement that follows is NOT replaced:
+    # it asks the chain's relay for a STUN Binding for real and compares what comes back with that exit, so the road
+    # is declared ``coherent`` by measurement and the engine sends the page's UDP to the relay.
+    try:
+        from invisible_core import _geo
+        monkeypatch.setattr(_geo, "discover_egress_ip", egress_by_proxy(chain), raising=False)
+    except Exception:   # noqa: BLE001
+        pass
+    try:
+        from invisible_playwright import InvisiblePlaywright
+        monkeypatch.setattr(InvisiblePlaywright, "_assert_uscita_invariata", lambda self: None, raising=False)
+    except Exception:   # noqa: BLE001
+        pass
+
 
 @pytest.fixture
 def gateway(monkeypatch):
     # ⛔ THE EXIT OF THE LAB IS NOT A LOOPBACK ADDRESS. The TURN server tells the browser, in the XOR-MAPPED-ADDRESS of its answer, the
     # address it heard the Allocate from: the gateway's exit. nICEr throws away an answer whose mapped address is loopback as "bogus"
     # (stun_client_ctx.cpp nr_stun_transport_addr_check, unless the pref `media.peerconnection.ice.loopback` is on, which it is not in a
-    # product), so the exit is a documentation address held on `lo` (root, Linux: the suite of this file is listed for Linux only).
+    # product), so the exit is a documentation address held on `lo` (root, Linux: the suite of this test is listed for Linux only).
     with chain_mod.lab_exit_address() as exit_ip, chain_mod.Chain(rtt_ms=130, exit_host=exit_ip) as chain:
-        # The probe of the core that asks for the TCP exit goes nowhere (the world has no network but the gateway): it is told
-        # the exit of the chain, the address its datagrams leave from. The core's UDP measurement that follows is NOT replaced:
-        # it asks the chain's relay for a STUN Binding for real and compares what comes back with that exit, so the road
-        # is declared ``coherent`` by measurement and the engine sends the page's UDP to the relay.
-        try:
-            from invisible_core import _geo
-            monkeypatch.setattr(_geo, "discover_egress_ip", egress_by_proxy(chain), raising=False)
-        except Exception:   # noqa: BLE001
-            pass
-        try:
-            from invisible_playwright import InvisiblePlaywright
-            monkeypatch.setattr(InvisiblePlaywright, "_assert_uscita_invariata", lambda self: None, raising=False)
-        except Exception:   # noqa: BLE001
-            pass
+        _the_core_is_told_the_exit(monkeypatch, chain)
+        yield chain
+
+
+@pytest.fixture
+def gateway_on_loopback(monkeypatch):
+    with chain_mod.Chain(rtt_ms=130) as chain:     # the exit is chain_mod.EXIT_HOST, 127.0.0.2
+        _the_core_is_told_the_exit(monkeypatch, chain)
         yield chain
 
 
 def test_a_turn_srflx_by_name_arrives_through_the_relay_before_the_tick(gateway, firefox_binary, engine_at_least):
+    """The exit of the lab is an address that is not loopback, and no pref: the product's own setting (Linux, root)."""
+    _walk(gateway, firefox_binary, engine_at_least, PREFS)
+
+
+def test_a_turn_srflx_by_name_arrives_through_the_relay_when_the_exit_of_the_lab_is_loopback(gateway_on_loopback, firefox_binary,
+                                                                                          engine_at_least):
+    """The exit of the lab is 127.0.0.2 and the ICE context allows loopback (the pref): the same walk on every system, Windows too."""
+    _walk(gateway_on_loopback, firefox_binary, engine_at_least, PREFS_LOOPBACK_EXIT)
+
+
+def _walk(gateway, firefox_binary, engine_at_least, prefs):
     import h2  # noqa: F401 - the dev extra installs it: a missing one is a failure, never a skip
     engine_at_least("firefox-63")
     from invisible_playwright import InvisiblePlaywright
 
     with InvisiblePlaywright(headless=True, binary_path=firefox_binary, timezone="America/New_York", locale="en-US",
                              proxy=gateway.proxy, udp_stun_servers=measure_servers(gateway),
-                             extra_prefs={**PREFS, **DOH_PROVIDER_PREFS}) as browser:
+                             extra_prefs={**prefs, **DOH_PROVIDER_PREFS}) as browser:
         page = browser.new_context(ignore_https_errors=True).new_page()
         page.goto(gateway.page.url, wait_until="domcontentloaded", timeout=60000)
         try:
