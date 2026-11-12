@@ -6,6 +6,55 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.51.0] - 2026-11-12
+
+### Changed
+- Engine firefox-63 through invisible-core 63.66.0, which this version pins. A session behind a proxy now takes every road
+  through it, as a browser at home would: names are resolved by the browser's own DNS-over-HTTPS through the proxy (never by
+  the machine's resolver), WebRTC and HTTP/3 send their UDP through the proxy's relay when its UDP was measured to leave from
+  the same address as its TCP, and a proxy whose UDP does not hold is treated as a router that drops it (HTTP/3 falls back to
+  HTTP/2, ICE gathers no server-reflexive candidate). A proxy given to a context declares its own measured UDP exit. WebRTC no
+  longer reads the machine's network: the interfaces, the default route, the ports and the mDNS names come from the network the
+  session declares.
+- A STUN server list can be given at launch (`udp_stun_servers`) for the measurement of the proxy's UDP.
+- Every context carries the position the core declares for the session (the geolocation override of the context).
+
+### Added
+- `preload_newtab=False` turns off the preloaded New Tab page, on request only (`InvisiblePlaywright`, `AsyncInvisiblePlaywright` and
+  `launch_server`): by default the browser keeps it, as a retail Firefox does. A retail Firefox keeps the New Tab page ready in a content
+  process of its own and, in some countries, a second one for a Mozilla site it loads (`mozgcp.net`); with the option neither is started.
+  `None` writes nothing, `True` says the retail value aloud, and a `browser.newtab.preload` in `extra_prefs` wins over it. Needs
+  invisible-core 63.66.0. Measured on the firefox-63 candidate engine, one page of a site, five alternating runs: on Windows the content
+  processes take 448-454 MB as shipped and 231-239 MB with the option (private memory 301-307 against 158-171 MB); on Linux 882-891
+  against 524-534 MB (private memory 176-185 against 73-76 MB).
+
+### Fixed
+- A request the browser resumed and whose channel is replaced and cancelled before the replacement starts (a `fetch` with
+  `keepalive`, a beacon) is reported as failed, so it no longer keeps `networkidle` from arriving (engine firefox-63).
+- A navigation the page overtakes (`location.replace`) ends, and the document that overtook it is told (engine firefox-63).
+- A click in a frame under a CSS transform is mapped back to the point the frame shows, and a click in a frame scrolls the
+  element in even when its point is inside the main viewport (invisible-core 63.66.0). The protocol mirror declares
+  `Page.addBinding` of the engine.
+- `request.resource_type` agrees with the pinned driver: a beacon is `beacon` and a CSP report is `cspreport` (it said `other`).
+- A download whose finish is seen before its announcement is marked finished: `save_as`, `path` and `failure` used to wait for ever on it.
+  The early finishes the browser keeps are bounded (64) and forgotten with their context. (That the engine sends a finish before the
+  announcement is not proven; the path is defensive.)
+- The opener kept for the downloads of a target whose adoption failed lives until the engine detaches the target, and none is
+  made for a target already detached.
+
+### Known differences from stock Playwright
+Measured against Playwright's own Firefox with the same script, on this version. None of them is a value a page reads; they are what a
+script that drives the browser can observe.
+
+- **A `window.open` from a script with no user gesture is blocked, as in a retail Firefox.** Playwright's own Firefox turns the popup
+  blocker off (`dom.disable_open_during_load` false in its `playwright.cfg`); a retail Firefox keeps it on, and so does this browser. So
+  `page.evaluate("window.open(url)")` returns `null` to the page and no `page` event comes; the same `window.open` from a click opens
+  the popup on both. Measured against Playwright's own Firefox served by Playwright, the stock client on both: `window.open(url)` from
+  `evaluate` gives `null` here and a window there; `window.open()` with no address, the same; a click that calls `window.open(url)`
+  opens the popup on both. To get stock's behaviour: open the popup from a click; or pass
+  `extra_prefs={"dom.disable_open_during_load": False}` for the session, knowing that a page then sees a browser that differs from a
+  retail Firefox.
+
 ## [0.50.1] - 2026-11-12
 
 0.50.0 was tagged and never published: its end-to-end gate was red on two tests that counted processes.
