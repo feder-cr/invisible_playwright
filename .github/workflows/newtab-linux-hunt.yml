@@ -1,14 +1,14 @@
-# newtab-windows-hunt.yml - hunt scaffolding, never merged. Runs only on a push to a `hunt/newtab-windows**` branch.
+# newtab-linux-hunt.yml - hunt scaffolding, never merged. Runs only on a push to a `hunt/newtab-linux**` branch.
 #
-# The e2e of the option that turns the preloaded New Tab page off (tests/test_preload_newtab_turns_the_privileged_about_process_off_e2e.py)
-# was seen green only on Linux. This job runs it ten times on Windows, on the Windows engine a run of the series repository built,
+# The memory of the content processes with and without the option that turns the preloaded New Tab page off, on Linux. This job
+# runs the option's e2e twice and the measure on Linux, on the Windows engine a run of the series repository built,
 # with the round's core, and then measures the memory of the content processes with and without the option (five alternating
 # rounds). The tests and the wrapper package are this branch's (the round's wrapper plus this file and one script).
-name: newtab windows hunt
+name: newtab linux hunt
 
 on:
   push:
-    branches: ['hunt/newtab-windows**']
+    branches: ['hunt/newtab-linux**']
 
 permissions:
   contents: read
@@ -16,7 +16,7 @@ permissions:
 env:
   GITHUB_TOKEN: ${{ github.token }}
   GH_TOKEN: ${{ github.token }}
-  ENGINE_RUN_ID: '43188313516'
+  ENGINE_RUN_ID: '43203723323'
   ENGINE_REPO: feder-cr/firefox_antidetect_patch
   CORE_REF: cc2f0cd47901fdfd8d266baf723e9fefffa46aac
   SEAL_TAG: firefox-63-candidate
@@ -27,8 +27,8 @@ env:
 
 jobs:
   hunt:
-    name: preload_newtab e2e x10 and memory (windows-2022, engine of run 43188313516)
-    runs-on: windows-2022
+    name: preload_newtab e2e and memory (ubuntu-24.04, engine of run 43203723323)
+    runs-on: ubuntu-24.04
     timeout-minutes: 75
     defaults:
       run:
@@ -55,17 +55,22 @@ jobs:
           print("invisible-core", version("invisible-core"), "from", got, "| invisible-playwright", version("invisible-playwright"))
           print("compose_session_prefs knows preload_newtab:", "preload_newtab" in inspect.signature(prefs.compose_session_prefs).parameters)
           PY
-      - name: The Windows engine of the run
+      - name: System deps (xvfb + Firefox runtime libs)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+          sudo "$(which python)" -m playwright install-deps firefox
+      - name: The Linux engine of the run
         run: |
           set -e
           mkdir -p art ff
-          gh run download "$ENGINE_RUN_ID" --repo "$ENGINE_REPO" --name asset-win-x86_64 --dir art
-          set -- art/firefox-*-stealth-win-x86_64.*
-          [ "$#" -eq 1 ] && [ -e "$1" ] || { echo "expected one firefox-*-stealth-win-x86_64 archive in art/, found: $*"; exit 1; }
-          python -c "import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall('ff')" "$1"
-          [ -e ff/firefox.exe ] || { echo "no ff/firefox.exe"; exit 1; }
-          python -m invisible_core seal --binary "$PWD/ff/firefox.exe" --tag "$SEAL_TAG" -o "$PWD/seal.json"
-          echo "FF_EXE=$PWD/ff/firefox.exe" >> "$GITHUB_ENV"
+          gh run download "$ENGINE_RUN_ID" --repo "$ENGINE_REPO" --name asset-linux-x86_64 --dir art
+          set -- art/firefox-*-stealth-linux-x86_64.tar.gz
+          [ "$#" -eq 1 ] && [ -e "$1" ] || { echo "expected one firefox-*-stealth-linux-x86_64.tar.gz in art/, found: $*"; exit 1; }
+          tar xzf "$1" -C ff
+          chmod +x ff/firefox
+          python -m invisible_core seal --binary "$PWD/ff/firefox" --tag "$SEAL_TAG" -o "$PWD/seal.json"
+          echo "FF_EXE=$PWD/ff/firefox" >> "$GITHUB_ENV"
           echo "INVISIBLE_SEAL_FILE=$PWD/seal.json" >> "$GITHUB_ENV"
       - name: The preload_newtab e2e, ten times
         env:
@@ -77,7 +82,7 @@ jobs:
           for n in $(seq 1 "${E2E_RUNS:-10}"); do
             log="evidence/e2e/run_$(printf '%02d' "$n").log"
             set +e
-            python -m pytest tests/test_preload_newtab_turns_the_privileged_about_process_off_e2e.py -m e2e -o addopts= \
+            xvfb-run -a python -m pytest tests/test_preload_newtab_turns_the_privileged_about_process_off_e2e.py -m e2e -o addopts= \
               -p no:cacheprovider --timeout 300 -q -rA > "$log" 2>&1
             code=$?
             set -e
@@ -87,7 +92,7 @@ jobs:
             echo "run $n: exit=$code passed=$passed skipped=$skipped $(tail -1 "$log")"
           done
           {
-            echo "## preload_newtab e2e x10 on windows-2022 (engine of run $ENGINE_RUN_ID, core $CORE_REF, tests $GITHUB_SHA)"
+            echo "## preload_newtab e2e on ubuntu-24.04 (engine of run $ENGINE_RUN_ID, core $CORE_REF, tests $GITHUB_SHA)"
             echo
             echo "| runs with 2 passed and no skip | runs red |"
             echo "|---|---|"
@@ -97,32 +102,26 @@ jobs:
             grep -hE "^(FAILED|ERROR|SKIPPED) " evidence/e2e/run_*.log | sort | uniq -c | sort -rn | head -20 || true
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
-      - name: Close every Firefox left (after the e2e)
-        if: always()
-        shell: pwsh
-        run: |
-          Get-Process firefox -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-          "left: " + @(Get-Process firefox -ErrorAction SilentlyContinue).Count
       - name: Memory of the content processes, with and without the option (five alternating rounds)
         if: always()
         env:
           PYTHONUNBUFFERED: "1"
         run: |
           set +e
-          python scripts/newtab_memory_probe.py --binary "$FF_EXE" --out evidence/memory --rounds 5 --seconds 10 \
+          xvfb-run -a python scripts/newtab_memory_probe.py --binary "$FF_EXE" --out evidence/memory --rounds 5 --seconds 10 \
             2>&1 | tee evidence/memory.log
           sed -n '/^## Content processes/,$p' evidence/memory.log >> "$GITHUB_STEP_SUMMARY"
-      - name: Close every Firefox left (after the memory)
+      - name: Close every Firefox left
         if: always()
-        shell: pwsh
         run: |
-          Get-Process firefox -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-          "left: " + @(Get-Process firefox -ErrorAction SilentlyContinue).Count
+          pkill -9 -f "$PWD/ff/firefox" || true
+          sleep 1
+          echo "left: $(pgrep -fc "$PWD/ff/firefox" || true)"
       - name: Upload all the evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: newtab-windows-hunt-${{ github.run_id }}
+          name: newtab-linux-hunt-${{ github.run_id }}
           path: evidence
           if-no-files-found: warn
           retention-days: 14

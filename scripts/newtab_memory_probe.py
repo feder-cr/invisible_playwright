@@ -18,7 +18,7 @@ import sys
 import threading
 import time
 
-TYPE = re.compile(r"Setting remoteType of process (\d+) to (\S+)")
+TYPE = re.compile(r"(?:Setting remoteType of process (\d+) to (\S+)|Changing remoteType of process (\d+) from \S+ to (\S+))")
 
 
 def serve():
@@ -46,8 +46,9 @@ def types_from_log(base):
     for name in os.listdir(folder):
         if name.startswith(stem):
             with open(os.path.join(folder, name), encoding="utf-8", errors="replace") as fh:
-                for m in TYPE.finditer(fh.read()):
-                    found[int(m.group(1))] = m.group(2).split("^")[0]
+                for m in TYPE.finditer(fh.read()):      # the last type a process was given is the one it has
+                    pid, kind = (m.group(1), m.group(2)) if m.group(1) else (m.group(3), m.group(4))
+                    found[int(pid)] = kind.split("^")[0]
     return found
 
 
