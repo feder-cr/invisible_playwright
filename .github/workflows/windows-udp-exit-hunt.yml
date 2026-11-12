@@ -1,0 +1,80 @@
+# windows-udp-exit-hunt.yml - hunt scaffolding, never merged. Runs only on a push to a `hunt/windows-udp-exit**` branch.
+#
+# The suite wrapper.e2e.udp.exit (7 tests) errored on Windows in the census (run 43307193708): its lab exit address was held with
+# `ip addr add` on lo. Now tests/_turn_chain.py holds it on an adapter with New-NetIPAddress -SkipAsSource (the runner is an
+# administrator). The suite three times on Windows, wrapper main + that change, the published engine.
+name: windows udp exit hunt
+
+on:
+  push:
+    branches: ['hunt/windows-udp-exit**']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-udp-exit-hunt-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GITHUB_TOKEN: ${{ github.token }}
+  GH_TOKEN: ${{ github.token }}
+  FILES: >-
+    tests/test_a_proxy_that_cannot_carry_udp_leaks_nothing_direct_e2e.py
+    tests/test_the_whole_udp_chain_by_name_e2e.py::test_a_turn_srflx_by_name_arrives_through_the_relay_before_the_tick
+
+jobs:
+  recheck:
+    name: windows udp.exit
+    runs-on: windows-2022
+    timeout-minutes: 90
+    strategy:
+      max-parallel: 1
+      matrix:
+        os: [windows-2022]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: { python-version: '3.11' }
+      - name: Install the wrapper and its dev extra, the pinned Playwright, the published engine
+        run: |
+          set -e
+          python -m pip install --quiet --upgrade pip
+          python -m pip install --quiet ".[dev]"
+          python -m pip install --quiet "playwright==$(cat scripts/playwright_pin.txt)"
+          python -c "import importlib.metadata as m; print('invisible-playwright', m.version('invisible-playwright'), '| invisible-core', m.version('invisible-core'))"
+          echo "FF=$(cd "$RUNNER_TEMP" && python -m invisible_playwright fetch | tail -1)" >> "$GITHUB_ENV"
+      - name: The files three times, as run_e2e.py runs them
+        env:
+          PYTHONUNBUFFERED: "1"
+          INVPW_TEST_WATCHDOG_FILE: ${{ github.workspace }}/evidence/e2e-watchdog.log
+        run: |
+          mkdir -p evidence
+          export INVPW_BINARY_PATH="$FF" STEALTHFOX_E2E_BINARY="$FF"
+          for n in 1 2 3; do
+            python -u scripts/run_e2e.py "$FF" $FILES -rA --tb=short > "evidence/run_$n.log" 2>&1
+            echo "run $n: $(grep -aE '^=+ .*(passed|failed|error).* =+$' evidence/run_$n.log | head -1)"
+          done
+          {
+            echo "## the udp.exit suite on Windows (lab address on an adapter) x3"
+            echo '```'
+            grep -ahE "^(FAILED|ERROR) " evidence/run_*.log | cut -c1-200 | sort | uniq -c | sort -rn || true
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Close every Firefox left
+        if: always()
+        shell: pwsh
+        run: |
+          Get-Process firefox -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          "left: " + @(Get-Process firefox -ErrorAction SilentlyContinue).Count
+      - name: Upload the evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-udp-exit-${{ github.run_id }}
+          path: evidence
+          if-no-files-found: warn
+          retention-days: 14
