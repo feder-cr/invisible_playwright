@@ -315,3 +315,53 @@ def test_the_report_summarises_the_turn_target_by_form_of_the_address(tmp_path):
     assert t["name"]["tcp_errors"] == [2, 2] and t["name"]["second_tcp_error_ms"]["median"] == 3050.0
     assert t["name"]["gathering_never_ended"] == 0
     assert report.turn_summary(tmp_path / "blocked") is None
+
+
+def test_the_turn_server_goes_on_after_the_connection_reset_windows_reports_on_a_receive():
+    """The first run of the TURN target answered one session of ten: after the first client closed its socket, Windows reported the ICMP
+    'port unreachable' of the last reply as ConnectionResetError on the next recvfrom, and the thread of the server ended. The server must
+    go on (red on the first version: the thread returned and the next Allocate got no answer)."""
+    import socket
+    import struct
+    server = ts.TurnServer("127.0.0.1", 0)
+    try:
+        real = server.sock
+        seen = {"raised": False}
+
+        class Flaky:
+            def __init__(self, inner):
+                self.inner = inner
+
+            def recvfrom(self, n):
+                if not seen["raised"]:
+                    seen["raised"] = True
+                    raise ConnectionResetError(10054, "reset by the ICMP of an earlier send")
+                return self.inner.recvfrom(n)
+
+            def sendto(self, *a):
+                return self.inner.sendto(*a)
+
+            def close(self):
+                return self.inner.close()
+
+            def getsockname(self):
+                return self.inner.getsockname()
+
+        # the thread is already blocked in the real recvfrom: wake it with a datagram, then swap
+        server.sock = Flaky(real)
+        poke = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        poke.sendto(b"x", server.address)      # not a STUN message: ignored, and the next recvfrom is the flaky one
+        poke.close()
+        bare = struct.pack("!HHI", 0x0003, 8, ts.MAGIC) + b"\x03" * 12 + struct.pack("!HH", 0x0019, 4) + b"\x11\x00\x00\x00"
+        answered = None
+        for _ in range(20):
+            try:
+                answered = _udp_roundtrip(server, bare)
+                break
+            except OSError:
+                continue
+        assert answered is not None and struct.unpack("!H", answered[:2])[0] == 0x0113, "the server did not answer after the reset"
+        assert seen["raised"], "the reset was never delivered"
+    finally:
+        server.sock = real
+        server.close()

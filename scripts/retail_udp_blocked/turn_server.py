@@ -70,6 +70,10 @@ class TurnServer:
         while not self._closed:
             try:
                 data, src = self.sock.recvfrom(65536)
+            except ConnectionResetError:
+                # Windows reports the ICMP "port unreachable" of an earlier send (a client that closed its socket) as an error of the NEXT
+                # recvfrom (WSAECONNRESET, 10054): the server goes on, it is not the end of the socket.
+                continue
             except OSError:
                 return
             if len(data) < 20 or struct.unpack("!I", data[4:8])[0] != MAGIC:
