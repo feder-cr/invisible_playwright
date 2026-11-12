@@ -10,6 +10,8 @@
 #
 # hunt/popups-fix-4: the same win-63-fix arm on the head of fix/popup-handover-loses-no-event, 87a4e3b (the live events no longer
 # overtake Browser.replay). The criterion: 0 red tests of form A (popup at about:blank) and B (execution context destroyed).
+# hunt/popups-fix-4-62: the counter-proof on the published engine 62 + core 62.65.0 + main with the server.py of 87a4e3b
+# (scripts/hunt_popup_fix_server.patch = main..fix, one conflict resolved: the gate block taken, the release-only udp_stun_servers line dropped).
 name: popups fix hunt
 
 on:
@@ -38,7 +40,7 @@ jobs:
       fail-fast: false
       max-parallel: 2
       matrix:
-        arm: [win-63-fix]
+        arm: [win-62-fix]
     defaults:
       run:
         shell: bash
