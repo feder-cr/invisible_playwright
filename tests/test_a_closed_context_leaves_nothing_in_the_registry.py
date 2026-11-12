@@ -73,6 +73,8 @@ class ScriptedJuggler(EventListeners):
                 self.dispatch_event("Runtime.executionContextCreated", {
                     "executionContextId": "e%s%s" % (target, world),
                     "auxData": {"frameId": "f" + target, "name": world}}, session)
+            # the real engine says so once the page's initial about:blank is done; the page is handed over on it
+            self.dispatch_event("Page.ready", {}, session)
             return {"targetId": target}
         if method == "Page.close":
             target = next(t for t, s in self.sessions.items() if s == session)

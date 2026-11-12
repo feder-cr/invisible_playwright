@@ -2501,11 +2501,13 @@ class RouteDispatcher(Dispatcher):
         # error up; the client kept it as the error of the whole connection and raised it on the NEXT route command,
         # which was never sent: its request stayed held in the engine, its handler failed too, and so on down the page
         # (measured on a real news page: six held requests in a row, one a beacon, networkidle never).
+        # ⛔ EVERY protocol error of the three commands, not one wording of it. The engine says "Cannot find request" when
+        # the request left its held set first, and "NS_BINDING_ABORTED [nsIInterceptedChannel.resetInterceptionWithURI]"
+        # when the channel was cancelled while the answer was on its way: the same event, two messages. Stock's
+        # `sendMayFail` swallows both, and a list of the wordings we have met would fail on the next one.
         try:
             result = self.request.page.send(command, params)
-        except juggler.ProtocolError as exc:
-            if "Cannot find request" not in str(exc):
-                raise
+        except juggler.ProtocolError:
             result = None
         except juggler.TargetClosedError:
             result = None            # the page went away: nothing is held any more
@@ -2747,7 +2749,15 @@ class PageDispatcher(Dispatcher):
         self.main_frame_id = self.lifecycle.wait_for_main_frame(timeout=20.0)
         # ⛔ The Frame is created BEFORE the Page and adopted after: the Page
         # initializer has to name a mainFrame the client can already resolve.
-        self.frame = FrameDispatcher(server, self, self.main_frame_id)
+        # ⛔ WITH WHAT THE LIFECYCLE ALREADY KNOWS OF IT, as every other frame is made (`frame_for`): the initializer is a snapshot, and
+        # a popup commits and loads on its own time - what it did between its attach and this line was heard by the lifecycle and by
+        # nobody that tells the client.
+        known = self.lifecycle.frame(self.main_frame_id)
+        self.frame = FrameDispatcher(
+            server, self, self.main_frame_id,
+            url=getattr(known, "url", "") or "about:blank",
+            name=getattr(known, "name", "") or "",
+            load_states=sorted(getattr(known, "states", []) or []) or None)
         viewport = self.viewport_size
         # `pageNumber` is ours, not Playwright's: the number the page's
         # rhythms are drawn under (`pointer.py` and the actions' nonce read it
@@ -2792,6 +2802,26 @@ class PageDispatcher(Dispatcher):
         return self.context.browser.conn
 
 
+
+    def wait_until_ready(self, timeout: float = 20.0) -> None:
+        """Return once the engine has said `Page.ready`; the caller announces the page to the client after it.
+
+        ⛔ ANNOUNCED READY, BUT BUILT AT ONCE. Playwright's own page is reported as new on Page.ready (FFPage), and not before: the engine
+        commits the page's initial about:blank after the frame is announced, and a `goto` sent before that commit is 'interrupted by
+        another navigation to about:blank'. That is what the wait is for. It is NOT done inside the constructor, because the page has
+        to exist while it waits: the first request of a popup opened by a link is held by a route (the context's, the served browser's)
+        until the page's own routing answers it, and a popup whose commit waits for that answer never becomes ready if the page that
+        would answer it is not built yet. Built, the page also follows the commit and the `load` that come with its own ready; built
+        after them, the client would be told a frame of `about:blank` that is loaded already and never hears the `load`.
+        """
+        self.lifecycle.wait_for_page_ready(timeout=timeout)
+
+    def settle_events(self) -> None:
+        """Return once every event the engine sent before this call has been handled: its reply comes after them, on one stream."""
+        try:
+            self.conn.send("Browser.getInfo", {}, timeout=5.0)
+        except Exception:
+            pass
 
     def _install_events(self) -> None:
         """Turn Juggler events into protocol events.
@@ -4375,6 +4405,7 @@ class BrowserContextDispatcher(Dispatcher):
             # whose only context it is. `Browser.removeBrowserContext` on it
             # would make Juggler's `destroy()` unregister the default from its
             # maps and leave a browser that no command can address.
+            self.browser.end_waits_of(self)
             for page in list(self.pages):
                 try:
                     page.announce_closed()
@@ -4397,6 +4428,7 @@ class BrowserContextDispatcher(Dispatcher):
         # sets `is_closed()` and fires `page.on("close")` from that event, so
         # a page belonging to a closed context stayed "open" forever, and any
         # code waiting for it to close waited for good.
+        self.browser.end_waits_of(self)
         for page in list(self.pages):
             try:
                 page.announce_closed()
@@ -4508,6 +4540,11 @@ class BrowserDispatcher(Dispatcher):
         #: Targets whose adoption thread is still building. `op_new_page`
         #: waits on these instead of building a second dispatcher.
         self._adopting: set = set()
+        #: The page that opened each target being adopted (None if it has no announced opener): a download started by a popup that
+        #: is not announced yet belongs to its opener (Playwright's ffBrowser._onDownloadCreated).
+        self._openers: Dict[str, Optional[PageDispatcher]] = {}
+        #: Pages built and waiting for their Page.ready, by target (announced to the client after it).
+        self._building: Dict[str, PageDispatcher] = {}
         #: Adoption failures, by target. The `newPage` waiter re-raises (and
         #: pops) them; capped because a spontaneous popup nobody waits for
         #: must not grow this for the life of the browser.
@@ -4727,6 +4764,7 @@ class BrowserDispatcher(Dispatcher):
                 return
             self._adopting.add(target_id)
             opener = self._page_targets.get(opener_id) if opener_id else None
+            self._openers[target_id] = opener
             if opener is not None:
                 opener.popups_opened += 1
                 number: Optional[int] = popup_number(opener.number,
@@ -4754,6 +4792,13 @@ class BrowserDispatcher(Dispatcher):
         so it behaves like any other page and carries no observable marker of
         how it was opened. Stealth is preserved by doing nothing special.
         """
+        page = None
+        # ⛔ A PAGE A CALLER ASKED FOR (`Browser.newPage`) WAITS AT MOST 20 s FOR ITS Page.ready, AND FAILS LOUDLY; A POPUP WAITS AS LONG
+        # AS THE ENGINE TAKES, AND SAYS NOTHING. That is Playwright's own: its popup is reported on Page.ready and not before, with no
+        # limit - a destination that answers 204 or never answers gives no `page` event at all (measured, stock Playwright 1.62 and its
+        # Firefox: none in 30 s), one that answers after 25 s gives it at 25 s. The wait ends when the target goes away or its context
+        # closes.
+        requested = number is None
         try:
             if number is None:
                 number = self._number_of_requested(
@@ -4762,6 +4807,32 @@ class BrowserDispatcher(Dispatcher):
             context = self._context_for_popup(browser_context_id)
             page = PageDispatcher(self.server, context, session, target_id,
                                   number, opener=opener)
+            with self._targets_lock:
+                self._building[target_id] = page
+            gone = False
+            try:
+                page.wait_until_ready(timeout=20.0 if requested else None)
+            except juggler.TargetClosedError:
+                # Gone before it was ready (a download's empty tab, a popup the site closed at once): announced and closed right
+                # after, as Playwright's is and as a detach that beats the adoption always was (`_detached_early`).
+                gone = True
+            finally:
+                with self._targets_lock:
+                    self._building.pop(target_id, None)
+            if gone and not requested and context.disposed:
+                # Its context closed while it waited for a ready that never came: it was never announced and is not now.
+                page.announce_closed()
+                with self._targets_lock:
+                    self._adopting.discard(target_id)
+                    self._detached_early.discard(target_id)
+                    self._openers.pop(target_id, None)
+                    self._pages_ready.notify_all()
+                return
+            # ⛔ THE EVENTS THAT COME WITH THE READY ARE APPLIED FIRST. The engine says Page.ready and, in the same turn, the commit of
+            # the document that made the page ready: announced between the two, the page tells its client `about:blank` (3 of 4 popups
+            # to a slow destination, measured) where Playwright's says the destination. A round trip to the engine comes back after
+            # everything it sent before it.
+            page.settle_events()
             # ⛔ `page` BEFORE the registration, on purpose. A detach racing
             # this build is recorded as early (see `_handle_detach`) and the
             # close is announced right after, so the client always sees the
@@ -4769,6 +4840,7 @@ class BrowserDispatcher(Dispatcher):
             context.emit("page", {"page": page.channel})
             with self._targets_lock:
                 self._adopting.discard(target_id)
+                self._openers.pop(target_id, None)
                 self._page_targets[target_id] = page
                 context.pages.append(page)
                 early = target_id in self._detached_early
@@ -4778,9 +4850,16 @@ class BrowserDispatcher(Dispatcher):
             if early:
                 page.announce_closed()
         except Exception as failure:
+            if page is not None:
+                # Built and never announced (not ready in time): its listeners and its object on the client go.
+                try:
+                    page.announce_closed()
+                except Exception:
+                    pass
             with self._targets_lock:
                 self._adopting.discard(target_id)
                 self._detached_early.discard(target_id)
+                self._openers.pop(target_id, None)
                 self._adopt_errors[target_id] = failure
                 while len(self._adopt_errors) > 64:
                     self._adopt_errors.pop(next(iter(self._adopt_errors)))
@@ -4842,17 +4921,34 @@ class BrowserDispatcher(Dispatcher):
                         "Browser.attachedToTarget for it" % (target_id, timeout))
                 self._pages_ready.wait(left)
 
+    def end_waits_of(self, context: "BrowserContextDispatcher") -> None:
+        """A context is closing: the popups of it that are still waiting for a Page.ready that never came stop waiting."""
+        with self._targets_lock:
+            waiting = [p for p in self._building.values() if p.context is context]
+        for page in waiting:
+            try:
+                page.lifecycle.detach()
+            except Exception:
+                pass
+
     def _handle_detach(self, target_id: Optional[str],
                        session_id: Optional[str]) -> None:
         """The engine reports a target gone: an engine-side close (or a popup
         that died before it finished attaching). Never blocks the reader."""
         if not target_id:
             return
+        building = None
         with self._targets_lock:
             page = self._page_targets.get(target_id)
             if page is None and target_id in self._adopting:
                 self._detached_early.add(target_id)
-                return
+                building = self._building.get(target_id)
+                if building is None:
+                    return
+        if building is not None:
+            # Built and waiting for its Page.ready: the wait ends now (TargetClosedError) and the adoption announces the page closed.
+            building.lifecycle.detach()
+            return
         if page is None:
             # A target that never became a page: only its buffered events
             # and its session entry are left to drop.
@@ -5147,7 +5243,17 @@ class BrowserDispatcher(Dispatcher):
     def _on_download_created(self, params: Dict) -> None:
         context = next((c for c in self.contexts
                         if c.context_id == params.get("browserContextId")), None)
-        page = self._page_targets.get(params.get("pageTargetId"))
+        target = params.get("pageTargetId")
+        with self._targets_lock:
+            announced = self._page_targets.get(target)
+            # The page whose frame the download came from: announced, or built and waiting for its Page.ready.
+            page = announced or self._building.get(target)
+            # ⛔ THE PAGE THE DOWNLOAD IS REPORTED ON. A download that starts in a new tab (a `target=_blank` link or a `window.open` to a
+            # `Content-Disposition: attachment`) comes from a tab the client has not been told of: the tab waits for a Page.ready that never
+            # comes and is closed by the engine at once. Playwright reports it on the OPENER in that case (ffBrowser._onDownloadCreated:
+            # "if it's a new window download, report it on the pop-up's opener"); looking only among the announced pages, as this did,
+            # lost the download altogether.
+            origin = announced or self._openers.get(target)
         if context is None:
             return
         directory = self._downloads_dir(params.get("browserContextId"))
@@ -5155,7 +5261,7 @@ class BrowserDispatcher(Dispatcher):
                                       os.path.join(directory, params["uuid"]))
         self._artifacts[params["uuid"]] = artifact
         early = self._finished_early.pop(params["uuid"], None)
-        if page is not None:
+        if page is not None or origin is not None:
             # ⛔ THE ENGINE ENDS A NAVIGATION THAT BECAME A DOWNLOAD WITH NO
             # EVENT AT ALL (no navigationCommitted, no navigationAborted), so
             # a `goto` or a click waiting on it waited out its timeout.
@@ -5164,7 +5270,7 @@ class BrowserDispatcher(Dispatcher):
             # starting')); the lifecycle is fed the same abort. A frame whose
             # current navigation already committed is left alone: the
             # download came from a click or a script, not from a load.
-            frame = page.lifecycle.frame(params.get("frameId"))
+            frame = page.lifecycle.frame(params.get("frameId")) if page is not None else None
             if (frame is not None and frame.navigation
                     and frame.navigation not in frame.aborted
                     and not any(c[1] == frame.navigation
@@ -5172,9 +5278,10 @@ class BrowserDispatcher(Dispatcher):
                 page.lifecycle._on_event("Page.navigationAborted", {
                     "frameId": frame.id, "navigationId": frame.navigation,
                     "errorText": "Download is starting"})
-            page.emit("download", {"url": params.get("url") or "",
-                                   "suggestedFilename": params.get("suggestedFileName") or "",
-                                   "artifact": artifact.channel})
+            if origin is not None:
+                origin.emit("download", {"url": params.get("url") or "",
+                                         "suggestedFilename": params.get("suggestedFileName") or "",
+                                         "artifact": artifact.channel})
         if early is not None:
             artifact.report_finished(early)
 
