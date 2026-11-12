@@ -8,7 +8,7 @@ question put to the resolver of the machine.
   It also lists the names of every descendant it saw, which is how a test shows that no helper process
   (crash reporter, updater...) was ever started. Descendants of THIS process only, so parallel workers do not see
   each other's browsers.
-* :class:`ResolverTrap` listens on 127.0.0.1:53 (UDP and TCP, and ::1 when it can) and points ``/etc/resolv.conf``
+* :class:`ResolverTrap` listens on 127.0.0.1:53 (or the first of 127.0.0.2... it can bind: see TRAP_ADDRESSES) (UDP and TCP, and ::1 when it can) and points ``/etc/resolv.conf``
   at it for as long as it runs, restoring the file byte for byte at the end, so every question that reaches the
   resolver of the machine is counted as ``(name, qtype)``. It needs Linux, root and a writable resolv.conf:
   ``ResolverTrap.available`` says so and ``ResolverTrap.reason`` says why not. The trap answers from ``answers``
@@ -165,6 +165,13 @@ def _trap_capability() -> Tuple[bool, str]:
     return True, ""
 
 
+#: The loopback addresses the trap tries for port 53, in order. A hosted runner can have something on 127.0.0.1:53 or on the
+#: wildcard of that port (systemd-resolved holds 127.0.0.53 and 127.0.0.54): every 127.x.x.x is loopback on Linux, so the trap
+#: takes the first one it can bind and writes THAT address into /etc/resolv.conf (a resolv.conf names no port). With a free
+#: port (port=0) only 127.0.0.1 is used.
+TRAP_ADDRESSES = ("127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4", "127.0.0.5", "127.0.0.6", "127.0.0.7", "127.0.0.8")
+
+
 class ResolverTrap:
     """A resolver on loopback that counts what it is asked. See the module docstring."""
 
@@ -174,6 +181,8 @@ class ResolverTrap:
                  rewrite_resolv_conf: bool = True):
         self.answers = {k.lower(): v for k, v in (answers or {}).items()}
         self.port = port
+        #: The loopback address the trap listens on once it is bound (see TRAP_ADDRESSES).
+        self.address = "127.0.0.1"
         self.rewrite_resolv_conf = rewrite_resolv_conf
         #: Every question: (name, qtype, "udp"|"tcp").
         self.queries: List[DohQuery] = []
@@ -208,7 +217,7 @@ class ResolverTrap:
                 self._original = RESOLV_CONF.read_bytes()
                 # In place, not by rename: in a container the file is often a bind mount.
                 with open(RESOLV_CONF, "wb") as f:
-                    f.write(b"nameserver 127.0.0.1\noptions timeout:1 attempts:1\n")
+                    f.write(("nameserver %s\noptions timeout:1 attempts:1\n" % self.address).encode("ascii"))
         except BaseException:
             self._restore()
             raise
@@ -236,15 +245,20 @@ class ResolverTrap:
         discarded: List[socket.socket] = []   # closed at the end, so a failed attempt's port is not handed out again
         made: List[socket.socket] = []
         try:
-            for attempt in range(200):
-                made = self._bind_once(discarded)
+            addresses = TRAP_ADDRESSES if self.port != 0 else TRAP_ADDRESSES[:1]
+            for address in addresses:
+                for attempt in range(200):
+                    made = self._bind_once(discarded, address)
+                    if made:
+                        break
+                    if self.port != 0:
+                        break
                 if made:
-                    break
-                if self.port != 0:
+                    self.address = address
                     break
             if not made:
-                raise OSError("the resolver trap found no port it could bind for TCP and UDP (port %d on 127.0.0.1; the last error: %s)"
-                              % (self.port, self._bind_error))
+                raise OSError("the resolver trap found no port it could bind for TCP and UDP (port %d on %s; the last error: %s)"
+                              % (self.port, ", ".join(addresses), self._bind_error))
         finally:
             for s in discarded:
                 s.close()
@@ -253,11 +267,11 @@ class ResolverTrap:
             target = self._serve_udp if s.type == socket.SOCK_DGRAM else self._serve_tcp
             threading.Thread(target=target, args=(s,), daemon=True).start()
 
-    def _bind_once(self, discarded: List[socket.socket]) -> List[socket.socket]:
+    def _bind_once(self, discarded: List[socket.socket], address: str = "127.0.0.1") -> List[socket.socket]:
         """One attempt: the sockets bound, or [] after putting what it opened in ``discarded``."""
         made: List[socket.socket] = []
         port = self.port
-        for family, host, required in ((socket.AF_INET, "127.0.0.1", True), (socket.AF_INET6, "::1", False)):
+        for family, host, required in ((socket.AF_INET, address, True), (socket.AF_INET6, "::1", False)):
             pair: List[socket.socket] = []    # this family's TCP and UDP, kept or dropped together
             try:
                 # TCP first: Windows keeps big excluded ranges and hands out ephemeral ports in sequence, so a

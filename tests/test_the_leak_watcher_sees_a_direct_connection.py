@@ -135,6 +135,16 @@ def _tcp_ask(port, name):
     return data
 
 
+def _udp_ask_at(address: str, port: int, name: str) -> bytes:
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.settimeout(3)
+    try:
+        s.sendto(ds.encode_query(name, ds.QTYPE_A, 0x004D), (address, port))
+        return s.recvfrom(4096)[0]
+    finally:
+        s.close()
+
+
 def test_the_trap_counts_a_query_it_is_sent_and_refuses_what_it_cannot_answer():
     with ResolverTrap(port=0, rewrite_resolv_conf=False) as trap:
         assert trap.port > 0
@@ -145,6 +155,31 @@ def test_the_trap_counts_a_query_it_is_sent_and_refuses_what_it_cannot_answer():
         assert [(q.name, q.qtype, q.via) for q in trap.queries] == [
             ("leak.test", ds.QTYPE_A, "udp"), ("leak-tcp.test", ds.QTYPE_A, "tcp")]
         assert trap.asked("LEAK.test.") and trap.names() == ["leak-tcp.test", "leak.test"]
+
+
+def test_the_trap_goes_to_the_next_loopback_address_when_the_first_has_its_port_taken():
+    """On a hosted runner something can hold 127.0.0.1:53 (or a wildcard of it): the trap takes the first loopback address
+    of TRAP_ADDRESSES it can bind, says which, and that is the address a resolv.conf is written with (run 43146661635: the
+    trap could not bind and eight tests ended in error at setup)."""
+    import _leaks
+
+    holder_tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    holder_udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        holder_tcp.bind(("127.0.0.1", 0))
+        port = holder_tcp.getsockname()[1]
+        try:
+            holder_udp.bind(("127.0.0.1", port))
+        except OSError:
+            raise
+        holder_tcp.listen(1)
+        # port != 0 is the case of port 53: the addresses are tried in order
+        with ResolverTrap(port=port, rewrite_resolv_conf=False) as trap:
+            assert trap.address != "127.0.0.1" and trap.address in _leaks.TRAP_ADDRESSES, trap.address
+            assert _udp_ask_at(trap.address, port, "leak.test")[3] & 0xF == ds.RCODE_REFUSED
+    finally:
+        holder_tcp.close()
+        holder_udp.close()
 
 
 def test_the_trap_answers_the_names_it_is_given_over_udp_and_tcp():
