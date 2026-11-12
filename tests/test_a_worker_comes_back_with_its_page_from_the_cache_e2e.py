@@ -28,6 +28,7 @@ from http.server import BaseHTTPRequestHandler
 
 import pytest
 
+from _bfcache_evidence import decide_outcome, read_after_go_back, wait_cacheable
 from _servers import LocalServer
 
 STRATEGY_1 = {
@@ -35,6 +36,21 @@ STRATEGY_1 = {
     "fission.webContentIsolationStrategy": 1,
     "dom.ipc.processCount.webIsolated": 4,
     "network.dns.localDomains": "a.test,b.test,c.test",
+}
+
+# The lab holds still the two things of the HOST that decide whether a page the cache took is still there when the test goes back, so that the
+# memory of the runner does not decide whether the cache holds (a red then would say something about the machine, not about the engine):
+# * how many pages the cache keeps: by default `nsSHistory` computes it from the PHYSICAL memory of the machine (at most 8; nsSHistory.cpp
+#   CalcMaxTotalViewers), here it is 8;
+# * the low-memory watcher: on Linux Firefox reads /proc/meminfo every second and, when what is available is under 5% of the total or under 200 MB,
+#   sends memory-pressure, which evicts EVERY page of the cache (AvailableMemoryWatcherLinux.cpp, nsSHistory.cpp). Both thresholds at 0 here
+#   (they are static prefs; the percent one exists on Linux only and is ignored elsewhere).
+# Nothing of this is in the product: a user's Firefox keeps both defaults, and so does ours.
+LAB_PREFS = {
+    **STRATEGY_1,
+    "browser.sessionhistory.max_total_viewers": 8,
+    "browser.low_commit_space_threshold_percent": 0,
+    "browser.low_commit_space_threshold_mb": 0,
 }
 
 # What a document with a worker runs: the worker answers every message with its count.
@@ -144,7 +160,7 @@ def test_a_worker_leaves_with_its_page_for_the_cache_and_comes_back_the_same(fir
     from invisible_playwright import InvisiblePlaywright
 
     with InvisiblePlaywright(seed=42, binary_path=firefox_binary, humanize=False,
-                             headless=True, extra_prefs=STRATEGY_1) as browser:
+                             headless=True, extra_prefs=LAB_PREFS) as browser:
         page = browser.new_context().new_page()
         page.set_default_timeout(10000)
         page.goto(sites[where]["page"], wait_until="load")
@@ -159,6 +175,7 @@ def test_a_worker_leaves_with_its_page_for_the_cache_and_comes_back_the_same(fir
                 "the frame of the worker is not listed with its url: %r" % [f.url for f in page.frames])
         assert _ask(page, where) == 1
         assert _ask(page, where) == 2
+        wait_cacheable(page)       # the cache takes a page only after the `pageshow` of every document of it, however slow the machine is
 
         # 2. the top goes forward: the worker ends for the client, before the new page commits
         forward = len(events)
@@ -176,8 +193,14 @@ def test_a_worker_leaves_with_its_page_for_the_cache_and_comes_back_the_same(fir
         # 3. back from the cache: the same worker, told once, after the restored document's contexts are cleared
         back = len(events)
         page.go_back(wait_until="load")
-        assert page.evaluate("window.__shown") == [False, True], (
-            "the page was loaded again instead of restored from the back-forward cache, so this test proves nothing")
+        # What it knows is written down BEFORE anything is asserted. A goto is started by the PARENT and Firefox may refuse the cache for it,
+        # to the same site or to another (measured: the navigation's own channel is still in the old document's loadgroup when the parent
+        # checks: SHIPBFCache log, CanonicalBrowsingContext::AllowedInBFCache); then the document is built again and the contract is the one
+        # of a new page, asserted whole. The page's own navigation (`location`) is never refused: a restore is required there.
+        outcome = decide_outcome(read_after_go_back(page, events, back), may_reload=(how == "goto"))
+        if outcome == "reloaded":
+            _assert_a_new_page_with_a_new_worker(page, events, where, wid, back)
+            return
         if not _wait(lambda: _index(events, back, "Page.workerCreated", lambda p: p["workerId"] == wid) is not None):
             other = [p["workerId"] for m, p in events[back:] if m == "Page.workerCreated"]
             raise AssertionError(("the restored worker was announced under a NEW id %s, not %s: " % (other, wid)
@@ -213,3 +236,27 @@ def _methods(events, start):
             for m, p in events[start:] if m.startswith(("Page.worker", "Page.navigationCommitted", "Page.frameDocument",
                                                         "Runtime.executionContextsCleared", "Page.frameDetached",
                                                         "Page.frameAttached"))]
+
+
+def _assert_a_new_page_with_a_new_worker(page, events, where, old, back):
+    """The document was built again after go_back (the cache was not used): the contract of a page that loads. The old worker has been told
+    ended once (asserted before), ONE new worker is announced with a NEW id, it is not told ended, it is the only live one, and it is a fresh
+    worker (it answers 1)."""
+    def created():
+        return [p["workerId"] for m, p in events[back:] if m == "Page.workerCreated" and p["url"].endswith("/worker.js")]
+
+    assert _wait(lambda: bool(created())), "the page built again did not announce its worker: %r" % _methods(events, back)
+    time.sleep(1.0)  # what comes in excess comes now
+    new = created()
+    assert len(new) == 1 and new[0] != old, "expected one NEW worker, got %r (the old one was %s): %r" % (new, old, _methods(events, back))
+    assert not [p for m, p in events[back:] if m == "Page.workerDestroyed" and p["workerId"] == new[0]], (
+        "the new worker was told ended: %r" % _methods(events, back))
+    live = {}
+    for m, p in events:
+        if m == "Page.workerCreated":
+            live[p["workerId"]] = p
+        elif m == "Page.workerDestroyed":
+            live.pop(p["workerId"], None)
+    assert list(live) == [new[0]], "live workers after the page was built again: %r" % list(live.values())
+    assert _wait(lambda: where == "top" or any(f.url.endswith("/frame-worker") for f in page.frames)), "the frame of the new page is missing"
+    assert _ask(page, where) == 1, "the worker of the page built again is not a fresh worker"
