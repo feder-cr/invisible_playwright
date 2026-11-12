@@ -405,7 +405,7 @@ def test_a_session_without_a_proxy_resolves_with_the_system_resolver(firefox_bin
     if why:
         pytest.fail(why)
     name = "page-d.test" if trapped else "localhost"
-    session = InvisiblePlaywright(seed=42, binary_path=firefox_binary, proxy=None)
+    session = InvisiblePlaywright(seed=42, binary_path=firefox_binary, proxy=None, headless=True)
     session._timezone, session._locale = GEO.timezone, GEO.locale
     prefs = session._build_prefs()
     assert prefs.get("network.trr.mode") != 3, "a session without a proxy turned TRR on: %s" % prefs.get("network.trr.mode")
