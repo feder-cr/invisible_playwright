@@ -84,3 +84,22 @@ def test_the_no_proxy_test_fails_when_the_gate_requires_the_trap_and_it_cannot_r
     test = module.test_a_session_without_a_proxy_resolves_with_the_system_resolver
     with pytest.raises(pytest.fail.Exception, match="no root here"):
         test("unused-binary", None, None)
+
+
+def test_a_closed_trap_gives_its_port_back_at_once():
+    """The threads that answer on the trap's sockets end BEFORE the sockets are closed. On Linux a close() from another thread
+    does not wake a thread blocked in accept()/recvfrom(): the kernel kept the socket, still bound, so the port stayed taken after
+    the test and the next trap went to 127.0.0.2, then 127.0.0.3 ... until none of the eight was left ("Address already in use" on
+    all of them, run 43164943499). The old code fails here on Linux; no root is needed (a free port, no resolv.conf)."""
+    first = ResolverTrap(port=0, rewrite_resolv_conf=False)
+    first.__enter__()
+    port = first.port
+    assert port and first.address == "127.0.0.1"
+    first.__exit__(None, None, None)
+    again = ResolverTrap(port=port, rewrite_resolv_conf=False)
+    try:
+        again.__enter__()
+        assert again.address == "127.0.0.1", (
+            "the port %d of the closed trap was still taken: the second trap had to go to %s" % (port, again.address))
+    finally:
+        again.__exit__(None, None, None)

@@ -212,6 +212,9 @@ class ResolverTrap:
         self.queries: List[DohQuery] = []
         self._lock = threading.Lock()
         self._sockets: List[socket.socket] = []
+        #: The threads that answer on `_sockets`, and the flag that ends them: see `_restore`.
+        self._threads: List[threading.Thread] = []
+        self._ending = threading.Event()
         self._original: Optional[bytes] = None
         self._running = False
         self._redirects: List[List[str]] = []
@@ -287,6 +290,15 @@ class ResolverTrap:
             with open(RESOLV_CONF, "wb") as f:
                 f.write(self._original)
             self._original = None
+        # ⛔ THE THREADS END BEFORE THE SOCKETS ARE CLOSED. A thread blocked in accept() or recvfrom() is not woken by a close()
+        # of its socket from another thread (Linux): the kernel keeps the socket, still bound, until the call returns, and the
+        # call never returns. The port stayed taken after the test, and the NEXT trap found 127.0.0.1-8:53 "already in use"
+        # one address per test, until all eight were gone (run 43164943499; here: the eighth trap of a run of 19 tests).
+        # The answering loops therefore wake up every 0.2 s to look at `_ending`, and the socket is closed once they are gone.
+        self._ending.set()
+        for t in self._threads:
+            t.join(2.0)
+        self._threads = []
         for s in self._sockets:
             try:
                 s.close()
@@ -318,8 +330,11 @@ class ResolverTrap:
                 s.close()
         self._sockets += made
         for s in made:
+            s.settimeout(0.2)
             target = self._serve_udp if s.type == socket.SOCK_DGRAM else self._serve_tcp
-            threading.Thread(target=target, args=(s,), daemon=True).start()
+            t = threading.Thread(target=target, args=(s,), daemon=True)
+            self._threads.append(t)
+            t.start()
 
     def _bind_once(self, discarded: List[socket.socket], address: str = "127.0.0.1") -> List[socket.socket]:
         """One attempt: the sockets bound, or [] after putting what it opened in ``discarded``."""
@@ -365,9 +380,11 @@ class ResolverTrap:
         return build_response(query, RCODE_REFUSED)
 
     def _serve_udp(self, sock: socket.socket) -> None:
-        while True:
+        while not self._ending.is_set():
             try:
                 data, peer = sock.recvfrom(4096)
+            except socket.timeout:
+                continue
             except OSError:
                 return
             response = self._respond(data, "udp")
@@ -378,9 +395,11 @@ class ResolverTrap:
                     pass
 
     def _serve_tcp(self, listener: socket.socket) -> None:
-        while True:
+        while not self._ending.is_set():
             try:
                 conn, _ = listener.accept()
+            except socket.timeout:
+                continue
             except OSError:
                 return
             threading.Thread(target=self._tcp_conversation, args=(conn,), daemon=True).start()
