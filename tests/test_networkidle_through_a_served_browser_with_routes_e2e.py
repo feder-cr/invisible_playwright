@@ -18,7 +18,8 @@ import pytest
 
 from _servers import LocalServer
 
-pytestmark = pytest.mark.e2e
+# Bound to the engine that carries the UDP line: red on firefox-61/62 (the engine fix is in the 63): skips on the published engine; runs on the candidate.
+pytestmark = [pytest.mark.e2e, pytest.mark.usefixtures("the_udp_line")]
 
 
 def _stock_client(module):
