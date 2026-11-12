@@ -26,7 +26,8 @@ from _socks_servers import STUN_NUMBER, STUN_PORT, coherent
 from _udp_line import egress_by_proxy
 from test_webrtc_realness import _e2e_binary, _launch  # noqa: F401
 
-pytestmark = pytest.mark.e2e
+# Bound to the engine that carries the UDP line: red before the UDP line (firefox-63): skips on the published engine; runs on the candidate.
+pytestmark = [pytest.mark.e2e, pytest.mark.usefixtures("the_udp_line")]
 
 RTT_MS = 130
 

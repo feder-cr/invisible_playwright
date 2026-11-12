@@ -27,7 +27,8 @@ import pytest
 from _socks_servers import Socks5TcpOnly
 from test_webrtc_realness import _e2e_binary, _launch  # noqa: F401
 
-pytestmark = pytest.mark.e2e
+# Bound to the engine that carries the UDP line: red before the declared network (firefox-63): skips on the published engine; runs on the candidate.
+pytestmark = [pytest.mark.e2e, pytest.mark.usefixtures("the_udp_line")]
 
 DECLARED = "v4=192.168.31.7;v6=0;p6="
 N_MS = 800
