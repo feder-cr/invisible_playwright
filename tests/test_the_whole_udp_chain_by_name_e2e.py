@@ -37,7 +37,16 @@ from _udp_line import declared_udp, egress_by_proxy, measure_servers
 pytestmark = pytest.mark.e2e
 
 #: Loopback goes through the proxy too (as in test_doh_through_the_proxy_e2e.py), so the road of the page is observable.
-PREFS = {"network.proxy.allow_hijacking_localhost": True, "network.proxy.no_proxies_on": ""}
+#:
+#: ⛔ `media.peerconnection.ice.loopback`: the gateway's datagrams leave from 127.0.0.2 (so that a TURN server hearing 127.0.0.1 proves a
+#: browser that went around it), hence the TURN server tells the browser, in the XOR-MAPPED-ADDRESS of its answer, that its address is
+#: 127.0.0.2. A retail Firefox throws that answer away as "bogus" (a loopback mapped address, `nr_stun_transport_addr_check` in
+#: stun_client_ctx.cpp, unless the ICE context allows loopback: turn_client_ctx.cpp, flag set by this pref in nricectx.cpp): it keeps
+#: retransmitting the same Allocate and never gathers (measured on the giro 3 binary: the gateway delivered the 401 and then the success
+#: within 5 ms, the browser read both from the relay's socket and retransmitted the Allocate 5 times in 2 s; the same chain with the pref
+#: passes at 130 ms). It is the lab's address, not a behaviour of the product: on the real network the mapped address is the exit's.
+PREFS = {"network.proxy.allow_hijacking_localhost": True, "network.proxy.no_proxies_on": "",
+         "media.peerconnection.ice.loopback": True}
 
 
 @pytest.fixture
