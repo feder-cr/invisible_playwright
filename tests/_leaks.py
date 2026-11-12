@@ -185,6 +185,17 @@ def _who_holds(port: int) -> str:
     return "; no ss or netstat to say who holds it"
 
 
+#: The address of the trap when port 53 cannot be bound: resolv.conf names no port, so a packet for 127.0.0.2:53 is REDIRECTed by
+#: the kernel (iptables, nat OUTPUT) to the port the trap really listens on.
+REDIRECT_ADDRESS = "127.0.0.2"
+
+
+def _iptables_redirect(action: str, protocol: str, port: int) -> List[str]:
+    """The iptables command that (action "-I") puts or ("-D") takes away the redirect of REDIRECT_ADDRESS:53 to `port`."""
+    return ["iptables", "-t", "nat", action, "OUTPUT", "-p", protocol, "-d", REDIRECT_ADDRESS, "--dport", "53",
+            "-j", "REDIRECT", "--to-ports", str(port)]
+
+
 class ResolverTrap:
     """A resolver on loopback that counts what it is asked. See the module docstring."""
 
@@ -203,6 +214,7 @@ class ResolverTrap:
         self._sockets: List[socket.socket] = []
         self._original: Optional[bytes] = None
         self._running = False
+        self._redirects: List[List[str]] = []
         #: Why the last bind attempt failed (the error of the socket), for the message when none succeeds.
         self._bind_error: Optional[OSError] = None
 
@@ -225,7 +237,15 @@ class ResolverTrap:
         if self.rewrite_resolv_conf and not self.available:
             raise RuntimeError(self.reason)
         try:
-            self._bind()
+            try:
+                self._bind()
+            except OSError as exc:
+                # Port 53 cannot be bound here (run 43164943499: EADDRINUSE on every loopback address, nothing listed): listen on
+                # a free port and have the kernel send 127.0.0.2:53 there. Only for the real thing (a resolv.conf to rewrite).
+                if not (self.rewrite_resolv_conf and self.port == 53):
+                    raise
+                self._bind_error = exc
+                self._redirect_to_a_free_port()
             if self.rewrite_resolv_conf:
                 self._original = RESOLV_CONF.read_bytes()
                 # In place, not by rename: in a container the file is often a bind mount.
@@ -241,7 +261,28 @@ class ResolverTrap:
         self._running = False
         self._restore()
 
+    def _redirect_to_a_free_port(self) -> None:
+        """Listen on a free port and redirect 127.0.0.2:53 (udp and tcp) to it; `address` becomes the one resolv.conf names."""
+        import shutil
+        import subprocess
+        if not shutil.which("iptables"):
+            raise OSError("port 53 cannot be bound (%s) and there is no iptables to redirect it from %s%s"
+                          % (self._bind_error, REDIRECT_ADDRESS, _who_holds(53)))
+        self.port = 0
+        self._bind()
+        for protocol in ("udp", "tcp"):
+            done = subprocess.run(_iptables_redirect("-I", protocol, self.port), capture_output=True, text=True)
+            if done.returncode:
+                raise OSError("iptables refused the redirect of %s:53 to port %d: %s"
+                              % (REDIRECT_ADDRESS, self.port, done.stderr.strip()))
+            self._redirects.append(_iptables_redirect("-D", protocol, self.port))
+        self.address = REDIRECT_ADDRESS
+
     def _restore(self) -> None:
+        import subprocess
+        for command in self._redirects:
+            subprocess.run(command, capture_output=True, text=True)
+        self._redirects = []
         if self._original is not None:
             with open(RESOLV_CONF, "wb") as f:
                 f.write(self._original)

@@ -182,6 +182,45 @@ def test_the_trap_goes_to_the_next_loopback_address_when_the_first_has_its_port_
         holder_udp.close()
 
 
+def test_a_port_53_that_cannot_be_bound_is_redirected_from_127_0_0_2_to_a_free_port(monkeypatch, tmp_path):
+    """Run 43164943499: EADDRINUSE on port 53 of every loopback address, with nothing listed. resolv.conf names no port, so the
+    trap then listens on a free one and the kernel (iptables, nat OUTPUT) sends 127.0.0.2:53 to it; the rules go away with it."""
+    import _leaks
+
+    conf = tmp_path / "resolv.conf"
+    conf.write_bytes(b"nameserver 192.0.2.9\n")
+    monkeypatch.setattr(_leaks, "RESOLV_CONF", conf)
+    monkeypatch.setattr(ResolverTrap, "available", True)
+    import shutil
+
+    monkeypatch.setattr(shutil, "which", lambda name: "/sbin/iptables")
+    commands = []
+
+    class Done:
+        returncode = 0
+        stderr = ""
+        stdout = ""
+
+    monkeypatch.setattr(subprocess, "run", lambda command, **kw: commands.append(list(command)) or Done())
+    real_bind = ResolverTrap._bind
+
+    def bind(self):
+        if self.port == 53:
+            raise OSError(errno.EADDRINUSE, "Address already in use")
+        real_bind(self)
+
+    monkeypatch.setattr(ResolverTrap, "_bind", bind)
+    with ResolverTrap(port=53) as trap:
+        assert trap.address == _leaks.REDIRECT_ADDRESS and trap.port > 0
+        assert conf.read_bytes().startswith(b"nameserver 127.0.0.2\n")
+        inserted = [c for c in commands if "-I" in c]
+        assert [(c[c.index("-p") + 1], c[c.index("--to-ports") + 1]) for c in inserted] == [
+            ("udp", str(trap.port)), ("tcp", str(trap.port))]
+        assert all(c[:4] == ["iptables", "-t", "nat", "-I"] and "127.0.0.2" in c and "53" in c for c in inserted)
+    assert conf.read_bytes() == b"nameserver 192.0.2.9\n"
+    assert len([c for c in commands if "-D" in c]) == 2, commands
+
+
 def test_the_trap_answers_the_names_it_is_given_over_udp_and_tcp():
     with ResolverTrap({"page-d.test": "127.0.0.1"}, port=0, rewrite_resolv_conf=False) as trap:
         for data in (_udp_ask(trap.port, "page-d.test"), _tcp_ask(trap.port, "page-d.test")):
