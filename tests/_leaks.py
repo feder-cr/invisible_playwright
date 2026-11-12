@@ -79,6 +79,9 @@ class Watcher:
         #: pids of the matching descendants seen.
         self.watched_pids: Set[int] = set()
         self.samples = 0
+        #: HUNT: pid -> (seconds from the watcher's start to the birth of the process, parent pid, profile of its command line).
+        self.pid_info = {}
+        self.started_wall = time.time()
         self._seen_keys: Set[tuple] = set()
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -105,8 +108,13 @@ class Watcher:
 
     # --- what a test asks ----------------------------------------------------------------------------------------
     def describe(self) -> str:
-        return "; ".join("%s(pid %d) %s %s -> %s %s" % (c.process, c.pid, c.protocol, c.local, c.remote, c.status)
-                         for c in self.direct) or "nothing"
+        def who(pid):
+            born, ppid, profile = self.pid_info.get(pid, (None, None, None))
+            return "[born %s s from the watcher's start, parent %s, profile %s]" % (
+                "?" if born is None else "%+.2f" % born, ppid, profile)
+        pids = "watched: " + ", ".join("%d %s" % (p, who(p)) for p in sorted(self.watched_pids))
+        return ("; ".join("%s(pid %d) %s %s -> %s %s %s" % (c.process, c.pid, c.protocol, c.local, c.remote, c.status, who(c.pid))
+                          for c in self.direct) or "nothing") + " || " + pids
 
     def helpers_seen(self, forbidden: Iterable[str]) -> List[str]:
         """The process names whose stem (the name without its extension) contains one of ``forbidden``."""
@@ -135,6 +143,13 @@ class Watcher:
                 if not any(m in name.lower() for m in self.match):
                     continue
                 self.watched_pids.add(child.pid)
+                if child.pid not in self.pid_info:
+                    try:
+                        cmd = child.cmdline()
+                        prof = cmd[cmd.index("-profile") + 1] if "-profile" in cmd else "-"
+                        self.pid_info[child.pid] = (child.create_time() - self.started_wall, child.ppid(), prof[-40:])
+                    except (psutil.Error, ValueError, IndexError):
+                        self.pid_info[child.pid] = (None, None, None)
                 try:
                     connections = _connections_of(child)
                 except (psutil.Error, OSError):

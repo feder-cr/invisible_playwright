@@ -1,0 +1,82 @@
+# windows-leak-pid-hunt.yml - hunt scaffolding, never merged. Runs only on a push to a `hunt/windows-leak**` branch.
+#
+# test_resolver_race_e2e[browser_proxy] on Windows (run 43313222398): the Watcher saw firefox.exe pid 9924 connect DIRECT to 14 hosts
+# behind a LAUNCH proxy. Is that pid the browser of THAT test, or a browser of the test before ([context_proxy], no launch proxy, where
+# background traffic leaves direct by rule) still exiting? The Watcher here says, for every pid it watches, when it was born relative
+# to the watcher's start, its parent and the profile of its command line. The file five times, wrapper main (0.51.0), the published engine.
+name: windows leak pid hunt
+
+on:
+  push:
+    branches: ['hunt/windows-leak**']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-leak-pid-hunt-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GITHUB_TOKEN: ${{ github.token }}
+  GH_TOKEN: ${{ github.token }}
+  FILES: >-
+    tests/test_resolver_race_e2e.py
+
+jobs:
+  recheck:
+    name: windows leak pid
+    runs-on: windows-2022
+    timeout-minutes: 90
+    strategy:
+      max-parallel: 1
+      matrix:
+        os: [windows-2022]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: { python-version: '3.11' }
+      - name: Install the wrapper and its dev extra, the pinned Playwright, the published engine
+        run: |
+          set -e
+          python -m pip install --quiet --upgrade pip
+          python -m pip install --quiet ".[dev]"
+          python -m pip install --quiet "playwright==$(cat scripts/playwright_pin.txt)"
+          python -c "import importlib.metadata as m; print('invisible-playwright', m.version('invisible-playwright'), '| invisible-core', m.version('invisible-core'))"
+          echo "FF=$(cd "$RUNNER_TEMP" && python -m invisible_playwright fetch | tail -1)" >> "$GITHUB_ENV"
+      - name: The files three times, as run_e2e.py runs them
+        env:
+          PYTHONUNBUFFERED: "1"
+          INVPW_TEST_WATCHDOG_FILE: ${{ github.workspace }}/evidence/e2e-watchdog.log
+        run: |
+          mkdir -p evidence
+          export INVPW_BINARY_PATH="$FF" STEALTHFOX_E2E_BINARY="$FF"
+          set +e
+          for n in 1 2 3 4 5; do
+            python -u scripts/run_e2e.py "$FF" $FILES -rA --tb=short > "evidence/run_$n.log" 2>&1
+            echo "run $n: $(grep -aE '^=+ .*(passed|failed|error).* =+$' evidence/run_$n.log | head -1)"
+          done
+          {
+            echo "## resolver race on Windows x5, with the birth of every watched pid"
+            echo '```'
+            grep -ahE "^(FAILED|ERROR) " evidence/run_*.log | cut -c1-200 | sort | uniq -c | sort -rn || true
+            grep -ahoE "watched: .{0,600}" evidence/run_*.log | head -10 || true
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Close every Firefox left
+        if: always()
+        shell: pwsh
+        run: |
+          Get-Process firefox -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          "left: " + @(Get-Process firefox -ErrorAction SilentlyContinue).Count
+      - name: Upload the evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-leak-pid-${{ github.run_id }}
+          path: evidence
+          if-no-files-found: warn
+          retention-days: 14
