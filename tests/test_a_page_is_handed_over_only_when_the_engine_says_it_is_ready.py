@@ -303,3 +303,28 @@ def test_a_popup_is_announced_with_the_address_of_the_commit_that_came_with_its_
     while not urls and time.monotonic() < deadline:
         time.sleep(0.01)
     assert urls == [url], "the popup was announced with %r, not with the address of the commit that came with its ready" % (urls,)
+
+
+def test_a_download_started_by_a_popup_that_is_not_announced_is_reported_on_its_opener(late_browser):
+    """`<a target=_blank href=file>` with `Content-Disposition: attachment`: the new tab never gets a Page.ready and the engine closes it
+    at once. Playwright reports the download on the OPENER (ffBrowser._onDownloadCreated); looking only among the announced pages
+    lost it (no `download` event anywhere)."""
+    server, conn = late_browser.server, late_browser.conn
+    context = _new_context(late_browser)
+    conn.released = {"s1"}
+    server.handle({"guid": context.guid, "method": "newPage", "params": {"pageNumber": 1}})
+    opener_target = next(iter(conn.sessions))
+    opener = next(o for o in server._objects.values() if o.TYPE == "Page" and o.target_id == opener_target)
+    said = []
+    original = opener.emit
+    opener.emit = lambda event, params=None: (said.append((event, params)), original(event, params))[1]
+    target, session = conn.popup_born(opener_target, context.context_id, 1)
+    deadline = time.monotonic() + 5
+    while target not in late_browser._building and time.monotonic() < deadline:
+        time.sleep(0.01)
+    conn.dispatch_event("Browser.downloadCreated", {
+        "uuid": "u1", "browserContextId": context.context_id, "pageTargetId": target, "frameId": "f" + target,
+        "url": "http://127.0.0.1/file", "suggestedFileName": "f.bin"}, None)
+    downloads = [p for e, p in said if e == "download"]
+    assert len(downloads) == 1, "the download of the popup was not reported on its opener: %r" % (said,)
+    assert downloads[0]["suggestedFilename"] == "f.bin"

@@ -4519,6 +4519,9 @@ class BrowserDispatcher(Dispatcher):
         #: Targets whose adoption thread is still building. `op_new_page`
         #: waits on these instead of building a second dispatcher.
         self._adopting: set = set()
+        #: The page that opened each target being adopted (None if it has no announced opener): a download started by a popup that
+        #: is not announced yet belongs to its opener (Playwright's ffBrowser._onDownloadCreated).
+        self._openers: Dict[str, Optional[PageDispatcher]] = {}
         #: Pages built and waiting for their Page.ready, by target (announced to the client after it).
         self._building: Dict[str, PageDispatcher] = {}
         #: Adoption failures, by target. The `newPage` waiter re-raises (and
@@ -4740,6 +4743,7 @@ class BrowserDispatcher(Dispatcher):
                 return
             self._adopting.add(target_id)
             opener = self._page_targets.get(opener_id) if opener_id else None
+            self._openers[target_id] = opener
             if opener is not None:
                 opener.popups_opened += 1
                 number: Optional[int] = popup_number(opener.number,
@@ -4800,6 +4804,7 @@ class BrowserDispatcher(Dispatcher):
                 with self._targets_lock:
                     self._adopting.discard(target_id)
                     self._detached_early.discard(target_id)
+                    self._openers.pop(target_id, None)
                     self._pages_ready.notify_all()
                 return
             # ⛔ THE EVENTS THAT COME WITH THE READY ARE APPLIED FIRST. The engine says Page.ready and, in the same turn, the commit of
@@ -4814,6 +4819,7 @@ class BrowserDispatcher(Dispatcher):
             context.emit("page", {"page": page.channel})
             with self._targets_lock:
                 self._adopting.discard(target_id)
+                self._openers.pop(target_id, None)
                 self._page_targets[target_id] = page
                 context.pages.append(page)
                 early = target_id in self._detached_early
@@ -4832,6 +4838,7 @@ class BrowserDispatcher(Dispatcher):
             with self._targets_lock:
                 self._adopting.discard(target_id)
                 self._detached_early.discard(target_id)
+                self._openers.pop(target_id, None)
                 self._adopt_errors[target_id] = failure
                 while len(self._adopt_errors) > 64:
                     self._adopt_errors.pop(next(iter(self._adopt_errors)))
@@ -5209,7 +5216,17 @@ class BrowserDispatcher(Dispatcher):
     def _on_download_created(self, params: Dict) -> None:
         context = next((c for c in self.contexts
                         if c.context_id == params.get("browserContextId")), None)
-        page = self._page_targets.get(params.get("pageTargetId"))
+        target = params.get("pageTargetId")
+        with self._targets_lock:
+            announced = self._page_targets.get(target)
+            # The page whose frame the download came from: announced, or built and waiting for its Page.ready.
+            page = announced or self._building.get(target)
+            # ⛔ THE PAGE THE DOWNLOAD IS REPORTED ON. A download that starts in a new tab (a `target=_blank` link or a `window.open` to a
+            # `Content-Disposition: attachment`) comes from a tab the client has not been told of: the tab waits for a Page.ready that never
+            # comes and is closed by the engine at once. Playwright reports it on the OPENER in that case (ffBrowser._onDownloadCreated:
+            # "if it's a new window download, report it on the pop-up's opener"); looking only among the announced pages, as this did,
+            # lost the download altogether.
+            origin = announced or self._openers.get(target)
         if context is None:
             return
         directory = self._downloads_dir(params.get("browserContextId"))
@@ -5217,7 +5234,7 @@ class BrowserDispatcher(Dispatcher):
                                       os.path.join(directory, params["uuid"]))
         self._artifacts[params["uuid"]] = artifact
         early = self._finished_early.pop(params["uuid"], None)
-        if page is not None:
+        if page is not None or origin is not None:
             # ⛔ THE ENGINE ENDS A NAVIGATION THAT BECAME A DOWNLOAD WITH NO
             # EVENT AT ALL (no navigationCommitted, no navigationAborted), so
             # a `goto` or a click waiting on it waited out its timeout.
@@ -5226,7 +5243,7 @@ class BrowserDispatcher(Dispatcher):
             # starting')); the lifecycle is fed the same abort. A frame whose
             # current navigation already committed is left alone: the
             # download came from a click or a script, not from a load.
-            frame = page.lifecycle.frame(params.get("frameId"))
+            frame = page.lifecycle.frame(params.get("frameId")) if page is not None else None
             if (frame is not None and frame.navigation
                     and frame.navigation not in frame.aborted
                     and not any(c[1] == frame.navigation
@@ -5234,9 +5251,10 @@ class BrowserDispatcher(Dispatcher):
                 page.lifecycle._on_event("Page.navigationAborted", {
                     "frameId": frame.id, "navigationId": frame.navigation,
                     "errorText": "Download is starting"})
-            page.emit("download", {"url": params.get("url") or "",
-                                   "suggestedFilename": params.get("suggestedFileName") or "",
-                                   "artifact": artifact.channel})
+            if origin is not None:
+                origin.emit("download", {"url": params.get("url") or "",
+                                         "suggestedFilename": params.get("suggestedFileName") or "",
+                                         "artifact": artifact.channel})
         if early is not None:
             artifact.report_finished(early)
 
