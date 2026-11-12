@@ -3003,12 +3003,17 @@ class PageDispatcher(Dispatcher):
         their page prints nothing.
         """
         # ⛔ Registered on the connection's list, never chained, and already
-        # in `__init__`: what is left here is to stop holding. Only the NETWORK
-        # events held are delivered - the rest describe the page's birth,
-        # which the initializer already carries, and replaying a main frame's
-        # `frameAttached` would announce it twice. Delivered under the lock, so
-        # a live event waits for the held ones and keeps their order: a
-        # response handled before its request is dropped as unknown.
+        # in `__init__`: what is left here is to stop holding. EVERY event held
+        # is delivered, of whatever kind, in the order it arrived: a `console`
+        # message, a `pageError`, a `dialog` (an `alert()` blocks the page until
+        # the client accepts it, and a client never told of it cannot), a
+        # `crash`, a load state, a request. (Until 0.51.1 only the `Network.*`
+        # ones were, and the rest were dropped.) The ones this handler does not
+        # read - `Page.frameAttached` and the other events the lifecycle owns -
+        # reach nothing here, and the lifecycle's own announcements are
+        # reconciled below. Delivered under the lock, so a live event waits for
+        # the held ones and keeps their order: a response handled before its
+        # request is dropped as unknown.
         #
         # ⛔ AND EACH EVENT ONCE, AT ITS LAST PLACE. One that arrived after the
         # subscriber was registered but before the replay marked the session
@@ -3020,7 +3025,7 @@ class PageDispatcher(Dispatcher):
             held, self._held = self._held or [], None
             last = {id(params): i for i, (_, params) in enumerate(held)}
             for i, (method, params) in enumerate(held):
-                if last[id(params)] == i and method.startswith("Network."):
+                if last[id(params)] == i:
                     try:
                         self._deliver(method, params)
                     except Exception:
