@@ -440,3 +440,45 @@ def test_a_command_of_the_adoption_that_finds_the_session_gone_announces_and_clo
         time.sleep(0.2)
     assert "page" in announced, "the popup whose session was gone was discarded instead of announced"
     assert not [w for w in caught if "adoption" in str(w.message)], [str(w.message) for w in caught]
+
+
+def test_a_popup_that_is_dropped_or_fails_leaves_the_trace_of_what_the_engine_said(late_browser, monkeypatch):
+    """The log of a red run on a machine nobody can look at does not say in which order the events came: the adoption keeps a short trace
+    per target and writes it in the warning of a failed adoption and in the record of the dropped ones."""
+    import warnings
+    from invisible_playwright._juggler.server import PageDispatcher
+    server, conn = late_browser.server, late_browser.conn
+    context = _new_context(late_browser)
+    conn.released = {"s1"}
+    server.handle({"guid": context.guid, "method": "newPage", "params": {"pageNumber": 1}})
+    opener_target = next(iter(conn.sessions))
+    # 1. dropped with its context
+    target, session = conn.popup_born(opener_target, context.context_id, 1)
+    deadline = time.monotonic() + 5
+    while not (target in late_browser._adoptions and late_browser._adoptions[target].state == "waiting") and time.monotonic() < deadline:
+        time.sleep(0.01)
+    server.handle({"guid": context.guid, "method": "close", "params": {}})
+    deadline = time.monotonic() + 5
+    while not late_browser._dropped and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert late_browser._dropped, "a popup dropped with its context left no trace"
+    dropped_target, text = late_browser._dropped[-1]
+    assert dropped_target == target
+    for word in ("attached", "frameAttached", "building", "waiting", "dropped: its context closed"):
+        assert word in text, "the trace of the dropped popup lacks %r: %s" % (word, text)
+    # 2. a failed adoption writes it in its warning
+    context2 = _new_context(late_browser)
+
+    def boom(self, *args, **kwargs):
+        raise ValueError("boom")
+
+    conn.released = {"s1", "s2"}
+    monkeypatch.setattr(PageDispatcher, "__init__", boom)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        conn.popup_born(opener_target, context2.context_id, 2)
+        deadline = time.monotonic() + 5
+        while not [w for w in caught if "adoption" in str(w.message)] and time.monotonic() < deadline:
+            time.sleep(0.01)
+    messages = [str(w.message) for w in caught if "adoption" in str(w.message)]
+    assert messages and "events of the target" in messages[0] and "attached" in messages[0], messages

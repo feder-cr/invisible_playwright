@@ -36,6 +36,7 @@ import pathlib
 import sys
 import tempfile
 import threading
+import collections
 import time
 import warnings
 from typing import Any, Callable, Dict, List, Optional
@@ -2578,16 +2579,45 @@ class _Adoption:
     the build, between the build and the wait, and a command answered 'cannot find session').
     """
 
-    __slots__ = ("target_id", "opener", "context_id", "requested", "state", "gone", "page")
+    __slots__ = ("target_id", "opener", "context_id", "requested", "state", "gone", "page", "session", "trace", "t0")
 
-    def __init__(self, target_id: str, opener: Optional["PageDispatcher"], context_id: Optional[str] = None) -> None:
+    #: What the engine says about a target that the trace keeps (the events of its page's birth and of its disappearance).
+    TRACED = ("Page.frameAttached", "Page.navigationStarted", "Page.navigationCommitted", "Page.navigationAborted",
+              "Page.ready", "Page.frameDetached", "Browser.detachedFromTarget")
+
+    def __init__(self, target_id: str, opener: Optional["PageDispatcher"], context_id: Optional[str] = None,
+                 session: Optional[str] = None) -> None:
         self.target_id = target_id
         self.opener = opener
         self.context_id = context_id
+        self.session = session
+        #: ⛔ A SHORT TRACE OF THE TARGET, IN MEMORY: what the engine said and what the adoption did, with the milliseconds since the attach.
+        #: It costs a list of at most 60 short strings per target in flight and nothing afterwards; it is written in the warning and in the
+        #: error when a popup is not announced or is dropped, so that a red run on a machine nobody can look at explains itself (the order
+        #: of the events is what decides the outcome of an adoption).
+        self.t0 = time.monotonic()
+        self.trace: List[str] = ["attached +0ms"]
         self.requested: Optional[bool] = None
         self.state = "attached"
         self.gone = False
         self.page: Optional["PageDispatcher"] = None
+
+    def note(self, what: str) -> None:
+        if len(self.trace) < 60:
+            self.trace.append("%s +%dms" % (what, int((time.monotonic() - self.t0) * 1000)))
+
+    def trace_text(self) -> str:
+        return "events of the target: " + ", ".join(self.trace)
+
+
+def _with_trace(failure: BaseException, trace: str) -> BaseException:
+    """The same failure, its message followed by the trace of the target (the class is kept when it can be built from a message)."""
+    if trace in str(failure) or "events of the target" in str(failure):
+        return failure
+    try:
+        return type(failure)("%s [%s]" % (failure, trace))
+    except Exception:
+        return RuntimeError("%s [%s]" % (failure, trace))
 
 
 def _target_is_gone(error: BaseException) -> bool:
@@ -4614,6 +4644,8 @@ class BrowserDispatcher(Dispatcher):
         #: waiting for its ready, announced), whether the engine took it away, its page, its opener. `op_new_page` waits on these
         #: instead of building a second dispatcher; a download of a tab not announced yet is attributed through it.
         self._adoptions: Dict[str, _Adoption] = {}
+        #: The last 16 targets that were NOT announced (dropped with their context, or failed), with their trace: for whoever looks.
+        self._dropped: "collections.deque" = collections.deque(maxlen=16)
         #: Adoption failures, by target. The `newPage` waiter re-raises (and
         #: pops) them; capped because a spontaneous popup nobody waits for
         #: must not grow this for the life of the browser.
@@ -4735,6 +4767,12 @@ class BrowserDispatcher(Dispatcher):
                 self._pages_ready.wait(left)
 
     def _route_browser_event(self, method: str, params: Dict, session) -> None:
+        if session and method in _Adoption.TRACED:
+            with self._targets_lock:
+                for adoption in self._adoptions.values():
+                    if adoption.session == session:
+                        adoption.note(method.split(".", 1)[1])
+                        break
         if method == "Browser.attachedToTarget":
             info = params.get("targetInfo") or {}
             with self._sessions_ready:
@@ -4827,7 +4865,7 @@ class BrowserDispatcher(Dispatcher):
             if target_id in self._page_targets or target_id in self._adoptions:
                 return
             opener = self._page_targets.get(opener_id) if opener_id else None
-            self._adoptions[target_id] = _Adoption(target_id, opener, browser_context_id)
+            self._adoptions[target_id] = _Adoption(target_id, opener, browser_context_id, session_id)
             if opener is not None:
                 opener.popups_opened += 1
                 number: Optional[int] = popup_number(opener.number,
@@ -4850,6 +4888,7 @@ class BrowserDispatcher(Dispatcher):
         with self._targets_lock:
             adoption.requested = requested
             adoption.state = "building"
+            adoption.note("building")
 
     def _enter_waiting(self, adoption: "_Adoption", page: "PageDispatcher") -> bool:
         """The page is built and is registered as waiting for its ready. Returns whether the engine took the target away meanwhile - the
@@ -4857,6 +4896,7 @@ class BrowserDispatcher(Dispatcher):
         with self._targets_lock:
             adoption.page = page
             adoption.state = "waiting"
+            adoption.note("waiting" + (" (gone while building)" if page.gone_while_building else ""))
             return adoption.gone or page.gone_while_building
 
     def _enter_announced(self, adoption: "_Adoption", page: "PageDispatcher", context: "BrowserContextDispatcher") -> bool:
@@ -4865,6 +4905,7 @@ class BrowserDispatcher(Dispatcher):
         page.announce(context, replay=not adoption.requested)
         with self._targets_lock:
             adoption.state = "announced"
+            adoption.note("announced" + (" (gone)" if adoption.gone else ""))
             gone = adoption.gone
             self._adoptions.pop(adoption.target_id, None)
             self._page_targets[adoption.target_id] = page
@@ -4905,6 +4946,8 @@ class BrowserDispatcher(Dispatcher):
             try:
                 if not gone:
                     page.wait_until_ready(timeout=20.0 if requested else None)
+            except TimeoutError as late:
+                raise TimeoutError("%s [%s]" % (late, adoption.trace_text())) from None
             except juggler.TargetClosedError:
                 # Gone before it was ready (a download's empty tab, a popup the site closed at once): announced and closed right
                 # after, as Playwright's is.
@@ -4913,6 +4956,8 @@ class BrowserDispatcher(Dispatcher):
                 # Its context closed while it waited for a ready that never came: it was never announced and is not now.
                 page.announce_closed()
                 with self._targets_lock:
+                    adoption.note("dropped: its context closed")
+                    self._dropped.append((target_id, adoption.trace_text()))
                     self._adoptions.pop(target_id, None)
                     self._pages_ready.notify_all()
                 return
@@ -4933,7 +4978,10 @@ class BrowserDispatcher(Dispatcher):
                 except Exception:
                     pass
             with self._targets_lock:
+                trace = adoption.trace_text() if adoption is not None else "no record of the target"
+                self._dropped.append((target_id, trace))
                 self._adoptions.pop(target_id, None)
+                failure = _with_trace(failure, trace)
                 self._adopt_errors[target_id] = failure
                 while len(self._adopt_errors) > 64:
                     self._adopt_errors.pop(next(iter(self._adopt_errors)))
@@ -5026,6 +5074,7 @@ class BrowserDispatcher(Dispatcher):
             adoption = self._adoptions.get(target_id)
             if adoption is not None:
                 adoption.gone = True
+                adoption.note("detach seen in state " + adoption.state)
                 if adoption.state == "waiting":
                     waiting = adoption.page
             page = self._page_targets.get(target_id)
