@@ -254,7 +254,9 @@ def test_storage_of_site_b_is_partitioned_between_a_frame_of_a_and_b_as_a_top_pa
     reader = context.new_page()
     reader.goto(storage_pages.url("A", "/storage-read"), wait_until="load")
     frame = wait_frame(reader, storage_pages.url("B"), "/storage-read-b")
-    assert frame.evaluate("window.__r") == {"cookie": "", "top": None}
+    # B inside A reads its own partition: the two cookies the frame wrote above are there, what B wrote as a top page
+    # (`topcookie`, the `top-only` item) is not.
+    assert frame.evaluate("window.__r") == {"cookie": "hdrcookie=1; jscookie=2", "top": None}
 
 
 # ---------------------------------------------------------------------------
