@@ -2799,6 +2799,13 @@ class PageDispatcher(Dispatcher):
         """
         self.lifecycle.wait_for_page_ready(timeout=timeout)
 
+    def settle_events(self) -> None:
+        """Return once every event the engine sent before this call has been handled: its reply comes after them, on one stream."""
+        try:
+            self.conn.send("Browser.getInfo", {}, timeout=5.0)
+        except Exception:
+            pass
+
     def _install_events(self) -> None:
         """Turn Juggler events into protocol events.
 
@@ -4381,6 +4388,7 @@ class BrowserContextDispatcher(Dispatcher):
             # whose only context it is. `Browser.removeBrowserContext` on it
             # would make Juggler's `destroy()` unregister the default from its
             # maps and leave a browser that no command can address.
+            self.browser.end_waits_of(self)
             for page in list(self.pages):
                 try:
                     page.announce_closed()
@@ -4403,6 +4411,7 @@ class BrowserContextDispatcher(Dispatcher):
         # sets `is_closed()` and fires `page.on("close")` from that event, so
         # a page belonging to a closed context stayed "open" forever, and any
         # code waiting for it to close waited for good.
+        self.browser.end_waits_of(self)
         for page in list(self.pages):
             try:
                 page.announce_closed()
@@ -4759,6 +4768,12 @@ class BrowserDispatcher(Dispatcher):
         how it was opened. Stealth is preserved by doing nothing special.
         """
         page = None
+        # ⛔ A PAGE A CALLER ASKED FOR (`Browser.newPage`) WAITS AT MOST 20 s FOR ITS Page.ready, AND FAILS LOUDLY; A POPUP WAITS AS LONG
+        # AS THE ENGINE TAKES, AND SAYS NOTHING. That is Playwright's own: its popup is reported on Page.ready and not before, with no
+        # limit - a destination that answers 204 or never answers gives no `page` event at all (measured, stock Playwright 1.62 and its
+        # Firefox: none in 30 s), one that answers after 25 s gives it at 25 s. The wait ends when the target goes away or its context
+        # closes.
+        requested = number is None
         try:
             if number is None:
                 number = self._number_of_requested(
@@ -4769,15 +4784,29 @@ class BrowserDispatcher(Dispatcher):
                                   number, opener=opener)
             with self._targets_lock:
                 self._building[target_id] = page
+            gone = False
             try:
-                page.wait_until_ready(timeout=20.0)
+                page.wait_until_ready(timeout=20.0 if requested else None)
             except juggler.TargetClosedError:
-                # Gone before it was ready (a popup the site closed at once): announced and closed right after, as a detach that
-                # beats the adoption always was (`_detached_early`).
-                pass
+                # Gone before it was ready (a download's empty tab, a popup the site closed at once): announced and closed right
+                # after, as Playwright's is and as a detach that beats the adoption always was (`_detached_early`).
+                gone = True
             finally:
                 with self._targets_lock:
                     self._building.pop(target_id, None)
+            if gone and not requested and context.disposed:
+                # Its context closed while it waited for a ready that never came: it was never announced and is not now.
+                page.announce_closed()
+                with self._targets_lock:
+                    self._adopting.discard(target_id)
+                    self._detached_early.discard(target_id)
+                    self._pages_ready.notify_all()
+                return
+            # ⛔ THE EVENTS THAT COME WITH THE READY ARE APPLIED FIRST. The engine says Page.ready and, in the same turn, the commit of
+            # the document that made the page ready: announced between the two, the page tells its client `about:blank` (3 of 4 popups
+            # to a slow destination, measured) where Playwright's says the destination. A round trip to the engine comes back after
+            # everything it sent before it.
+            page.settle_events()
             # ⛔ `page` BEFORE the registration, on purpose. A detach racing
             # this build is recorded as early (see `_handle_detach`) and the
             # close is announced right after, so the client always sees the
@@ -4863,6 +4892,16 @@ class BrowserDispatcher(Dispatcher):
                         "engine answered Browser.newPage but never emitted "
                         "Browser.attachedToTarget for it" % (target_id, timeout))
                 self._pages_ready.wait(left)
+
+    def end_waits_of(self, context: "BrowserContextDispatcher") -> None:
+        """A context is closing: the popups of it that are still waiting for a Page.ready that never came stop waiting."""
+        with self._targets_lock:
+            waiting = [p for p in self._building.values() if p.context is context]
+        for page in waiting:
+            try:
+                page.lifecycle.detach()
+            except Exception:
+                pass
 
     def _handle_detach(self, target_id: Optional[str],
                        session_id: Optional[str]) -> None:

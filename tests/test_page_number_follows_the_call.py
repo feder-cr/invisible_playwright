@@ -240,6 +240,9 @@ class _Page:
     def wait_until_ready(self, timeout=20.0):
         pass          # the engine of this test says Page.ready at once
 
+    def settle_events(self):
+        pass
+
     def announce_closed(self):
         pass
 

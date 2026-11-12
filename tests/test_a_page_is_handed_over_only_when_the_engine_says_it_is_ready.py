@@ -39,12 +39,22 @@ class LateReadyJuggler(ScriptedJuggler):
         super().__init__()
         self.held = {}
         self.released = set()
+        self.queued = []
 
     def dispatch_event(self, method, params, session=None):
         if method == "Page.ready" and session not in self.released:
             self.held[session] = (method, params)
             return None
         return super().dispatch_event(method, params, session)
+
+    def send(self, method, params=None, session=None, timeout=30):
+        if method == "Browser.getInfo":
+            # a reply comes after everything the engine sent before it: the events queued as "sent with the ready" arrive first
+            queued, self.queued = self.queued, []
+            for event, event_params, event_session in queued:
+                super().dispatch_event(event, event_params, event_session)
+            return {}
+        return super().send(method, params, session, timeout)
 
     def say_ready(self, session):
         self.released = set(self.released) | {session}
@@ -209,3 +219,87 @@ def test_what_a_popup_does_before_its_ready_reaches_its_frame(late_browser, monk
               if fid == frame_id and event == "loadstate" and params and "add" in params}
     assert "load" in heard, ("the client's frame never heard `load` of the popup (heard %s): wait_for_url(until=load) would wait for ever"
                              % sorted(heard))
+
+
+def test_a_popup_waits_for_its_ready_without_a_limit_and_a_requested_page_for_twenty_seconds(late_browser, monkeypatch):
+    """Playwright's popup is reported on Page.ready with no limit (a destination that answers after 25 s gives the event at 25 s); the
+    page a caller asked for waits 20 s and fails."""
+    from invisible_playwright._juggler.server import PageDispatcher
+    waited = []
+    original = PageDispatcher.wait_until_ready
+
+    def spy(self, timeout=20.0):
+        waited.append(timeout)
+        return original(self, timeout)
+
+    monkeypatch.setattr(PageDispatcher, "wait_until_ready", spy)
+    server, conn = late_browser.server, late_browser.conn
+    context = _new_context(late_browser)
+    conn.released = {"s1"}
+    server.handle({"guid": context.guid, "method": "newPage", "params": {"pageNumber": 1}})
+    opener_target = next(iter(conn.sessions))
+    conn.popup_born(opener_target, context.context_id, 1)
+    deadline = time.monotonic() + 5
+    while len(waited) < 2 and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert waited == [20.0, None], "a requested page waits 20 s, a popup without a limit: %r" % (waited,)
+
+
+def test_a_popup_that_never_gets_its_ready_ends_with_its_context_and_says_nothing(late_browser):
+    """204, a server that never answers: no ready, no `page` event, no warning; closing the context ends the wait."""
+    import warnings
+    server, conn = late_browser.server, late_browser.conn
+    context = _new_context(late_browser)
+    conn.released = {"s1"}
+    server.handle({"guid": context.guid, "method": "newPage", "params": {"pageNumber": 1}})
+    opener_target = next(iter(conn.sessions))
+    announced = []
+    original = context.emit
+    context.emit = lambda event, params=None: (announced.append(event) if event == "page" else None, original(event, params))[1]
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        conn.popup_born(opener_target, context.context_id, 1)
+        time.sleep(0.5)
+        assert not announced, "a popup with no ready was announced"
+        assert late_browser._building, "the popup is not waiting"
+        server.handle({"guid": context.guid, "method": "close", "params": {}})
+        deadline = time.monotonic() + 5
+        while late_browser._building and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert not late_browser._building, "closing the context did not end the wait of the popup"
+        time.sleep(0.2)
+    assert not announced, "a popup of a closed context was announced"
+    assert not [w for w in caught if "adoption" in str(w.message)], [str(w.message) for w in caught]
+
+
+def test_a_popup_is_announced_with_the_address_of_the_commit_that_came_with_its_ready(late_browser):
+    """The engine says Page.ready and, in the same turn, the commit of the document: the client is told the page after the commit, so
+    the url it reads at the `page` event is the destination, as Playwright's is (3 of 4 popups said about:blank)."""
+    server, conn = late_browser.server, late_browser.conn
+    context = _new_context(late_browser)
+    conn.released = {"s1"}
+    server.handle({"guid": context.guid, "method": "newPage", "params": {"pageNumber": 1}})
+    opener_target = next(iter(conn.sessions))
+    urls = []
+    original = context.emit
+
+    def spy(event, params=None):
+        if event == "page":
+            page = next(o for o in server._objects.values() if o.TYPE == "Page" and o.channel == params["page"])
+            urls.append(page.frame.url)
+        return original(event, params)
+
+    context.emit = spy
+    target, session = conn.popup_born(opener_target, context.context_id, 1)
+    frame_id = "f" + target
+    url = "http://127.0.0.1/slow"
+    deadline = time.monotonic() + 5
+    while not any(o.TYPE == "Page" and getattr(o, "session", None) == session for o in server._objects.values())             and time.monotonic() < deadline:
+        time.sleep(0.01)
+    conn.queued.append(("Page.navigationStarted", {"frameId": frame_id, "navigationId": "n1", "url": url}, session))
+    conn.queued.append(("Page.navigationCommitted", {"frameId": frame_id, "navigationId": "n1", "url": url, "name": ""}, session))
+    conn.say_ready(session)           # the commit follows in the stream: it is delivered with the round trip that comes back after it
+    deadline = time.monotonic() + 5
+    while not urls and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert urls == [url], "the popup was announced with %r, not with the address of the commit that came with its ready" % (urls,)
