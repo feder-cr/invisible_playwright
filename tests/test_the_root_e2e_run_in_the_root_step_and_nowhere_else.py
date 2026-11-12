@@ -10,7 +10,8 @@ ci/required-suites.json and the workflow as text (PyYAML is not a dependency of 
   * the root step runs exactly those, under sudo with the gate's environment, from /opt/ff, with no rerun plugin and no `|| true` after the judge;
   * no other step names them.
 
-Known-bad input: e2e.yml as it was (no root step, no exclusion) -> `problems` names both.
+Known-bad inputs: e2e.yml as it was (no root step, no exclusion) -> `problems` names both; the root step BEFORE the run of the runner user
+(a5606dd, run 43271443150: every launch after it waited for the browser until its timeout) -> `problems` names the order.
 """
 from __future__ import annotations
 
@@ -49,6 +50,11 @@ def problems(text: str, suite: dict) -> list:
     if len(runner) != 1:
         return ["the run of the runner user is not one step: %d" % len(runner)]
     root, runner = root[0], runner[0]
+    bodies = [body for _name, body in steps]
+    if bodies.index(root) < bodies.index(runner):
+        out.append("the root step comes BEFORE the run of the runner user: what root leaves behind reaches every launch after it")
+    if "if: success() || failure()" not in root.split("run: |")[0]:
+        out.append("the root step does not run after a red run of the runner user (`if: success() || failure()`)")
     for f in files:
         if f not in re.search(r"ROOT_FILES: (.*)", root).group(1).split() or f not in re.search(r"ROOT_FILES: (.*)", runner).group(1).split():
             out.append("%s is not in ROOT_FILES of both the root step and the run of the runner user" % f)
@@ -104,6 +110,23 @@ def test_a_root_step_without_the_exclusion_is_refused():
 def test_a_root_step_that_may_skip_is_refused():
     text = WORKFLOW.read_text(encoding="utf-8").replace('counts["skipped"]', 'counts["nothing"]')
     assert any("refuse failures" in p for p in problems(text, _suite()))
+
+
+def test_a_root_step_before_the_run_of_the_runner_user_is_refused():
+    """Run 43271443150 of PR 483: with the root step first, every launch of the run that followed waited for the browser until its timeout."""
+    text = WORKFLOW.read_text(encoding="utf-8")
+    steps = _steps(text)
+    root = next(body for name, body in steps if "root e2e" in name)
+    runner = next(body for name, body in steps if "scripts/run_e2e.py" in body)
+    assert runner + root in text, "the two steps are expected next to each other, the run of the runner user first"
+    swapped = text.replace(runner + root, root + runner)
+    assert any("BEFORE the run of the runner user" in p for p in problems(swapped, _suite()))
+
+
+def test_a_root_step_that_does_not_run_after_a_red_run_is_refused():
+    root = next(body for name, body in _steps(WORKFLOW.read_text(encoding="utf-8")) if "root e2e" in name)
+    text = WORKFLOW.read_text(encoding="utf-8").replace(root, root.replace("if: success() || failure()", "if: success()", 1))
+    assert any("success() || failure()" in p for p in problems(text, _suite()))
 
 
 def test_a_root_test_named_in_another_step_is_refused():

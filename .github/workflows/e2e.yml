@@ -116,14 +116,43 @@ jobs:
         # The generator moved into the core with the module it writes (0.30.0),
         # so the check runs against the core this package installs.
         run: python -m invisible_core.juggler._gen_protocol --check --binary "$(dirname "$FF")"
+      - name: Run the full e2e suite under a virtual display, without the root ones
+        # PYTHONUNBUFFERED, and it is not a nicety. Without it Python block-buffers
+        # stdout when it is a pipe, and this step printed NOTHING for 39 minutes
+        # before the 40-minute timeout killed it on 2026-08-04: a run with no
+        # verdict and no way to tell where it went. The variable is inherited by
+        # the pytest subprocess run_e2e.py spawns, which is where the output
+        # actually comes from.
+        env:
+          PYTHONUNBUFFERED: "1"
+          # The watchdog in tests/conftest.py: at 150s inside ONE test it writes
+          # HERE the stack of every thread, and repeats it. Two identical stacks say
+          # stuck, two different ones say slow - opposite diagnoses that no other
+          # tool distinguishes. To a FILE and not to stderr because pytest redirects
+          # the descriptors at the system level: whatever is captured is lost
+          # when the process is killed, which is exactly the case it exists for.
+          INVPW_TEST_WATCHDOG_FILE: ${{ runner.temp }}/e2e-watchdog.log
+          ROOT_FILES: tests/test_a_proxy_that_cannot_carry_udp_leaks_nothing_direct_e2e.py
+          ROOT_NODES: tests/test_the_whole_udp_chain_by_name_e2e.py::test_a_turn_srflx_by_name_arrives_through_the_relay_before_the_tick
+        # The root ones are left out by name and run in the step below, as root: here, as the runner user, they errored.
+        run: |
+          IGNORE=(); for f in $ROOT_FILES; do IGNORE+=("--ignore=$f"); done
+          DESELECT=(); for n in $ROOT_NODES; do DESELECT+=("--deselect=$n"); done
+          xvfb-run -a python -u scripts/run_e2e.py "$FF" "${IGNORE[@]}" "${DESELECT[@]}"
+
       # THE ROOT SUITE, AS THE GATE RUNS IT (wrapper.e2e.udp.exit in ci/required-suites.json). Seven e2e need root: the exit of the lab is a documentation
       # address (198.51.100.9) added to `lo` with `ip addr add`. Collected here as the runner user they ERRORED (run 43262636367: "cannot hold 198.51.100.9
-      # on lo (needs root and iproute2 on Linux)"), so the run below leaves them out by name (ROOT_FILES / ROOT_NODES) and this step runs them, and only
+      # on lo (needs root and iproute2 on Linux)"), so the run above leaves them out by name (ROOT_FILES / ROOT_NODES) and this step runs them, and only
       # them, the way the gate does: the engine copied to /opt/ff (the socket process execs inside a new user namespace, where the runner's 750 home is not
       # readable), `sudo -H -E env -u XDG_RUNTIME_DIR` (Firefox refuses to run as root in a regular user's session), no rerun plugin. Nothing is skipped
       # silently: the step reads its own junit and refuses anything but exactly that many tests, all passed.
-      # tests/test_the_root_e2e_run_in_the_root_step_and_nowhere_else.py holds the two lists, this step and the run below to the suite's list.
+      # AFTER the run of the runner user, never before it (run 43271443150 of PR 483: with this step first, every launch of the run that followed
+      # waited for the browser's readiness line until its timeout, and the job was cancelled at 40 minutes; the same head without the step had 748
+      # green). Whatever root leaves behind (files under the runner's home or /tmp, /etc/resolv.conf, an address on lo) cannot reach a launch of the
+      # runner user any more; the step after this one prints what it left, and decides nothing.
+      # tests/test_the_root_e2e_run_in_the_root_step_and_nowhere_else.py holds the two lists, this step and the run above to the suite's list, and the order.
       - name: The root e2e (wrapper.e2e.udp.exit), as root, as the gate runs them
+        if: success() || failure()
         env:
           PYTHONUNBUFFERED: "1"
           ROOT_FILES: tests/test_a_proxy_that_cannot_carry_udp_leaks_nothing_direct_e2e.py
@@ -146,32 +175,14 @@ jobs:
           if counts["tests"] != int(os.environ["ROOT_TESTS"]) or counts["failures"] or counts["errors"] or counts["skipped"]:
               sys.exit("the root e2e must be exactly %s tests, all passed: %s" % (os.environ["ROOT_TESTS"], counts))
           PY
-      - name: Run the full e2e suite under a virtual display, without the root ones
-        if: success() || failure()
-        # PYTHONUNBUFFERED, and it is not a nicety. Without it Python block-buffers
-        # stdout when it is a pipe, and this step printed NOTHING for 39 minutes
-        # before the 40-minute timeout killed it on 2026-08-04: a run with no
-        # verdict and no way to tell where it went. The variable is inherited by
-        # the pytest subprocess run_e2e.py spawns, which is where the output
-        # actually comes from.
-        env:
-          PYTHONUNBUFFERED: "1"
-          # The watchdog in tests/conftest.py: at 150s inside ONE test it writes
-          # HERE the stack of every thread, and repeats it. Two identical stacks say
-          # stuck, two different ones say slow - opposite diagnoses that no other
-          # tool distinguishes. To a FILE and not to stderr because pytest redirects
-          # the descriptors at the system level: whatever is captured is lost
-          # when the process is killed, which is exactly the case it exists for.
-          INVPW_TEST_WATCHDOG_FILE: ${{ runner.temp }}/e2e-watchdog.log
-          ROOT_FILES: tests/test_a_proxy_that_cannot_carry_udp_leaks_nothing_direct_e2e.py
-          ROOT_NODES: tests/test_the_whole_udp_chain_by_name_e2e.py::test_a_turn_srflx_by_name_arrives_through_the_relay_before_the_tick
-        # The root ones are left out by name and run in the step above, as root: here, as the runner user, they errored.
+      - name: What the root step left behind (diagnostic, decides nothing)
+        if: always()
         run: |
-          IGNORE=(); for f in $ROOT_FILES; do IGNORE+=("--ignore=$f"); done
-          DESELECT=(); for n in $ROOT_NODES; do DESELECT+=("--deselect=$n"); done
-          xvfb-run -a python -u scripts/run_e2e.py "$FF" "${IGNORE[@]}" "${DESELECT[@]}"
+          echo "-- files owned by root under the runner's home and /tmp"; sudo find /home/runner /tmp -maxdepth 3 -user root 2>/dev/null | head -40 || true
+          echo "-- /etc/resolv.conf"; cat /etc/resolv.conf || true
+          echo "-- lo"; ip -4 addr show lo || true
 
-      # Runs ONLY if the step above fails, and before 2026-08-13 it could not
+      # Runs ONLY if the full run above fails, and before 2026-08-13 it could not
       # exist: the hang was killed by the 40-minute ceiling, so the job came out
       # `cancelled` and the following steps did not start at all. With
       # `--timeout 420 --timeout-method thread` the process dies at 7 minutes and the
