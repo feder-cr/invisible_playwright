@@ -490,3 +490,66 @@ def test_a_popup_that_is_dropped_or_fails_leaves_the_trace_of_what_the_engine_sa
             time.sleep(0.01)
     messages = [str(w.message) for w in caught if "adoption" in str(w.message)]
     assert messages and "events of the target" in messages[0] and "attached" in messages[0], messages
+
+
+def test_a_download_that_comes_while_the_adoption_fails_is_said_once_on_the_opener(late_browser, monkeypatch):
+    """The adoption of a popup fails; the engine says the download of that tab in the step between the moment the adoption looks for its
+    pending downloads and the moment it removes its record (forced here: right after the first time the adoption thread lets go of the
+    browser's lock once it has failed). The download queued on a record that is about to vanish was said by nobody. It is said, once, on the
+    opener: taking the pending ones and removing the record are ONE step, and the opener of a target not announced is remembered."""
+    import warnings
+    from invisible_playwright._juggler.server import PageDispatcher
+
+    server, conn = late_browser.server, late_browser.conn
+    context = _new_context(late_browser)
+    conn.released = {"s1"}
+    server.handle({"guid": context.guid, "method": "newPage", "params": {"pageNumber": 1}})
+    opener_target = next(iter(conn.sessions))
+    opener = next(o for o in server._objects.values() if o.TYPE == "Page" and o.target_id == opener_target)
+    said = []
+    original_emit = opener.emit
+    opener.emit = lambda event, params=None: (said.append(event), original_emit(event, params))[1]
+
+    state = {"failing": False, "delivered": False}
+    target = "p1"
+
+    def deliver():
+        state["delivered"] = True
+        late_browser._on_download_created({
+            "uuid": "u9", "browserContextId": context.context_id, "pageTargetId": target, "frameId": "f" + target,
+            "url": "http://127.0.0.1/file", "suggestedFileName": "f.bin"})
+
+    class Tracked:
+        def __init__(self, inner):
+            self.inner = inner
+
+        def __enter__(self):
+            self.inner.acquire()
+            return self
+
+        def __exit__(self, *exc):
+            self.inner.release()
+            if state["failing"] and not state["delivered"] and threading.current_thread().name.startswith("invpw-adopt-p1"):
+                deliver()
+
+        def acquire(self, *a, **k):
+            return self.inner.acquire(*a, **k)
+
+        def release(self):
+            return self.inner.release()
+
+    def boom(self, *args, **kwargs):
+        state["failing"] = True
+        raise ValueError("boom")
+
+    monkeypatch.setattr(PageDispatcher, "__init__", boom)
+    monkeypatch.setattr(late_browser, "_targets_lock", Tracked(late_browser._targets_lock))
+    with warnings.catch_warnings(record=True):
+        warnings.simplefilter("always")
+        conn.popup_born(opener_target, context.context_id, 1)
+        deadline = time.monotonic() + 5
+        while not state["delivered"] and time.monotonic() < deadline:
+            time.sleep(0.01)
+        time.sleep(0.2)
+    assert state["delivered"], "the adoption never failed"
+    assert said.count("download") == 1, "the download that came while the adoption failed was said %d times: %r" % (said.count("download"), said)

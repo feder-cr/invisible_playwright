@@ -39,7 +39,7 @@ import threading
 import collections
 import time
 import warnings
-from typing import Any, Callable, Dict, List, Optional
+from typing import Tuple, Any, Callable, Dict, List, Optional
 
 from invisible_core.juggler import PageActs, popup_number
 from invisible_core.juggler import connection as juggler
@@ -4649,6 +4649,9 @@ class BrowserDispatcher(Dispatcher):
         self._adoptions: Dict[str, _Adoption] = {}
         #: The last 16 targets that were NOT announced (dropped with their context, or failed), with their trace: for whoever looks.
         self._dropped: "collections.deque" = collections.deque(maxlen=16)
+        #: The opener of the last 16 targets whose adoption ended WITHOUT announcing them: a download that comes after the record is gone is
+        #: still said on the opener (it is never lost, whichever step of the adoption it falls between).
+        self._gone_openers: "collections.OrderedDict" = collections.OrderedDict()
         #: Adoption failures, by target. The `newPage` waiter re-raises (and
         #: pops) them; capped because a spontaneous popup nobody waits for
         #: must not grow this for the life of the browser.
@@ -4902,26 +4905,42 @@ class BrowserDispatcher(Dispatcher):
             adoption.note("waiting" + (" (gone while building)" if page.gone_while_building else ""))
             return adoption.gone or page.gone_while_building
 
-    def _enter_announced(self, adoption: "_Adoption", page: "PageDispatcher", context: "BrowserContextDispatcher") -> bool:
+    def _enter_announced(self, adoption: "_Adoption", page: "PageDispatcher", context: "BrowserContextDispatcher") -> Tuple[bool, List]:
         """The client is told of the page, and the page is registered. Returns whether the engine took the target away before this
-        point: the close is announced right after the page, so the client always sees the page before its close."""
+        point (the close is announced right after the page, so the client always sees the page before its close) and the downloads that
+        waited for the page to be announced."""
         page.announce(context, replay=not adoption.requested)
         with self._targets_lock:
             adoption.state = "announced"
             adoption.note("announced" + (" (gone)" if adoption.gone else ""))
             gone = adoption.gone
             self._adoptions.pop(adoption.target_id, None)
+            pending = self._take_downloads(adoption)
             self._page_targets[adoption.target_id] = page
             context.pages.append(page)
             self._pages_ready.notify_all()
-        return gone
+        return gone, pending
 
-    def _flush_downloads(self, adoption: Optional["_Adoption"]) -> None:
-        """Say the downloads that waited for the tab to be announced (or to be dropped: they are never lost)."""
+    def _remember_opener(self, adoption: Optional["_Adoption"]) -> None:
+        """Under `_targets_lock`, in the step that removes the record of a target that is NOT announced."""
+        if adoption is not None and adoption.opener is not None:
+            self._gone_openers[adoption.target_id] = adoption.opener
+            while len(self._gone_openers) > 16:
+                self._gone_openers.popitem(last=False)
+
+    @staticmethod
+    def _take_downloads(adoption: Optional["_Adoption"]) -> List:
+        """The downloads that waited for the tab to be announced, taken IN THE SAME STEP (under `_targets_lock`) as the removal of the record: a
+        download that arrives after that step finds no record and is said at once, one that arrived before is in this list - none can fall
+        between the two and be queued for nobody."""
         if adoption is None:
-            return
-        with self._targets_lock:
-            pending, adoption.downloads = adoption.downloads, []
+            return []
+        pending, adoption.downloads = adoption.downloads, []
+        return pending
+
+    @staticmethod
+    def _say_downloads(pending: List) -> None:
+        """Say them on the opener, in order (never lost: also when the tab is dropped or its adoption fails)."""
         for origin, payload in pending:
             try:
                 origin.emit("download", payload)
@@ -4974,8 +4993,10 @@ class BrowserDispatcher(Dispatcher):
                     adoption.note("dropped: its context closed")
                     self._dropped.append((target_id, adoption.trace_text()))
                     self._adoptions.pop(target_id, None)
+                    self._remember_opener(adoption)
+                    pending = self._take_downloads(adoption)
                     self._pages_ready.notify_all()
-                self._flush_downloads(adoption)
+                self._say_downloads(pending)
                 return
             # ⛔ THE EVENTS THAT COME WITH THE READY ARE APPLIED FIRST. The engine says Page.ready and, in the same turn, the commit of
             # the document that made the page ready: announced between the two, the page tells its client `about:blank` (3 of 4 popups
@@ -4984,8 +5005,8 @@ class BrowserDispatcher(Dispatcher):
             page.settle_events()
             # ⛔ `page` BEFORE the registration, on purpose: the client always sees the page before its close, never a close for a page it
             # has not met.
-            gone_at_announce = self._enter_announced(adoption, page, context)
-            self._flush_downloads(adoption)
+            gone_at_announce, pending = self._enter_announced(adoption, page, context)
+            self._say_downloads(pending)
             if gone_at_announce:
                 page.announce_closed()
         except Exception as failure:
@@ -4995,11 +5016,12 @@ class BrowserDispatcher(Dispatcher):
                     page.announce_closed()
                 except Exception:
                     pass
-            self._flush_downloads(adoption)
             with self._targets_lock:
                 trace = adoption.trace_text() if adoption is not None else "no record of the target"
                 self._dropped.append((target_id, trace))
                 self._adoptions.pop(target_id, None)
+                self._remember_opener(adoption)
+                pending = self._take_downloads(adoption)
                 failure = _with_trace(failure, trace)
                 self._adopt_errors[target_id] = failure
                 while len(self._adopt_errors) > 64:
@@ -5015,6 +5037,7 @@ class BrowserDispatcher(Dispatcher):
                 except Exception:
                     pass
                 self._pages_ready.notify_all()
+            self._say_downloads(pending)
             try:
                 if session_id:
                     self.forget(session_id)
@@ -5401,7 +5424,7 @@ class BrowserDispatcher(Dispatcher):
             # comes and is closed by the engine at once. Playwright reports it on the OPENER in that case (ffBrowser._onDownloadCreated:
             # "if it's a new window download, report it on the pop-up's opener"); looking only among the announced pages, as this did,
             # lost the download altogether.
-            origin = announced or (adoption.opener if adoption is not None else None)
+            origin = announced or (adoption.opener if adoption is not None else self._gone_openers.get(target))
         if context is None:
             return
         directory = self._downloads_dir(params.get("browserContextId"))
