@@ -34,11 +34,18 @@ class _Handler(BaseHTTPRequestHandler):
         if path == "/popup":
             body = POPUP
         else:
+            # the same server by another NAME is another site: the document lands in another process (Fission)
+            port = self.server.server_address[1]
+            other = ("http://localhost:%d/popup" % port).encode()
             body = (b"<!doctype html><html><head><title>opener</title></head><body>"
                     b"<a id=link href=/popup target=_blank>link</a>"
                     b"<a id=noopener href=/popup target=_blank rel=noopener>noopener</a>"
                     b"<button id=open onclick=\"window.open('/popup','_blank')\">open</button>"
                     b"<button id=open-noopener onclick=\"window.open('/popup','_blank','noopener')\">open</button>"
+                    b"<a id=xlink href=" + other + b" target=_blank>cross-site link</a>"
+                    b"<a id=xnoopener href=" + other + b" target=_blank rel=noopener>cross-site noopener</a>"
+                    b"<button id=xopen onclick=\"window.open('" + other + b"','_blank')\">open</button>"
+                    b"<button id=xopen-noopener onclick=\"window.open('" + other + b"','_blank','noopener')\">open</button>"
                     b"</body></html>")
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -69,7 +76,7 @@ def _stock_client(module):
         pytest.fail("the stock Playwright client is missing (%s): install the wrapper with its dev extra" % exc, pytrace=False)
 
 
-OPENERS = ["#link", "#noopener", "#open", "#open-noopener"]
+OPENERS = ["#link", "#noopener", "#open", "#open-noopener", "#xlink", "#xnoopener", "#xopen", "#xopen-noopener"]
 
 
 def _router(delay_s):
@@ -87,7 +94,8 @@ def _check(page, popup_of, site, opener):
     popup = info.value
     assert time.monotonic() - t0 < 2.0
     popup.wait_for_load_state("load", timeout=5000)
-    assert popup.url == site + "popup"
+    expected = (site.replace("127.0.0.1", "localhost") if opener.startswith("#x") else site) + "popup"
+    assert popup.url == expected
     assert popup.title() == "popup"
     assert popup in page.context.pages
     popup.close()
