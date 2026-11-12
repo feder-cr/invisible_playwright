@@ -3,7 +3,8 @@
 # test_resolver_race_e2e[browser_proxy] on Windows (run 43313222398): the Watcher saw firefox.exe pid 9924 connect DIRECT to 14 hosts
 # behind a LAUNCH proxy. Is that pid the browser of THAT test, or a browser of the test before ([context_proxy], no launch proxy, where
 # background traffic leaves direct by rule) still exiting? The Watcher here says, for every pid it watches, when it was born relative
-# to the watcher's start, its parent and the profile of its command line. The file five times, wrapper main (0.51.0), the published engine.
+# to the watcher's start, its parent and the profile of its command line. Alone, the file was green 5 times of 5 (run 43317721949); here
+# it runs with the six other files of the red run, as there, five times, wrapper main (0.51.0), the published engine.
 name: windows leak pid hunt
 
 on:
@@ -21,7 +22,9 @@ env:
   GITHUB_TOKEN: ${{ github.token }}
   GH_TOKEN: ${{ github.token }}
   FILES: >-
-    tests/test_resolver_race_e2e.py
+    tests/test_juggler_actions.py tests/test_juggler_injected.py tests/test_juggler_lifecycle_e2e.py
+    tests/test_popups_reach_the_client_e2e.py tests/test_a_popup_of_a_link_reaches_the_client_e2e.py
+    tests/test_resolver_race_e2e.py tests/test_webgl_noise_active.py
 
 jobs:
   recheck:
