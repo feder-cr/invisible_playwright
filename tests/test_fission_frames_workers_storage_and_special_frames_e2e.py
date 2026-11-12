@@ -10,8 +10,9 @@ Three sites (see `_fission_frames.py`): the top is A (`127.0.0.1`), the frame B 
   absence as a mismatch, never as an agreement. A SharedWorker and a ServiceWorker are made from the frame of B:
   the outcome asserted is what stock Firefox does there (see the docstrings).
 * Cookies and storage. A cookie set by site B inside a frame of A appears in `context.cookies()` with B's domain;
-  what `document.cookie`, `localStorage` and `sessionStorage` show to B-in-A and to B opened as a top page is what
-  stock Firefox shows (see the docstrings).
+  what `document.cookie`, `localStorage` and `sessionStorage` show to B-in-A is what stock Firefox shows, and B
+  opened as a top page does not see them: storage is partitioned by top-level site, as in retail Firefox (stock
+  Playwright Firefox has that protection off; see the docstrings).
 * Frames with no address of their own, at the top level and inside the frame of B: `srcdoc`, `about:blank`, a
   `data:` url and a `sandbox`ed frame with and without `allow-scripts allow-same-origin`: they are in
   `page.frames`, `evaluate` works where scripts run, and `frame_locator` reaches into them (see the docstrings
@@ -197,6 +198,14 @@ def storage_pages(sites):
                 "sessionStorage.setItem('k', 'frame-ss'); %s</script>" % read,
                 headers=[("Set-Cookie", "hdrcookie=1; Path=/")])
     sites.route("B", "/storage-own", "<!doctype html><title>own</title><script>%s</script>" % read)
+    # B as a top page writes a cookie and an item of its own; B in a frame of A reads them (they must not be there)
+    sites.route("B", "/storage-top-writes", "<!doctype html><title>top writes</title><script>"
+                "document.cookie = 'topcookie=3; path=/'; localStorage.setItem('top-only', 'top-ls');"
+                "window.__r = {cookie: document.cookie, top: localStorage.getItem('top-only')};</script>")
+    sites.route("B", "/storage-read-b", "<!doctype html><title>reads</title><script>"
+                "window.__r = {cookie: document.cookie, top: localStorage.getItem('top-only')};</script>")
+    sites.route("A", "/storage-read", "<!doctype html><title>top</title><iframe id='b' src='%s'></iframe>"
+                % sites.url("B", "/storage-read-b"))
     return sites
 
 
@@ -219,15 +228,33 @@ def test_what_a_frame_of_another_site_stores_is_seen_by_the_frame_and_by_the_con
     assert again.evaluate("window.__r") == {"cookie": "hdrcookie=1; jscookie=2", "ls": "frame-ls", "ss": "frame-ss"}
 
 
-def test_site_b_opened_as_a_top_page_sees_what_the_frame_of_b_stored(page, storage_pages):
-    """As stock Firefox does: B opened as a top page in the same context reads the cookies and the local storage
-    that B wrote inside the frame of A, and an empty session storage (a session storage belongs to the tab)."""
+def test_storage_of_site_b_is_partitioned_between_a_frame_of_a_and_b_as_a_top_page(page, storage_pages):
+    """The retail outcome, not stock Playwright's: cookies and web storage are partitioned by the top-level site.
+    What site B wrote inside a frame of A is not visible to B opened as a top page: its `document.cookie` is empty
+    and its `localStorage` item is null (`context.cookies()` still lists B's cookies, with B's domain, because it
+    reads the whole jar). The reverse holds too: a cookie and a local-storage item that B wrote as a top page are
+    not visible to B inside the frame of A. The session storage of the top page is empty in both cases.
+
+    Why the reference here is the retail Firefox and not stock Playwright Firefox: the reference of this project
+    is what a page reads in a Firefox a user installed, and retail Firefox partitions third-party cookies and
+    storage by top-level site (Total Cookie Protection). Playwright's own Firefox ships with that protection off
+    and shows the stored values to B as a top page (observed with Playwright 1.62: `document.cookie` is
+    `hdrcookie=1; jscookie=2` and the item is `frame-ls`), which is not what a page sees in a real browser, so
+    its answer is not the one asserted."""
     context = page.context
     page.goto(storage_pages.url("A", "/storage"), wait_until="load")
     wait_frame(page, storage_pages.url("B"), "/storage-b")
     own = context.new_page()
     own.goto(storage_pages.url("B", "/storage-own"), wait_until="load")
-    assert own.evaluate("window.__r") == {"cookie": "hdrcookie=1; jscookie=2", "ls": "frame-ls", "ss": None}
+    assert own.evaluate("window.__r") == {"cookie": "", "ls": None, "ss": None}
+    assert sorted(c["name"] for c in context.cookies(storage_pages.url("B"))) == ["hdrcookie", "jscookie"]
+    # the reverse: B writes as a top page, then is framed by A and reads
+    own.goto(storage_pages.url("B", "/storage-top-writes"), wait_until="load")
+    assert own.evaluate("window.__r") == {"cookie": "topcookie=3", "top": "top-ls"}
+    reader = context.new_page()
+    reader.goto(storage_pages.url("A", "/storage-read"), wait_until="load")
+    frame = wait_frame(reader, storage_pages.url("B"), "/storage-read-b")
+    assert frame.evaluate("window.__r") == {"cookie": "", "top": None}
 
 
 # ---------------------------------------------------------------------------
