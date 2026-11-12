@@ -354,10 +354,17 @@ def test_webgl_getParameter_deterministic(page):
     res = _ev(page, """() => {
         const norm = v => (ArrayBuffer.isView(v) ? Array.from(v) : v);
         const c = document.createElement('canvas');
+        // The browser's own reason for a context it could not create (the event carries it; the page only
+        // sees null otherwise). A null seen once in 31 runs of the e2e on a loaded runner said 'gl null' and
+        // nothing else, which cannot be told from a missing GL, a refused library, an allocation that failed.
+        const errors = [];
+        c.addEventListener('webglcontextcreationerror', e => errors.push(e.statusMessage || ''), false);
         const gl = c.getContext('webgl');
         if (!gl) {
-            return {ok: false, reason: 'gl null',
-                    webgl2: !!c.getContext('webgl2')};
+            const c2 = document.createElement('canvas');
+            c2.addEventListener('webglcontextcreationerror', e => errors.push('webgl2: ' + (e.statusMessage || '')), false);
+            return {ok: false, reason: 'gl null', errors,
+                    webgl2: !!c2.getContext('webgl2')};
         }
         if (gl.isContextLost()) {
             return {ok: false, reason: 'context lost'};
@@ -385,7 +392,7 @@ def test_webgl_getParameter_deterministic(page):
     }""")
     assert res["ok"], (
         f"WebGL getParameter check failed: reason={res.get('reason')!r} "
-        f"webgl2={res.get('webgl2')!r} round={res.get('round')!r} "
+        f"webgl2={res.get('webgl2')!r} errors={res.get('errors')!r} round={res.get('round')!r} "
         f"param={res.get('param')!r} first={res.get('first')!r} "
         f"ref={res.get('ref')!r}"
     )
