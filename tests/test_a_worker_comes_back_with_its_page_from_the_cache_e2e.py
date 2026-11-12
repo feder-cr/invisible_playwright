@@ -43,6 +43,12 @@ from _servers import LocalServer
 ATTEMPTS = 3
 
 
+#: More repeated gestures than this in one run of this file and the cache is refusing too often: the run fails, naming them.
+MOST_REFUSALS_IN_A_RUN = 2
+#: Every refusal of Firefox met by `_until_restored`, in this process, in order.
+REFUSALS = []
+
+
 class _NotRestored(Exception):
     """Firefox loaded the page again instead of restoring it: the precondition of the test, not a verdict on it."""
 
@@ -106,8 +112,12 @@ def sites():
                             "<script>window.__shown = []; addEventListener('pageshow', e => window.__shown.push(e.persisted));"
                             "</script><iframe id=f src='%s' width=300 height=150></iframe>" % at("b.test", "/frame-worker"))
     routes["/other"] = ("text/html", "<!doctype html><title>other</title><p>other")
+    routes["/top-plain"] = ("text/html", "<!doctype html><title>plain</title>"
+                            "<script>window.__shown = []; addEventListener('pageshow', e => window.__shown.push(e.persisted));"
+                            "</script><p>no worker here")
     try:
         yield {"top": {"page": at("a.test", "/top-worker")}, "oop-frame": {"page": at("a.test", "/top-frame")},
+               "plain": at("a.test", "/top-plain"),
                "same-site": at("a.test", "/other"), "other-site": at("c.test", "/other")}
     finally:
         server.shutdown()
@@ -175,8 +185,9 @@ def test_a_worker_leaves_with_its_page_for_the_cache_and_comes_back_the_same(fir
     _until_restored(attempt)
 
 
-def _until_restored(attempt, attempts=ATTEMPTS):
+def _until_restored(attempt, attempts=ATTEMPTS, record=None):
     """Run `attempt` until Firefox has put the page in the cache. A verdict of ours (any other failure) ends it at once."""
+    record = REFUSALS if record is None else record      # the unit test of this loop keeps its own: it is not a refusal of Firefox
     refused = []
     for _ in range(attempts):
         try:
@@ -184,6 +195,8 @@ def _until_restored(attempt, attempts=ATTEMPTS):
             return
         except _NotRestored as why:
             refused.append(str(why))
+            record.append(str(why))
+            print("\n[bfcache] the page was refused by the cache (%d so far in this run): %s" % (len(record), why))
     raise AssertionError(
         "Firefox did not put the page in the back-forward cache in %d attempts out of %d, so this test proves nothing: %r"
         % (len(refused), attempts, refused))
@@ -197,17 +210,17 @@ def test_a_refused_page_is_tried_again_and_only_attempts_refusals_in_a_row_fail(
         if len(calls) < ATTEMPTS:
             raise _NotRestored("loaded again")
 
-    _until_restored(refused_twice)
+    _until_restored(refused_twice, record=[])
     assert len(calls) == ATTEMPTS
 
     calls.clear()
     with pytest.raises(AssertionError, match="proves nothing"):
-        _until_restored(lambda: (calls.append(1), (_ for _ in ()).throw(_NotRestored("loaded again"))))
+        _until_restored(lambda: (calls.append(1), (_ for _ in ()).throw(_NotRestored("loaded again"))), record=[])
     assert len(calls) == ATTEMPTS
 
     calls.clear()                                   # a verdict of ours is not retried
     with pytest.raises(ValueError):
-        _until_restored(lambda: (calls.append(1), (_ for _ in ()).throw(ValueError("ours"))))
+        _until_restored(lambda: (calls.append(1), (_ for _ in ()).throw(ValueError("ours"))), record=[])
     assert len(calls) == 1
 
 
@@ -285,3 +298,59 @@ def _methods(events, start):
             for m, p in events[start:] if m.startswith(("Page.worker", "Page.navigationCommitted", "Page.frameDocument",
                                                         "Runtime.executionContextsCleared", "Page.frameDetached",
                                                         "Page.frameAttached"))]
+
+
+@pytest.fixture(scope="module", autouse=True)
+def the_cache_does_not_refuse_too_often():
+    """A repeated gesture hides a refusal of Firefox, and a regression of the cache would hide the same way: so the repeats are
+    counted over the whole file, printed, and more than MOST_REFUSALS_IN_A_RUN of them fail the run, loudly."""
+    del REFUSALS[:]
+    yield
+    print("\n[bfcache] refusals met in this run: %d (at most %d allowed)" % (len(REFUSALS), MOST_REFUSALS_IN_A_RUN))
+    assert len(REFUSALS) <= MOST_REFUSALS_IN_A_RUN, (
+        "the back-forward cache refuses too often: %d gestures had to be repeated in one run (at most %d): %r"
+        % (len(REFUSALS), MOST_REFUSALS_IN_A_RUN, REFUSALS))
+
+
+def _leave_and_come_back(page, away_url):
+    """Leave the page at once (no wait of any kind) and come back: what the page recorded of its own `pageshow`."""
+    page.goto(away_url, wait_until="load")
+    page.go_back(wait_until="load")
+    return page.evaluate("window.__shown")
+
+
+@pytest.mark.e2e
+def test_a_page_without_a_worker_comes_back_from_the_cache(firefox_binary, sites, engine_at_least):
+    """No repeat, no wait: the cache has to take a plain page the moment it has loaded. If the cache breaks, this one says so."""
+    engine_at_least("firefox-62")
+    from invisible_playwright import InvisiblePlaywright
+
+    with InvisiblePlaywright(seed=42, binary_path=firefox_binary, humanize=False,
+                             headless=True, extra_prefs=STRATEGY_1) as browser:
+        page = browser.new_context().new_page()
+        page.set_default_timeout(10000)
+        page.goto(sites["plain"], wait_until="load")
+        assert _leave_and_come_back(page, sites["same-site"]) == [False, True], (
+            "a page with no worker was loaded again instead of restored from the back-forward cache")
+
+
+@pytest.mark.e2e
+def test_a_page_whose_started_worker_is_in_a_frame_of_another_site_comes_back_from_the_cache(firefox_binary, sites, engine_at_least):
+    """No repeat: a page with a started worker in a frame of another site (its own process) is taken by the cache. The worker is
+    asked once first, because a worker that has not started keeps ANY page out of the cache (its script fetch is in the load group:
+    leaving right after the frame is listed, 0 of 2 restored here). If the cache breaks for pages with frames in other processes,
+    this one says so."""
+    engine_at_least("firefox-62")
+    from invisible_playwright import InvisiblePlaywright
+
+    with InvisiblePlaywright(seed=42, binary_path=firefox_binary, humanize=False,
+                             headless=True, extra_prefs=STRATEGY_1) as browser:
+        page = browser.new_context().new_page()
+        page.set_default_timeout(10000)
+        page.goto(sites["oop-frame"]["page"], wait_until="load")
+        assert _wait(lambda: any(f.url.endswith("/frame-worker") for f in page.frames)), (
+            "the frame of the worker is not listed with its url: %r" % [f.url for f in page.frames])
+        assert _ask(page, "oop-frame") == 1
+        _wait_cacheable(page)
+        assert _leave_and_come_back(page, sites["same-site"]) == [False, True], (
+            "a page with a worker in a frame of another site was loaded again instead of restored from the back-forward cache")
