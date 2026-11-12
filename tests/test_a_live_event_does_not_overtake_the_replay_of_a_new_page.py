@@ -34,8 +34,9 @@ from test_every_order_of_the_events_of_a_popup_gives_one_page_event import FRAME
 pytestmark = pytest.mark.unit
 
 
-def _case(stop_after):
-    """The replay is stopped after `stop_after` of its events; the destination's commit is delivered by another thread (the reader)."""
+def _case(stop_after, scenario="commit"):
+    """The replay is stopped after `stop_after` of its events; the live event of the scenario is delivered by another thread (the reader):
+    the destination's commit, or (`context`) the creation of a new utility context after the old one was destroyed."""
     parked, go, delivered = threading.Event(), threading.Event(), []
     with pytest.MonkeyPatch.context() as mp:
         original = server_mod.BrowserDispatcher.replay
@@ -73,9 +74,13 @@ def _case(stop_after):
             conn.frame()
             conn.commit()          # the initial about:blank (navigation n1)
             conn.start()           # the navigation to the destination starts (n2)
+            if scenario == "context":
+                conn.dispatch_event("Runtime.executionContextDestroyed", {"executionContextId": "eutility"}, SESSION)
             begin.set()            # the page is built now, and the replay hands it those events
             assert parked.wait(5), "the replay never delivered %d event(s): %s" % (stop_after, delivered)
-            reader = threading.Thread(target=conn.commit_dest, daemon=True, name="engine-reader")
+            live = conn.commit_dest if scenario == "commit" else (lambda: conn.dispatch_event("Runtime.executionContextCreated", {
+                "executionContextId": "eutility2", "auxData": {"frameId": FRAME, "name": "utility"}}, SESSION))
+            reader = threading.Thread(target=live, daemon=True, name="engine-reader")
             reader.start()
             reader.join(0.3)       # with the replay ordered, the reader waits behind it; unordered, it is through
             go.set()
@@ -85,6 +90,8 @@ def _case(stop_after):
             assert _wait(lambda: _thread() is None), "the adoption thread never ended"
             page = world.browser._page_targets.get(TARGET)
             known = page.lifecycle.frames[FRAME]
+            if scenario == "context":
+                return page.injected.contexts.get((FRAME, "utility"))
             return known.url, known.navigation, sorted(known.states), page.frame.url
         finally:
             begin.set()
@@ -99,3 +106,60 @@ def test_the_destination_commit_delivered_while_the_replay_goes_on_is_the_last_w
     assert navigation == "n2", "the frame's navigation is %r" % navigation
     assert "commit" in states
     assert told == DEST, "the client's frame is at %r" % told
+
+
+@pytest.mark.parametrize("stop_after", [1, 2])
+def test_a_context_created_while_the_replay_goes_on_is_not_undone_by_an_older_event(stop_after):
+    """The same race for the injected script: the replay brings the creation of the utility context and its destruction, the engine creates a
+    new one meanwhile. The new one is the context the injected script must end with."""
+    context = _case(stop_after, "context")
+    assert context == "eutility2", "the injected script ended with the utility context %r" % (context,)
+
+
+def test_a_patch_of_the_class_made_after_the_browser_was_built_still_sees_the_events():
+    """The reader looked the delivery up on the class at each event; the gate keeps doing so (the e2e fixtures that record the events patch
+    `EventListeners.dispatch_event` after the browser exists)."""
+    from invisible_core.juggler.connection import EventListeners
+
+    world = World()
+    try:
+        seen = []
+        original = EventListeners.dispatch_event
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(EventListeners, "dispatch_event", lambda self, method, params, session: seen.append((method, session)))
+            world.conn.dispatch_event("Page.x", {}, "S-patched")
+        assert seen == [("Page.x", "S-patched")]
+        assert EventListeners.dispatch_event is original
+    finally:
+        world.close()
+
+
+def test_a_gate_that_is_never_let_go_costs_the_reader_one_wait_and_is_said():
+    """The bound is on the hold, not on each event: the first event waits GATE_WAIT_S, the next ones are delivered at once, and the
+    connection records it."""
+    import time
+
+    world = World()
+    held, release, got = threading.Event(), threading.Event(), []
+    try:
+        world.browser.GATE_WAIT_S = 0.2
+
+        def holder():
+            with world.browser.events_gate():
+                held.set()
+                release.wait(10)
+        t = threading.Thread(target=holder, daemon=True)
+        t.start()
+        assert held.wait(5)
+        world.conn.add_listener(lambda m, p, s: got.append(m) if s == "S-stuck" else None)
+        began = time.monotonic()
+        for n in range(3):
+            world.conn.dispatch_event("Page.e%d" % n, {}, "S-stuck")
+        took = time.monotonic() - began
+        assert got == ["Page.e0", "Page.e1", "Page.e2"], got
+        assert took < 1.0, "the reader waited %.2fs for three events: the bound is per event" % took
+        assert world.browser._gate_timeouts == 1
+        assert any("events gate" in str(e) for e in world.conn.handler_errors), world.conn.handler_errors
+    finally:
+        release.set()
+        world.close()
