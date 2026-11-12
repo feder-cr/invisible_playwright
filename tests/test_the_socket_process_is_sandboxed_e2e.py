@@ -33,8 +33,18 @@ def _seccomp(pid: int) -> str:
     return "?"
 
 
+# The name the kernel keeps for a process (``Name:`` in /proc/<pid>/status, set by the browser itself) -> its kind.
+_KIND_BY_NAME = {"Socket Process": "socket", "Web Content": "tab"}
+
+
 def _children_of(binary: str):
-    """(pid, kind) of every ``-contentproc`` process that runs ``binary``; the kind is the last word of its command line."""
+    """(pid, kind) of every child process of ``binary``; the kind is ``socket`` or ``tab`` (other kinds are named by their last word).
+
+    A process that the fork server makes (every tab) has NO ``tab`` at the end of its command line: it is forked, not exec'ed, so its argv is the
+    one of the fork server, and the browser then overwrites it with a single string (``<binary> -contentproc``) that has no NUL in it. Only the
+    socket process, which is exec'ed, keeps the full argument list. So the kind of a process comes from its last argument when that is one of the
+    known words, and from the name the browser gave it (``Web Content``, ``Socket Process``) otherwise.
+    """
     target = os.path.realpath(binary)
     found = []
     for entry in pathlib.Path("/proc").iterdir():
@@ -42,11 +52,16 @@ def _children_of(binary: str):
             continue
         try:
             exe = os.path.realpath(os.readlink(entry / "exe"))
-            words = [w.decode("utf-8", "replace") for w in (entry / "cmdline").read_bytes().split(b"\0") if w]
+            raw = (entry / "cmdline").read_bytes()
+            status = (entry / "status").read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        if exe == target and "-contentproc" in words:
-            found.append((int(entry.name), words[-1]))
+        words = [w.decode("utf-8", "replace") for w in raw.split(b"\0") if w]
+        if exe != target or "-contentproc" not in raw.decode("utf-8", "replace"):
+            continue
+        name = next((l.split(":", 1)[1].strip() for l in status.splitlines() if l.startswith("Name:")), "")
+        kind = words[-1] if words and words[-1] in ("socket", "tab") else _KIND_BY_NAME.get(name, words[-1] if words else name)
+        found.append((int(entry.name), kind))
     return found
 
 
