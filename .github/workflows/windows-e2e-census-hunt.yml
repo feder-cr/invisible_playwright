@@ -1,0 +1,104 @@
+# windows-e2e-census.yml - hunt scaffolding, never merged. Runs only on a push to a `hunt/windows-e2e-census**` branch.
+#
+# Every e2e test of the wrapper once on Windows, the way e2e.yml runs them on Linux (scripts/run_e2e.py, 4 browsers, the published
+# engine fetched by the package's own command), to count what is red on Windows and why, before the e2e of the pull request runs on
+# both systems (Federico, 12/11: every test on Linux AND Windows; where Windows behaves differently the test adapts to the OS). On
+# 12/11, 562 of the 808 e2e had never run on Windows in any round. Two jobs, the test files split in two halves by name; junit and
+# the full log per half; the step summary groups the red tests by the first line of their error.
+name: windows e2e census
+
+on:
+  push:
+    branches: ['hunt/windows-e2e-census**']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-e2e-census-hunt-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GITHUB_TOKEN: ${{ github.token }}
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  census:
+    name: windows half ${{ matrix.half }}
+    runs-on: windows-2022
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        half: [0, 1]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: { python-version: '3.11' }
+      - name: Install the wrapper and its dev extra, the pinned Playwright, the published engine
+        run: |
+          set -e
+          python -m pip install --quiet --upgrade pip
+          python -m pip install --quiet ".[dev]"
+          python -m pip install --quiet "playwright==$(cat scripts/playwright_pin.txt)"
+          python -c "import importlib.metadata as m; print('invisible-playwright', m.version('invisible-playwright'), '| invisible-core', m.version('invisible-core'))"
+          echo "FF=$(cd "$RUNNER_TEMP" && python -m invisible_playwright fetch | tail -1)" >> "$GITHUB_ENV"
+      - name: This half of the e2e files
+        run: |
+          set -e
+          mkdir -p evidence
+          python -m pytest --collect-only -q -m e2e -o addopts= -p no:cacheprovider 2>/dev/null | grep "::" | cut -d: -f1 | sort -u > evidence/all_files.txt
+          python - "${{ matrix.half }}" <<'PY'
+          import sys
+          files = [l.strip() for l in open("evidence/all_files.txt") if l.strip()]
+          mine = [f for i, f in enumerate(files) if i % 2 == int(sys.argv[1])]
+          open("evidence/files.txt", "w").write("\n".join(mine) + "\n")
+          print(len(files), "files with e2e tests;", len(mine), "in this half")
+          PY
+      - name: The e2e of this half, as e2e.yml runs them on Linux
+        env:
+          PYTHONUNBUFFERED: "1"
+          INVPW_TEST_WATCHDOG_FILE: ${{ github.workspace }}/evidence/e2e-watchdog.log
+        run: |
+          set +e
+          export INVPW_BINARY_PATH="$FF" STEALTHFOX_E2E_BINARY="$FF"
+          mapfile -t FILES < <(tr -d '\r' < evidence/files.txt)
+          python -u scripts/run_e2e.py "$FF" "${FILES[@]}" -rA --tb=line --junitxml=evidence/junit.xml > evidence/run.log 2>&1
+          echo "exit $?"
+          grep -aE "^=+ .*(passed|failed|error).* =+$" evidence/run.log | tail -3
+          python - <<'PY' | tee -a "$GITHUB_STEP_SUMMARY"
+          import collections, re
+          lines = open("evidence/run.log", encoding="utf-8", errors="replace").read().splitlines()
+          outcome = collections.Counter()
+          causes = collections.Counter()
+          for l in lines:
+              m = re.match(r"^(PASSED|FAILED|ERROR|SKIPPED|XFAIL|XPASS) (\S+)(?: - (.*))?", l)
+              if m:
+                  outcome[m.group(1)] += 1
+                  if m.group(1) in ("FAILED", "ERROR", "SKIPPED"):
+                      causes[(m.group(1), (m.group(3) or "").strip()[:110])] += 1
+          print("## Windows, half ${{ matrix.half }}: " + ", ".join("%s %d" % kv for kv in sorted(outcome.items())))
+          print("| outcome | n | first line |")
+          print("|---|---:|---|")
+          for (o, why), n in causes.most_common(40):
+              print("| %s | %d | %s |" % (o, n, why.replace("|", "/")))
+          PY
+          exit 0
+      - name: Close every Firefox left
+        if: always()
+        shell: pwsh
+        run: |
+          Get-Process firefox -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          "left: " + @(Get-Process firefox -ErrorAction SilentlyContinue).Count
+      - name: Upload the evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-e2e-census-${{ matrix.half }}-${{ github.run_id }}
+          path: evidence
+          if-no-files-found: warn
+          retention-days: 14
