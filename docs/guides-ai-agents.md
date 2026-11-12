@@ -20,7 +20,7 @@ Playwright, or not to touch Firefox, at all.
 These pages are for developers wiring an agent to this engine. The
 agent-experience side - what to run, which agent products compare how, what to
 check when an agent gets blocked - lives on the
-[AIHawk wiki](https://github.com/feder-cr/AIHawk/wiki), the agent built on this
+[invisible_playwright_mcp wiki](https://github.com/feder-cr/invisible_playwright_mcp/wiki), the agent built on this
 same engine.
 
 ## Framework integrations
@@ -34,15 +34,15 @@ same engine.
 ## Computer-use and screenshot agents
 
 - [Back a computer-use agent with a real browser engine](back-computer-use-agent-real-browser.md) - implement the screenshot-and-click Computer interface over an invisible_playwright page, and its honest limits.
-- [Computer-use agents and browser fingerprint detection](computer-use-agents-browser-detection.md) - clicking by pixel makes driver flags moot; the engine fingerprint and action rhythm stay checkable. (Moved to the AIHawk wiki; the page here points across.)
+- [Computer-use agents and browser fingerprint detection](computer-use-agents-browser-detection.md) - clicking by pixel makes driver flags moot; the engine fingerprint and action rhythm stay checkable. (Moved to the invisible_playwright_mcp wiki; the page here points across.)
 - [DOM-reading vs screenshot agents: which stealth helps](dom-reading-vs-screenshot-agents.md) - which stealth signal helps depends on whether the agent reads DOM or clicks pixels.
 
 ## How AI agents get detected
 
 - [AI browser agents and stealth: what fits and what does not](ai-browser-agents-stealth.md) - most agents drive Chromium over CDP, so a stealth Firefox does not drop in.
-- [browser-use gets detected: what you can and cannot change](browser-use-detection.md) - browser-use drives Chrome over CDP: what BrowserProfile changes, what stays out of reach. (Moved to the AIHawk wiki; the page here points across.)
-- [Why AI browser agents have their own timing signal](ai-agent-timing-signal.md) - a think-act loop emits machine-regular gaps and instant pointer jumps no fingerprint fixes. (Moved to the AIHawk wiki; the page here points across.)
-- [AI agent retry loops trip rate limits, not fingerprints](agent-retry-loops-rate-limits.md) - retry and re-plan loops multiply requests into a volume signal; throttle in the agent loop. (Moved to the AIHawk wiki; the page here points across.)
+- [browser-use gets detected: what you can and cannot change](browser-use-detection.md) - browser-use drives Chrome over CDP: what BrowserProfile changes, what stays out of reach. (Moved to the invisible_playwright_mcp wiki; the page here points across.)
+- [Why AI browser agents have their own timing signal](ai-agent-timing-signal.md) - a think-act loop emits machine-regular gaps and instant pointer jumps no fingerprint fixes. (Moved to the invisible_playwright_mcp wiki; the page here points across.)
+- [AI agent retry loops trip rate limits, not fingerprints](agent-retry-loops-rate-limits.md) - retry and re-plan loops multiply requests into a volume signal; throttle in the agent loop. (Moved to the invisible_playwright_mcp wiki; the page here points across.)
 - [Playwright 1.62 Ships MCP In the Box](playwright-162-built-in-mcp.md) - the MCP server and a new playwright-cli are now bundled into core, runnable via `npx playwright mcp` with no separate install.
 
 ## Running agents at scale and on servers

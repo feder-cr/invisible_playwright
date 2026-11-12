@@ -230,12 +230,23 @@ class _Page:
     """The `PageDispatcher` seen from the numbering: what it was given."""
 
     def __init__(self, server, context, session, target_id, number,
-                 opener=None):
+                 opener=None, is_gone=None):
         self.target_id = target_id
         self.number = number
         self.opener = opener
         self.popups_opened = 0
         self.channel = {"guid": "page-" + target_id}
+
+    gone_while_building = False
+
+    def wait_until_ready(self, timeout=20.0):
+        pass          # the engine of this test says Page.ready at once
+
+    def settle_events(self):
+        pass
+
+    def announce(self, context, replay):
+        context.emit("page", {"page": self.channel})
 
     def announce_closed(self):
         pass

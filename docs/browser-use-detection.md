@@ -1,6 +1,6 @@
 ---
 title: "browser-use gets detected: what you can and cannot change"
-description: "browser-use drives Chrome over CDP. What BrowserProfile lets you change and what stays out of reach. This page moved to the AIHawk wiki."
+description: "browser-use drives Chrome over CDP. What BrowserProfile lets you change and what stays out of reach. This page moved to the invisible_playwright_mcp wiki."
 parent: "AI Agents and Frameworks"
 grand_parent: "Guides"
 nav_order: 2
@@ -9,10 +9,10 @@ nav_order: 2
 
 # browser-use gets detected: what you can and cannot change
 
-This page moved to the AIHawk wiki, where the agent-experience content now
+This page moved to the invisible_playwright_mcp wiki, where the agent-experience content now
 lives:
 
-**[browser-use getting blocked: what you can and cannot change](https://github.com/feder-cr/AIHawk/wiki/browser-use-getting-blocked)**
+**[browser-use getting blocked: what you can and cannot change](https://github.com/feder-cr/invisible_playwright_mcp/wiki/browser-use-getting-blocked)**
 
 The unchanged short answer: browser-use exposes a real set of levers
 (`executable_path`, `user_data_dir`, `proxy`, `headless`, `args`), all of
