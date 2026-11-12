@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 import _trap_policy
+from _leaks import ResolverTrap
 
 pytestmark = pytest.mark.unit
 
@@ -20,8 +21,16 @@ def _e2e():
     return importlib.import_module("test_doh_through_the_proxy_e2e")
 
 
+def _conftest():
+    # the shared fixtures live in tests/conftest.py (the lint of F811: no file re-declares an imported fixture)
+    here = str(Path(__file__).resolve().parent)
+    if here not in sys.path:
+        sys.path.insert(0, here)
+    return importlib.import_module("conftest")
+
+
 def _fixture_body(module):
-    fixture = module.trap
+    fixture = _conftest().trap
     return getattr(fixture, "_get_wrapped_function", lambda: getattr(fixture, "__wrapped__"))()
 
 
@@ -41,8 +50,8 @@ def test_the_policy_names_the_reason_when_the_gate_requires_the_trap():
 def test_the_trap_fixture_fails_when_the_gate_requires_it_and_it_cannot_run(monkeypatch):
     module = _e2e()
     monkeypatch.setenv("INVPW_REQUIRE_TRAP", "1")
-    monkeypatch.setattr(module.ResolverTrap, "available", False)
-    monkeypatch.setattr(module.ResolverTrap, "reason", "no root here")
+    monkeypatch.setattr(ResolverTrap, "available", False)
+    monkeypatch.setattr(ResolverTrap, "reason", "no root here")
     with pytest.raises(pytest.fail.Exception, match="no root here"):
         next(_fixture_body(module)())
 
@@ -50,12 +59,12 @@ def test_the_trap_fixture_fails_when_the_gate_requires_it_and_it_cannot_run(monk
 def test_the_trap_fixture_fails_when_the_gate_requires_it_and_port_53_is_taken(monkeypatch):
     module = _e2e()
     monkeypatch.setenv("INVPW_REQUIRE_TRAP", "1")
-    monkeypatch.setattr(module.ResolverTrap, "available", True)
+    monkeypatch.setattr(ResolverTrap, "available", True)
 
     def busy(self):
         raise OSError("Address already in use")
 
-    monkeypatch.setattr(module.ResolverTrap, "__enter__", busy)
+    monkeypatch.setattr(ResolverTrap, "__enter__", busy)
     with pytest.raises(pytest.fail.Exception, match="Address already in use"):
         next(_fixture_body(module)())
 
@@ -63,15 +72,15 @@ def test_the_trap_fixture_fails_when_the_gate_requires_it_and_port_53_is_taken(m
 def test_the_trap_fixture_yields_none_without_the_variable(monkeypatch):
     module = _e2e()
     monkeypatch.delenv("INVPW_REQUIRE_TRAP", raising=False)
-    monkeypatch.setattr(module.ResolverTrap, "available", False)
+    monkeypatch.setattr(ResolverTrap, "available", False)
     assert next(_fixture_body(module)()) is None
 
 
 def test_the_no_proxy_test_fails_when_the_gate_requires_the_trap_and_it_cannot_run(monkeypatch):
     module = _e2e()
     monkeypatch.setenv("INVPW_REQUIRE_TRAP", "1")
-    monkeypatch.setattr(module.ResolverTrap, "available", False)
-    monkeypatch.setattr(module.ResolverTrap, "reason", "no root here")
+    monkeypatch.setattr(ResolverTrap, "available", False)
+    monkeypatch.setattr(ResolverTrap, "reason", "no root here")
     test = module.test_a_session_without_a_proxy_resolves_with_the_system_resolver
     with pytest.raises(pytest.fail.Exception, match="no root here"):
         test("unused-binary", None, None)
