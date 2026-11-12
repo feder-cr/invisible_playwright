@@ -25,8 +25,12 @@ def test_build_env_carries_the_seed_declaration(seed):
 
 @pytest.mark.unit
 @pytest.mark.parametrize("proxy", [None, {"server": "socks5://127.0.0.1:1"}])
-def test_a_session_declares_its_seed_network_with_or_without_a_proxy(proxy):
+def test_a_session_declares_its_seed_network_with_or_without_a_proxy(monkeypatch, proxy):
+    from invisible_playwright import _session
     from invisible_playwright.launcher import InvisiblePlaywright
+    # Nothing here launches a browser, and the engine is not what is asked about: under a local seal (the gate's, for a
+    # candidate) there is no engine to download, and resolving one is not this test's business.
+    monkeypatch.setattr(_session, "resolve_executable", lambda path: pathlib.Path("firefox"))
     ip = InvisiblePlaywright(seed=42, proxy=proxy)
     assert ip._build_env({})[NETWORK] == network_to_declare(42)
 
