@@ -56,11 +56,16 @@ class _Page:
         self.number = number
         self.channel = {"guid": "page-" + target_id}
 
+    gone_while_building = False
+
     def wait_until_ready(self, timeout=20.0):
         pass          # the engine of this test says Page.ready at once
 
     def settle_events(self):
         pass
+
+    def announce(self, context, replay):
+        context.emit("page", {"page": self.channel})
 
     def announce_closed(self):
         pass

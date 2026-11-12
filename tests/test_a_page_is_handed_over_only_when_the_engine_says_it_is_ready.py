@@ -328,3 +328,115 @@ def test_a_download_started_by_a_popup_that_is_not_announced_is_reported_on_its_
     downloads = [p for e, p in said if e == "download"]
     assert len(downloads) == 1, "the download of the popup was not reported on its opener: %r" % (said,)
     assert downloads[0]["suggestedFilename"] == "f.bin"
+
+
+def test_the_load_of_a_popup_said_before_its_announcement_is_said_again_right_after_it(late_browser, monkeypatch):
+    """A listener registered in the handler of the `page` event (`page.on("load")`) hears the load of a popup in Playwright, because the
+    page is reported after its ready and the load follows. Here the document may have loaded before the client hears of the page: the
+    two states are said again after the announcement, in order, and the first time they already set the state `wait_for_load_state`
+    reads."""
+    from invisible_playwright._juggler import dispatcher as base
+
+    trace = []
+    original = base.Dispatcher.emit
+
+    def spy(self, method, params=None):
+        if method == "page":
+            trace.append("page")
+        elif getattr(self, "TYPE", "") == "Frame" and method == "loadstate" and params and "add" in params:
+            trace.append(params["add"])
+        return original(self, method, params)
+
+    monkeypatch.setattr(base.Dispatcher, "emit", spy)
+    server, conn = late_browser.server, late_browser.conn
+    context = _new_context(late_browser)
+    conn.released = {"s1"}
+    server.handle({"guid": context.guid, "method": "newPage", "params": {"pageNumber": 1}})
+    opener_target = next(iter(conn.sessions))
+    target, session = conn.popup_born(opener_target, context.context_id, 1)
+    deadline = time.monotonic() + 5
+    while target not in late_browser._building and time.monotonic() < deadline:
+        time.sleep(0.01)
+    frame_id, url = "f" + target, "http://127.0.0.1/slow"
+    conn.dispatch_event("Page.navigationStarted", {"frameId": frame_id, "navigationId": "n1", "url": url}, session)
+    conn.dispatch_event("Page.navigationCommitted", {"frameId": frame_id, "navigationId": "n1", "url": url, "name": ""}, session)
+    conn.dispatch_event("Page.eventFired", {"frameId": frame_id, "name": "DOMContentLoaded"}, session)
+    conn.dispatch_event("Page.eventFired", {"frameId": frame_id, "name": "load"}, session)
+    del trace[:]            # what is said from here on: the ready, the announcement, the replay
+    conn.say_ready(session)
+    deadline = time.monotonic() + 5
+    while trace.count("load") < 1 and time.monotonic() < deadline:
+        time.sleep(0.01)
+    time.sleep(0.2)
+    assert "page" in trace, trace
+    after = trace[trace.index("page") + 1:]
+    assert after == ["domcontentloaded", "load"], "after the announcement the client heard %r" % (after,)
+
+
+def test_a_popup_whose_target_goes_away_while_its_page_is_being_built_is_announced_and_closed(late_browser, monkeypatch):
+    """A download's empty tab closes within milliseconds; on a loaded machine the page of the popup is still being built when the engine
+    detaches it. That detach went by with nobody to tell, and the wait for a ready that never comes went on for ever: the popup was never
+    announced (the full suite failed once on it)."""
+    from invisible_playwright._juggler.server import PageDispatcher
+    original_init = PageDispatcher.__init__
+
+    def slow_init(self, *args, **kwargs):
+        time.sleep(0.4)             # the build is slower than the detach
+        return original_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(PageDispatcher, "__init__", slow_init)
+    server, conn = late_browser.server, late_browser.conn
+    context = _new_context(late_browser)
+    conn.released = {"s1"}
+    monkeypatch.undo()              # the opener is built at normal speed
+    server.handle({"guid": context.guid, "method": "newPage", "params": {"pageNumber": 1}})
+    monkeypatch.setattr(PageDispatcher, "__init__", slow_init)
+    opener_target = next(iter(conn.sessions))
+    announced, closed = [], []
+    original = context.emit
+    context.emit = lambda event, params=None: (announced.append(event) if event == "page" else None, original(event, params))[1]
+    target, session = conn.popup_born(opener_target, context.context_id, 1)
+    conn.dispatch_event("Browser.detachedFromTarget", {"targetId": target, "sessionId": session}, None)
+    deadline = time.monotonic() + 5
+    while "page" not in announced and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert "page" in announced, "the popup that went away while its page was being built was never announced"
+
+
+@pytest.mark.parametrize("command", ["Page.setInitScripts", "Browser.getInfo"])
+def test_a_command_of_the_adoption_that_finds_the_session_gone_announces_and_closes_the_popup(late_browser, command, monkeypatch):
+    """The tab goes away WHILE the adoption initializes it: the engine answers 'cannot find session' to a command of the adoption. Like a
+    detach before the ready, that ends in the page announced and closed (Playwright's does), never in a discard with a warning: the
+    download of a link into a new tab was lost one time in a hundred (independent run, quiet machine)."""
+    import warnings
+    from invisible_core.juggler.connection import ProtocolError
+
+    server, conn = late_browser.server, late_browser.conn
+    context = _new_context(late_browser)
+    conn.released = {"s1"}
+    server.handle({"guid": context.guid, "method": "newPage", "params": {"pageNumber": 1}})
+    opener_target = next(iter(conn.sessions))
+    original_send = conn.send
+
+    def send(method, params=None, session=None, timeout=30):
+        if method == command and session not in (None, "s1"):
+            raise ProtocolError('%s: ERROR: cannot find session with id "%s"' % (method, session))
+        return original_send(method, params, session, timeout)
+
+    monkeypatch.setattr(conn, "send", send)
+    announced = []
+    original = context.emit
+    context.emit = lambda event, params=None: (announced.append(event) if event == "page" else None, original(event, params))[1]
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        target, session = conn.popup_born(opener_target, context.context_id, 1)
+        if command == "Browser.getInfo":
+            conn.say_ready(session)       # this one is asked once the page is ready
+        else:
+            conn.dispatch_event("Browser.detachedFromTarget", {"targetId": target, "sessionId": session}, None)
+        deadline = time.monotonic() + 5
+        while "page" not in announced and time.monotonic() < deadline:
+            time.sleep(0.01)
+        time.sleep(0.2)
+    assert "page" in announced, "the popup whose session was gone was discarded instead of announced"
+    assert not [w for w in caught if "adoption" in str(w.message)], [str(w.message) for w in caught]

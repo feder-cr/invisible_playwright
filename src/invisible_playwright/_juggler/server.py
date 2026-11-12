@@ -983,6 +983,16 @@ class FrameDispatcher(Dispatcher):
     #: closed, and a script that handles "detached" (an iframe a framework removed) never saw it.
     detached = False
 
+    def emit(self, method: str, params: Optional[Dict] = None) -> None:
+        if method == "loadstate" and params and params.get("add") in ("domcontentloaded", "load"):
+            page = self.page
+            with page._announce_lock:
+                if not page._announced:
+                    page._said_before_announcement.append((self, dict(params)))
+                super().emit(method, params)
+            return
+        super().emit(method, params)
+
     def detach(self) -> None:
         """The frame left the page: its handles go (their frame is no more), the frame itself stays and refuses."""
         self.detached = True
@@ -2567,6 +2577,14 @@ class RouteDispatcher(Dispatcher):
 
 
 # ── page ────────────────────────────────────────────────────────────────────
+def _target_is_gone(error: BaseException) -> bool:
+    """Whether a failed command failed because the target or its session no longer exists (the engine closed the tab under it)."""
+    if isinstance(error, juggler.TargetClosedError):
+        return True
+    text = str(error).lower()
+    return "cannot find session" in text or "target closed" in text or "session closed" in text
+
+
 class PageDispatcher(Dispatcher):
     TYPE = "Page"
     #: No hand until `_build` gives it one: a page without it acts as the
@@ -2675,6 +2693,14 @@ class PageDispatcher(Dispatcher):
         # replay.
         self._held: Optional[List] = []
         self._held_lock = threading.Lock()
+        #: ⛔ THE `domcontentloaded` AND `load` OF A POPUP THAT ARE SAID BEFORE IT IS ANNOUNCED. The page is built at once and announced when
+        #: the engine says Page.ready, which is also when its document commits, so the document may have loaded before the client hears
+        #: of the page: a `page.on("load")` registered in the handler of the `page` event would never fire. Playwright's own page is
+        #: reported after its ready and the listener hears the load. Those two states are said again right after the announcement, in
+        #: their order (the first time they set the state the client reads, so `wait_for_load_state` returns at once).
+        self._announce_lock = threading.RLock()
+        self._announced = False
+        self._said_before_announcement: List = []
         self.lifecycle = Lifecycle(conn, session)
         self.injected = InjectedScript(conn, session)
         conn.add_listener(self._route_juggler_event)
@@ -2691,7 +2717,16 @@ class PageDispatcher(Dispatcher):
     def _build(self, server, context: "BrowserContextDispatcher",
                session: str, conn, opener: Optional["PageDispatcher"]) -> None:
         """The rest of the construction, under `__init__`'s cleanup."""
-        self.injected.install()
+        # ⛔ A TARGET THAT GOES AWAY WHILE ITS PAGE IS BEING INITIALIZED (a download's empty tab, closed by the engine within milliseconds)
+        # makes the engine answer "cannot find session" to the command. That is the detach-before-ready case again, caught a step later:
+        # the page is still built, flagged gone, and announced and closed as Playwright's is - not discarded with a warning.
+        self.gone_while_building = False
+        try:
+            self.injected.install()
+        except Exception as failure:
+            if not _target_is_gone(failure):
+                raise
+            self.gone_while_building = True
         self.actions = context.browser.actions_for_page(
             session, self.lifecycle, self.injected, self.number)
         #: The viewport as the client was told it (the initializer's, then
@@ -2746,7 +2781,11 @@ class PageDispatcher(Dispatcher):
         #: to answer after a reader's pause, see `dialogs.plan_answer_ms`.
         self._dialogs_open: Dict[str, Any] = {}
         self._dialogs_seen = 0
-        self.main_frame_id = self.lifecycle.wait_for_main_frame(timeout=20.0)
+        if self.gone_while_building and self.lifecycle.main_frame is None:
+            # gone before it even announced a frame: a frame of its own name keeps the object whole until it is closed
+            self.main_frame_id = "gone-" + str(self.target_id)
+        else:
+            self.main_frame_id = self.lifecycle.wait_for_main_frame(timeout=20.0)
         # ⛔ The Frame is created BEFORE the Page and adopted after: the Page
         # initializer has to name a mainFrame the client can already resolve.
         # ⛔ WITH WHAT THE LIFECYCLE ALREADY KNOWS OF IT, as every other frame is made (`frame_for`): the initializer is a snapshot, and
@@ -2755,7 +2794,7 @@ class PageDispatcher(Dispatcher):
         known = self.lifecycle.frame(self.main_frame_id)
         self.frame = FrameDispatcher(
             server, self, self.main_frame_id,
-            url=getattr(known, "url", "") or "about:blank",
+            url=getattr(known, "url", "") or "",
             name=getattr(known, "name", "") or "",
             load_states=sorted(getattr(known, "states", []) or []) or None)
         viewport = self.viewport_size
@@ -2815,6 +2854,18 @@ class PageDispatcher(Dispatcher):
         after them, the client would be told a frame of `about:blank` that is loaded already and never hears the `load`.
         """
         self.lifecycle.wait_for_page_ready(timeout=timeout)
+
+    def announce(self, context: "BrowserContextDispatcher", replay: bool) -> None:
+        """Tell the client of the page (the context's `page` event) and, for a popup, say again the load states it reached before:
+        under one lock, so a state said live in between waits for the ones that came first."""
+        with self._announce_lock:
+            context.emit("page", {"page": self.channel})
+            earlier, self._said_before_announcement = self._said_before_announcement, []
+            self._announced = True
+            if replay:
+                for frame, params in earlier:
+                    if not frame.detached:
+                        frame.emit("loadstate", params)
 
     def settle_events(self) -> None:
         """Return once every event the engine sent before this call has been handled: its reply comes after them, on one stream."""
@@ -4809,8 +4860,14 @@ class BrowserDispatcher(Dispatcher):
                                   number, opener=opener)
             with self._targets_lock:
                 self._building[target_id] = page
+                # ⛔ A DETACH THAT CAME WHILE THE PAGE WAS BEING BUILT is recorded as early and went by `_handle_detach` with nobody to tell
+                # (the page was not in `_building` yet): waiting for a ready now would wait for ever for a tab that is already gone (a
+                # download's empty tab closes within milliseconds, and a loaded machine builds slowly).
+                detached_already = target_id in self._detached_early or page.gone_while_building
             gone = False
             try:
+                if detached_already:
+                    raise juggler.TargetClosedError("the target went away while its page was being built")
                 page.wait_until_ready(timeout=20.0 if requested else None)
             except juggler.TargetClosedError:
                 # Gone before it was ready (a download's empty tab, a popup the site closed at once): announced and closed right
@@ -4837,7 +4894,7 @@ class BrowserDispatcher(Dispatcher):
             # this build is recorded as early (see `_handle_detach`) and the
             # close is announced right after, so the client always sees the
             # page before its close - never a close for a page it has not met.
-            context.emit("page", {"page": page.channel})
+            page.announce(context, replay=not requested)
             with self._targets_lock:
                 self._adopting.discard(target_id)
                 self._openers.pop(target_id, None)
