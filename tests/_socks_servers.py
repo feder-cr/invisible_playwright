@@ -130,7 +130,8 @@ class Gateway:
     def __init__(self, *, udp: str, tcp_exit: str, udp_exit: str,
                  user: Optional[str] = None, password: Optional[str] = None,
                  relay_host: str = "127.0.0.1", rtt_ms: int = 0,
-                 exit_host: str = "127.0.0.1", tcp_data_delay: bool = False, stun_answers: bool = True):
+                 exit_host: str = "127.0.0.1", tcp_data_delay: bool = False, stun_answers: bool = True,
+                 tcp_from_exit: bool = False):
         assert udp in ("relay", "refuse")
         self.udp = udp
         #: False: the relay carries the datagrams but the fake STUN server is mute (its requests are dropped).
@@ -145,6 +146,9 @@ class Gateway:
         #: The local address the relay's datagrams leave from (the source a server behind the gateway sees). Another
         #: loopback address makes a client that sent direct (from 127.0.0.1) tell apart from one that used the relay.
         self.exit_host = exit_host
+        #: Whether the TCP connections the gateway opens for a CONNECT also leave from ``exit_host`` (as its datagrams do): a server that
+        #: is reachable DIRECT then tells a connection of the proxy from a connection of the browser by the source.
+        self.tcp_from_exit = tcp_from_exit
         #: Whether each chunk of a forwarded TCP stream also waits half the round trip (a far gateway), as the datagrams do.
         self.tcp_data_delay = tcp_data_delay
         self.tcp_exit = tcp_exit
@@ -300,6 +304,20 @@ class Gateway:
         """Where a CONNECT that is not a special one really goes. A subclass maps a name to a local server."""
         return host, port
 
+    def _open_upstream(self, target: Tuple[str, int]) -> socket.socket:
+        """The TCP connection of a CONNECT: from ``exit_host`` when ``tcp_from_exit``, else from wherever the system chooses."""
+        if not self.tcp_from_exit:
+            return socket.create_connection(target, timeout=10)
+        up = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            up.settimeout(10)
+            up.bind((self.exit_host, 0))
+            up.connect(target)
+        except OSError:
+            up.close()
+            raise
+        return up
+
     def _connect(self, c: socket.socket, host: str, port: int) -> None:
         self.connects.append((host, port))
         if host.lower() in self.whoami_names and port == WHOAMI4[1]:
@@ -320,7 +338,7 @@ class Gateway:
                       b"Connection: close\r\n\r\n%s" % (len(body), body))
             return
         try:
-            up = socket.create_connection(self._target(host, port), timeout=10)
+            up = self._open_upstream(self._target(host, port))
         except OSError:
             self._send(c, self._reply(5))
             return
