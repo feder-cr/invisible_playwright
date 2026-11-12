@@ -35,6 +35,7 @@ import json
 import socket
 import struct
 import subprocess
+import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -61,11 +62,40 @@ REALM = "hermetic"
 NONCE = "6e6f6e6365"
 
 
+#: Windows: what `lab_exit_address` runs, in PowerShell. The address goes on the first connected adapter that is not the loopback
+#: pseudo-interface (Windows takes no extra address there), with SkipAsSource so that nothing else of the host leaves from it, and the
+#: block waits until it is usable (an address added on Windows is "Tentative" until duplicate address detection is over).
+_WIN_HOLD = (
+    "$ErrorActionPreference = 'Stop';"
+    "if (Get-NetIPAddress -IPAddress '{a}' -ErrorAction SilentlyContinue) {{ 'held'; exit 0 }};"
+    "$if = Get-NetIPInterface -AddressFamily IPv4 -ConnectionState Connected | Where-Object {{ $_.InterfaceAlias -notlike 'Loopback*' }}"
+    " | Sort-Object InterfaceMetric | Select-Object -First 1;"
+    "New-NetIPAddress -InterfaceIndex $if.ifIndex -IPAddress '{a}' -PrefixLength 32 -SkipAsSource $true | Out-Null;"
+    "for ($i = 0; $i -lt 50; $i++) {{ if ((Get-NetIPAddress -IPAddress '{a}').AddressState -eq 'Preferred') {{ 'added'; exit 0 }};"
+    " Start-Sleep -Milliseconds 100 }};"
+    "'tentative'; exit 1")
+_WIN_DROP = "Remove-NetIPAddress -IPAddress '{a}' -Confirm:$false -ErrorAction SilentlyContinue"
+
+
 @contextlib.contextmanager
 def lab_exit_address(address: str = LAB_EXIT):
-    """Hold ``address`` on the loopback interface for the length of the block (Linux, root: ``ip addr add``), so that a gateway can send
-    from it and a browser reads it as a real exit. It FAILS, never skips, when it cannot (a missing root is a failure of the host the
-    suite was given): the suite that uses it is listed for Linux only."""
+    """Hold ``address`` on this host for the length of the block, so that a gateway can send from it and a browser reads it as a real
+    exit. Linux: on the loopback interface (root: ``ip addr add``). Windows: on the first connected adapter, with SkipAsSource
+    (an administrator, as a GitHub runner is: ``New-NetIPAddress``); Windows takes no extra address on its loopback pseudo-interface.
+    It FAILS, never skips, when it cannot (a missing root or administrator is a failure of the host the suite was given)."""
+    if sys.platform == "win32":
+        ps = ["powershell", "-NoProfile", "-NonInteractive", "-Command"]
+        done = subprocess.run(ps + [_WIN_HOLD.format(a=address)], capture_output=True, text=True, check=False)
+        said = (done.stdout or "").strip().splitlines()[-1:] or [""]
+        if done.returncode != 0:
+            raise RuntimeError("cannot hold %s on an adapter of this Windows host (needs an administrator): %s"
+                               % (address, (done.stderr or done.stdout).strip()))
+        try:
+            yield address
+        finally:
+            if said[0] == "added":
+                subprocess.run(ps + [_WIN_DROP.format(a=address)], capture_output=True, text=True, check=False)
+        return
     listing = subprocess.run(["ip", "-4", "-o", "addr", "show", "dev", "lo"], capture_output=True, text=True, check=False)
     held = (" %s/" % address) in listing.stdout
     if not held:
