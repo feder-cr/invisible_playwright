@@ -35,15 +35,45 @@ def _connect_raw(proxy, target, authorization=None):
     if authorization:
         head += "Proxy-Authorization: %s\r\n" % authorization
     s.sendall((head + "\r\n").encode())
+    # One byte at a time, so that not a byte of what follows the head is taken from the tunnel: a relay that sends the
+    # 200 and the first bytes of the far side together (a server that writes and closes at once) would otherwise lose them here.
     data = b""
     while b"\r\n\r\n" not in data:
-        chunk = s.recv(4096)
+        chunk = s.recv(1)
         if not chunk:
             break
         data += chunk
-    lines = data.split(b"\r\n\r\n")[0].decode().split("\r\n")
+    lines = data.decode().split("\r\n\r\n")[0].split("\r\n")
     headers = {k.strip().lower(): v.strip() for k, _, v in (l.partition(":") for l in lines[1:])}
     return s, lines[0], headers
+
+
+def test_what_follows_the_head_of_a_connect_answer_is_left_for_the_caller():
+    """The answer and the first bytes of the tunnel can reach the socket in one segment (the far side writes and
+    closes at once): the caller reads them after the head, none was swallowed with it."""
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(1)
+
+    def serve():
+        c, _ = listener.accept()
+        while b"\r\n\r\n" not in c.recv(4096):
+            pass
+        c.sendall(b"HTTP/1.1 200 Connection established\r\n\r\nhello")
+        c.close()
+
+    threading.Thread(target=serve, daemon=True).start()
+
+    class Stub:
+        port = listener.getsockname()[1]
+
+    s, status, _h = _connect_raw(Stub, "198.51.100.1:443")
+    try:
+        assert status.split()[1] == "200"
+        assert s.recv(10) == b"hello"
+    finally:
+        s.close()
+        listener.close()
 
 
 def test_basic_is_base64_of_utf8_user_colon_password():
