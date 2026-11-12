@@ -181,6 +181,8 @@ class ResolverTrap:
         self._sockets: List[socket.socket] = []
         self._original: Optional[bytes] = None
         self._running = False
+        #: Why the last bind attempt failed (the error of the socket), for the message when none succeeds.
+        self._bind_error: Optional[OSError] = None
 
     # --- what a test reads ---------------------------------------------------------------------------------------
     def names(self) -> List[str]:
@@ -241,7 +243,8 @@ class ResolverTrap:
                 if self.port != 0:
                     break
             if not made:
-                raise OSError("the resolver trap found no port it could bind for TCP and UDP")
+                raise OSError("the resolver trap found no port it could bind for TCP and UDP (port %d on 127.0.0.1; the last error: %s)"
+                              % (self.port, self._bind_error))
         finally:
             for s in discarded:
                 s.close()
@@ -270,7 +273,8 @@ class ResolverTrap:
                 udp = socket.socket(family, socket.SOCK_DGRAM)
                 pair.append(udp)
                 udp.bind((host, port))
-            except OSError:
+            except OSError as exc:
+                self._bind_error = exc
                 discarded += pair
                 if required:
                     discarded += made
