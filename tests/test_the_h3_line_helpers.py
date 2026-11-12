@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import socket
 import ssl
+import time
 
 import pytest
 
@@ -262,3 +263,98 @@ def test_the_fake_doh_never_serves_a_type_65_with_data_and_the_check_reads_what_
         assert problems and "site.test" in problems[0]
     finally:
         server.close()
+
+
+# -- the relay of the gateway: a send that fails is said, and a relay that leaves from the host's address works ----------------
+# The e2e once read "the server saw QUIC from []" on Windows: the relay sent from 127.0.0.1 to an address of its own host (WinError 10051),
+# the send ran in a timer that ignored every OSError, and the relay had still logged the datagram as carried.
+def _associate(gateway):
+    """A SOCKS5 UDP ASSOCIATE on ``gateway`` with no credentials: the control connection (kept open) and the relay's address."""
+    control = socket.create_connection(("127.0.0.1", gateway.port), timeout=5)
+    control.sendall(b"\x05\x01\x00")
+    assert control.recv(2) == b"\x05\x00"
+    control.sendall(b"\x05\x03\x00\x01\x00\x00\x00\x00\x00\x00")
+    reply = b""
+    while len(reply) < 10:
+        reply += control.recv(10 - len(reply))
+    assert reply[1] == 0, "the association was refused: %r" % reply
+    return control, (socket.inet_ntoa(reply[4:8]), int.from_bytes(reply[8:10], "big"))
+
+
+def _wrapped(host, port, payload):
+    return b"\x00\x00\x00\x01" + socket.inet_aton(host) + port.to_bytes(2, "big") + payload
+
+
+def test_a_send_the_relay_cannot_make_is_recorded_and_the_report_of_the_e2e_says_it():
+    import test_http3_through_the_proxy_e2e as e2e
+    from _socks_servers import coherent
+
+    with coherent() as gateway:
+        assert gateway.send_errors == []
+
+        def refused():
+            raise OSError(10051, "A socket operation was attempted to an unreachable network")
+
+        gateway._later(refused, "the datagram to 203.0.113.9:443")
+        assert len(gateway.send_errors) == 1 and gateway.send_errors[0].startswith("the datagram to 203.0.113.9:443: OSError")
+        class Server:
+            tcp_alpn, quic_peers = ["h2"], []
+        said = e2e._report("socks5_coherent", ["h2"], [1], Server, gateway)
+        assert "sends of the relay that failed" in said and "10051" in said
+
+
+def test_a_relay_that_leaves_from_the_address_of_the_host_reaches_a_server_on_it_and_is_told_by_its_port():
+    from _host_address import this_host_address
+    from _socks_servers import coherent
+
+    host = this_host_address()
+    server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    server.bind((host, 0))
+    server.settimeout(5)
+    client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    client.bind((host, 0))                                  # an engine's UDP sockets are bound to an interface
+    with coherent(relay_host=host, exit_host=host) as gateway:
+        gateway.forward_only_to = {host}
+        control, relay = _associate(gateway)
+        try:
+            client.sendto(_wrapped(host, server.getsockname()[1], b"quic" * 300), relay)
+            data, peer = server.recvfrom(4096)
+            assert data == b"quic" * 300
+            assert peer[0] == host and peer[1] in gateway.exit_ports, "the relay's port is not in exit_ports: %s" % (gateway.exit_ports,)
+            direct = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            direct.bind((host, 0))
+            direct.sendto(b"direct", server.getsockname())
+            data, peer = server.recvfrom(4096)
+            assert data == b"direct" and peer[1] not in gateway.exit_ports, "a client that came direct looks like the relay"
+            direct.close()
+            # the browser's own QUIC to a public address is recorded as carried and goes nowhere: the lab stays closed
+            client.sendto(_wrapped("203.0.113.9", 443, b"background"), relay)
+            time.sleep(0.3)
+            assert ("203.0.113.9", 443) in {(h, p) for h, p, _d in gateway.datagrams}
+            assert gateway.send_errors == [], gateway.send_errors
+        finally:
+            control.close()
+            client.close()
+            server.close()
+
+
+def test_the_fake_stun_of_a_relay_that_leaves_from_the_address_of_the_host_answers_through_the_relay():
+    from _host_address import this_host_address
+    from _socks_servers import MEASURE_NUMBER, STUN_PORT, coherent
+
+    host = this_host_address()
+    client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    client.bind((host, 0))
+    client.settimeout(5)
+    with coherent(relay_host=host, exit_host=host) as gateway:
+        control, relay = _associate(gateway)
+        try:
+            request = b"\x00\x01\x00\x00\x21\x12\xa4\x42" + b"txid-of-12by"
+            client.sendto(_wrapped(MEASURE_NUMBER, STUN_PORT, request), relay)
+            answer, _peer = client.recvfrom(4096)
+            assert answer[3] == 1 and socket.inet_ntoa(answer[4:8]) == MEASURE_NUMBER and int.from_bytes(answer[8:10], "big") == STUN_PORT
+            assert answer[10:12] == b"\x01\x01", "not a STUN Binding success: %r" % answer[10:20]
+            assert gateway.send_errors == [], gateway.send_errors
+        finally:
+            control.close()
+            client.close()

@@ -77,7 +77,13 @@ def _gateway(road: str, host: str):
     make = {"socks5_coherent": coherent, "socks5_no_udp": tcp_only, "socks5_mismatched": mismatched,
             "socks5_unmeasured": silent_udp}[road]
     # The relay sits on the address of this host, as a real gateway's does: the engine's UDP sockets are bound to an interface.
-    return make(user="alice", password="s3cret", relay_host=host)
+    # Its datagrams leave from that address too, on every system: Windows cannot send from 127.0.0.1 to an address of its own host
+    # (WinError 10051, which this test once read as "the server saw QUIC from []"). The relay is told from a client that came direct
+    # by the PORT it sends from (``gateway.exit_ports``), and it forwards only to this host: the browser's own QUIC to the Internet
+    # stays in the lab.
+    gateway = make(user="alice", password="s3cret", relay_host=host, exit_host=host)
+    gateway.forward_only_to = {host}
+    return gateway
 
 
 def _visits(road, server, monkeypatch, discover, **launch):
@@ -113,6 +119,8 @@ def _report(road, protocols, walls, server, gateway=None):
                                               server.tcp_alpn, server.quic_peers))
     if gateway is not None:
         said += "; datagrams the relay carried: %s" % sorted({(h, p) for h, p, _data in gateway.datagrams})
+        if gateway.send_errors:
+            said += "; sends of the relay that failed: %s" % sorted(set(gateway.send_errors))
     return said
 
 
@@ -144,8 +152,10 @@ def test_a_page_behind_a_gateway_that_relays_udp_starts_on_h2_reaches_h3_within_
     problems = judge_visits("socks5_coherent", protocols, walls)
     assert not problems, "; ".join(problems) + ". " + said
     assert carried, "the QUIC datagrams did not go by the relay of the gateway. " + said
-    assert server.quic_peers and set(server.quic_peers) == {"127.0.0.1"}, (
-        "the QUIC server saw %s: only the relay of the gateway (127.0.0.1) may reach it. %s" % (server.quic_peers, said))
+    assert not gateway.send_errors, "the relay of the gateway could not send. " + said
+    assert server.quic_peer_addrs and {a for a, _p in server.quic_peer_addrs} == {host}         and {p for _a, p in server.quic_peer_addrs} <= set(gateway.exit_ports), (
+        "the QUIC server saw %s: only the relay of the gateway (%s, from the ports %s) may reach it. %s" % (
+            server.quic_peer_addrs, host, gateway.exit_ports, said))
 
 
 @pytest.mark.parametrize("road", ["socks5_no_udp", "socks5_mismatched", "socks5_unmeasured"])
