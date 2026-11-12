@@ -21,6 +21,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   so `page.on("load")` runs once); an event the engine sends while the held ones are being given back waits for them (a response is never handled
   before its request); a document committed at the same address as the previous one is told; a page closed while it was being adopted is not given
   frames, and is not announced, after its `__dispose__`; one frame never gets two dispatchers.
+- A popup could still be handed to the client at `about:blank` (or with its navigation pending again, and "Execution context was destroyed" in its
+  first evaluate) when the destination committed while the events the page had missed were being replayed to it: the engine's reader went on
+  delivering the live events to the lifecycle, and the replay then brought older ones after them. The page now subscribes its readers and is
+  handed the missed events in one step, with the delivery of the sessions' events held, so a live event never overtakes the replay.
 
 ## [0.51.0] - 2026-11-12
 

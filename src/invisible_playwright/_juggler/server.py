@@ -2824,9 +2824,33 @@ class PageDispatcher(Dispatcher):
         self._announce_lock = threading.RLock()
         self._announced = False
         self._said_before_announcement: List = []
-        self.lifecycle = Lifecycle(conn, session)
-        self.injected = InjectedScript(conn, session)
-        conn.add_listener(self._route_juggler_event)
+        # ⛔ SUBSCRIBE AND BE HANDED THE MISSED EVENTS IN ONE STEP, with the events of the sessions held (`events_gate`): an event the
+        # engine's reader delivers between the subscription and the replay would reach the lifecycle BEFORE the older ones the replay
+        # brings, and the lifecycle would end at the older state (a popup at about:blank after its destination committed). Nothing in the
+        # step waits for an event or a reply: the readers are subscribed, the buffer is handed over, the gate opens.
+        try:
+            with context.browser.events_gate():
+                self.lifecycle = Lifecycle(conn, session)
+                self.injected = InjectedScript(conn, session)
+                conn.add_listener(self._route_juggler_event)
+                # ⛔ THE EVENTS THIS PAGE ALREADY MISSED, handed over now that the two things that need them exist. `Page.frameAttached` and
+                # the `Runtime.executionContextCreated` pair are sent by the browser BEFORE the `Browser.newPage` reply that told us which
+                # session to build this object for, so without the replay the lifecycle waits twenty seconds for a main frame that was
+                # announced before it was born.
+                #
+                # ⛔ AND IT DELIBERATELY DOES NOT REACH `_on_juggler_event`, which is not wired yet and cannot be: that handler emits on
+                # `self.channel`, and the channel does not exist until `super().__init__` has run, which needs the main frame this replay
+                # is what delivers. The events that precede a page describe its birth, and the initializer built below carries that - the
+                # main frame is in it by name. (The page's own listener holds them: `_held`.)
+                self.replayed_events = context.browser.replay(session, conn.dispatch_event)
+        except BaseException:
+            conn.remove_listener(self._route_juggler_event)
+            for part in ("lifecycle", "injected"):
+                try:
+                    getattr(self, part).detach()
+                except Exception:
+                    pass
+            raise
         try:
             self._build(server, context, session, conn, opener)
         except BaseException:
@@ -2879,21 +2903,6 @@ class PageDispatcher(Dispatcher):
             context.browser.session_seed, context.browser.motion_budget_s,
             lambda: self.viewport_size,
             draws=context.browser.pointer_draws)
-        # ⛔ THE EVENTS THIS PAGE ALREADY MISSED, handed over now that the two
-        # things that need them exist. `Page.frameAttached` and the
-        # `Runtime.executionContextCreated` pair are sent by the browser BEFORE
-        # the `Browser.newPage` reply that told us which session to build this
-        # object for, so without the replay the lifecycle waits twenty seconds
-        # for a main frame that was announced before it was born.
-        #
-        # ⛔ AND IT DELIBERATELY DOES NOT REACH `_on_juggler_event`, which is
-        # not wired yet and cannot be: that handler emits on `self.channel`,
-        # and the channel does not exist until `super().__init__` has run,
-        # which needs the main frame this replay is what delivers. The events
-        # that precede a page describe its birth, and the initializer built
-        # below carries that - the main frame is in it by name.
-        replayed = context.browser.replay(session, conn.dispatch_event)
-        self.replayed_events = replayed
         self._frames: Dict[str, Any] = {}
         #: The child frames the client was told of (`frameAttached`), to tell it of the ones born before the hook was in.
         self._told_attached: set = set()
@@ -4773,6 +4782,9 @@ class BrowserDispatcher(Dispatcher):
     METHODS = {"newContext": "op_new_context", "close": "op_close",
                "newPage": "op_new_page"}
 
+    #: How long the engine's reader waits for the gate of the events before it delivers the event anyway (see `events_gate`).
+    GATE_WAIT_S = 5.0
+
     def __init__(self, server, browser_type: "BrowserTypeDispatcher",
                  conn: Any, version: str, session_seed: Any = None,
                  motion_budget_s: Any = None,
@@ -4780,6 +4792,32 @@ class BrowserDispatcher(Dispatcher):
                  layout: str = "us", pointer_draws: bool = False,
                  udp_stun_servers: Optional[list] = None) -> None:
         self.conn = conn
+        # ⛔ THE EVENTS OF A SESSION GO THROUGH A GATE. A new page is handed the events it missed (`replay`) by the thread that builds it,
+        # while the engine's reader goes on delivering the live ones to the same subscribers: a popup's destination committed (live) in the
+        # middle of the replay of its first events, and the replay then went on with older ones (the initial about:blank, the
+        # `navigationStarted` of the same navigation) - the lifecycle ended at about:blank, or with the navigation pending again. The
+        # reader takes the gate for each event of a session; the page takes it for the whole of "subscribe, then replay" (`events_gate`).
+        self._events_gate = threading.RLock()
+        self._gate_timeouts = 0
+        if not getattr(conn, "_events_gate_installed", False):
+            raw_dispatch = conn.dispatch_event
+
+            def gated_dispatch(method, params, session):
+                if not session:
+                    return raw_dispatch(method, params, session)
+                if self._events_gate.acquire(timeout=self.GATE_WAIT_S):
+                    try:
+                        return raw_dispatch(method, params, session)
+                    finally:
+                        self._events_gate.release()
+                # whoever holds the gate does not let go: the event is delivered all the same (the old, unordered way) and counted
+                self._gate_timeouts += 1
+                return raw_dispatch(method, params, session)
+            conn.dispatch_event = gated_dispatch
+            try:
+                conn._events_gate_installed = True
+            except Exception:
+                pass
         #: Where this session measures a proxy's UDP exit from (the launch's `udp_stun_servers`, "ip:port"
         #: strings; None = the two public defaults): the launch and every context proxy use the same list.
         self.udp_stun_servers = udp_stun_servers
@@ -5034,6 +5072,13 @@ class BrowserDispatcher(Dispatcher):
                     held = self._buffered.setdefault(session, [])
                     if len(held) < self.BUFFER_CAP:
                         held.append((method, params))
+
+    @contextlib.contextmanager
+    def events_gate(self):
+        """Hold the delivery of the events of every session: the engine's reader waits (at most `GATE_WAIT_S`) at its next event of a
+        session. For a short step that waits for no event and no reply: a page subscribes its readers and is handed the events it missed."""
+        with self._events_gate:
+            yield
 
     def replay(self, session: str, deliver) -> int:
         """Hand a new consumer the events of its session that it missed.
