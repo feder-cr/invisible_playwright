@@ -51,9 +51,12 @@ on:
 permissions:
   contents: write
 
+# A publishing workflow is never cancelled half-way: the second run waits for
+# the first (a newer pending run replaces an older pending one, which is
+# harmless: the wiki is rebuilt in full from the repository each time).
 concurrency:
   group: publish-wiki
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   publish-wiki:
