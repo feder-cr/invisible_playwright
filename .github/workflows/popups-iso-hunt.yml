@@ -5,6 +5,7 @@
 # arms differed in three things; these two arms change one each, so the cause is named by the run and not guessed:
 #   iso-63-main  engine firefox-63 (release asset) + core 63.66.0 (PyPI) + main with the fix's server.py
 #   iso-62-rel   engine firefox-62 (release asset) + core 63.66.0 (PyPI) + this branch (release/0.51.0 + the fix)
+#   iso-62-rel-core62  the same with core 62.65.0: core 63.66.0 refuses engine 62 (Browser.setNoBrowserProxy is not supported, run 43249958095)
 # Both: tests/test_popups_reach_the_client_e2e.py twenty times at four workers, with the popup trace. The engine is sealed
 # locally for both arms, as in the proof.
 name: popups iso hunt
@@ -36,8 +37,7 @@ jobs:
       max-parallel: 2
       matrix:
         include:
-          - { arm: iso-63-main, engine: firefox-63 }
-          - { arm: iso-62-rel, engine: firefox-62 }
+          - { arm: iso-62-rel-core62, engine: firefox-62 }
     defaults:
       run:
         shell: bash
@@ -56,11 +56,11 @@ jobs:
           python "$RUNNER_TEMP/hunt_popup_trace_patch.py"
           python "$RUNNER_TEMP/hunt_popup_trace_patch2.py"
           git log -1 --format='main at %h' origin/main
-      - name: Install (core 63.66.0 from PyPI, the wrapper without resolving its pin)
+      - name: Install (core 62.65.0 from PyPI, the wrapper without resolving its pin)
         run: |
           set -e
           python -m pip install --quiet --upgrade pip
-          python -m pip install --quiet "invisible-core==63.66.0" "websockets>=13" "aioquic>=1.2" "pytest>=7" \
+          python -m pip install --quiet "invisible-core==62.65.0" "websockets>=13" "aioquic>=1.2" "pytest>=7" \
             "pytest-rerunfailures>=14" "pytest-timeout>=2" "pytest-xdist>=3" "cryptography>=41" "h2>=4,<5" psutil
           python -m pip install --quiet --no-deps "."
           python -m pip install --quiet "playwright==$(cat scripts/playwright_pin.txt)"
