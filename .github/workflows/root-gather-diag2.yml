@@ -1,0 +1,89 @@
+name: root-gather-diag2 (what the sandbox refuses; does the published engine gather as root)
+
+# A hunt, not a gate. The first run (root-gather-diag, 43203007725) found that the ICE gather finds nothing as root unless the sandbox of the socket and content processes is
+# switched off: the sandbox is active for root on the runner (Ubuntu 24.04 lets root create the user namespace) and the engine of run 43188313516 does not gather inside it.
+# This one saves the browser's stderr (where "Sandbox: seccomp sandbox violation: syscall N" is written) for every launch, lists the processes unclipped, reads coredumpctl and
+# the kernel log, and runs the same gather as root on the PUBLISHED firefox-62 (published core 62.65.0 and wrapper 0.50.1) beside the engine of the gate run, sandbox on and
+# off, with no proxy and behind a local gateway that relays UDP. It starts on a push that touches this file or its script.
+
+on:
+  push:
+    paths:
+      - '.github/workflows/root-gather-diag2.yml'
+      - 'scripts/root_gather_diag2.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GITHUB_TOKEN: ${{ github.token }}
+  GH_TOKEN: ${{ github.token }}
+  ENGINE_RUN_ID: '43188313516'
+  ENGINE_REPO: feder-cr/firefox_antidetect_patch
+  CORE_REF: candidate/core-63-r5
+  SEAL_TAG: firefox-63-candidate
+
+jobs:
+  diag:
+    name: root-gather-diag2 (ubuntu-24.04)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with: { fetch-depth: 1 }
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: { python-version: '3.11' }
+      - name: Install the core under test, the wrapper and the test deps, as the gate does
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "playwright==$(cat scripts/playwright_pin.txt)"
+          sudo "$(which python)" -m playwright install-deps firefox
+          sudo apt-get update
+          sudo apt-get install -y xvfb systemd-coredump
+          export INVISIBLE_CORE_AUTOFIX=off INVISIBLE_CORE_PIN=allow
+          CORE_GIT="git+https://github.com/feder-cr/invisible_core@$CORE_REF"
+          python -m pip install --quiet "$CORE_GIT"
+          python -m pip install --quiet ".[dev]"
+          python -m pip install --quiet --force-reinstall "$CORE_GIT"
+      - name: The engine of the gate run (the one that went red)
+        run: |
+          mkdir -p art ff
+          gh run download "$ENGINE_RUN_ID" --repo "$ENGINE_REPO" --name asset-linux-x86_64 --dir art
+          set -- art/firefox-*-stealth-linux-x86_64.*
+          [ "$#" -eq 1 ] && [ -e "$1" ] || { echo "expected one archive, found: $*"; ls -la art; exit 1; }
+          tar xzf "$1" -C ff
+          echo "FF_EXE=$PWD/ff/firefox" >> "$GITHUB_ENV"
+          python -m invisible_core seal --binary "$PWD/ff/firefox" --tag "$SEAL_TAG" -o "$PWD/gate.seal.json"
+          echo "INVISIBLE_SEAL_FILE=$PWD/gate.seal.json" >> "$GITHUB_ENV"
+      - name: The published engine, with the published core and wrapper, in a venv of their own
+        run: |
+          python -m venv pub
+          pub/bin/python -m pip install --quiet "invisible-core==62.65.0" "invisible-playwright==0.50.1" pytest
+          PUB_EXE="$(pub/bin/python -m invisible_playwright fetch | tail -1)"
+          echo "PUB_PY=$PWD/pub/bin/python" >> "$GITHUB_ENV"
+          echo "PUB_EXE=$PUB_EXE" >> "$GITHUB_ENV"
+          "$PWD/pub/bin/python" -c "from importlib.metadata import version; print('published core', version('invisible-core'), 'wrapper', version('invisible-playwright'))"
+          ls -la "$PUB_EXE"
+      - name: A (root, the gate's line) with the browser's stderr kept
+        if: always()
+        run: bash scripts/root_gather_diag2.sh pytest
+      - name: The same gather outside pytest, as root, by engine and sandbox
+        if: always()
+        run: bash scripts/root_gather_diag2.sh probe | tee diag2/probes.txt
+      - name: The table
+        if: always()
+        run: |
+          { echo '## root-gather-diag2'; echo '```'; cat diag2/pytest-A/summary.txt 2>/dev/null; echo; cat diag2/probes.txt 2>/dev/null | tail -12; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload what was written down
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: root-gather-diag2-${{ github.run_id }}
+          path: diag2
+          if-no-files-found: warn
+          retention-days: 14
