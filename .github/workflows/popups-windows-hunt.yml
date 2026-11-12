@@ -1,0 +1,106 @@
+# popups-windows-hunt.yml - hunt scaffolding, never merged. Runs only on a push to a `hunt/popups-windows**` branch.
+#
+# tests/test_popups_reach_the_client_e2e.py is collected by the required suite wrapper.e2e.page on Windows too. Its process case
+# now has a browser that starts no content process by itself (no pool, no preloaded New Tab page), and the count between two
+# reads is the popup's. This job runs the whole file twenty times on Windows, four workers, on the Windows engine a run of the
+# series repository built, with the core and the wrapper package that run was judged with; the tests are this branch's.
+name: popups windows hunt
+
+on:
+  push:
+    branches: ['hunt/popups-windows**']
+
+permissions:
+  contents: read
+
+env:
+  GITHUB_TOKEN: ${{ github.token }}
+  GH_TOKEN: ${{ github.token }}
+  ENGINE_RUN_ID: '43188313516'
+  ENGINE_REPO: feder-cr/firefox_antidetect_patch
+  CORE_REF: candidate/core-63-r5
+  WRAPPER_REF: udp/wrapper-r5
+  SEAL_TAG: firefox-63-candidate
+  INVISIBLE_CORE_AUTOFIX: 'off'
+  INVISIBLE_CORE_PIN: allow
+
+jobs:
+  hunt:
+    name: popups x20 (windows-2022, engine of run 43188313516)
+    runs-on: windows-2022
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with: { fetch-depth: 1 }
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: { python-version: '3.11' }
+      - name: The core of the run, the wrapper package of the run, this branch's tests
+        run: |
+          CORE_GIT="git+https://github.com/feder-cr/invisible_core@$CORE_REF"
+          python -m pip install --quiet --upgrade pip
+          python -m pip install --quiet "$CORE_GIT"
+          python -m pip install --quiet ".[dev]"
+          python -m pip install --quiet --force-reinstall --no-deps "git+https://github.com/feder-cr/invisible_playwright@$WRAPPER_REF"
+          python -m pip install --quiet --force-reinstall "$CORE_GIT"
+          python -m pip install --quiet "playwright==$(cat scripts/playwright_pin.txt)"
+          python -c "import importlib.metadata as m; print('installed: invisible-playwright', m.version('invisible-playwright'), '| invisible-core', m.version('invisible-core'))"
+      - name: The Windows engine of the run
+        run: |
+          set -e
+          mkdir -p art ff
+          gh run download "$ENGINE_RUN_ID" --repo "$ENGINE_REPO" --name asset-win-x86_64 --dir art
+          set -- art/firefox-*-stealth-win-x86_64.*
+          [ "$#" -eq 1 ] && [ -e "$1" ] || { echo "expected one firefox-*-stealth-win-x86_64 archive in art/, found: $*"; exit 1; }
+          python -c "import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall('ff')" "$1"
+          [ -e ff/firefox.exe ] || { echo "no ff/firefox.exe"; exit 1; }
+          python -m invisible_core seal --binary "$PWD/ff/firefox.exe" --tag "$SEAL_TAG" -o "$PWD/seal.json"
+          echo "FF_EXE=$PWD/ff/firefox.exe" >> "$GITHUB_ENV"
+          echo "INVISIBLE_SEAL_FILE=$PWD/seal.json" >> "$GITHUB_ENV"
+      - name: The popup file, twenty times, four workers
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          export INVPW_BINARY_PATH="$FF_EXE" STEALTHFOX_E2E_BINARY="$FF_EXE"
+          mkdir -p evidence
+          pass=0; fail=0
+          for n in $(seq 1 20); do
+            log="evidence/run_$(printf '%02d' "$n").log"
+            set +e
+            python -m pytest tests/test_popups_reach_the_client_e2e.py -m e2e -o addopts= -p no:cacheprovider \
+              -n 4 --dist loadfile --timeout 420 -q -rA > "$log" 2>&1
+            code=$?
+            set -e
+            collected=$(grep -cE "^(PASSED|FAILED|ERROR|SKIPPED) " "$log" || true)
+            skipped=$(grep -cE "^SKIPPED " "$log" || true)
+            if [ "$code" = "0" ] && [ "$skipped" = "0" ]; then pass=$((pass+1)); else fail=$((fail+1)); fi
+            echo "run $n: exit=$code results=$collected skipped=$skipped $(tail -1 "$log")"
+          done
+          {
+            echo "## popups x20 on windows-2022 (engine of run $ENGINE_RUN_ID, core $CORE_REF, wrapper package $WRAPPER_REF, tests $GITHUB_SHA)"
+            echo
+            echo "| runs green with no skip | runs red |"
+            echo "|---|---|"
+            echo "| $pass | $fail |"
+            echo
+            echo '```'
+            grep -hE "^(FAILED|ERROR|SKIPPED) " evidence/run_*.log | sort | uniq -c | sort -rn | head -40
+            grep -hE "test_the_other_site_popup_runs_in_another_process" evidence/run_*.log | grep -E "^(PASSED|FAILED|ERROR|SKIPPED) " | sort | uniq -c
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Close every Firefox left
+        if: always()
+        shell: pwsh
+        run: |
+          Get-Process firefox -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          "left: " + @(Get-Process firefox -ErrorAction SilentlyContinue).Count
+      - name: Upload all the evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: popups-windows-hunt-${{ github.run_id }}
+          path: evidence
+          if-no-files-found: warn
+          retention-days: 14
