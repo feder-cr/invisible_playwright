@@ -19,6 +19,7 @@ WORKFLOW = ROOT / ".github" / "workflows" / "retail-udp-blocked.yml"
 sys.path.insert(0, str(SCRIPTS))
 
 import report  # noqa: E402
+import storage_partition as sp  # noqa: E402
 import h3_fallback as h3  # noqa: E402
 import verify_udp_block as vub  # noqa: E402
 import webrtc_gather as wg  # noqa: E402
@@ -177,3 +178,79 @@ def test_the_summary_shows_the_load_time_of_visit_1_per_condition_and_site(tmp_p
     report.main(["--out", str(tmp_path)])
     md = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
     assert list(md["conditions"]) == ["control", "doh-blocked"]
+
+
+def test_the_cookie_string_is_parsed_like_document_cookie():
+    assert sp.parse_cookie_string("a=1; b=2;c=") == {"a": "1", "b": "2", "c": ""}
+    assert sp.parse_cookie_string("") == {} and sp.parse_cookie_string(None) == {}
+
+
+def test_a_report_is_read_for_what_each_writer_stored():
+    report_ = {"cookie": "hdr_frame=1; js_frame=1", "localStorage": {"ls_frame": "1"}, "sessionStorage": {}}
+    assert sp.sees(report_, "frame") == {"cookie_header": True, "cookie_js": True, "localStorage": True, "sessionStorage": False}
+    assert not any(sp.sees(report_, "top").values())
+    assert sp.sees(None, "frame") == {"cookie_header": False, "cookie_js": False, "localStorage": False, "sessionStorage": False}
+
+
+def test_the_yes_no_leaves_session_storage_out():
+    assert sp.answer({"cookie_header": True, "cookie_js": True, "localStorage": True, "sessionStorage": False}) == "yes"
+    assert sp.answer({"cookie_header": False, "cookie_js": False, "localStorage": False, "sessionStorage": True}) == "no"
+    assert sp.answer({"cookie_header": True, "cookie_js": False, "localStorage": True, "sessionStorage": False}) == "partly: cookie_header, localStorage"
+
+
+def test_the_repetitions_agree_only_when_everything_measured_is_equal():
+    def rep(top, frame, mode=5):
+        return {"top_sees_frame": top, "frame_sees_top": frame, "frame_sees_own": {"cookie_header": True},
+                "prefs_values": {"network.cookie.cookieBehavior": mode}}
+    same = sp.agreement([rep({"a": 1}, {"a": 0}) for _ in range(5)])
+    assert same["all_agree"] and same["distinct_outcomes"] == 1 and same["outcome_counts"][0]["count"] == 5
+    mixed = sp.agreement([rep({"a": 1}, {"a": 0})] * 4 + [rep({"a": 1}, {"a": 0}, mode=4)])
+    assert not mixed["all_agree"] and mixed["distinct_outcomes"] == 2
+    broken = sp.agreement([rep({"a": 1}, {"a": 0}), {"error": "x"}])
+    assert not broken["all_agree"] and broken["ok"] == 1
+
+
+def test_the_two_sites_write_by_header_and_by_script_and_only_in_write_mode():
+    status, headers, body = sp.route("/frame.html?mode=write", 1234)
+    assert status == 200 and ("Set-Cookie", "hdr_frame=1; Path=/") in headers
+    assert "document.cookie = 'js_' + role" in body and "localStorage.setItem('ls_' + role" in body
+    assert ("Set-Cookie", "hdr_top=1; Path=/") in sp.route("/top.html?mode=write", 1234)[1]
+    assert not [h for h in sp.route("/frame.html?mode=read", 1234)[1] if h[0] == "Set-Cookie"]
+    a_body = sp.route("/a.html?mode=read", 1234)[2]
+    assert 'src="http://localhost:1234/frame.html?mode=read"' in a_body and "addEventListener('message'" in a_body
+    assert sp.route("/nope", 1234)[0] == 404 and sp.route("/a.html?mode=x", 1234)[0] == 400
+
+
+def test_the_local_server_answers_on_loopback_with_the_header_cookie():
+    import urllib.request
+    servers, port = sp.serve()
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:%d/top.html?mode=write" % port, timeout=10) as r:
+            assert r.headers["Set-Cookie"] == "hdr_top=1; Path=/" and b"B top write" in r.read()
+    finally:
+        for s in servers:
+            s.shutdown()
+            s.server_close()
+
+
+def test_the_analysis_answers_both_questions_from_the_reports():
+    frame_cookie = "hdr_frame=1; js_frame=1"
+    rec = {"frame_write": {"data": {"cookie": frame_cookie, "localStorage": {"ls_frame": "1"}, "sessionStorage": {"ss_frame": "1"}}},
+           "top_read": {"cookie": "", "localStorage": {}, "sessionStorage": {}},
+           "frame_read_after_top": {"data": {"cookie": frame_cookie, "localStorage": {"ls_frame": "1"}, "sessionStorage": {}}},
+           "baseline_frame": {"data": {"cookie": "", "localStorage": {}, "sessionStorage": {}}},
+           "prefs": {"named": {"network.cookie.cookieBehavior": {"present": True, "value": 5},
+                               "network.cookie.cookieBehavior.optInPartitioning": {"present": False}}}}
+    a = sp.analyse(rec)
+    assert a["top_sees_frame_answer"] == "no" and a["frame_sees_top_answer"] == "no"
+    assert a["frame_sees_own"]["localStorage"] and not a["baseline_frame_sees_anything"]
+    assert a["prefs_values"] == {"network.cookie.cookieBehavior": 5, "network.cookie.cookieBehavior.optInPartitioning": None}
+    rec["top_read"] = {"cookie": frame_cookie, "localStorage": {"ls_frame": "1"}, "sessionStorage": {}}
+    assert sp.analyse(rec)["top_sees_frame_answer"] == "yes"
+
+
+def test_the_partition_step_runs_before_the_conditions_and_does_not_judge():
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert text.index("storage_partition.py") < text.index("-Name control")
+    src = (SCRIPTS / "storage_partition.py").read_text(encoding="utf-8")
+    assert "if broke:" in src and "sys.exit(1)" in src and src.count("sys.exit") == 1

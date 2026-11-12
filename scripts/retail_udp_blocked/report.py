@@ -6,6 +6,7 @@ New for the Windows reference (the Linux captures were summarised by hand). Read
   <condition>/udp_block_check_after.json              the same proof after the measurements
   <condition>/firewall_rule.txt                       the rule text (blocked only)
   commands.txt                                        the command lines run_condition.ps1 ran
+  partition/result.json                               storage partitioning (storage_partition.py); only its answers go to meta.json
   <condition>/webrtc/local-stun/run<N>/timeline.json  WebRTC gather (webrtc_gather.py)
   <condition>/h3/<site>/run<N>.json                   HTTP/3 visits (h3_fallback.py), with the DNS evidence of the session
 with <condition> in control, doh-free, blocked, doh-blocked (the two doh-* have no WebRTC gather). Writes --out/summary.json and --out/meta.json, prints the markdown to stdout and
@@ -198,6 +199,7 @@ def main(argv=None):
         if (out / "commands.txt").exists() else [],
         "command_lines_as_run_by_the_scripts": commands,
         "proof_of_condition_after": {c: (load(out / c / "udp_block_check_after.json") or {}).get("ok") for c in summary["conditions"]},
+        "storage_partition": (load(out / "partition" / "result.json") or {}).get("answers"),
         "proof_of_condition": {c: (summary["conditions"][c]["proof"] or {}).get("ok") for c in summary["conditions"]},
     }
     (out / "meta.json").write_text(json.dumps(meta, indent=1), encoding="utf-8")

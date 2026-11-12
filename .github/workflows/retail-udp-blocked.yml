@@ -10,6 +10,10 @@
 #   - blocked: the same datagram must get no answer, TCP and name resolution work
 # The proof runs before and after the measurements of each condition.
 #
+# Before them, one more measurement that does not depend on the network: storage
+# partitioning (scripts/retail_udp_blocked/storage_partition.py), two local sites,
+# five fresh profiles, answers in partition/result.json and the job summary.
+#
 # Four conditions, in this order: control (UDP free), DoH forced + UDP free,
 # then the firewall rule goes on: UDP blocked, DoH forced + UDP blocked. The DoH
 # ones use the DNS-over-HTTPS provider the product declares (network.trr.mode=3,
@@ -70,9 +74,9 @@ jobs:
     name: retail Firefox, UDP free then blocked (windows)
     runs-on: windows-latest
     # The first run, with the two conditions control and blocked, took 24 minutes. The two DoH
-    # conditions add only the HTTP/3 sessions (15 each) and the DNS evidence, about 6 minutes each:
-    # about 36 minutes expected.
-    timeout-minutes: 72
+    # conditions add only the HTTP/3 sessions (15 each) and the DNS evidence, about 6 minutes each, and
+    # the storage partitioning measurement adds about 2: about 38 minutes expected.
+    timeout-minutes: 76
     defaults:
       run:
         shell: pwsh
@@ -110,6 +114,16 @@ jobs:
       # The measurement steps run one after the other even when an earlier one failed (a failed proof or a failed
       # DoH evidence turns the job red at the end, but does not throw away the other conditions), and never when
       # the tools did not install.
+      # Independent of the network condition (a local server, no outbound traffic): the storage
+      # partitioning of the retail browser, five fresh profiles. Written to partition/result.json.
+      - name: Storage partitioning - two local sites, frame and top page (UDP free)
+        if: ${{ !cancelled() && steps.geckodriver.outcome == 'success' }}
+        run: |
+          $env:MOZ_CRASHREPORTER_DISABLE = '1'
+          Add-Content -LiteralPath (Join-Path $env:OUT_DIR 'commands.txt') -Value "[partition] python scripts/retail_udp_blocked/storage_partition.py --runs 5 --out $env:OUT_DIR" -Encoding utf8
+          python scripts/retail_udp_blocked/storage_partition.py --runs 5 --out $env:OUT_DIR
+          if ($LASTEXITCODE -ne 0) { throw "storage_partition.py exited with $LASTEXITCODE" }
+
       - name: Condition 1 - control, outbound UDP free
         if: ${{ !cancelled() && steps.geckodriver.outcome == 'success' }}
         run: ./scripts/retail_udp_blocked/run_condition.ps1 -Name control -OutDir $env:OUT_DIR
