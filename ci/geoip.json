@@ -1,0 +1,15 @@
+{
+  "comment": "The GeoIP database every CI leg launches with (STEALTHFOX_GEOIP_MMDB): made by scripts/ci_lab_geoip.py, the same bytes on every run, no download and no licensed data. To change it (a network, a field): change the table of the script and mmdb_sha256 here in one commit; `build` refuses to go on when they differ.",
+  "generator": "scripts/ci_lab_geoip.py",
+  "mmdb": "geoip-aio-all.mmdb",
+  "mmdb_sha256": "17646c6e7463fdb9afd04fbf5222be5e25b08b952db4e58256d51b53914974b8",
+  "mmdb_bytes": 1836,
+  "networks": [
+    "1.0.16.0/24",
+    "1.0.4.0/24",
+    "1.178.10.0/24",
+    "1.178.32.0/24",
+    "1.32.239.0/24",
+    "1.6.0.0/24"
+  ]
+}

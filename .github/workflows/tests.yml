@@ -222,11 +222,26 @@ jobs:
         run: |
           python -m ruff check --select F821,F811,F601 --no-cache --output-format concise .
 
+      # The GeoIP database is made by the repository (scripts/ci_lab_geoip.py: the same bytes on every run, the sha256 in ci/geoip.json), never a
+      # site and never a licensed file: without STEALTHFOX_GEOIP_MMDB the core asks GitHub which database is the latest on every call
+      # (run 43211837926). The variable reaches every later step of the job.
+      - name: The GeoIP database (made by the repository, same bytes every run)
+        shell: bash
+        run: python scripts/ci_lab_geoip.py build
+
       - name: Run pytest
         shell: bash
         run: |
           set -o pipefail   # or tee would swallow pytest's exit code
           pytest tests/ -v --tb=short -rs | tee tests-report.txt
+
+      # The leg ran with the pinned database, and the core never went past it to GitHub (tests/geoip_used.py wrote what it did).
+      - name: The leg ran with the pinned GeoIP database
+        if: always()
+        shell: bash
+        run: |
+          python scripts/ci_lab_geoip.py evidence --out "$(dirname "$GEOIP_USED_OUT")/geoip-evidence.json" > /dev/null
+          python scripts/ci_lab_geoip.py verify --evidence "$(dirname "$GEOIP_USED_OUT")/geoip-evidence.json" --used "$GEOIP_USED_OUT"
 
       # This repo has the largest suite of the three and was the only one with
       # no floor. pytest's exit code cannot distinguish "everything passed"

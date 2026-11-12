@@ -316,6 +316,53 @@ def test_a_seal_that_cannot_be_read_is_red(tmp_path, capsys):
     assert code == 1 and "cannot be read" in capsys.readouterr().out
 
 
+# --- the GeoIP database of the leg ---------------------------------------------------------------------------------
+MMDB_SHA = "c" * 64
+
+
+def _geoip(tmp_path, **evidence):
+    pin = tmp_path / "geoip.json"
+    pin.write_text(json.dumps({"mmdb_sha256": MMDB_SHA}), encoding="utf-8")
+    proof = tmp_path / "geoip-evidence.json"
+    base = {"env": "/db/geoip-aio-all.mmdb", "exists": True, "sha256": MMDB_SHA}
+    base.update(evidence)
+    proof.write_text(json.dumps(base), encoding="utf-8")
+    return ["--geoip", str(proof), "--geoip-pin", str(pin)]
+
+
+def test_a_leg_that_ran_with_the_database_of_the_pin_is_green(tmp_path):
+    code, result = _judge(tmp_path, GREEN, extra=_geoip(tmp_path))
+    assert code == 0 and result["geoip_sha256"] == MMDB_SHA
+
+
+def test_a_leg_launched_without_the_variable_is_red(tmp_path, capsys):
+    code, result = _judge(tmp_path, GREEN, extra=_geoip(tmp_path, env="", exists=False, sha256=None))
+    out = capsys.readouterr().out
+    assert code == 1 and result["verdict"] == "red" and "without STEALTHFOX_GEOIP_MMDB" in out
+
+
+def test_a_variable_that_names_no_file_is_red(tmp_path, capsys):
+    code, _r = _judge(tmp_path, GREEN, extra=_geoip(tmp_path, exists=False, sha256=None))
+    assert code == 1 and "is not a file" in capsys.readouterr().out
+
+
+def test_a_database_that_is_not_the_one_of_the_pin_is_red(tmp_path, capsys):
+    code, _r = _judge(tmp_path, GREEN, extra=_geoip(tmp_path, sha256="d" * 64))
+    assert code == 1 and "the pin" in capsys.readouterr().out
+
+
+def test_evidence_that_is_missing_or_unreadable_is_red(tmp_path, capsys):
+    code, _r = _judge(tmp_path, GREEN, extra=["--geoip", str(tmp_path / "none.json"), "--geoip-pin", str(tmp_path / "geoip.json")])
+    assert code == 1 and "did not say which database" in capsys.readouterr().out
+
+
+def test_a_pin_that_cannot_be_read_is_red(tmp_path, capsys):
+    extra = _geoip(tmp_path)
+    (tmp_path / "geoip.json").write_text("not json", encoding="utf-8")
+    code, _r = _judge(tmp_path, GREEN, extra=extra)
+    assert code == 1 and "pin of the GeoIP database" in capsys.readouterr().out
+
+
 # --- exact, every test of a file, xunit2 ---------------------------------------------------------------------------
 def test_an_exact_suite_with_more_tests_than_min_tests_is_red(tmp_path, capsys):
     cases = GREEN + [_case(FILE_B, "test_new")]

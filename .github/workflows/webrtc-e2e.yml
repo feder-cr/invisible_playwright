@@ -78,11 +78,26 @@ jobs:
           fi
           echo "STEALTHFOX_E2E_BINARY=$BIN" >> "$GITHUB_ENV"
 
+      # The GeoIP database is made by the repository (scripts/ci_lab_geoip.py: the same bytes on every run, the sha256 in ci/geoip.json), never a
+      # site and never a licensed file: without STEALTHFOX_GEOIP_MMDB the core asks GitHub which database is the latest on every call
+      # (run 43211837926). The variable reaches every later step of the job.
+      - name: The GeoIP database (made by the repository, same bytes every run)
+        shell: bash
+        run: python scripts/ci_lab_geoip.py build
+
       - name: Run WebRTC realness e2e (xvfb for the headless Firefox)
         run: |
           set -o pipefail
           sudo apt-get update && sudo apt-get install -y xvfb
           xvfb-run -a pytest tests/test_webrtc_realness.py -m e2e             -o addopts="" -v -rs | tee webrtc-report.txt
+
+      # The leg ran with the pinned database, and the core never went past it to GitHub (tests/geoip_used.py wrote what it did).
+      - name: The leg ran with the pinned GeoIP database
+        if: always()
+        shell: bash
+        run: |
+          python scripts/ci_lab_geoip.py evidence --out "$(dirname "$GEOIP_USED_OUT")/geoip-evidence.json" > /dev/null
+          python scripts/ci_lab_geoip.py verify --evidence "$(dirname "$GEOIP_USED_OUT")/geoip-evidence.json" --used "$GEOIP_USED_OUT"
 
       # Run #1 was GREEN with the headline assertion skipped: "1 passed, 1
       # skipped", and the skipped one is the test this workflow's own header

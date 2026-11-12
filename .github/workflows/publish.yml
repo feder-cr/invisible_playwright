@@ -196,8 +196,27 @@ jobs:
         # code no job has run.
         run: python -m pytest -q
 
+  # The three checks on the REAL GeoIP database, and only here (the release): the legs of the pull requests and of the gates launch with the database that
+  # scripts/ci_lab_geoip.py makes (a few networks, the same bytes every run, no download), so what only the real one can show is looked at once per release:
+  # the product's own road (no variable, cold cache, the latest database downloaded), the lab database against it for the six exits, and every
+  # time_zone of the database known to the runner's tz database. See the docstring of scripts/ci_real_geoip_check.py.
+  real-geoip-database:
+    needs: already-published
+    if: needs.already-published.outputs.present != 'yes'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install the wrapper (its core comes from the index)
+        run: python -m pip install -e . maxminddb
+      - name: The real GeoIP database - the product's road, the lab database against it, every zone known
+        run: python scripts/ci_real_geoip_check.py
+
   upload:
-    needs: [already-published, gate]
+    needs: [already-published, gate, real-geoip-database]
     if: needs.already-published.outputs.present != 'yes'
     runs-on: ubuntu-latest
     environment: pypi          # the trust relationship lives HERE, behind the gate

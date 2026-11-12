@@ -116,6 +116,13 @@ jobs:
         # The generator moved into the core with the module it writes (0.30.0),
         # so the check runs against the core this package installs.
         run: python -m invisible_core.juggler._gen_protocol --check --binary "$(dirname "$FF")"
+      # The GeoIP database is made by the repository (scripts/ci_lab_geoip.py: the same bytes on every run, the sha256 in ci/geoip.json), never a
+      # site and never a licensed file: without STEALTHFOX_GEOIP_MMDB the core asks GitHub which database is the latest on every call
+      # (run 43211837926). The variable reaches every later step of the job.
+      - name: The GeoIP database (made by the repository, same bytes every run)
+        shell: bash
+        run: python scripts/ci_lab_geoip.py build
+
       - name: Run the full e2e suite under a virtual display, without the root ones
         # PYTHONUNBUFFERED, and it is not a nicety. Without it Python block-buffers
         # stdout when it is a pipe, and this step printed NOTHING for 39 minutes
@@ -181,6 +188,15 @@ jobs:
           echo "-- files owned by root under the runner's home and /tmp"; sudo find /home/runner /tmp -maxdepth 3 -user root 2>/dev/null | head -40 || true
           echo "-- /etc/resolv.conf"; cat /etc/resolv.conf || true
           echo "-- lo"; ip -4 addr show lo || true
+
+      # The leg ran with the pinned database, and the core never went past it to GitHub (tests/geoip_used.py wrote what it did).
+      - name: The leg ran with the pinned GeoIP database
+        if: always()
+        shell: bash
+        run: |
+          python scripts/ci_lab_geoip.py evidence --out "$(dirname "$GEOIP_USED_OUT")/geoip-evidence.json" > /dev/null
+          python scripts/ci_lab_geoip.py verify --evidence "$(dirname "$GEOIP_USED_OUT")/geoip-evidence.json" --used "$GEOIP_USED_OUT"
+
 
       # Runs ONLY if the full run above fails, and before 2026-08-13 it could not
       # exist: the hang was killed by the 40-minute ceiling, so the job came out
