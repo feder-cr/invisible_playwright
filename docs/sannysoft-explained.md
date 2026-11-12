@@ -62,7 +62,7 @@ modern is built on.
 Firefox reports navigator.webdriver true, zero plugins and a 1366 by 768 screen. The
 patched engine reports webdriver false, five plugins and a 1920 by 1080 screen. The
 notification permission, user agent, colour depth and platform are identical in
-both.](https://raw.githubusercontent.com/oss-invisible/playwright/main/docs/img/sannysoft-explained-values.png)
+both.](https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/img/sannysoft-explained-values.png)
 
 Seven of the values this page describes, read from one page served from `127.0.0.1`,
 first by Playwright's bundled Firefox and then by a patched engine. Three of the seven
