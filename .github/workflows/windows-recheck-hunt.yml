@@ -1,0 +1,83 @@
+# windows-recheck-hunt.yml - hunt scaffolding, never merged. Runs only on a push to a `hunt/windows-recheck**` branch.
+#
+# The Windows census of all the e2e (run 43307193708, wrapper main c70a396d) had red tests in families that may be the ones the
+# popup hand-over correction 87a4e3b (0.51.1, not in main) closes: "no frame: the page has not announced its main frame yet" in
+# test_juggler_actions/injected/lifecycle, two popups at about:blank with the stock client; and two of unknown cause
+# (test_resolver_race_e2e[context_proxy], a pytest worker that died in test_webgl_noise_active). The same files three times on
+# Windows, on 87a4e3b (pin invisible-core 63.66.0, the published engine), as run_e2e.py runs them.
+name: windows recheck hunt
+
+on:
+  push:
+    branches: ['hunt/windows-recheck**']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-recheck-hunt-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GITHUB_TOKEN: ${{ github.token }}
+  GH_TOKEN: ${{ github.token }}
+  FILES: >-
+    tests/test_juggler_actions.py tests/test_juggler_injected.py tests/test_juggler_lifecycle_e2e.py
+    tests/test_popups_reach_the_client_e2e.py tests/test_a_popup_of_a_link_reaches_the_client_e2e.py
+    tests/test_resolver_race_e2e.py tests/test_webgl_noise_active.py
+
+jobs:
+  recheck:
+    name: windows recheck
+    runs-on: windows-2022
+    timeout-minutes: 90
+    strategy:
+      max-parallel: 1
+      matrix:
+        os: [windows-2022]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: { python-version: '3.11' }
+      - name: Install the wrapper and its dev extra, the pinned Playwright, the published engine
+        run: |
+          set -e
+          python -m pip install --quiet --upgrade pip
+          python -m pip install --quiet ".[dev]"
+          python -m pip install --quiet "playwright==$(cat scripts/playwright_pin.txt)"
+          python -c "import importlib.metadata as m; print('invisible-playwright', m.version('invisible-playwright'), '| invisible-core', m.version('invisible-core'))"
+          echo "FF=$(cd "$RUNNER_TEMP" && python -m invisible_playwright fetch | tail -1)" >> "$GITHUB_ENV"
+      - name: The files three times, as run_e2e.py runs them
+        env:
+          PYTHONUNBUFFERED: "1"
+          INVPW_TEST_WATCHDOG_FILE: ${{ github.workspace }}/evidence/e2e-watchdog.log
+        run: |
+          mkdir -p evidence
+          export INVPW_BINARY_PATH="$FF" STEALTHFOX_E2E_BINARY="$FF"
+          for n in 1 2 3; do
+            python -u scripts/run_e2e.py "$FF" $FILES -rA --tb=short > "evidence/run_$n.log" 2>&1
+            echo "run $n: $(grep -aE '^=+ .*(passed|failed|error).* =+$' evidence/run_$n.log | head -1)"
+          done
+          {
+            echo "## 87a4e3b on Windows, the census's red files x3"
+            echo '```'
+            grep -ahE "^(FAILED|ERROR) " evidence/run_*.log | cut -c1-200 | sort | uniq -c | sort -rn || true
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Close every Firefox left
+        if: always()
+        shell: pwsh
+        run: |
+          Get-Process firefox -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          "left: " + @(Get-Process firefox -ErrorAction SilentlyContinue).Count
+      - name: Upload the evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-recheck-${{ github.run_id }}
+          path: evidence
+          if-no-files-found: warn
+          retention-days: 14
