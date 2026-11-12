@@ -35,7 +35,7 @@ jobs:
       fail-fast: false
       max-parallel: 2
       matrix:
-        arm: [win-63-fix, win-62-fix]
+        arm: [win-62-fix]
     defaults:
       run:
         shell: bash
@@ -52,6 +52,7 @@ jobs:
              tests/test_popups_under_load_e2e.py "$RUNNER_TEMP/"
           # LF files, as the patch has them (the runner checks out with CRLF on Windows)
           git -c core.autocrlf=false checkout origin/main -- src tests pyproject.toml scripts/playwright_pin.txt
+          python -c "import sys; p=sys.argv[1]; d=open(p,'rb').read(); open(p,'wb').write(d.replace(bytes([13,10]), bytes([10])))" "$RUNNER_TEMP/hunt_popup_fix_server.patch"
           git -c core.autocrlf=false apply "$RUNNER_TEMP/hunt_popup_fix_server.patch"
           python "$RUNNER_TEMP/hunt_popup_trace_patch.py"
           python "$RUNNER_TEMP/hunt_popup_trace_patch2.py"
