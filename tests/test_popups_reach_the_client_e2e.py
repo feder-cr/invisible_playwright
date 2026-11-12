@@ -25,6 +25,7 @@ no skip, so the count stays the same on every system.
 """
 from __future__ import annotations
 
+import contextlib
 import importlib
 import os
 import sys
@@ -87,10 +88,10 @@ def site():
     srv.server_close()
 
 
-@pytest.fixture(params=["in-process", "stock-client"])
-def quiet_browser(request, firefox_binary):
-    """A browser of its own for the process case, on each transport, that starts no content process by itself."""
-    if request.param == "in-process":
+@contextlib.contextmanager
+def _quiet_browser(transport, firefox_binary):
+    """A browser of its own for the process case, that starts no content process by itself."""
+    if transport == "in-process":
         from invisible_playwright import InvisiblePlaywright
 
         with InvisiblePlaywright(binary_path=firefox_binary, headless=True, extra_prefs=QUIET_PREFS) as b:
@@ -114,6 +115,28 @@ def quiet_browser(request, firefox_binary):
                 b.close()
     finally:
         server.close()
+
+
+def _in_a_thread_of_its_own(fn, timeout=300):
+    """Runs `fn` in a thread of its own and gives back its result or raises its error. The module's browser of the matrix
+    keeps a sync client open in this thread, and a sync client refuses to start inside another one's loop: a second
+    browser needs a thread with no loop."""
+    box = {}
+
+    def run():
+        try:
+            box["value"] = fn()
+        except BaseException as exc:      # handed back to the test's thread below
+            box["error"] = exc
+
+    worker = threading.Thread(target=run, name="quiet-browser", daemon=True)
+    worker.start()
+    worker.join(timeout)
+    if worker.is_alive():
+        pytest.fail("the process case did not end within %d s" % timeout)
+    if "error" in box:
+        raise box["error"]
+    return box.get("value")
 
 
 def _route(context):
@@ -177,11 +200,21 @@ def _quiet(engine_dir, seconds=3.0, limit=30.0):
     return last
 
 
-def test_the_other_site_popup_runs_in_another_process(quiet_browser, firefox_binary, site):
+@pytest.mark.parametrize("transport", ["in-process", "stock-client"])
+def test_the_other_site_popup_runs_in_another_process(transport, firefox_binary, site):
     """The control of the matrix above: the popup to `localhost` adds a content process, the one to `127.0.0.1` does not."""
+    _in_a_thread_of_its_own(lambda: _the_process_case(transport, firefox_binary, site))
+
+
+def _the_process_case(transport, firefox_binary, site):
     import psutil
 
     engine_dir = str(Path(firefox_binary).resolve().parent)
+    with _quiet_browser(transport, firefox_binary) as quiet_browser:
+        _the_process_case_in(quiet_browser, engine_dir, site, psutil)
+
+
+def _the_process_case_in(quiet_browser, engine_dir, site, psutil):
     context = quiet_browser.new_context()
     page = context.new_page()
     page.goto("http://%s:%d/main" % (OWN, site))
