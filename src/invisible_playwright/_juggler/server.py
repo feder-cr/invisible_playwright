@@ -180,6 +180,13 @@ class APIRequestContextDispatcher(RefusingDispatcher):
 #: what the alternative reads like.
 _HANDLE = "<element handle>"
 
+#: ⛔ ABSENT, NOT "FINISHED WITH NO ERROR". `BrowserDispatcher._finished_early` keeps the error of a download the
+#: engine finished before it announced it, and a download that SUCCEEDED has `None` for an error: popping with a
+#: `None` default and testing `is not None` read a success as "nothing was recorded", so the artifact was never
+#: marked finished and `save_as`, `path` and `failure` waited forever on a download that was complete. This
+#: marker is what a pop returns when nothing was recorded, so the two are told apart.
+_NOT_FINISHED_EARLY = object()
+
 
 def _key_delay(params: Dict) -> Optional[float]:
     """The caller's `delay` for a key operation, in milliseconds, or None.
@@ -5456,13 +5463,15 @@ class BrowserDispatcher(Dispatcher):
             # "if it's a new window download, report it on the pop-up's opener"); looking only among the announced pages, as this did,
             # lost the download altogether.
             origin = announced or (adoption.opener if adoption is not None else self._gone_openers.get(target))
+        # Popped BEFORE the context check: a download of a context that is gone leaves no artifact to finish, and its
+        # early entry would stay in the dict for the life of the browser.
+        early = self._finished_early.pop(params["uuid"], _NOT_FINISHED_EARLY)
         if context is None:
             return
         directory = self._downloads_dir(params.get("browserContextId"))
         artifact = ArtifactDispatcher(self.server, context, params["uuid"],
                                       os.path.join(directory, params["uuid"]))
         self._artifacts[params["uuid"]] = artifact
-        early = self._finished_early.pop(params["uuid"], None)
         if page is not None or origin is not None:
             # ⛔ THE ENGINE ENDS A NAVIGATION THAT BECAME A DOWNLOAD WITH NO
             # EVENT AT ALL (no navigationCommitted, no navigationAborted), so
@@ -5496,7 +5505,7 @@ class BrowserDispatcher(Dispatcher):
                         deferred = True
                 if not deferred:
                     origin.emit("download", payload)
-        if early is not None:
+        if early is not _NOT_FINISHED_EARLY:
             artifact.report_finished(early)
 
     def _on_download_finished(self, params: Dict) -> None:
