@@ -30,7 +30,6 @@ DNS, so only a request that went through the proxy can answer it.
 from __future__ import annotations
 
 import socket
-import struct
 import threading
 
 import pytest
@@ -113,95 +112,6 @@ class _CountingProxy:
             self._sock.close()
         except Exception:
             pass
-
-
-class _CountingSocks:
-    """A SOCKS5 endpoint that answers everything and remembers the names.
-
-    It exists because SOCKS is the scheme that USED to work, by a different
-    road. Unifying on the engine command had to be measured on it too, or the
-    repair of one branch would have been the breakage of the other - which is
-    the shape of mistake this project keeps recording.
-    """
-
-    def __init__(self) -> None:
-        self.asked: list = []
-        self._sock = socket.socket()
-        self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self._sock.bind(("127.0.0.1", 0))
-        self.port = self._sock.getsockname()[1]
-        self._sock.listen(32)
-        threading.Thread(target=self._serve, daemon=True).start()
-
-    @property
-    def url(self) -> str:
-        return "socks5://127.0.0.1:%d" % self.port
-
-    def _serve(self) -> None:
-        while True:
-            try:
-                conn, _ = self._sock.accept()
-            except OSError:
-                return
-            threading.Thread(target=self._answer, args=(conn,),
-                             daemon=True).start()
-
-    def _answer(self, conn: socket.socket) -> None:
-        try:
-            conn.settimeout(15)
-            head = conn.recv(2)
-            if len(head) < 2 or head[0] != 5:
-                return
-            conn.recv(head[1])
-            conn.sendall(b"\x05\x00")                # no authentication
-            req = conn.recv(4)
-            if len(req) < 4:
-                return
-            atyp = req[3]
-            if atyp == 1:
-                host = socket.inet_ntoa(conn.recv(4))
-            elif atyp == 3:
-                # A NAME, not an address: the proxy resolves, we do not. That
-                # is what `socks_remote_dns` buys and it must survive the move.
-                host = conn.recv(conn.recv(1)[0]).decode("latin-1")
-            else:
-                conn.recv(16)
-                host = "[v6]"
-            port = struct.unpack("!H", conn.recv(2))[0]
-            self.asked.append("%s:%d" % (host, port))
-            conn.sendall(b"\x05\x00\x00\x01" + b"\x00" * 6)
-            data = b""
-            while b"\r\n\r\n" not in data:
-                chunk = conn.recv(65536)
-                if not chunk:
-                    return
-                data += chunk
-            body = _MARKER.encode()
-            conn.sendall(b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n"
-                         b"Content-Length: " + str(len(body)).encode() +
-                         b"\r\nConnection: close\r\n\r\n" + body)
-        except Exception:
-            pass
-        finally:
-            try:
-                conn.close()
-            except Exception:
-                pass
-
-    def close(self) -> None:
-        try:
-            self._sock.close()
-        except Exception:
-            pass
-
-
-@pytest.fixture
-def counting_socks():
-    proxy = _CountingSocks()
-    try:
-        yield proxy
-    finally:
-        proxy.close()
 
 
 @pytest.fixture
@@ -338,24 +248,49 @@ def test_a_proxy_that_cannot_be_applied_refuses_the_launch(firefox_binary):
     assert "proxy" in str(caught.value).lower()
 
 
-@pytest.mark.e2e
-def test_socks_still_goes_out_through_the_proxy_after_the_roads_were_merged(
-        firefox_binary, counting_socks):
-    """The branch that already worked, on the road that replaced its own.
+@pytest.fixture
+def _geo_declared(monkeypatch):
+    """The session facts a launch would ask the exit for, declared (the same as test_doh_through_the_proxy_e2e.py): the
+    test process would otherwise ask `api.ipify.org` and its siblings BY NAME, at :443, of a gateway that serves only the DoH
+    and the pages."""
+    from invisible_core import SessionGeo, decide_session_locale
+    from invisible_playwright import InvisiblePlaywright
 
-    And it asserts the NAME reached the proxy, not an address: SOCKS remote DNS
-    was a property of the prefs road, and losing it would move name resolution
-    back onto the host without changing a single visible byte.
+    geo = SessionGeo("America/New_York", "203.0.113.7", latitude=40.7128, longitude=-74.0060,
+                     locale=decide_session_locale("en-US"))
+    monkeypatch.setattr("invisible_playwright.launcher.prepare_session_geo", lambda tz, proxy, locale, **_kw: geo)
+    monkeypatch.setattr(InvisiblePlaywright, "_assert_uscita_invariata", lambda self: None)
+    monkeypatch.setattr("invisible_core._geo.discover_egress_ip", lambda *_a, **_k: geo.egress_ip)
+
+
+@pytest.mark.e2e
+@pytest.mark.usefixtures("the_udp_line", "_geo_declared")
+def test_socks_still_goes_out_through_the_proxy_after_the_roads_were_merged(firefox_binary, doh, pages, gateway):
+    """The branch that already worked, on the road that replaced its own: a page behind a SOCKS5 proxy is loaded THROUGH it.
+
+    Since the DoH road (docs decision core-19) the browser behind a proxy no longer hands the proxy the NAME (`socks_remote_dns`):
+    it asks the name to a DNS-over-HTTPS server THROUGH the proxy and connects to the ADDRESS it gets. So this asserts the new
+    form of "the name is the proxy's business": the DoH request and the page both travelled the gateway, the page by address,
+    and the name itself never reached it. The gateway is the suite's one SOCKS5 gateway that carries the DoH (the old fake of
+    this file accepted every CONNECT and answered nothing to the DoH, so the name never resolved).
     """
     from invisible_playwright import InvisiblePlaywright
 
-    with InvisiblePlaywright(seed=42, binary_path=firefox_binary,
-                             humanize=False, timezone="UTC",
-                             proxy={"server": counting_socks.url}) as browser:
-        page = browser.new_page()
-        page.goto("http://%s/" % _ONLY_VIA_PROXY,
-                  wait_until="domcontentloaded", timeout=30_000)
-        assert _MARKER in page.locator("body").inner_text()
+    from _doh_servers import DOH_BOOTSTRAP, DOH_PORT, DOH_PROVIDER_PREFS, QTYPE_A
 
-    assert any(a.startswith(_ONLY_VIA_PROXY + ":") for a in counting_socks.asked), (
-        "the name never reached the SOCKS proxy: %r" % (counting_socks.asked[:5],))
+    gw = gateway("gw1")
+    prefs = {"network.proxy.allow_hijacking_localhost": True, "network.proxy.no_proxies_on": "", **DOH_PROVIDER_PREFS}
+    with InvisiblePlaywright(seed=42, binary_path=firefox_binary, humanize=False, timezone="UTC", headless=True,
+                             proxy=gw.proxy, extra_prefs=prefs) as browser:
+        context = browser.new_context(ignore_https_errors=True)
+        page = context.new_page()
+        page.goto(pages.url("page-a.test"), wait_until="load", timeout=30_000)
+        text = page.evaluate("() => document.body.innerText")
+        context.close()
+
+    seen = "gateway CONNECTs: %s; DoH queries: %s" % (gw.connects, [tuple(q) for q in doh.queries])
+    assert "HOST=page-a.test:%d" % pages.port in text, "the page did not load through the proxy: %r" % text + " " + seen
+    assert doh.vias_of("page-a.test", QTYPE_A) == {"gw1"}, "the name was not asked to the DoH through the proxy: " + seen
+    assert (DOH_BOOTSTRAP, DOH_PORT) in gw.connects, "no DoH CONNECT reached the proxy: " + seen
+    assert ("127.0.0.1", pages.port) in gw.connects, "the page was not reached by address through the proxy: " + seen
+    assert ("page-a.test", pages.port) not in gw.connects, "the NAME reached the proxy instead of the DoH answer: " + seen

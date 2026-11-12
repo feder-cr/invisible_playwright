@@ -15,6 +15,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   does not hold (including one whose UDP leaves from another address) is treated as a router that drops it (HTTP/3 falls back to
   HTTP/2, ICE gathers no server-reflexive candidate). A proxy given to a context declares its own measured UDP exit. The interface
   list WebRTC gathers is the network the session declares.
+- Behind a SOCKS5 proxy the proxy now receives addresses, not names (the names are resolved by the DNS-over-HTTPS through it); a proxy
+  that cannot carry HTTPS to mozilla.cloudflare-dns.com resolves no name.
 - A STUN server list can be given at launch (`udp_stun_servers`) for the measurement of the proxy's UDP.
 - Every context carries the position the core declares for the session (the geolocation override of the context).
 - The package's launcher and server refuse the two prefs that govern the launch counter, `invisible_firefox.usage_ping.enabled` and
