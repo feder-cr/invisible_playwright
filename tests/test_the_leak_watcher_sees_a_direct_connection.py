@@ -145,7 +145,9 @@ def _udp_ask_at(address: str, port: int, name: str) -> bytes:
 
 
 def test_the_trap_counts_a_query_it_is_sent_and_refuses_what_it_cannot_answer():
-    with ResolverTrap(port=0, rewrite_resolv_conf=False) as trap:
+    # The test itself is the asker here, so it stands for the browser (the trap counts only a browser's questions, found by
+    # the process that holds the socket: on Linux the test's own python is not one).
+    with ResolverTrap(port=0, rewrite_resolv_conf=False, is_browser=lambda pid: True) as trap:
         assert trap.port > 0
         refused = _udp_ask(trap.port, "leak.test")
         assert refused[0:2] == b"\x00\x4d" and refused[3] & 0xF == ds.RCODE_REFUSED
@@ -196,7 +198,7 @@ if ResolverTrap.available:
     def test_the_trap_points_resolv_conf_at_itself_and_restores_it_byte_for_byte():
         from pathlib import Path
         original = Path("/etc/resolv.conf").read_bytes()
-        with ResolverTrap({"page-d.test": "127.0.0.1"}) as trap:
+        with ResolverTrap({"page-d.test": "127.0.0.1"}, is_browser=lambda pid: True) as trap:
             assert b"nameserver 127.0.0.1" in Path("/etc/resolv.conf").read_bytes()
             assert socket.gethostbyname("page-d.test") == "127.0.0.1"
             assert trap.asked("page-d.test")
