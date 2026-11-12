@@ -121,8 +121,10 @@ def cross_site_loop():
 
 
 @pytest.fixture
-def engine_dir(firefox_binary):
-    return str(Path(firefox_binary).resolve().parent)
+def engine_dir(firefox_binary, browser):
+    engine = Engine(str(Path(firefox_binary).resolve().parent))
+    engine.root_pid = browser._test_root_pid
+    return engine
 
 
 #: The engine keeps spare content processes (dom.ipc.processPrelaunch: three with Fission) and starts a new one whenever one is
@@ -136,14 +138,44 @@ def engine_dir(firefox_binary):
 NO_SPARE_PROCESSES = {"dom.ipc.processPrelaunch.enabled": False}
 
 
-def content_processes(engine_dir):
-    """The pids of the engine's web content processes (`-contentproc ... tab`) below this test."""
+class Engine(str):
+    """The engine's directory, and the pid of the main process of the browser THIS test launched (`root_pid`)."""
+
+    root_pid = None
+
+
+def engine_main_processes(engine_dir):
+    """The pids of the engine's main processes (not `-contentproc`) below this test process."""
     import psutil
 
-    pids = set()
+    found = set()
     for child in psutil.Process(os.getpid()).children(recursive=True):
         try:
-            if not os.path.normcase(child.exe()).startswith(os.path.normcase(engine_dir)):
+            if os.path.normcase(child.exe()).startswith(os.path.normcase(str(engine_dir))) and "-contentproc" not in child.cmdline():
+                found.add(child.pid)
+        except psutil.Error:
+            continue
+    return found
+
+
+def content_processes(engine_dir):
+    """The pids of the web content processes (`-contentproc ... tab`) of THIS test's browser.
+
+    Of that browser and no other: the pytest process of a worker may still hold the browsers of the tests it ran before (one
+    that is closing, one a fixture keeps), and a process one of THEM starts is not a process this test's frame started.
+    Counting everything below the pytest process, as this did, made a same-site frame "start a process" in the full suite
+    and never alone."""
+    import psutil
+
+    root = getattr(engine_dir, "root_pid", None)
+    try:
+        below = (psutil.Process(root) if root else psutil.Process(os.getpid())).children(recursive=True)
+    except psutil.Error:
+        return set()
+    pids = set()
+    for child in below:
+        try:
+            if not os.path.normcase(child.exe()).startswith(os.path.normcase(str(engine_dir))):
                 continue
             cmd = child.cmdline()
         except psutil.Error:
@@ -151,6 +183,20 @@ def content_processes(engine_dir):
         if "-contentproc" in cmd and cmd[-1] == "tab":
             pids.add(child.pid)
     return pids
+
+
+def describe(pids):
+    """What the new processes are, for the message of an assertion (a failure that cannot be explained is not a result)."""
+    import psutil
+
+    out = []
+    for pid in sorted(pids):
+        try:
+            p = psutil.Process(pid)
+            out.append("%d parent=%d age=%.1fs cmd=%s" % (pid, p.ppid(), time.time() - p.create_time(), " ".join(p.cmdline())[-120:]))
+        except psutil.Error:
+            out.append("%d (gone)" % pid)
+    return out
 
 
 def quiet(engine_dir, seconds=3.0, limit=30.0):
@@ -171,8 +217,17 @@ def quiet(engine_dir, seconds=3.0, limit=30.0):
 def browser(firefox_binary):
     from invisible_playwright import InvisiblePlaywright
 
+    directory = str(Path(firefox_binary).resolve().parent)
+    before = engine_main_processes(directory)
     with InvisiblePlaywright(seed=42, binary_path=firefox_binary, humanize=False, headless=True,
                              extra_prefs={**FISSION_ON, **NO_SPARE_PROCESSES}) as browser:
+        import psutil
+
+        mine = engine_main_processes(directory) - before
+        # the topmost one if the launcher keeps a process above the browser's own
+        tops = [pid for pid in mine if psutil.Process(pid).ppid() not in mine]
+        assert len(tops) == 1, "the main process of this test's browser: %s" % sorted(mine)
+        browser._test_root_pid = tops[0]
         yield browser
 
 
@@ -240,7 +295,7 @@ def test_same_site_other_port_stays_in_process(page, cross_site_loop, engine_dir
     page.goto(cross_site_loop["same_site"], wait_until="load")
     assert wait_for(page, lambda: any(r["path"] == "/report/loaded" for r in cross_site_loop["reports"]))
     after = quiet(engine_dir)
-    assert not (after - before), "a same-site frame started a process: %s" % sorted(after - before)
+    assert not (after - before), "a same-site frame started a process: %s" % describe(after - before)
 
 
 # ── 3 .. 10: what the product does not do yet ──────────────────────────────────
