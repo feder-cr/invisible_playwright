@@ -185,27 +185,97 @@ def _who_holds(port: int) -> str:
     return "; no ss or netstat to say who holds it"
 
 
-def uid_from_proc_net(text: str, port: int) -> Optional[int]:
-    """The uid of the socket bound to local port ``port`` in the text of one of /proc/net/{udp,udp6,tcp,tcp6}, or None.
+class Asker(NamedTuple):
+    """Who sent a question to the trap: the user, the process (None when its socket could not be traced) and its command."""
+    uid: int
+    pid: Optional[int]
+    command: str
+
+
+def row_from_proc_net(text: str, port: int) -> Optional[Tuple[int, int]]:
+    """``(uid, inode)`` of the socket bound to local port ``port`` in the text of one of /proc/net/{udp,udp6,tcp,tcp6}, or None.
 
     A row is ``sl local_address rem_address st tx:rx tr:tm retrnsmt uid timeout inode ...``; the local address is
     ``HEX_ADDRESS:HEX_PORT``. The client of a DNS question is a socket still open (it waits for the answer), on an
     ephemeral port of its own."""
     for line in text.splitlines()[1:]:
         fields = line.split()
-        if len(fields) < 8 or ":" not in fields[1]:
+        if len(fields) < 10 or ":" not in fields[1]:
             continue
         try:
             if int(fields[1].rsplit(":", 1)[1], 16) == port:
-                return int(fields[7])
+                return int(fields[7]), int(fields[9])
         except ValueError:
             continue
     return None
 
 
-def owner_of_the_peer(protocol: str, peer) -> Optional[int]:
-    """The uid of the process that sent a question to the trap, read where the kernel says it (Linux), or None when
-    the socket cannot be found any more or the machine is not Linux. ``peer`` is the (address, port...) of the client."""
+def uid_from_proc_net(text: str, port: int) -> Optional[int]:
+    """The uid of that socket (see :func:`row_from_proc_net`)."""
+    row = row_from_proc_net(text, port)
+    return None if row is None else row[0]
+
+
+def pid_of_socket_inode(inode: int, proc: str = "/proc") -> Optional[int]:
+    """The pid of a process that holds the socket with this inode open (root sees every process), or None."""
+    needle = "socket:[%d]" % inode
+    try:
+        entries = os.listdir(proc)
+    except OSError:
+        return None
+    for name in entries:
+        if not name.isdigit():
+            continue
+        fd_dir = os.path.join(proc, name, "fd")
+        try:
+            for fd in os.listdir(fd_dir):
+                try:
+                    if os.readlink(os.path.join(fd_dir, fd)) == needle:
+                        return int(name)
+                except OSError:
+                    continue
+        except OSError:
+            continue
+    return None
+
+
+def parent_of(pid: int, proc: str = "/proc") -> Optional[int]:
+    """The parent of a process, from /proc/<pid>/stat (the name between parentheses may hold spaces), or None."""
+    try:
+        with open(os.path.join(proc, str(pid), "stat"), encoding="utf-8", errors="replace") as handle:
+            return int(handle.read().rsplit(")", 1)[1].split()[1])
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def command_of(pid: int, proc: str = "/proc") -> str:
+    """What a process is, for a message: its name and the start of its command line."""
+    try:
+        with open(os.path.join(proc, str(pid), "comm"), encoding="utf-8", errors="replace") as handle:
+            name = handle.read().strip()
+        with open(os.path.join(proc, str(pid), "cmdline"), "rb") as handle:
+            line = b" ".join(handle.read().split(b"\0")).decode("utf-8", "replace").strip()
+        return ("%s: %s" % (name, line))[:120]
+    except OSError:
+        return "(gone)"
+
+
+def descends_from(pid: int, root: int, parent=parent_of) -> bool:
+    """Whether ``pid`` is ``root`` or one of its descendants, going up the parents (at most 64 steps)."""
+    for _ in range(64):
+        if pid == root:
+            return True
+        up = parent(pid)
+        if up is None or up <= 1 or up == pid:
+            return False
+        pid = up
+    return False
+
+
+def who_asked(protocol: str, peer) -> Optional[Asker]:
+    """Who sent a question to the trap, read where the kernel says it (Linux): the row of the client's socket in /proc/net
+    gives the user and the inode, and the inode gives the process that holds it. None off Linux or when the socket is
+    gone. ``peer`` is the (address, port...) of the client."""
     if not sys.platform.startswith("linux"):
         return None
     six = ":" in str(peer[0])
@@ -213,27 +283,38 @@ def owner_of_the_peer(protocol: str, peer) -> Optional[int]:
     for name in names:
         try:
             with open("/proc/net/" + name, encoding="utf-8") as table:
-                uid = uid_from_proc_net(table.read(), int(peer[1]))
+                row = row_from_proc_net(table.read(), int(peer[1]))
         except OSError:
             continue
-        if uid is not None:
-            return uid
+        if row is not None:
+            uid, inode = row
+            pid = pid_of_socket_inode(inode) if inode else None
+            return Asker(uid, pid, command_of(pid) if pid is not None else "")
     return None
+
+
+def owner_of_the_peer(protocol: str, peer) -> Optional[int]:
+    """The uid of the process that sent a question to the trap (see :func:`who_asked`), or None."""
+    asker = who_asked(protocol, peer)
+    return None if asker is None else asker.uid
 
 
 class ResolverTrap:
     """A resolver on loopback that counts what it is asked. See the module docstring.
 
-    It counts what the processes of the USER THAT RUNS THE TEST ask (``only_uid``, by default the effective uid: under
-    ``sudo`` the browser and the test are root). A question from a socket of another user is answered and listed in
-    :attr:`foreign`, not counted: /etc/resolv.conf is the machine's, and on a CI runner the agent of the runner asks for
-    github.com through it (run 43188313516: the browser was blamed for names it never asked). There is no list of names.
-    A question whose socket cannot be found any more counts as the browser's."""
+    It counts what the PROCESSES OF THE TEST ask: the test process itself and its descendants (the browser), found from the
+    socket the question came from (its inode, the process that holds it, its parents up to ``root_pid``, by default this
+    process). A question from any other process is answered and listed in :attr:`foreign` with its pid and command, not
+    counted: /etc/resolv.conf is the machine's, and on a CI runner the agent of the runner, even as root, asks for github.com
+    through it (run 43188313516, 43211837926: the browser was blamed for names it never asked, and a user filter cannot tell
+    a root agent from a root browser). There is no list of names. A question whose process cannot be traced is judged by
+    its user (``only_uid``, by default the effective uid), and one whose socket cannot be found any more counts as the browser's."""
 
     available, reason = _trap_capability()
 
     def __init__(self, answers: Optional[Dict[str, str]] = None, *, port: int = 53,
-                 rewrite_resolv_conf: bool = True, only_uid: Optional[int] = None, owner_of=None):
+                 rewrite_resolv_conf: bool = True, only_uid: Optional[int] = None, owner_of=None,
+                 root_pid: Optional[int] = None, parent_of_pid=None):
         self.answers = {k.lower(): v for k, v in (answers or {}).items()}
         self.port = port
         #: The loopback address the trap listens on once it is bound (see TRAP_ADDRESSES).
@@ -242,9 +323,11 @@ class ResolverTrap:
         #: Every question: (name, qtype, "udp"|"tcp").
         self.queries: List[DohQuery] = []
         #: The questions of other users' processes: (query, uid). Answered, not counted.
-        self.foreign: List[Tuple[DohQuery, int]] = []
+        self.foreign: List[Tuple[DohQuery, Asker]] = []
+        self.root_pid = root_pid if root_pid is not None else os.getpid()
+        self._parent_of = parent_of_pid or parent_of
         self.only_uid = only_uid if only_uid is not None else (os.geteuid() if hasattr(os, "geteuid") else None)
-        self._owner_of = owner_of or owner_of_the_peer
+        self._owner_of = owner_of or who_asked
         self._lock = threading.Lock()
         self._sockets: List[socket.socket] = []
         #: The threads that answer on `_sockets`, and the flag that ends them: see `_restore`.
@@ -269,8 +352,9 @@ class ResolverTrap:
         with self._lock:
             seen = ", ".join("%s/%d (%s)" % q for q in self.queries) or "nothing"
             if self.foreign:
-                seen += " [and %d question(s) of other users' processes, not counted: %s]" % (
-                    len(self.foreign), ", ".join(sorted({q.name for q, _ in self.foreign})))
+                seen += " [and %d question(s) of other processes, not counted: %s]" % (
+                    len(self.foreign), "; ".join(sorted({"%s from pid %s (uid %d) %s" % (
+                        q.name, a.pid if a.pid is not None else "?", a.uid, a.command or "") for q, a in self.foreign})))
             return seen
 
     # --- control -------------------------------------------------------------------------------------------------
@@ -382,12 +466,20 @@ class ResolverTrap:
             query = parse_query(message)
         except ValueError:
             return None
-        owner = self._owner_of(protocol, peer) if peer is not None and self.only_uid is not None else None
+        asker = self._owner_of(protocol, peer) if peer is not None else None
+        if isinstance(asker, int):    # an owner given as a bare uid
+            asker = Asker(asker, None, "")
+        ours = True
+        if asker is not None:
+            if asker.pid is not None:
+                ours = descends_from(asker.pid, self.root_pid, self._parent_of)
+            elif self.only_uid is not None:
+                ours = asker.uid == self.only_uid
         with self._lock:
-            if owner is not None and owner != self.only_uid:
-                self.foreign.append((DohQuery(query.name, query.qtype, protocol), owner))
-            else:
+            if ours:
                 self.queries.append(DohQuery(query.name, query.qtype, protocol))
+            else:
+                self.foreign.append((DohQuery(query.name, query.qtype, protocol), asker))
         if query.name in self.answers:
             return answer_for(self.answers, query)
         return build_response(query, RCODE_REFUSED)

@@ -12,7 +12,7 @@ import socket
 import pytest
 
 from _doh_servers import QTYPE_A, encode_query
-from _leaks import ResolverTrap, owner_of_the_peer, uid_from_proc_net
+from _leaks import Asker, ResolverTrap, descends_from, owner_of_the_peer, row_from_proc_net, uid_from_proc_net, who_asked
 
 pytestmark = pytest.mark.unit
 
@@ -69,7 +69,7 @@ def test_a_question_of_another_user_is_answered_and_listed_not_counted():
                       owner_of=lambda protocol, peer: 1001) as trap:
         assert _ask(trap, "github.com"), "a question of another user is still answered"
         assert trap.names() == [] and trap.queries == []
-        assert [(q.name, uid) for q, uid in trap.foreign] == [("github.com", 1001)]
+        assert [(q.name, a.uid) for q, a in trap.foreign] == [("github.com", 1001)]
         assert "github.com" in trap.describe() and "not counted" in trap.describe()
 
 
@@ -110,3 +110,63 @@ def test_the_owner_of_a_question_that_waits_for_its_answer_is_always_found():
         answered = sum(1 for _ in range(200) if _ask(trap, "page-w.test"))
     assert answered == 200 and len(trap.queries) == 200 and trap.foreign == []
     assert len(unreadable) == (200 if not sys.platform.startswith("linux") else 0), unreadable[:3]
+
+
+# ----------------------------------------------------------------------------------------------- by the tree of processes
+#: A machine: the test is pid 100, the browser 400 under it (a content process 777 under the browser), the agent of the runner 555
+#: under the provisioner 1 - as ROOT too, the user a filter cannot tell from the root browser.
+PARENT = {400: 100, 777: 400, 555: 90, 90: 1}
+
+
+def test_a_process_is_the_root_or_one_of_its_descendants():
+    assert descends_from(100, 100, PARENT.get) and descends_from(777, 100, PARENT.get) and descends_from(400, 100, PARENT.get)
+    assert not descends_from(555, 100, PARENT.get)
+    assert not descends_from(300, 100, PARENT.get), "a process with no known parent is not a descendant"
+
+
+def test_a_row_of_proc_net_gives_the_user_and_the_inode():
+    assert row_from_proc_net(UDP_TABLE, 0xC350) == (1001, 67890)
+    assert row_from_proc_net(UDP_TABLE, 4242) is None
+
+
+def test_a_root_process_that_is_not_the_browsers_is_foreign_even_with_the_same_user():
+    """The agent of the runner runs as root, like the browser under sudo: the user cannot separate them, the tree does."""
+    with ResolverTrap({"github.com": "127.0.0.1"}, port=0, rewrite_resolv_conf=False, only_uid=0, root_pid=100,
+                      parent_of_pid=PARENT.get,
+                      owner_of=lambda protocol, peer: Asker(0, 555, "Runner.Provisioner: /opt/agent/provisioner")) as trap:
+        assert _ask(trap, "github.com")
+        assert trap.names() == [] and [q.name for q, _ in trap.foreign] == ["github.com"]
+        say = trap.describe()
+        assert "github.com from pid 555" in say and "Runner.Provisioner" in say and "not counted" in say
+
+
+def test_the_browser_and_what_it_starts_are_counted():
+    for pid in (100, 400, 777):
+        with ResolverTrap({"page-d.test": "127.0.0.1"}, port=0, rewrite_resolv_conf=False, only_uid=0, root_pid=100,
+                          parent_of_pid=PARENT.get, owner_of=lambda protocol, peer, pid=pid: Asker(0, pid, "firefox")) as trap:
+            assert _ask(trap, "page-d.test")
+            assert trap.names() == ["page-d.test"] and trap.foreign == [], pid
+
+
+def test_a_process_that_cannot_be_traced_is_judged_by_its_user():
+    with ResolverTrap({"a.test": "127.0.0.1"}, port=0, rewrite_resolv_conf=False, only_uid=0, root_pid=100,
+                      parent_of_pid=PARENT.get, owner_of=lambda protocol, peer: Asker(1001, None, "")) as trap:
+        _ask(trap, "a.test")
+        assert trap.names() == [] and len(trap.foreign) == 1
+    with ResolverTrap({"b.test": "127.0.0.1"}, port=0, rewrite_resolv_conf=False, only_uid=0, root_pid=100,
+                      parent_of_pid=PARENT.get, owner_of=lambda protocol, peer: Asker(0, None, "")) as trap:
+        _ask(trap, "b.test")
+        assert trap.names() == ["b.test"] and trap.foreign == []
+
+
+def test_the_kernel_names_this_process_as_the_asker_of_its_own_socket():
+    """On Linux the socket of this process leads, by its inode, to this process and its command; elsewhere nobody is found."""
+    import os
+    import sys
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as mine:
+        mine.bind(("127.0.0.1", 0))
+        asker = who_asked("udp", mine.getsockname())
+    if sys.platform.startswith("linux"):
+        assert asker is not None and asker.pid == os.getpid() and asker.uid == os.geteuid() and asker.command != ""
+    else:
+        assert asker is None
