@@ -1,9 +1,10 @@
-name: fakeweb-p2 (engine of a series run)
+name: fakeweb-p2 (engine of a series run, reduced: the hard pages and the quiet one)
 
 # The fake web, profile P2, on the engine a RUN of the series repository built (its `asset-win-x86_64` artifact), in the same job as
 # Playwright's own Firefox: the verdict is "the same outcome as stock", per page, with the numbers. The series repository is public, so
 # `gh run download` needs no secret. To run it on another engine, change ENGINE_RUN_ID and push: this workflow starts on a push that
-# touches this file (a hunt, not a gate).
+# touches this file (a hunt, not a gate). REDUCED: the run on every page took more than its 60 minutes (cancelled at the ceiling, run 43178594622),
+# so this one runs the three hard pages (HARD in scripts/run_fakeweb.py) and the quiet one, 10 repetitions, in 45 minutes.
 
 on:
   push:
@@ -33,7 +34,7 @@ jobs:
   p2:
     name: fakeweb P2 (windows, engine of run ${{ inputs.engine_run_id || '43164943499' }})
     runs-on: windows-2022
-    timeout-minutes: 60
+    timeout-minutes: 45
     defaults:
       run:
         shell: bash
@@ -65,7 +66,7 @@ jobs:
           echo "INVISIBLE_CORE_PIN=allow" >> "$GITHUB_ENV"
       - name: The fake web beside stock, per page
         run: |
-          python scripts/run_fakeweb.py --binary "$INVPW_BINARY_PATH" --repetitions 10 --patterns all --out fakeweb-p2.json || echo "RUN_FAKEWEB_EXIT=$?" >> "$GITHUB_ENV"
+          python scripts/run_fakeweb.py --binary "$INVPW_BINARY_PATH" --repetitions 10 --patterns leaving_beacons_subframe,leaving_beacons,cancel_among_beacons,quiet --out fakeweb-p2.json || echo "RUN_FAKEWEB_EXIT=$?" >> "$GITHUB_ENV"
           python - <<'PY'
           import collections, json
           r = json.load(open("fakeweb-p2.json"))
