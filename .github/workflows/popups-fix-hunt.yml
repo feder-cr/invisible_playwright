@@ -50,8 +50,9 @@ jobs:
           set -e
           cp scripts/hunt_popup_trace_patch.py scripts/hunt_popup_trace_patch2.py scripts/hunt_popup_fix_server.patch \
              tests/test_popups_under_load_e2e.py "$RUNNER_TEMP/"
-          git checkout origin/main -- src tests pyproject.toml scripts/playwright_pin.txt
-          git apply -3 "$RUNNER_TEMP/hunt_popup_fix_server.patch"
+          # LF files, as the patch has them (the runner checks out with CRLF on Windows)
+          git -c core.autocrlf=false checkout origin/main -- src tests pyproject.toml scripts/playwright_pin.txt
+          git -c core.autocrlf=false apply "$RUNNER_TEMP/hunt_popup_fix_server.patch"
           python "$RUNNER_TEMP/hunt_popup_trace_patch.py"
           python "$RUNNER_TEMP/hunt_popup_trace_patch2.py"
           cp "$RUNNER_TEMP/test_popups_under_load_e2e.py" tests/
@@ -63,10 +64,11 @@ jobs:
           if [ "${{ matrix.arm }}" = "win-62-fix" ]; then
             python -m pip install --quiet ".[dev]"
           else
+            # 0.51.0 pins invisible-core 63.66.0, which is not on the index yet: the core from its release branch, the wrapper
+            # without resolving its pin, and the dev extra named one by one.
             CORE_GIT="git+https://github.com/feder-cr/invisible_core@a790d0d0a3ce7ca4cfd24016c791fc1d9bc0fcfd"
-            python -m pip install --quiet "$CORE_GIT"
-            python -m pip install --quiet ".[dev]"
-            python -m pip install --quiet --force-reinstall "$CORE_GIT"
+            python -m pip install --quiet "$CORE_GIT" "websockets>=13" "aioquic>=1.2" "pytest>=7" "pytest-rerunfailures>=14"               "pytest-timeout>=2" "pytest-xdist>=3" "cryptography>=41" "h2>=4,<5" psutil
+            python -m pip install --quiet --no-deps "."
           fi
           python -m pip install --quiet "playwright==$(cat scripts/playwright_pin.txt)"
           python -c "import importlib.metadata as m; print('invisible-playwright', m.version('invisible-playwright'), '| invisible-core', m.version('invisible-core'))"
