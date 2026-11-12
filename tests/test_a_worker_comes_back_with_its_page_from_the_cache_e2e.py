@@ -129,6 +129,16 @@ def events(monkeypatch):
     return seen
 
 
+def _commit_order_is_promised():
+    """Whether the engine under test ends the workers of a document BEFORE it announces the commit that replaces it. Juggler f284ca703e
+    (PageHandler._commitNow ends the workers below the frame first) is in firefox-63; the published firefox-62 does not promise the order, and
+    main's e2e runs on both (run 43193233155: `Page.navigationCommitted` before `Page.workerDestroyed` on the published engine)."""
+    from conftest import _engine_number
+    from invisible_core.seal import active_seal
+
+    return (_engine_number(active_seal().tag) or 0) >= 63
+
+
 def _wait(check, seconds=10.0):
     end = time.monotonic() + seconds
     while time.monotonic() < end:
@@ -186,9 +196,13 @@ def test_a_worker_leaves_with_its_page_for_the_cache_and_comes_back_the_same(fir
                 page.evaluate("url => { location.href = url; }", sites[away])
         committed = _index(events, forward, "Page.navigationCommitted", lambda p: p.get("url", "").endswith("/other"))
         assert committed is not None, "no commit of the new page was seen"
+        promised = _commit_order_is_promised()
+        if not promised:      # an engine that does not promise the order still tells the worker ended, a moment later
+            _wait(lambda: _index(events, forward, "Page.workerDestroyed", lambda p: p["workerId"] == wid) is not None)
         ended = _index(events, forward, "Page.workerDestroyed", lambda p: p["workerId"] == wid)
         assert ended is not None, "the worker was not told ended when its page left: %r" % _methods(events, forward)
-        assert ended < committed, "the worker was told ended only after the new page committed: %r" % _methods(events, forward)
+        if promised:
+            assert ended < committed, "the worker was told ended only after the new page committed: %r" % _methods(events, forward)
 
         # 3. back from the cache: the same worker, told once, after the restored document's contexts are cleared
         back = len(events)

@@ -98,3 +98,14 @@ def test_the_test_has_no_repeat_no_skip_and_asks_for_the_evidence_and_the_cachea
     assert source.index("decide_outcome(") < source.index("Page.workerCreated", source.index("decide_outcome(")), \
         "the evidence is read and written before anything is asserted about the worker"
     assert 'may_reload=(how == "goto")' in source, "a reload is accepted for a navigation the parent starts (goto) and for nothing else"
+
+
+def test_the_commit_order_of_a_worker_is_asserted_only_on_an_engine_that_promises_it(monkeypatch):
+    import types
+
+    import invisible_core.seal as seal
+    import test_a_worker_comes_back_with_its_page_from_the_cache_e2e as e2e
+
+    for tag, promised in (("firefox-62", False), ("firefox-63-candidate", True), ("firefox-64", True), ("local", False)):
+        monkeypatch.setattr(seal, "active_seal", lambda tag=tag: types.SimpleNamespace(tag=tag))
+        assert e2e._commit_order_is_promised() is promised, tag
