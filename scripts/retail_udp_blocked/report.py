@@ -109,6 +109,32 @@ def h3_summary(cond_dir):
     return {"sites": sites, "sequences_all_sites": dict(total_seq)}
 
 
+def turn_summary(cond_dir):
+    """The TURN target (webrtc_gather.py --target turn): by form of the TURN address, how many host candidates, how many TURN-over-TCP
+    errors and when, whether the gathering ended. None when the condition did not run it."""
+    rows = load(cond_dir / "webrtc-turn" / "summary_runs.json")
+    if not rows:
+        return None
+    out = {}
+    for form in sorted({r.get("turn_form") for r in rows}):
+        mine = [r for r in rows if r.get("turn_form") == form]
+        first_tcp = [r["tcp_error_ms_after_pc"][0] for r in mine if r.get("tcp_error_ms_after_pc")]
+        second_tcp = [r["tcp_error_ms_after_pc"][1] for r in mine if len(r.get("tcp_error_ms_after_pc") or []) > 1]
+        ends = [r.get("gathering_end_since_pc_created_ms") for r in mine]
+        out[form] = {
+            "sessions": len(mine),
+            "host_candidates": sorted(r["host"] for r in mine),
+            "host_names": sorted(r.get("host_names", 0) for r in mine),
+            "tcp_errors": sorted(r.get("tcp_errors", 0) for r in mine),
+            "udp_errors": sorted(r.get("udp_errors", 0) for r in mine),
+            "first_tcp_error_ms": stats(first_tcp), "second_tcp_error_ms": stats(second_tcp),
+            "srflx": sorted(r["srflx"] for r in mine), "relay": sorted(r["relay"] for r in mine),
+            "gathering_end_since_pc_created_ms": stats([e for e in ends if e is not None]),
+            "gathering_never_ended": sum(1 for e in ends if e is None),
+        }
+    return out
+
+
 def markdown(summary):
     L = ["## Retail Firefox on Windows, outbound UDP free vs blocked, native DNS vs DNS over HTTPS", ""]
     for cond in CONDITIONS:
@@ -136,6 +162,17 @@ def markdown(summary):
                 L.append("| %s | %d | %s |" % (code, e["count"], fmt_stats(e["since_pc_created_ms"])))
             if not w["errors_by_code"]:
                 L.append("| none | 0 | - |")
+        if c.get("turn"):
+            L.append("")
+            L.append("TURN over UDP + TURN over TCP on one server of ours (UDP answers, the TCP port refuses), by form of its address")
+            L.append("")
+            L.append("| form | sessions | host candidates | host names | TCP errors | UDP errors | first TCP error (ms) | second TCP error (ms) | gather end (ms) | never ended |")
+            L.append("|---|---|---|---|---|---|---|---|---|---|")
+            for form, t in c["turn"].items():
+                L.append("| %s | %d | %s | %s | %s | %s | %s | %s | %s | %d |" % (
+                    form, t["sessions"], t["host_candidates"], t["host_names"], t["tcp_errors"], t["udp_errors"],
+                    fmt_stats(t["first_tcp_error_ms"]), fmt_stats(t["second_tcp_error_ms"]),
+                    fmt_stats(t["gathering_end_since_pc_created_ms"]), t["gathering_never_ended"]))
         h = c["h3"]
         L.append("")
         L.append("HTTP/3 visits (nextHopProtocol of visit 1, 2, 3 in one session; times of visit 1 in ms, min / median / max)")
@@ -165,8 +202,9 @@ def main(argv=None):
         d = out / cond
         if not d.exists():
             continue
-        summary["conditions"][cond] = {"proof": load(d / "udp_block_check.json"), "webrtc": webrtc_summary(d), "h3": h3_summary(d)}
-        for kind in ("webrtc", "h3"):
+        summary["conditions"][cond] = {"proof": load(d / "udp_block_check.json"), "webrtc": webrtc_summary(d), "h3": h3_summary(d),
+                                       "turn": turn_summary(d)}
+        for kind in ("webrtc", "webrtc-turn", "h3"):
             m = load(d / kind / "meta.json")
             if m:
                 commands["%s/%s" % (cond, kind)] = m.get("command")

@@ -23,6 +23,7 @@ import storage_partition as sp  # noqa: E402
 import h3_fallback as h3  # noqa: E402
 import verify_udp_block as vub  # noqa: E402
 import webrtc_gather as wg  # noqa: E402
+import turn_server as ts  # noqa: E402
 
 pytestmark = pytest.mark.unit
 
@@ -254,3 +255,63 @@ def test_the_partition_step_runs_before_the_conditions_and_does_not_judge():
     assert text.index("storage_partition.py") < text.index("-Name control")
     src = (SCRIPTS / "storage_partition.py").read_text(encoding="utf-8")
     assert "if broke:" in src and "sys.exit(1)" in src and src.count("sys.exit") == 1
+
+
+def _udp_roundtrip(server, packet):
+    import socket
+    c = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    c.settimeout(5)
+    try:
+        c.sendto(packet, server.address)
+        return c.recvfrom(65536)[0]
+    finally:
+        c.close()
+
+
+def test_the_turn_server_asks_for_credentials_and_signs_its_success():
+    import hashlib
+    import hmac
+    import struct
+    server = ts.TurnServer("127.0.0.1", 0)
+    try:
+        tid = b"\x01" * 12
+        bare = struct.pack("!HHI", 0x0003, 8, ts.MAGIC) + tid + struct.pack("!HH", 0x0019, 4) + b"\x11\x00\x00\x00"
+        first = _udp_roundtrip(server, bare)
+        assert struct.unpack("!H", first[:2])[0] == 0x0113
+        at = ts.attrs_of(first)
+        assert at[0x0014] == ts.REALM.encode() and at[0x0015] == ts.NONCE.encode()
+        key = hashlib.md5(("%s:%s:%s" % (ts.USERNAME, ts.REALM, ts.PASSWORD)).encode()).digest()
+        body = (ts.attr(0x0019, b"\x11\x00\x00\x00") + ts.attr(0x0006, ts.USERNAME.encode()) + ts.attr(0x0014, ts.REALM.encode()) +
+                ts.attr(0x0015, ts.NONCE.encode()))
+        second = _udp_roundtrip(server, ts.message(0x0003, b"\x02" * 12, body, key))
+        assert struct.unpack("!H", second[:2])[0] == 0x0103
+        mi_at = second.index(struct.pack("!HH", 0x0008, 20))
+        head = struct.pack("!H", 0x0103) + struct.pack("!H", mi_at - 20 + 24) + second[4:20]
+        assert hmac.new(key, head + second[20:mi_at], hashlib.sha1).digest() == second[mi_at + 4:mi_at + 24]
+        assert server.allocations and server.allocations[0][2] == ts.USERNAME
+    finally:
+        server.close()
+
+
+def test_only_the_control_condition_runs_the_turn_target_and_the_page_has_a_turn_over_tcp():
+    ps1 = (SCRIPTS / "run_condition.ps1").read_text(encoding="utf-8")
+    assert re.search(r"if \(\$Name -eq 'control'\) \{[^}]*'--target', 'turn'", ps1), "the TURN target belongs to the control condition only"
+    page = (SCRIPTS / "local_turn_page.html").read_text(encoding="utf-8")
+    assert "transport=udp" in page and "transport=tcp" in page and "stun:" not in page.replace("// ", "").split("<script>")[1]
+
+
+def test_the_report_summarises_the_turn_target_by_form_of_the_address(tmp_path):
+    d = tmp_path / "control" / "webrtc-turn"
+    d.mkdir(parents=True)
+    rows = []
+    for form, tcp in (("ip", [[300.0], [320.0]]), ("name", [[310.0, 3000.0], [330.0, 3100.0]])):
+        for n, ms in enumerate(tcp, 1):
+            rows.append({"target": "local-turn-" + form, "run": n, "turn_form": form, "host": 2, "srflx": 1, "relay": 1,
+                         "host_names": 1, "tcp_errors": len(ms), "tcp_error_ms_after_pc": ms, "udp_errors": 0,
+                         "udp_error_ms_after_pc": [], "gathering_end_since_pc_created_ms": 3200.0 if len(ms) > 1 else None})
+    (d / "summary_runs.json").write_text(json.dumps(rows), encoding="utf-8")
+    t = report.turn_summary(tmp_path / "control")
+    assert t["ip"]["tcp_errors"] == [1, 1] and t["ip"]["second_tcp_error_ms"] is None and t["ip"]["gathering_never_ended"] == 2
+    assert t["name"]["tcp_errors"] == [2, 2] and t["name"]["second_tcp_error_ms"]["median"] == 3050.0
+    assert t["name"]["gathering_never_ended"] == 0
+    assert report.turn_summary(tmp_path / "blocked") is None

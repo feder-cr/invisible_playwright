@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>local TURN probe</title></head>
+<body>
+<h1>local TURN probe</h1>
+<pre id="status">starting</pre>
+<script>
+// Own RTCPeerConnection with the shape of a leak-test page: two ICE servers, a TURN over UDP and a TURN over TCP on the same
+// server (the address comes in the query string, ?turn=HOST:PORT), no STUN. Gathering starts from createOffer + setLocalDescription.
+const out = document.getElementById('status');
+const lines = [];
+function show(s) { lines.push(s); out.textContent = lines.join('\n'); }
+const server = new URLSearchParams(location.search).get('turn');
+const pc = new RTCPeerConnection({iceServers: [
+  {urls: ['turn:' + server + '?transport=udp'], username: 'measure', credential: 'measure'},
+  {urls: ['turn:' + server + '?transport=tcp'], username: 'measure', credential: 'measure'}
+]});
+pc.createDataChannel('probe');
+pc.addEventListener('icecandidate', e => {
+  const c = e.candidate;
+  if (!c) { show('gathering end (null candidate)'); return; }
+  show('candidate ' + c.type + ' ' + c.protocol + ' ' + c.address + ' ' + c.port);
+});
+pc.addEventListener('icecandidateerror', e =>
+  show('icecandidateerror url=' + e.url + ' code=' + e.errorCode + ' text=' + e.errorText));
+pc.addEventListener('icegatheringstatechange', () => show('gathering state: ' + pc.iceGatheringState));
+pc.createOffer().then(o => pc.setLocalDescription(o)).catch(err => show('offer error: ' + err));
+</script>
+</body></html>

@@ -5,7 +5,7 @@ New for the Windows reference; it plays the part of run_h3_in_container.sh and r
 (private study repo): the same measurements one after the other, with the proof of the condition before them (as there)
 and, new here, after them. Every command line is appended to <OutDir>\commands.txt. A non-zero exit of any command stops the step.
 
-  -Name control      outbound UDP free; 5 WebRTC gather sessions, then 5 sessions x 3 sites x 3 HTTP/3 visits   (UDP_BLOCK=0)
+  -Name control      outbound UDP free; 5 WebRTC gather sessions, 5+5 sessions against a TURN server of ours (address literal / name), then 5 sessions x 3 sites x 3 HTTP/3 visits   (UDP_BLOCK=0)
   -Name blocked      outbound UDP blocked by udp_block.ps1 -Action enable, which the workflow ran just before; same measurements (UDP_BLOCK=1)
   -Name doh-free     UDP free, Firefox forced to DNS over HTTPS (network.trr.mode=3); the HTTP/3 visits only
   -Name doh-blocked  UDP blocked, Firefox forced to DNS over HTTPS; the HTTP/3 visits only
@@ -44,6 +44,19 @@ function Invoke-Logged([string]$Script, [string[]]$PyArgs) {
 Invoke-Logged 'verify_udp_block.py' @('--expect', $network, '--out', (Join-Path $cond 'udp_block_check.json'))
 if (-not $doh) {
     Invoke-Logged 'webrtc_gather.py' @('--runs', "$Runs", '--wait', "$WaitSeconds", '--label', 'webrtc', '--out', $cond)
+    if ($Name -eq 'control') {
+        # One question the STUN page cannot answer: on a host with ONE IPv4 interface, how many TURN-over-TCP allocations does a retail
+        # Firefox attempt, and when. A TURN server of ours over UDP on the runner's own address (nothing listens on the TCP port), the
+        # address as a literal and as a name; 25 s is enough (the errors come within 3 s, the gathering ends or it does not).
+        # The TURN server is a Python process listening on the runner's own address: the Windows Firewall may refuse its inbound UDP,
+        # so an allow rule for that port is added for the length of the step (and the server says how many datagrams it heard).
+        netsh advfirewall firewall add rule name="retail-measure-turn" dir=in action=allow protocol=UDP localport=3478 | Out-Null
+        try {
+            Invoke-Logged 'webrtc_gather.py' @('--runs', "$Runs", '--wait', '25', '--label', 'webrtc-turn', '--target', 'turn', '--out', $cond)
+        } finally {
+            netsh advfirewall firewall delete rule name="retail-measure-turn" | Out-Null
+        }
+    }
 }
 $h3 = @('--runs', "$Runs", '--visits', "$Visits", '--label', 'h3', '--out', $cond)
 if ($doh) {

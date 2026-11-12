@@ -13,6 +13,12 @@ unchanged. Adapted for Windows and for this job:
   - gathering_end_since_pc_created_ms is added to timeline.json and to the summary rows;
   - the code is behind main(), so the test suite can import the helpers.
 
+A second target, --target turn (the control condition only): a page with the shape of a leak-test page, a TURN over UDP and a TURN over
+TCP on one server and no STUN (local_turn_page.html), against a TURN server of ours over UDP on the runner's own IPv4 address (turn_server.py;
+nothing listens on the TCP port), once with the address as a literal and once as a name (<a-b-c-d>.sslip.io). It answers one question:
+on a host with ONE IPv4 interface, how many TURN-over-TCP allocations a retail Firefox attempts, when they fail and whether the gathering ends.
+The interfaces of the runner are saved in interfaces.txt. Rows go to summary_runs.json with turn_form, tcp_errors and udp_errors.
+
 Output under --out/<label> (label "webrtc" in the workflow):
   local-stun/run<N>/timeline.json  events, candidates, icecandidateerrors, gathering states, gathering end, final lines
   local-stun/run<N>/page.txt       visible text at the end of the wait
@@ -20,7 +26,7 @@ Output under --out/<label> (label "webrtc" in the workflow):
   summary_runs.json                one row per session
   meta.json                        top level: versions, sha256, command
 """
-import argparse, configparser, datetime, functools, hashlib, http.server, ipaddress, json, os, platform, re, sys, threading, time
+import argparse, configparser, datetime, functools, hashlib, http.server, ipaddress, json, os, platform, re, socket, sys, threading, time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -121,6 +127,39 @@ def serve_page_dir():
     return srv, "http://127.0.0.1:%d" % srv.server_address[1]
 
 
+def primary_ipv4():
+    """The IPv4 address the host uses to reach the Internet (no packet is sent: connecting a UDP socket only picks the route)."""
+    probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        probe.connect(("192.0.2.1", 9))
+        return probe.getsockname()[0]
+    finally:
+        probe.close()
+
+
+def interfaces_text():
+    """What the host has as interfaces and addresses, for the record of a measurement that depends on them."""
+    import subprocess
+    cmd = ["ipconfig", "/all"] if os.name == "nt" else ["ip", "-o", "addr"]
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=60).stdout
+    except Exception as exc:   # noqa: BLE001 - a record that could not be taken says so
+        return "could not list the interfaces: %s" % exc
+
+
+def turn_row_fields(tl):
+    """What the TURN target adds to a row: the errors by transport, with their times, and the host candidates by protocol."""
+    errs = tl["icecandidateerrors"]
+    tcp = [e for e in errs if "transport=tcp" in (e.get("url") or "")]
+    udp = [e for e in errs if "transport=udp" in (e.get("url") or "")]
+    cands = tl["candidates"]
+    return {"tcp_errors": len(tcp), "tcp_error_ms_after_pc": [e["since_pc_created_ms"] for e in tcp],
+            "udp_errors": len(udp), "udp_error_ms_after_pc": [e["since_pc_created_ms"] for e in udp],
+            "host_udp": sum(1 for c in cands if c["type"] == "host" and c["protocol"] == "udp"),
+            "host_tcp": sum(1 for c in cands if c["type"] == "host" and c["protocol"] == "tcp"),
+            "host_names": len({c["address"] for c in cands if c["type"] == "host"})}
+
+
 def firefox_count():
     import psutil
     return sum(1 for p in psutil.process_iter(["name"]) if (p.info["name"] or "").lower().startswith("firefox"))
@@ -199,6 +238,7 @@ def main(argv=None):
     ap.add_argument("--out", required=True)
     ap.add_argument("--firefox", default=os.environ.get("FIREFOX_BIN"))
     ap.add_argument("--geckodriver", default=os.environ.get("GECKODRIVER_BIN"))
+    ap.add_argument("--target", choices=["stun", "turn"], default="stun")
     a = ap.parse_args(argv)
     if not a.firefox or not a.geckodriver:
         raise SystemExit("set --firefox/--geckodriver or FIREFOX_BIN/GECKODRIVER_BIN")
@@ -208,27 +248,56 @@ def main(argv=None):
     gd_ver = subprocess.run([a.geckodriver, "--version"], capture_output=True, text=True, timeout=60).stdout.splitlines()[0]
     started = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
     srv, base = serve_page_dir()
+    turn = None
+    if a.target == "turn":
+        from turn_server import TurnServer
+        host = primary_ipv4()
+        (out / "interfaces.txt").write_text(interfaces_text(), encoding="utf-8")
+        try:
+            turn = TurnServer(host, 3478)
+        except OSError:
+            turn = TurnServer(host, 0)
+        port = turn.address[1]
+        name = host.replace(".", "-") + ".sslip.io"
+        try:
+            resolves_to = socket.gethostbyname(name)
+        except OSError as exc:
+            resolves_to = "unresolved: %s" % exc
+        plan = [("local-turn-ip", "%s/local_turn_page.html?turn=%s:%d" % (base, host, port), "ip"),
+                ("local-turn-name", "%s/local_turn_page.html?turn=%s:%d" % (base, name, port), "name")]
+        (out / "turn_name.json").write_text(json.dumps({"name": name, "resolves_to": resolves_to}, indent=1), encoding="utf-8")
+    else:
+        plan = [("local-stun", base + "/" + PAGE_NAME, None)]
     summary_rows, leftover_total = [], 0
     try:
-        for run in range(1, a.runs + 1):
-            tl, after = session(base + "/" + PAGE_NAME, out / "local-stun" / ("run%d" % run), a.wait, "local-stun",
-                                a.firefox, a.geckodriver)
-            leftover_total += after
-            cands = tl["candidates"]
-            row = {"target": "local-stun", "run": run,
-                   "candidates": len(cands),
-                   "host": sum(1 for c in cands if c["type"] == "host"),
-                   "srflx": sum(1 for c in cands if c["type"] == "srflx"),
-                   "relay": sum(1 for c in cands if c["type"] == "relay"),
-                   "errors": len(tl["icecandidateerrors"]),
-                   "first_error_ms_after_pc": tl["icecandidateerrors"][0]["since_pc_created_ms"] if tl["icecandidateerrors"] else None,
-                   "gathering_end_ms": tl["gathering_end_t_ms"],
-                   "gathering_end_since_pc_created_ms": tl["gathering_end_since_pc_created_ms"],
-                   "status_lines": tl["final_status_lines"][:4], "page_error": tl.get("page_error")}
-            summary_rows.append(row)
-            print(json.dumps(row, ensure_ascii=False), flush=True)
+        for target, url, form in plan:
+            for run in range(1, a.runs + 1):
+                tl, after = session(url, out / target / ("run%d" % run), a.wait, target, a.firefox, a.geckodriver)
+                leftover_total += after
+                cands = tl["candidates"]
+                row = {"target": target, "run": run,
+                       "candidates": len(cands),
+                       "host": sum(1 for c in cands if c["type"] == "host"),
+                       "srflx": sum(1 for c in cands if c["type"] == "srflx"),
+                       "relay": sum(1 for c in cands if c["type"] == "relay"),
+                       "errors": len(tl["icecandidateerrors"]),
+                       "first_error_ms_after_pc": tl["icecandidateerrors"][0]["since_pc_created_ms"] if tl["icecandidateerrors"] else None,
+                       "gathering_end_ms": tl["gathering_end_t_ms"],
+                       "gathering_end_since_pc_created_ms": tl["gathering_end_since_pc_created_ms"],
+                       "status_lines": tl["final_status_lines"][:4], "page_error": tl.get("page_error")}
+                if form is not None:
+                    row.update(turn_row_fields(tl))
+                    row["turn_form"] = form
+                summary_rows.append(row)
+                print(json.dumps(row, ensure_ascii=False), flush=True)
     finally:
         srv.shutdown()
+        if turn is not None:
+            (out / "turn_server.json").write_text(json.dumps({
+                "address": "%s:%d" % turn.address, "datagrams_heard": len(turn.seen),
+                "allocations": len(turn.allocations),
+                "tcp": "nothing listens on the TCP port of the TURN server"}, indent=1), encoding="utf-8")
+            turn.close()
     (out / "summary_runs.json").write_text(json.dumps(summary_rows, indent=1, ensure_ascii=False), encoding="utf-8")
     fx_dir = Path(a.firefox).parent
     (out / "meta.json").write_text(json.dumps({
@@ -240,9 +309,10 @@ def main(argv=None):
         "geckodriver": gd_ver,
         "geckodriver_sha256": sha256(a.geckodriver),
         "selenium": selenium.__version__,
-        "local": PAGE_NAME + " served from 127.0.0.1 by this process",
-        "local_ice_servers": ["stun:stun.l.google.com:19302", "stun:stun.cloudflare.com:3478"],
-        "runs": a.runs, "wait_s": a.wait, "targets": ["local-stun"],
+        "local": (PAGE_NAME if a.target == "stun" else "local_turn_page.html") + " served from 127.0.0.1 by this process",
+        "local_ice_servers": (["stun:stun.l.google.com:19302", "stun:stun.cloudflare.com:3478"] if a.target == "stun"
+                              else ["turn:<runner IPv4 or its sslip.io name>:3478?transport=udp", "turn:<same>:3478?transport=tcp"]),
+        "runs": a.runs, "wait_s": a.wait, "targets": [t for t, _u, _f in plan],
         "date_started": started,
         "machine": platform.platform(),
         "udp_block": os.environ.get("UDP_BLOCK", "?"),
