@@ -1,0 +1,84 @@
+# proxy-nodoh-hunt.yml - hunt scaffolding, never merged. Runs only on a push to a `hunt/proxy-nodoh**` branch.
+#
+# The characterization of tests/test_a_proxy_that_does_not_carry_the_doh_e2e.py, on Linux, with the published engine firefox-63
+# (through the core this branch pins) and Playwright's own Firefox at the pinned version: for a SOCKS5 and an HTTP proxy, and a DoH
+# road that works, is refused or is mute, what the proxy receives and what page.goto sees, after how many seconds. The table is in
+# the step summary and evidence/report.jsonl. Once the numbers are read, the file goes into a suite of ci/required-suites.json
+# (0.51.1) and this workflow is deleted.
+name: proxy nodoh hunt
+
+on:
+  push:
+    branches: ['hunt/proxy-nodoh**']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: proxy-nodoh-hunt-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GITHUB_TOKEN: ${{ github.token }}
+  GH_TOKEN: ${{ github.token }}
+  INVISIBLE_CORE_AUTOFIX: 'off'
+
+jobs:
+  hunt:
+    name: linux
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        os: [linux]
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: { python-version: '3.11' }
+      - name: Install (the wrapper of this branch with its pinned core from the index, Playwright's own Firefox)
+        run: |
+          set -e
+          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb >/dev/null
+          python -m pip install --quiet --upgrade pip
+          python -m pip install --quiet ".[dev]"
+          python -m playwright install --with-deps firefox
+          python -c "import importlib.metadata as m; print('invisible-playwright', m.version('invisible-playwright'), '| invisible-core', m.version('invisible-core'), '| playwright', m.version('playwright'))"
+          echo "FF=$(cd "$RUNNER_TEMP" && python -m invisible_playwright fetch | tail -1)" >> "$GITHUB_ENV"
+      - name: The proxy without the DoH, this browser and stock Firefox
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          mkdir -p evidence
+          export INVPW_BINARY_PATH="$FF" STEALTHFOX_E2E_BINARY="$FF" INVPW_PROXY_NODOH_REPORT="$PWD/evidence/report.jsonl"
+          set +e
+          xvfb-run -a python -m pytest tests/test_a_proxy_that_does_not_carry_the_doh_e2e.py -m e2e -o addopts= -p no:cacheprovider \
+            -p no:rerunfailures --timeout 300 -q -rA --tb=short > evidence/run.log 2>&1
+          code=$?
+          set -e
+          tail -15 evidence/run.log
+          python - <<'PY' | tee -a "$GITHUB_STEP_SUMMARY"
+          import json
+          rows = [json.loads(l) for l in open("evidence/report.jsonl", encoding="utf-8")] if __import__("os").path.exists("evidence/report.jsonl") else []
+          print("| browser | proxy | DoH | outcome | s | the proxy received (non-DoH) | names |")
+          print("|---|---|---|---|---:|---|---|")
+          for r in sorted(rows, key=lambda r: (r["proxy"], r["doh"], r["browser"])):
+              got = [t for t in r["received"] if "192.0.2.53" not in map(str, t) and "doh.gateway.test" not in map(str, t)]
+              print("| %s | %s | %s | %s | %s | %s | %s |" % (r["browser"], r["proxy"], r["doh"], r["outcome"].replace("|", "/")[:120],
+                                                       r["seconds"], got[:6], r["names_received"]))
+          PY
+          exit $code
+      - name: Close every Firefox left
+        if: always()
+        run: |
+          pkill -f firefox || true
+          echo "left: $(pgrep -c firefox || true)"
+      - name: Upload the evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: proxy-nodoh-${{ github.run_id }}
+          path: evidence
+          if-no-files-found: warn
+          retention-days: 14
