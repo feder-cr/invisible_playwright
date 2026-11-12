@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+- The project moved to the oss-invisible GitHub organization: every GitHub link, the issue templates and the package URLs point to github.com/oss-invisible/playwright. The PyPI name and the import name do not change; the old addresses redirect.
+
 ## [0.51.0] - 2026-11-12
 
 ### Changed
