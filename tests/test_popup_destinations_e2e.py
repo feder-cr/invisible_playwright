@@ -101,8 +101,8 @@ def site():
 class _Run:
     """One popup attempt: the opener page, what the context announced, what the opener downloaded."""
 
-    def __init__(self, browser, port, how, dest):
-        self.context = browser.new_context(accept_downloads=True)
+    def __init__(self, launched, port, how, dest):
+        self.context = launched.new_context(accept_downloads=True)
         self.opener = self.context.new_page()
         self.popups, self.downloads, self.arrived_at = [], [], None
         self.context.on("page", self._on_page)
