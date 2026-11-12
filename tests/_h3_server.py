@@ -20,7 +20,7 @@ import ssl
 import tempfile
 import threading
 from pathlib import Path
-from typing import List
+from typing import List, Tuple
 
 
 def _certificate(address: str, directory: Path):
@@ -143,6 +143,9 @@ class H3Server:
         self.address = address
         #: The address each QUIC connection came from.
         self.quic_peers: List[str] = []
+        #: The same peers with the port they sent from: (address, port). On a machine where a gateway's relay sends from an address of
+        #: this host (Windows cannot send from 127.0.0.1 to it) the address cannot tell the relay from a client that came direct; its port can.
+        self.quic_peer_addrs: List[Tuple[str, int]] = []
         #: The paths of the requests that were answered over HTTP/3, and over TCP.
         self.h3_requests: List[str] = []
         self.tcp_requests: List[str] = []
@@ -185,7 +188,9 @@ class H3Server:
             def quic_event_received(self, event):
                 if isinstance(event, ProtocolNegotiated):
                     self._http = H3Connection(self._quic)
-                    server.quic_peers.append(self._quic._network_paths[0].addr[0])
+                    peer = self._quic._network_paths[0].addr
+                    server.quic_peers.append(peer[0])
+                    server.quic_peer_addrs.append((peer[0], peer[1]))
                 if self._http is not None:
                     for http_event in self._http.handle_event(event):
                         if isinstance(http_event, HeadersReceived):

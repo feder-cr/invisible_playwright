@@ -50,7 +50,7 @@ import socket
 import struct
 import threading
 import time
-from typing import List, Optional, Tuple
+from typing import List, Optional, Set, Tuple
 
 #: The name the product's STUN probe sends through the relay. The relay maps it
 #: to the fake STUN server; every other destination is forwarded for real.
@@ -89,12 +89,14 @@ def _recv_exact(s: socket.socket, n: int) -> bytes:
 class FakeStun:
     """A UDP STUN server that answers every binding request with ``mapped_ip``."""
 
-    def __init__(self, mapped_ip: str, mapped_port: int = 40000):
+    def __init__(self, mapped_ip: str, mapped_port: int = 40000, bind_host: str = "127.0.0.1"):
         self.mapped_ip = mapped_ip
         self.mapped_port = mapped_port
         self.requests = 0
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self._sock.bind(("127.0.0.1", 0))
+        # On the address the relay sends from: Windows sends neither from an address of the host to loopback (WinError 10049) nor
+        # from loopback to an address of the host (10051), so a relay that leaves from the host's address needs its STUN there too.
+        self._sock.bind((bind_host, 0))
         self.address: Tuple[str, int] = self._sock.getsockname()
         self._thread = threading.Thread(target=self._serve, daemon=True)
         self._thread.start()
@@ -147,7 +149,7 @@ class Gateway:
         self.tcp_data_delay = tcp_data_delay
         self.tcp_exit = tcp_exit
         self.user, self.password = user, password
-        self.stun = FakeStun(udp_exit)
+        self.stun = FakeStun(udp_exit, bind_host="127.0.0.1" if exit_host.startswith("127.") else exit_host)
         #: Every CONNECT, as (host, port), in order.
         self.connects: List[Tuple[str, int]] = []
         #: Every UDP ASSOCIATE request, answered or refused.
@@ -164,6 +166,14 @@ class Gateway:
         self.datagram_log: List[Tuple[str, int, int, float]] = []
         #: Every datagram the relay carried out, as (host, port, payload).
         self.datagrams: List[Tuple[str, int, bytes]] = []
+        #: The local port of the socket each granted association sends from: what a server behind the gateway sees as the port
+        #: of the relay, and what tells a datagram that went by the relay from one that came direct from this host.
+        self.exit_ports: List[int] = []
+        #: A datagram the relay could not send (a socket that raised): said here and in the report of a test, never mute.
+        self.send_errors: List[str] = []
+        #: The hosts the relay forwards a datagram to (the fake STUN server aside); None: any host. A test that sends from an
+        #: address of this host keeps its lab closed: the browser's own background QUIC does not leave the machine.
+        self.forward_only_to: Optional[Set[str]] = None
         self._listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self._listener.bind(("127.0.0.1", 0))
@@ -343,19 +353,22 @@ class Gateway:
         up.close()
 
     # --- the UDP side --------------------------------------------------------
-    def _later(self, fn) -> None:
-        """Run ``fn`` after half the round trip (at once on loopback), ignoring a socket that is already closed."""
+    def _later(self, fn, what: str = "a datagram") -> None:
+        """Run ``fn`` after half the round trip (at once on loopback). A send that fails is RECORDED in ``send_errors`` (a
+        silent one hid that Windows cannot send from 127.0.0.1 to an address of its own host: WinError 10051), except on a gateway
+        that is already closed."""
         def run() -> None:
             try:
                 fn()
-            except OSError:
-                pass
+            except OSError as e:
+                if not self._closed:
+                    self.send_errors.append("%s: %s %s" % (what, type(e).__name__, e))
         threading.Timer(self.rtt / 2, run).start() if self.rtt else run()
 
     def _deliver(self, relay: socket.socket, to: Tuple[str, int], host: str, port: int, payload: bytes) -> None:
         """Wrap ``payload`` as coming from ``host``:``port`` (an IPv4 literal) and send it back to the client."""
         data = b"\x00\x00\x00\x01" + socket.inet_aton(host) + struct.pack("!H", port) + payload
-        self._later(lambda: relay.sendto(data, to))
+        self._later(lambda: relay.sendto(data, to), "the answer to the client")
 
     def _route(self, host: str, dport: int, atyp: int, payload: bytes, out_port: int,
                answer) -> Optional[Tuple[Tuple[str, int], Optional[Tuple[str, int]]]]:
@@ -371,6 +384,8 @@ class Gateway:
             # A real server answers from the address it was asked at; the fake STUN server is mapped, so its reply is
             # reported as from the asked address (only when that was a literal: a name has no address to report).
             return self.stun.address, ((host, dport) if atyp == 1 else None)
+        if self.forward_only_to is not None and host not in self.forward_only_to:
+            return None
         return (host, dport), None
 
     def _associate(self, c: socket.socket) -> None:
@@ -384,6 +399,12 @@ class Gateway:
         relay.bind((self.relay_host, 0))
         out = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         out.bind((self.exit_host, 0))
+        self.exit_ports.append(out.getsockname()[1])
+        if hasattr(socket, "SIO_UDP_CONNRESET"):
+            # Windows: an ICMP "port unreachable" to a send makes the NEXT recvfrom raise WinError 10054 and, uncaught, ends the
+            # thread that reads: a relay that stops carrying answers because one datagram found nobody. Off, as a real relay has it.
+            for sock in (relay, out):
+                sock.ioctl(socket.SIO_UDP_CONNRESET, False)
         client: List[Optional[Tuple[str, int]]] = [None]
         #: Where a mapped destination really is -> the address the client is told it answered from.
         asked_at: dict = {}
@@ -397,6 +418,8 @@ class Gateway:
             while True:
                 try:
                     d, peer = relay.recvfrom(65536)
+                except ConnectionResetError:
+                    continue
                 except OSError:
                     return
                 if len(d) < 10 or d[2] != 0:
@@ -420,12 +443,14 @@ class Gateway:
                 target, reported = routed
                 if reported is not None:
                     asked_at[target] = reported
-                self._later(lambda p=payload, t=target: out.sendto(p, t))
+                self._later(lambda p=payload, t=target: out.sendto(p, t), "the datagram to %s:%d" % target)
 
         def outbound() -> None:  # world -> client
             while True:
                 try:
                     d, src = out.recvfrom(65536)
+                except ConnectionResetError:
+                    continue
                 except OSError:
                     return
                 if client[0] is None:
@@ -453,33 +478,35 @@ OTHER_EXIT = "198.51.100.4"
 
 
 def coherent(*, exit_ip: str = EXIT, user: Optional[str] = None,
-             password: Optional[str] = None, relay_host: str = "127.0.0.1", rtt_ms: int = 0) -> Gateway:
+             password: Optional[str] = None, relay_host: str = "127.0.0.1", rtt_ms: int = 0,
+             exit_host: str = "127.0.0.1") -> Gateway:
     """TCP and UDP both work, and both leave from ``exit_ip``."""
     return Gateway(udp="relay", tcp_exit=exit_ip, udp_exit=exit_ip,
-                   user=user, password=password, relay_host=relay_host, rtt_ms=rtt_ms)
+                   user=user, password=password, relay_host=relay_host, rtt_ms=rtt_ms, exit_host=exit_host)
 
 
 def tcp_only(*, exit_ip: str = EXIT, user: Optional[str] = None,
-             password: Optional[str] = None, relay_host: str = "127.0.0.1") -> Gateway:
+             password: Optional[str] = None, relay_host: str = "127.0.0.1", exit_host: str = "127.0.0.1") -> Gateway:
     """TCP works; UDP ASSOCIATE is refused with reply code 7."""
     return Gateway(udp="refuse", tcp_exit=exit_ip, udp_exit=exit_ip,
-                   user=user, password=password, relay_host=relay_host)
+                   user=user, password=password, relay_host=relay_host, exit_host=exit_host)
 
 
 def mismatched(*, tcp_exit: str = EXIT, udp_exit: str = OTHER_EXIT,
-               user: Optional[str] = None, password: Optional[str] = None, relay_host: str = "127.0.0.1") -> Gateway:
+               user: Optional[str] = None, password: Optional[str] = None, relay_host: str = "127.0.0.1",
+               exit_host: str = "127.0.0.1") -> Gateway:
     """UDP is granted and STUN answers, with an address that is not the TCP exit."""
     assert udp_exit != tcp_exit
     return Gateway(udp="relay", tcp_exit=tcp_exit, udp_exit=udp_exit,
-                   user=user, password=password, relay_host=relay_host)
+                   user=user, password=password, relay_host=relay_host, exit_host=exit_host)
 
 
 def silent_udp(*, exit_ip: str = EXIT, user: Optional[str] = None, password: Optional[str] = None,
-               relay_host: str = "127.0.0.1") -> Gateway:
+               relay_host: str = "127.0.0.1", exit_host: str = "127.0.0.1") -> Gateway:
     """TCP works and UDP ASSOCIATE is granted, but no STUN request is ever answered: the core's measurement is
     ``unmeasured``."""
     return Gateway(udp="relay", tcp_exit=exit_ip, udp_exit=exit_ip, user=user, password=password,
-                   relay_host=relay_host, stun_answers=False)
+                   relay_host=relay_host, exit_host=exit_host, stun_answers=False)
 
 
 # ----------------------------------------------------------------------------------------------------------------
