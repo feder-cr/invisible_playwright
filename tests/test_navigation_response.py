@@ -71,6 +71,11 @@ def _bare_page():
     page._request_log = []
     page._navigation_requests = {}
     page._announced_closed = False
+    page._frames = {}
+    page._told_attached = set()
+    page._announce_lock = threading.RLock()
+    page._announced = True
+    page._said_before_announcement = []
     # The network branches ask the session's lifecycle which requests are the
     # favicon; an empty memory answers "none", as for a page without one.
     page.lifecycle = SimpleNamespace(favicons=FaviconRequests())
@@ -96,6 +101,7 @@ def test_new_document_request_is_a_channel_or_omitted(has_request, source):
     frame.disposed = False
     frame.page = page
     frame.frame_id = "F1"
+    frame.told_states = {"commit"}
     page.frame_for = lambda fid: frame
 
     def committed():
