@@ -55,7 +55,7 @@ def _page_with_one_frame():
     up: list = []
     server.attach(type("R", (), {"emit_message": lambda self, m: up.append(m)})())
 
-    frame = SimpleNamespace(url="http://127.0.0.1/", name="", emitted=[], frame_id="F1", told_states={"commit"})
+    frame = SimpleNamespace(url="http://127.0.0.1/", name="", emitted=[], frame_id="F1", told_states={"commit"}, told_commit=None)
     frame.emit = lambda method, params=None: frame.emitted.append((method, params))
 
     page = object.__new__(PageDispatcher)
@@ -70,6 +70,7 @@ def _page_with_one_frame():
     page._announced_closed = False
     page._frames = {}
     page._told_attached = set()
+    page._frames_lock = __import__("threading").RLock()
     page._announce_lock = threading.RLock()
     page._announced = True
     page._said_before_announcement = []

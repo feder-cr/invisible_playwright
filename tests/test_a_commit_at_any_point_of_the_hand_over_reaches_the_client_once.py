@@ -87,14 +87,14 @@ def _install(mp, parking, told):
 
     original_init = server_mod.FrameDispatcher.__init__
 
-    def frame_init(self, server, page, frame_id, url="about:blank", name="", load_states=None, parent_frame=None):
+    def frame_init(self, server, page, frame_id, url="about:blank", name="", load_states=None, parent_frame=None, told_commit=None):
         if frame_id == FRAME and parent_frame is None:
             parking.pause(1)
             told["url"] = url
             told["states"] = set(load_states or ["commit"])
             told["navigated"] = []
             told["ops"] = []
-        return original_init(self, server, page, frame_id, url=url, name=name, load_states=load_states, parent_frame=parent_frame)
+        return original_init(self, server, page, frame_id, url=url, name=name, load_states=load_states, parent_frame=parent_frame, told_commit=told_commit)
     mp.setattr(server_mod.FrameDispatcher, "__init__", frame_init)
 
     original_install = server_mod.PageDispatcher._install_events
