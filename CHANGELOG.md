@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Known differences from stock Playwright
+Measured against Playwright's own Firefox with the same script, on the code of 0.50.1. None of them is a value a page
+reads; they are what a script that drives the browser can observe.
+
+- **The url of a popup that turns into a download.** A link or a `window.open` whose answer is an attachment gives, as on
+  stock, a `page` event, a `download` event on the opener, and a popup that closes at once. The popup's `url` at the `page`
+  event is `about:blank` here and the empty string on stock. Measured: 8 cases of 8 (link and `window.open`, the library
+  client and a stock client over `launch_server`), against 4 of 4 on stock.
+- **The url of a frame of another site at the page's `DOMContentLoaded`.** A frame of another site runs in another process,
+  as in a retail Firefox, and commits its navigation after the page's `DOMContentLoaded`; stock Playwright keeps frames in
+  the page's process. So `frame.url` read right after `goto(..., wait_until="domcontentloaded")` can be the empty string.
+  After `load` it is always set. Measured, 30 runs each: after `load` the url was there 30 times here and 30 on stock; at
+  `DOMContentLoaded` once here and 30 times on stock. Wait for `load`, or for the frame's own navigation, before reading it.
+- **A click takes longer with the library client.** From `click()` on a link to the `page` event of the popup it opens:
+  0.8 to 1.7 s more than stock with the library client, and the same as stock (within 0.1 s) with a stock client over
+  `launch_server`. Measured on 64 popups per transport and on destinations that answer after 4 s and after 25 s. The
+  same run with `humanize=False` was not measured.
+
 ## [0.50.0] - 2026-11-11
 
 ### Changed
