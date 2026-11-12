@@ -371,3 +371,33 @@ def test_the_load_of_a_popup_said_before_its_announcement_is_said_again_right_af
     assert "page" in trace, trace
     after = trace[trace.index("page") + 1:]
     assert after == ["domcontentloaded", "load"], "after the announcement the client heard %r" % (after,)
+
+
+def test_a_popup_whose_target_goes_away_while_its_page_is_being_built_is_announced_and_closed(late_browser, monkeypatch):
+    """A download's empty tab closes within milliseconds; on a loaded machine the page of the popup is still being built when the engine
+    detaches it. That detach went by with nobody to tell, and the wait for a ready that never comes went on for ever: the popup was never
+    announced (the full suite failed once on it)."""
+    from invisible_playwright._juggler.server import PageDispatcher
+    original_init = PageDispatcher.__init__
+
+    def slow_init(self, *args, **kwargs):
+        time.sleep(0.4)             # the build is slower than the detach
+        return original_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(PageDispatcher, "__init__", slow_init)
+    server, conn = late_browser.server, late_browser.conn
+    context = _new_context(late_browser)
+    conn.released = {"s1"}
+    monkeypatch.undo()              # the opener is built at normal speed
+    server.handle({"guid": context.guid, "method": "newPage", "params": {"pageNumber": 1}})
+    monkeypatch.setattr(PageDispatcher, "__init__", slow_init)
+    opener_target = next(iter(conn.sessions))
+    announced, closed = [], []
+    original = context.emit
+    context.emit = lambda event, params=None: (announced.append(event) if event == "page" else None, original(event, params))[1]
+    target, session = conn.popup_born(opener_target, context.context_id, 1)
+    conn.dispatch_event("Browser.detachedFromTarget", {"targetId": target, "sessionId": session}, None)
+    deadline = time.monotonic() + 5
+    while "page" not in announced and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert "page" in announced, "the popup that went away while its page was being built was never announced"

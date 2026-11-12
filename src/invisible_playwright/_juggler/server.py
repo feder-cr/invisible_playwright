@@ -4818,8 +4818,14 @@ class BrowserDispatcher(Dispatcher):
                                   number, opener=opener)
             with self._targets_lock:
                 self._building[target_id] = page
+                # ⛔ A DETACH THAT CAME WHILE THE PAGE WAS BEING BUILT is recorded as early and went by `_handle_detach` with nobody to tell
+                # (the page was not in `_building` yet): waiting for a ready now would wait for ever for a tab that is already gone (a
+                # download's empty tab closes within milliseconds, and a loaded machine builds slowly).
+                detached_already = target_id in self._detached_early
             gone = False
             try:
+                if detached_already:
+                    raise juggler.TargetClosedError("the target went away while its page was being built")
                 page.wait_until_ready(timeout=20.0 if requested else None)
             except juggler.TargetClosedError:
                 # Gone before it was ready (a download's empty tab, a popup the site closed at once): announced and closed right
