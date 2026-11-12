@@ -261,12 +261,12 @@ def test_a_popup_that_never_gets_its_ready_ends_with_its_context_and_says_nothin
         conn.popup_born(opener_target, context.context_id, 1)
         time.sleep(0.5)
         assert not announced, "a popup with no ready was announced"
-        assert late_browser._building, "the popup is not waiting"
+        assert any(a.state == "waiting" for a in late_browser._adoptions.values()), "the popup is not waiting"
         server.handle({"guid": context.guid, "method": "close", "params": {}})
         deadline = time.monotonic() + 5
-        while late_browser._building and time.monotonic() < deadline:
+        while late_browser._adoptions and time.monotonic() < deadline:
             time.sleep(0.01)
-        assert not late_browser._building, "closing the context did not end the wait of the popup"
+        assert not late_browser._adoptions, "closing the context did not end the wait of the popup"
         time.sleep(0.2)
     assert not announced, "a popup of a closed context was announced"
     assert not [w for w in caught if "adoption" in str(w.message)], [str(w.message) for w in caught]
@@ -305,29 +305,37 @@ def test_a_popup_is_announced_with_the_address_of_the_commit_that_came_with_its_
     assert urls == [url], "the popup was announced with %r, not with the address of the commit that came with its ready" % (urls,)
 
 
-def test_a_download_started_by_a_popup_that_is_not_announced_is_reported_on_its_opener(late_browser):
-    """`<a target=_blank href=file>` with `Content-Disposition: attachment`: the new tab never gets a Page.ready and the engine closes it
-    at once. Playwright reports the download on the OPENER (ffBrowser._onDownloadCreated); looking only among the announced pages
-    lost it (no `download` event anywhere)."""
+def test_a_download_started_by_a_popup_that_is_not_announced_is_reported_on_its_opener_after_the_popup(late_browser):
+    """`<a target=_blank href=file>` with `Content-Disposition: attachment`: the new tab never gets a Page.ready and the engine closes it at
+    once. Playwright reports the download on the OPENER (ffBrowser._onDownloadCreated) and the popup before it; looking only among the
+    announced pages lost the download, and saying it at once put it before the popup (a client that read the popup the moment the
+    download arrived found none on a loaded machine)."""
     server, conn = late_browser.server, late_browser.conn
     context = _new_context(late_browser)
     conn.released = {"s1"}
     server.handle({"guid": context.guid, "method": "newPage", "params": {"pageNumber": 1}})
     opener_target = next(iter(conn.sessions))
     opener = next(o for o in server._objects.values() if o.TYPE == "Page" and o.target_id == opener_target)
-    said = []
-    original = opener.emit
-    opener.emit = lambda event, params=None: (said.append((event, params)), original(event, params))[1]
+    order = []
+    original_opener = opener.emit
+    opener.emit = lambda event, params=None: (order.append(event), original_opener(event, params))[1]
+    original_context = context.emit
+    context.emit = lambda event, params=None: (order.append("context:" + event), original_context(event, params))[1]
     target, session = conn.popup_born(opener_target, context.context_id, 1)
     deadline = time.monotonic() + 5
-    while target not in late_browser._building and time.monotonic() < deadline:
+    while not (target in late_browser._adoptions and late_browser._adoptions[target].state == "waiting") and time.monotonic() < deadline:
         time.sleep(0.01)
     conn.dispatch_event("Browser.downloadCreated", {
         "uuid": "u1", "browserContextId": context.context_id, "pageTargetId": target, "frameId": "f" + target,
         "url": "http://127.0.0.1/file", "suggestedFileName": "f.bin"}, None)
-    downloads = [p for e, p in said if e == "download"]
-    assert len(downloads) == 1, "the download of the popup was not reported on its opener: %r" % (said,)
-    assert downloads[0]["suggestedFilename"] == "f.bin"
+    assert "download" not in order, "the download was said before the popup it came from: %r" % (order,)
+    conn.dispatch_event("Browser.detachedFromTarget", {"targetId": target, "sessionId": session}, None)   # the tab is closed
+    deadline = time.monotonic() + 5
+    while "download" not in order and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert "download" in order, "the download of the popup was not reported on its opener: %r" % (order,)
+    assert order.index("context:page") < order.index("download"), "the download came before the popup: %r" % (order,)
+
 
 
 def test_the_load_of_a_popup_said_before_its_announcement_is_said_again_right_after_it(late_browser, monkeypatch):
@@ -355,7 +363,7 @@ def test_the_load_of_a_popup_said_before_its_announcement_is_said_again_right_af
     opener_target = next(iter(conn.sessions))
     target, session = conn.popup_born(opener_target, context.context_id, 1)
     deadline = time.monotonic() + 5
-    while target not in late_browser._building and time.monotonic() < deadline:
+    while not (target in late_browser._adoptions and late_browser._adoptions[target].state == "waiting") and time.monotonic() < deadline:
         time.sleep(0.01)
     frame_id, url = "f" + target, "http://127.0.0.1/slow"
     conn.dispatch_event("Page.navigationStarted", {"frameId": frame_id, "navigationId": "n1", "url": url}, session)
@@ -440,3 +448,108 @@ def test_a_command_of_the_adoption_that_finds_the_session_gone_announces_and_clo
         time.sleep(0.2)
     assert "page" in announced, "the popup whose session was gone was discarded instead of announced"
     assert not [w for w in caught if "adoption" in str(w.message)], [str(w.message) for w in caught]
+
+
+def test_a_popup_that_is_dropped_or_fails_leaves_the_trace_of_what_the_engine_said(late_browser, monkeypatch):
+    """The log of a red run on a machine nobody can look at does not say in which order the events came: the adoption keeps a short trace
+    per target and writes it in the warning of a failed adoption and in the record of the dropped ones."""
+    import warnings
+    from invisible_playwright._juggler.server import PageDispatcher
+    server, conn = late_browser.server, late_browser.conn
+    context = _new_context(late_browser)
+    conn.released = {"s1"}
+    server.handle({"guid": context.guid, "method": "newPage", "params": {"pageNumber": 1}})
+    opener_target = next(iter(conn.sessions))
+    # 1. dropped with its context
+    target, session = conn.popup_born(opener_target, context.context_id, 1)
+    deadline = time.monotonic() + 5
+    while not (target in late_browser._adoptions and late_browser._adoptions[target].state == "waiting") and time.monotonic() < deadline:
+        time.sleep(0.01)
+    server.handle({"guid": context.guid, "method": "close", "params": {}})
+    deadline = time.monotonic() + 5
+    while not late_browser._dropped and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert late_browser._dropped, "a popup dropped with its context left no trace"
+    dropped_target, text = late_browser._dropped[-1]
+    assert dropped_target == target
+    for word in ("attached", "frameAttached", "building", "waiting", "dropped: its context closed"):
+        assert word in text, "the trace of the dropped popup lacks %r: %s" % (word, text)
+    # 2. a failed adoption writes it in its warning
+    context2 = _new_context(late_browser)
+
+    def boom(self, *args, **kwargs):
+        raise ValueError("boom")
+
+    conn.released = {"s1", "s2"}
+    monkeypatch.setattr(PageDispatcher, "__init__", boom)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        conn.popup_born(opener_target, context2.context_id, 2)
+        deadline = time.monotonic() + 5
+        while not [w for w in caught if "adoption" in str(w.message)] and time.monotonic() < deadline:
+            time.sleep(0.01)
+    messages = [str(w.message) for w in caught if "adoption" in str(w.message)]
+    assert messages and "events of the target" in messages[0] and "attached" in messages[0], messages
+
+
+def test_a_download_that_comes_while_the_adoption_fails_is_said_once_on_the_opener(late_browser, monkeypatch):
+    """The adoption of a popup fails; the engine says the download of that tab in the step between the moment the adoption looks for its
+    pending downloads and the moment it removes its record (forced here: right after the first time the adoption thread lets go of the
+    browser's lock once it has failed). The download queued on a record that is about to vanish was said by nobody. It is said, once, on the
+    opener: taking the pending ones and removing the record are ONE step, and the opener of a target not announced is remembered."""
+    import warnings
+    from invisible_playwright._juggler.server import PageDispatcher
+
+    server, conn = late_browser.server, late_browser.conn
+    context = _new_context(late_browser)
+    conn.released = {"s1"}
+    server.handle({"guid": context.guid, "method": "newPage", "params": {"pageNumber": 1}})
+    opener_target = next(iter(conn.sessions))
+    opener = next(o for o in server._objects.values() if o.TYPE == "Page" and o.target_id == opener_target)
+    said = []
+    original_emit = opener.emit
+    opener.emit = lambda event, params=None: (said.append(event), original_emit(event, params))[1]
+
+    state = {"failing": False, "delivered": False}
+    target = "p1"
+
+    def deliver():
+        state["delivered"] = True
+        late_browser._on_download_created({
+            "uuid": "u9", "browserContextId": context.context_id, "pageTargetId": target, "frameId": "f" + target,
+            "url": "http://127.0.0.1/file", "suggestedFileName": "f.bin"})
+
+    class Tracked:
+        def __init__(self, inner):
+            self.inner = inner
+
+        def __enter__(self):
+            self.inner.acquire()
+            return self
+
+        def __exit__(self, *exc):
+            self.inner.release()
+            if state["failing"] and not state["delivered"] and threading.current_thread().name.startswith("invpw-adopt-p1"):
+                deliver()
+
+        def acquire(self, *a, **k):
+            return self.inner.acquire(*a, **k)
+
+        def release(self):
+            return self.inner.release()
+
+    def boom(self, *args, **kwargs):
+        state["failing"] = True
+        raise ValueError("boom")
+
+    monkeypatch.setattr(PageDispatcher, "__init__", boom)
+    monkeypatch.setattr(late_browser, "_targets_lock", Tracked(late_browser._targets_lock))
+    with warnings.catch_warnings(record=True):
+        warnings.simplefilter("always")
+        conn.popup_born(opener_target, context.context_id, 1)
+        deadline = time.monotonic() + 5
+        while not state["delivered"] and time.monotonic() < deadline:
+            time.sleep(0.01)
+        time.sleep(0.2)
+    assert state["delivered"], "the adoption never failed"
+    assert said.count("download") == 1, "the download that came while the adoption failed was said %d times: %r" % (said.count("download"), said)

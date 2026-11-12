@@ -163,6 +163,21 @@ def page(browser):
     return page
 
 
+@pytest.fixture
+def page_without_a_pool(firefox_binary):
+    """A page of a browser that keeps NO preallocated content processes (`dom.ipc.processPrelaunch.fission.number` 0): a process of a
+    site then appears only because a site needed one. The default pool hands a preallocated process to a site whenever it gets to it, so
+    a test that counts the processes of the sites between two reads sees the hand-out of the pool as if the frame had asked for it."""
+    from invisible_playwright import InvisiblePlaywright
+
+    with InvisiblePlaywright(seed=42, binary_path=firefox_binary, humanize=False, headless=True,
+                             extra_prefs=dict(FISSION_ON, **{"dom.ipc.processPrelaunch.fission.number": 0})) as browser:
+        page = browser.new_context().new_page()
+        page.set_default_timeout(3000)
+        page.set_default_navigation_timeout(20000)
+        yield page
+
+
 def wait_for(page, predicate, seconds=8.0):
     """Until `predicate()`, with the client's events being read: the sync client takes the engine's events
     only inside its own calls, so a plain sleep would never see a frame arrive."""
@@ -212,8 +227,13 @@ def test_cross_site_iframe_gets_its_own_process(page, cross_site_loop, engine_di
 
 
 @pytest.mark.e2e
-def test_same_site_other_port_stays_in_process(page, cross_site_loop, engine_dir):
+def test_same_site_other_port_stays_in_process(page_without_a_pool, cross_site_loop, engine_dir):
     """Green today, the control: a frame of the page's own site adds no process for a site.
+
+    The browser here keeps NO preallocated processes (`page_without_a_pool`): with the default pool of three the count of the processes of
+    the sites moved between two reads without the frame having asked for anything - a preallocated process handed to a site later than
+    the first read ([63248] -> [63248, 63386] on a four-worker runner, the third time in a row that this control was red there for the
+    pool and not for the frame: 5402da4, ff2123e, fef0bc5). The frame is in the page's own origin (`a.test/leaf` in `a.test/plain`).
 
     The frame is put in the page that is already shown, not reached by a navigation of the top. A top-level
     navigation whose old document may enter the back-forward cache replaces the browsing context
@@ -221,8 +241,10 @@ def test_same_site_other_port_stays_in_process(page, cross_site_loop, engine_dir
     the same site (`dom.ipc.processCount.webIsolated` is 4): seen once on the e2e of #451, [10878] -> [10878,
     11208] after a.test/plain -> a.test/same-site, never in 87 local runs. That is the top's process, not the
     frame's; a frame of the page's site stays in the page's process."""
+    page = page_without_a_pool
     page.goto(cross_site_loop["plain"])
     before = quiet(engine_dir)
+    assert len(before) >= 1, "the page of a site has no process of its own to compare with: %s" % sorted(before)
     page.evaluate("(u) => { const f = document.createElement('iframe'); f.id = 's'; f.src = u;"
                   " document.body.appendChild(f); }", cross_site_loop["leaf"])
     assert wait_for(page, lambda: any(r["path"] == "/report/loaded" and r["query"]["path"] == ["/leaf"]
