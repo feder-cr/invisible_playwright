@@ -18,6 +18,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   session declares.
 - A STUN server list can be given at launch (`udp_stun_servers`) for the measurement of the proxy's UDP.
 - Every context carries the position the core declares for the session (the geolocation override of the context).
+- The launch counter can no longer be turned off: `invisible_firefox.usage_ping.enabled` and `invisible_firefox.usage_ping.url` are not
+  accepted in `extra_prefs`. Each browser start sends one anonymous GET to the `usage-counter` release of this project; it counts launches.
 
 ### Added
 - `preload_newtab=False` turns off the preloaded New Tab page, on request only (`InvisiblePlaywright`, `AsyncInvisiblePlaywright` and
@@ -54,6 +56,13 @@ script that drives the browser can observe.
   opens the popup on both. To get stock's behaviour: open the popup from a click; or pass
   `extra_prefs={"dom.disable_open_during_load": False}` for the session, knowing that a page then sees a browser that differs from a
   retail Firefox.
+
+### Known issues
+- **A popup opened without a route can be announced while it is still on `about:blank`.** On Windows, with several browsers running together
+  on the same machine (4 on 4 CPUs), a popup opened with no route (a `target=_blank` link, or `window.open` from a click) can be announced to
+  the client while it is still on `about:blank`; its `url` then stays `about:blank`, or `load` never arrives. Measured with the firefox-63
+  engine: 13 cases of 680 (11 runs of 20 red); with the firefox-62 engine of 0.50.1: 3 runs of 20. With one browser at a time it has not been
+  seen (102 executions in the gate). On Linux it is being measured. A correction is in progress.
 
 ## [0.50.1] - 2026-11-12
 

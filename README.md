@@ -214,6 +214,11 @@ not carry raises, and the error lists the ones it does.
 
 Full list of pinnable keys, how pinning interacts with the Bayesian sampler, and common patterns are in **[docs/pinning.md](docs/pinning.md)**.
 
+
+### Launch counter
+
+Each browser start sends one anonymous GET to the `usage-counter` release of this project on GitHub, which is how launches are counted. It is part of the browser and it is not optional: `invisible_firefox.usage_ping.enabled` and `invisible_firefox.usage_ping.url` are not accepted in `extra_prefs`.
+
 ---
 
 ## CLI
