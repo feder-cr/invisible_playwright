@@ -316,7 +316,7 @@ by step.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. A deductible
 comparison run once patched one field into a cached quote instead of resubmitting
 the form, and every row in that comparison table was wrong by an amount that only

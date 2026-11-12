@@ -254,7 +254,7 @@ keeping one identity's state across daily runs.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The seed-per-identity rule
 on this page is the one thing that separates a monitor that looks like a returning visitor
 from one that looks like a new device every morning.*

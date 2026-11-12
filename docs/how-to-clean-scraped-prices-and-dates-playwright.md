@@ -261,6 +261,6 @@ mismatch costs beyond broken formats, and
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The locale you parse
 against is a property of the page, and the page's locale is a property of your exit.*

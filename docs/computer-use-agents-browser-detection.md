@@ -12,7 +12,7 @@ nav_order: 6
 This page moved to the invisible_playwright_mcp wiki, retargeted at the question people
 actually search:
 
-**[Claude computer use detected as a bot](https://github.com/feder-cr/invisible_playwright_mcp/wiki/claude-computer-use-detected-as-bot)**
+**[Claude computer use detected as a bot](https://github.com/oss-invisible/playwright_mcp/wiki/claude-computer-use-detected-as-bot)**
 
 The core of it, kept here in brief: a coordinate-clicking agent never
 generates the DOM-automation tells, so `navigator.webdriver` advice mostly

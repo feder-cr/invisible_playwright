@@ -190,7 +190,7 @@ and [rotating proxies across a run](how-to-rotate-proxies-playwright.md).
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The seed that pins the
 browser is what let me prove, more than once, that a failing cloud run was the exit
 and not the code.*

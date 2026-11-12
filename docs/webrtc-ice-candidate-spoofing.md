@@ -225,7 +225,7 @@ other half of making a proxied session agree with itself, and
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. Three of the four problems on this page were found by
 comparing our own output against a stock Firefox, field by field, which is the only method
 that finds this class of thing.*

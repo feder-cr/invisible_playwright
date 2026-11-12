@@ -326,6 +326,6 @@ the order to work in when the feed will not load at all.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The feed-behind-the-same-wall
 problem is one we hit ourselves before we wrote it down.*

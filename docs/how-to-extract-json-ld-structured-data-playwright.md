@@ -259,6 +259,6 @@ for keeping the real page in front of your parser.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The empty-block-as-signal
 rule came from a run that "succeeded" on every URL and returned nothing.*

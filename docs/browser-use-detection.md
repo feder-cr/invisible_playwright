@@ -12,7 +12,7 @@ nav_order: 2
 This page moved to the invisible_playwright_mcp wiki, where the agent-experience content now
 lives:
 
-**[browser-use getting blocked: what you can and cannot change](https://github.com/feder-cr/invisible_playwright_mcp/wiki/browser-use-getting-blocked)**
+**[browser-use getting blocked: what you can and cannot change](https://github.com/oss-invisible/playwright_mcp/wiki/browser-use-getting-blocked)**
 
 The unchanged short answer: browser-use exposes a real set of levers
 (`executable_path`, `user_data_dir`, `proxy`, `headless`, `args`), all of

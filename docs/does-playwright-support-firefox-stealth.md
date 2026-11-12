@@ -202,7 +202,7 @@ documented upstream.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The split it is built
 on is the whole point of this page: keep the driver ordinary, put the disguise in
 the browser.*

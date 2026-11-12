@@ -230,7 +230,7 @@ the prices straight from the wire.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The seed that holds one
 machine steady across a twelve-month sweep is the same seed that makes a failed month
 replayable.*

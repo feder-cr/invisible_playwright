@@ -215,7 +215,7 @@ for the in-process launch.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. connect_over_cdp is the
 question we get most from people porting Chromium code, and the answer is that Firefox
 never had the endpoint to begin with.*

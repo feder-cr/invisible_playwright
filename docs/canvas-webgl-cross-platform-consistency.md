@@ -175,7 +175,7 @@ for what that hash actually measures.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. The same-seed check here once passed while the
 render was actually broken: a Linux canvas with text came back holding 11994 distinct
 colours where Windows gave 16, and identical bytes for two different strings.*

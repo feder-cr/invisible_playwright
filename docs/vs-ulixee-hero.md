@@ -206,7 +206,7 @@ the engine gap underneath any Chromium-based tool.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The comparison here is the
 one that matters: a value decided in the engine has no injected seam, and a value replayed
 onto a stock engine does.*

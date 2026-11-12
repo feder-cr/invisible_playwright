@@ -209,6 +209,6 @@ check.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. The permission trap is in our notes as a gap with no
 patch, which is why this page tells you to audit rather than promising it is handled.*

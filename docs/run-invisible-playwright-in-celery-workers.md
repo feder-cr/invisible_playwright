@@ -244,6 +244,6 @@ for pacing the queue's concurrency reads as a request rate.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The one-browser-per-process
 rule is here because launching one per task is a mistake that looks fine until the queue fills up.*

@@ -199,6 +199,6 @@ Fingerprint is one layer; network and behaviour are separate layers you supply.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The migration is the
 easy part; the honest part is that it fixes the engine, not the network or the person.*

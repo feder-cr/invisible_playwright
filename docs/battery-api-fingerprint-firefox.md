@@ -94,7 +94,7 @@ Firefox build.
 ![One panel listing three values read from the patched engine, headless:
 navigator.getBattery is undefined, navigator.vendor is an empty string, and
 navigator.productSub is 20100101. A note says the bundled Firefox returned the same
-values.](https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/img/battery-api-fingerprint-firefox-values.png)
+values.](https://raw.githubusercontent.com/oss-invisible/playwright/main/docs/img/battery-api-fingerprint-firefox-values.png)
 
 `navigator.getBattery` is `undefined`, which is the answer to the title, and the bundled
 Firefox returns the same thing.
@@ -211,7 +211,7 @@ and [how navigator.webdriver actually reads](navigator-webdriver-explained.md).
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The most robust fingerprint
 field is the one a real browser genuinely produces, and sometimes the one it genuinely does
 not.*

@@ -188,7 +188,7 @@ another launch-time reliability issue with its own distinct cause.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. This wrapper manages its
 own engine download so this specific error class does not apply to it directly, but the
 same platform and filesystem mismatches apply to any browser process in the same

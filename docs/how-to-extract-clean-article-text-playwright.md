@@ -268,7 +268,7 @@ region.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The readability
 step is ordinary open-source tooling; the part that matters is running it over a
 DOM a real engine actually rendered.*

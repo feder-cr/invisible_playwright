@@ -208,6 +208,6 @@ signals no stealth layer touches.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The weight that keeps it out
 of a small function is the same weight that makes it look real.*

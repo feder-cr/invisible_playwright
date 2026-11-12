@@ -206,6 +206,6 @@ capturing more than the viewport.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The event-loop error is
 the first thing every notebook user hits, and the fix is one import line.*

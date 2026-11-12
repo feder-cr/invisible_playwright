@@ -9,7 +9,7 @@ sitemap: false
 # docs/ source folder
 
 This folder is the source the wiki is rendered from. Read it with search and
-navigation in **[the wiki](https://github.com/feder-cr/invisible_playwright/wiki)**.
+navigation in **[the wiki](https://github.com/oss-invisible/playwright/wiki)**.
 
 `index.md` is what the site root actually serves. This file exists so the folder
 still shows something sensible when browsed directly on github.com.

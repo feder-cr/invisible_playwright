@@ -287,7 +287,7 @@ comparison method used in the verification section above.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. The font stack and the GPU fingerprint travel with the
 engine into the container, which is the only reason `docker build` and a desktop can
 agree on what machine they are.*

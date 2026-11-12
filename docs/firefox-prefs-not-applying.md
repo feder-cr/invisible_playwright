@@ -198,5 +198,5 @@ script fight.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright).
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright).
 Reason one is the one that cost us a real bug, so it is first rather than last.*

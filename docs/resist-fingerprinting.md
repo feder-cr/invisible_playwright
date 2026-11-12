@@ -159,6 +159,6 @@ machine derived from a seed, and leaves the mode off.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright).
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright).
 The preference values quoted are the ones it actually writes, which you can print
 yourself with `get_default_stealth_prefs`.*

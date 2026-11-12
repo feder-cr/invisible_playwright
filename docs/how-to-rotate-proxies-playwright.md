@@ -262,7 +262,7 @@ for where proxy rotation sits among the other layers a block can come from.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level and driven by stock Playwright. The IP is the part
 every rotation tutorial covers; the timezone it leaves behind is the part that gets
 sessions caught.*

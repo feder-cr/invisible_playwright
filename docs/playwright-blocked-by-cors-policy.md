@@ -113,7 +113,7 @@ for the `page.request` approach applied to real scraping.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright).
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright).
 This page exists to say plainly that a CORS error is not what this project
 addresses, and to point at the actual fix rather than let it be mistaken for a
 fingerprint problem.*

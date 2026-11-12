@@ -243,7 +243,7 @@ the order to work in once a test tells you something.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The surfaces on
 this page are the ones our own gates diff against a stock browser, and the IP
 caveat is the one they cannot close.*

@@ -196,7 +196,7 @@ for the check that reads injected overrides back.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. It handles the
 fingerprint, TLS and driver layer; the proxy, the account and the pacing are still
 yours to get right.*

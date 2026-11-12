@@ -278,7 +278,7 @@ assuming the submit worked.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The upload path is plain
 Playwright; what makes it safe is the same trusted-event boundary the pointer work leans
 on.*

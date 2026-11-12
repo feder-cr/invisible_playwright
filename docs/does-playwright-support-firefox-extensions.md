@@ -208,7 +208,7 @@ depends on.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. The honest answer here is a persistent profile and
 a handful of old GitHub issues, not a launch flag, and pretending otherwise would just
 cost someone an afternoon finding that out the hard way.*

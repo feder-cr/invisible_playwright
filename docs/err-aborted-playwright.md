@@ -154,7 +154,7 @@ accident.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. `net::ERR_ABORTED`
 tracks a navigation-lifecycle decision, most often your own code's, and has nothing
 to do with how the browser's identity reads to a remote site.*

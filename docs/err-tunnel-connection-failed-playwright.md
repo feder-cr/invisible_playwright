@@ -172,6 +172,6 @@ for what a working proxy still does not fix.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. The proxy is passed straight through; a failed
 CONNECT tunnel is the network answering, not the browser.*

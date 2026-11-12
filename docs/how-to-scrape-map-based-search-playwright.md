@@ -271,6 +271,6 @@ still gets blocked.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The 41-versus-612 count
 above is why this page argues the grid is the data and not an optimization.*

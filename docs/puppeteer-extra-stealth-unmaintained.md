@@ -146,6 +146,6 @@ places this whole category at one specific level rather than the top of it, and
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level, on why a three-year-old patch list and a same-day
 patch list share the exact same structural gap.*

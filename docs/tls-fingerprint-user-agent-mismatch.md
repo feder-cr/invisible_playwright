@@ -213,7 +213,7 @@ and JA4. If they are not byte-identical, that gap is what a detector sees.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The cipher-parity block
 above cost us real page loads before we found it, and the fix was making the engine
 match, not editing a header.*

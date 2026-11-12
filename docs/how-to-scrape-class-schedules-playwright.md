@@ -377,7 +377,7 @@ for diffing a keyed dataset against its own prior state.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. A week-over-week diff
 run against the occurrence id reported every class in the studio as newly created
 and every prior week's class as cancelled, when nothing had actually changed except

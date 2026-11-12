@@ -190,6 +190,6 @@ and [keeping canvas and WebGL consistent across platforms](canvas-webgl-cross-pl
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The server-OS mismatch in
 this page is a mistake I shipped before I built the thing that fixes it.*

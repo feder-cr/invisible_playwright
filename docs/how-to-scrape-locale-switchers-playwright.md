@@ -340,7 +340,7 @@ the switcher's request instead of the repainted DOM.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The final-URL column exists
 because a price series once switched region halfway through a two-week run, and nothing in
 the dataset recorded that the geo-redirect had moved it.*

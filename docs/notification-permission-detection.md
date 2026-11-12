@@ -234,6 +234,6 @@ site](playwright-detected-as-bot.md) for where the browser layer sits.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The consistency this page
 describes is a byproduct of the browser being real, not a trick layered on top of it.*

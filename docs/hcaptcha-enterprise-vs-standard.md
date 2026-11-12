@@ -190,7 +190,7 @@ for what a Playwright session specifically does to that mechanism regardless of 
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. Enterprise's extra
 machinery is risk-model customization, challenge content control, and a paid support
 contract on top of a mechanism this project already writes about on the main hCaptcha

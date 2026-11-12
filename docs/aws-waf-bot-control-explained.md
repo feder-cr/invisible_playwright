@@ -89,7 +89,7 @@ Several rule families sit entirely outside what any browser engine can affect. `
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright), a Firefox
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright), a Firefox
 patched at the C++ level. AWS documents its Bot Control rules more specifically, by name and by
 default action, than almost any other vendor in this corpus, which is why this page quotes rule
 names directly rather than reconstructing them from outside reverse engineering.*

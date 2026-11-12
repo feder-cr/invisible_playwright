@@ -299,7 +299,7 @@ when you do have to read the rendered version.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The geo-gating caveat is
 the one that costs people a day: they debug the parser when the exit was in the wrong
 city the whole time.*

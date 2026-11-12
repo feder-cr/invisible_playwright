@@ -145,4 +145,4 @@ The two environments likely have different font sets, so identical `measureText(
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright). The font problem here is not specific to this project: any Playwright container, patched engine or stock, inherits whatever the base image ships.*
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright). The font problem here is not specific to this project: any Playwright container, patched engine or stock, inherits whatever the base image ships.*

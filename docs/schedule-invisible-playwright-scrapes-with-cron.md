@@ -268,6 +268,6 @@ for the axes a schedule does not touch.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The engine makes a
 session look real; making the schedule look real is a separate job, and it is yours.*

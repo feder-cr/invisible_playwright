@@ -254,6 +254,6 @@ where each new exit is a fresh resolution.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The offline path exists because
 the online one, convenient in a harness, is a request a real browser never makes.*

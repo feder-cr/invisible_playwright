@@ -358,6 +358,6 @@ the parsers above depend on.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The unit toggle is the one
 I got wrong first: the numbers looked fine, and half of them were inches.*

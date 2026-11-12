@@ -165,7 +165,7 @@ deliberately contrasts against.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. A honeypot tests the
 code driving the browser, not the browser's own realness, and no amount of engine
 patching changes what a script decides to click.*

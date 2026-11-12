@@ -247,6 +247,6 @@ site](playwright-detected-as-bot.md), where the network layer is step six.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The networking stack is one
 of the parts left deliberately untouched, so the HTTP/2 frames are the engine's own.*

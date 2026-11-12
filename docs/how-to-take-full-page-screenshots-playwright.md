@@ -265,7 +265,7 @@ a real render.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The privileged-readback
 gate on this page exists because losing that patch once corrupted every screenshot we
 took.*

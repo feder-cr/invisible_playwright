@@ -172,7 +172,7 @@ this one.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The HTTP/2 stack is one
 of the parts left deliberately untouched, so an error at this layer is a proxy or
 server problem to solve, not a spoof to add.*

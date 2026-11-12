@@ -197,7 +197,7 @@ both cross-origin and sandboxed.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. A sandboxed frame without
 `allow-scripts` is not a detection to engineer around; it is HTML doing exactly what its
 author asked it to do.*

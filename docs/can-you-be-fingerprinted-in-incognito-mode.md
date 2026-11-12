@@ -85,7 +85,7 @@ promised no leftover state, and it delivers that.
 ![Two panels listing three values. localStorage is available in both browsers, and both
 report that the screen and the viewport differ, so neither looks like
 resistFingerprinting is on. The canvas pixel hash differs between the two
-panels.](https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/img/can-you-be-fingerprinted-in-incognito-mode-values.png)
+panels.](https://raw.githubusercontent.com/oss-invisible/playwright/main/docs/img/can-you-be-fingerprinted-in-incognito-mode-values.png)
 
 Three values, read from one page served from `127.0.0.1`. `localStorage` is available in
 both, which is the point of the section above: private mode is about state, and this
@@ -218,7 +218,7 @@ and [the TLS handshake no browsing mode can hide](ja3-ja4-tls-fingerprint.md).
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. Private mode clears what a
 site stored on you; this project changes what the browser is, which is the axis private
 mode leaves alone.*

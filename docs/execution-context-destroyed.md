@@ -191,6 +191,6 @@ happens in CI.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright).
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright).
 The screenshot-on-failure habit is the cheapest debugging change in this whole subject
 and the one most often skipped.*

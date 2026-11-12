@@ -245,6 +245,6 @@ datacenter. You want a stable, hardware-shaped, unique value, not a popular one.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The seed makes every surface
 reproducible, so the two-read stability check above is a test rather than a guess.*

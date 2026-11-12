@@ -223,7 +223,7 @@ and [testing for the presence of the right signal instead of the absence of a wr
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The IPv6 filter on
 this page exists because a live ICE test found a real global address leaking past a
 proxy that was carrying everything else.*

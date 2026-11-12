@@ -286,7 +286,7 @@ grid. The submitted query and its results both live in that request.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The results-versus-empty
 race is here because inferring emptiness from a zero row count quietly loses data on any
 form slow enough to lose it.*

@@ -228,7 +228,7 @@ for the different problem of producing a PDF rather than consuming one.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The viewer tab is a real
 page and Playwright will happily hand it to you; it is just not the document you
 actually wanted.*

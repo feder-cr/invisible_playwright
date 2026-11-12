@@ -67,7 +67,7 @@ tool you picked.
 
 ## Where this project sits
 
-[invisible_playwright](https://github.com/feder-cr/invisible_playwright) is
+[invisible_playwright](https://github.com/oss-invisible/playwright) is
 not a fifth entry on the list above competing for the same job. It answers a
 different question: given that you have already picked Playwright's API
 (unchanged, same code you would write against any Playwright browser), what
@@ -117,7 +117,7 @@ and [Firefox or Chromium for anti-detect automation](firefox-vs-chromium-antidet
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 which is not a competitor to any of the four tools above - it sits underneath
 one of them. The page is organized around picking the right testing tool
 first, because that decision is independent of the engine question it exists

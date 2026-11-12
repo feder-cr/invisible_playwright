@@ -132,7 +132,7 @@ for what a proxy changes and what it leaves completely alone.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level, where the timezone and locale are derived from the
 same proxy resolution the network connection already uses, rather than being a
 separate setting someone has to remember.*

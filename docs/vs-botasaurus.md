@@ -211,7 +211,7 @@ and reach for a real engine for the hard ones.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. It is a browser and a
 fingerprint, not a scraping framework, and it still needs a clean exit and human
 pacing to matter.*

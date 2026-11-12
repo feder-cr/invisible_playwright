@@ -216,7 +216,7 @@ pacing.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. It's the automation and
 stealth-engine layer on the build side of this question, not a proxy source and not a
 managed API, and this page has tried not to pretend otherwise about what it changes.*

@@ -231,7 +231,7 @@ and none is needed.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. It makes the browser look
 like a real person's, which is most of the battle and not all of it: on CI the runner's
 IP is the part you still have to fix yourself.*

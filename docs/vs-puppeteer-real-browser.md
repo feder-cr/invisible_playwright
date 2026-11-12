@@ -197,7 +197,7 @@ browser is actually detected](how-to-test-bot-detection.md).
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The seed in the
 example is real; the promise that a good fingerprint fixes a bad IP is not, and
 this page exists partly to say so.*

@@ -139,6 +139,6 @@ where the gap was a smoke test that never actually exercised the thing that brok
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 on a slow launch that took longer to correctly diagnose than to fix, because every
 piece involved really was behaving exactly as configured.*

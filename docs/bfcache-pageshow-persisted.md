@@ -184,6 +184,6 @@ for where behavioural signals sit in the wider picture.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. The preference exists because the timeout described
 above is real, and a test suite that hits it deserves a way back to the old behaviour.*

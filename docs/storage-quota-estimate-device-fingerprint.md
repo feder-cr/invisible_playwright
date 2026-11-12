@@ -239,7 +239,7 @@ a storage quota does not.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The storage quota is a
 surface almost nobody audits, which is exactly why it is worth keeping in a plausible
 bucket.*

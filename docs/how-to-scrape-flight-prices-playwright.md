@@ -271,7 +271,7 @@ for reading the stream directly instead of the rendered grid.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The empty-table-on-load
 mistake, and the networkidle capture that looked complete and was not, are both ones made
 here first.*

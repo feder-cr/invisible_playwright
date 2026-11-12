@@ -193,7 +193,7 @@ and [Playwright in Docker](playwright-docker-detection.md), which are the rest o
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. The joint sampling is the same decision made for
 audio, storage quota and antialiasing, and for the same reason: independently sampled
 dimensions contradict each other.*

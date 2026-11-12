@@ -40,8 +40,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-ENGINE_REPO = "feder-cr/firefox_antidetect_patch"
-WRAPPER_REPO = "feder-cr/invisible_playwright"
+ENGINE_REPO = "oss-invisible/firefox_antidetect_patch"
+WRAPPER_REPO = "oss-invisible/playwright"
 COUNTER_TAG = "usage-counter"
 
 LAUNCHES_BASELINE_V3 = 2_084_136

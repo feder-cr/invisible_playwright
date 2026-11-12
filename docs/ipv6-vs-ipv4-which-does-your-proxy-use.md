@@ -245,7 +245,7 @@ through the tunnel in the first place.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The transport-answer
 check on this page exists because "the page shows the proxy" and "the log shows the
 proxy" are not the same sentence on a dual-stack host.*

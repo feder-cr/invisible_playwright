@@ -252,6 +252,6 @@ back in several viewports. Key results by listing ID as you collect them.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The map-bounds loop is the
 part every first crawler of a property site gets wrong, mine included.*

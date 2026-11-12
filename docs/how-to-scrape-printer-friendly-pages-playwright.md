@@ -340,7 +340,7 @@ for the case where the print path returns a document instead of a page.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The first version of that diff
 compared `count()` under each media type and reported no difference on any page, which read
 as proof that print emulation did nothing: node counts do not move, only rendered text does.*

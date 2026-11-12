@@ -183,7 +183,7 @@ and [the checklist for when one site detects you](playwright-detected-as-bot.md)
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. It looks like a real
 browser driven by a real person, which is most of the job; the clean proxy and the human
 pacing are the part you bring.*

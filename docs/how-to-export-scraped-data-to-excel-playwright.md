@@ -264,7 +264,7 @@ for the client-updated prices that make a static parse insufficient.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The export is only as good as
 the values going into it, and the values are only correct if the browser was treated as
 real.*

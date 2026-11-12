@@ -245,6 +245,6 @@ to work in when a single site flags you.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The surface that catches an
 automated browser is usually the one nobody thought to check.*

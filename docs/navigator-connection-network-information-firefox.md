@@ -66,7 +66,7 @@ get caught by its mere presence.
 ![Two panels listing four values. navigator.connection, navigator.getBattery and
 navigator.userAgentData are all undefined in both the bundled Firefox and the patched
 engine. navigator.webdriver differs, true against
-false.](https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/img/navigator-connection-network-information-firefox-values.png)
+false.](https://raw.githubusercontent.com/oss-invisible/playwright/main/docs/img/navigator-connection-network-information-firefox-values.png)
 
 `navigator.connection` is `undefined` in both browsers, which is the answer this page
 gives, and the panel puts two more absences next to it: `navigator.getBattery` and
@@ -220,7 +220,7 @@ and [why navigator.webdriver is not the whole story](navigator-webdriver-explain
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The property is absent
 because the browser is really Firefox, which is a great deal harder to argue with than a
 deleted one.*

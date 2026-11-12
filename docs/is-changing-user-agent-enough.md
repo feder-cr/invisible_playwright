@@ -184,7 +184,7 @@ and [navigator.platform and oscpu on a spoofed OS](navigator-platform-oscpu-cons
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The user agent it reports is
 derived from the real engine version, so there is no string to edit and nothing to keep in
 sync.*

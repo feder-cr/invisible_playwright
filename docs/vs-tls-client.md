@@ -200,7 +200,7 @@ browser rather than a verdict.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The rule at the end, socket
 client for response data and a browser only for pages that must run, is how the pipeline
 here is actually split.*

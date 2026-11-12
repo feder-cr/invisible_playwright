@@ -297,7 +297,7 @@ for the fare search this map sits downstream of.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. An early version of this
 scraper read seat letters from column position instead of the data attribute, and every
 seat past the first skipped-letter exit row came out one letter short of the real one.*

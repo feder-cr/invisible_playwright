@@ -194,6 +194,6 @@ pass the number as text, `"1.25"`, not as a bare float.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The dead dpr write in this
 page is one we shipped ourselves, and only caught by reading the value back.*

@@ -150,6 +150,6 @@ actual problem.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level, on the mouse-movement bug that had been passing
 its own tests by testing the wrong call.*

@@ -276,6 +276,6 @@ not neutral; it is a shape no ordinary browser has, so assert presence, not abse
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. Every candidate line in
 this page is one I have read off about:webrtc while chasing a leak that a badge missed.*

@@ -232,7 +232,7 @@ for the compare-against-stock method that catches a VM tell a verdict hides.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. It presents one coherent
 real-hardware persona to the browser-visible layer; the IP, the timing floor and the
 pacing are still yours to supply.*

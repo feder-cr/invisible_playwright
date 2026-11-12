@@ -208,7 +208,7 @@ and behaviour layers are not in those tests at all.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. It is built to look like
 a real browser, which is why it passes most checks and why it will never claim to make
 you invisible.*

@@ -420,7 +420,7 @@ taking the served bytes instead of the serialized document.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. Keying episodes on the audio
 URL is a mistake that shipped before it was fixed: a show changed host, every enclosure was
 rewritten in one publish, and that night's run reported the entire archive as new.*

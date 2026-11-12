@@ -223,6 +223,6 @@ platform tell that no script controls, and
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. The system-colour palette is pinned here because a
 commercial detector was hashing it and catching the host operating system through it.*

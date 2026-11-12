@@ -327,7 +327,7 @@ for reading a page's own structured node in general.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. A touring show once read as
 closed everywhere the day its first city's run ended, because the row was keyed on the
 exhibition's name alone and the second venue's dates had silently overwritten the first.*

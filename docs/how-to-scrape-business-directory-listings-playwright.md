@@ -281,7 +281,7 @@ and [why a click needs to be trusted](playwright-clicks-istrusted.md).
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The nested-loop shape and the
 honest split between fingerprint and volume are both mistakes I made before I wrote them
 down.*

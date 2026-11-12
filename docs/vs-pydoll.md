@@ -239,7 +239,7 @@ verdicts.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. pydoll solves the
 driver layer honestly and says what it does not cover; this project works the
 fingerprint layer, and neither of us touches your IP or your pacing.*

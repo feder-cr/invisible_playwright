@@ -225,7 +225,7 @@ driver layer is the one this page is about.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. All four fixes are in this project's engine and
 driver, and the fourth one was found by controlled experiment after the first three did
 not fully close it.*

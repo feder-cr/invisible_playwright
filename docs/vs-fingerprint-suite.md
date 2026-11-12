@@ -147,6 +147,6 @@ the same injection layer sourcing its values from a remote service instead.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level, on a project that got the statistics right and
 put them one layer higher than where this one does.*

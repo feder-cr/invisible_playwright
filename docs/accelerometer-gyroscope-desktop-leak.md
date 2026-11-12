@@ -244,7 +244,7 @@ limits, or behaviour and timing, which you still have to supply.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The sensor surface
 is the easy kind of honest: the correct answer is to report nothing, and the only
 way to fail is to invent data a real desktop would never send.*

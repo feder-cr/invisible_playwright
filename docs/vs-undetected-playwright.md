@@ -188,6 +188,6 @@ real-looking browser on a known-bad address is still on a known-bad address.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The three-layer confusion
 on this page is one I have watched cost people a week on the wrong fix.*

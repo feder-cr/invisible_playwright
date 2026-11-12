@@ -221,6 +221,6 @@ That single package covers both the automatic virtual display and manual `xvfb-r
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. Xvfb is plumbing; the
 stealth is in the engine, and the session is still won by a clean IP and human pacing.*

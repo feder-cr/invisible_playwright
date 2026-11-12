@@ -153,7 +153,7 @@ for the request-interception pattern done in Playwright's API.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright).
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright).
 The code on this page is ordinary Puppeteer, shown honestly next to what it
 does and does not survive, rather than presented as a stealth technique it
 never was.*

@@ -169,7 +169,7 @@ product like this one is built to catch.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright).
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright).
 BotID's own documentation names Playwright as part of what it is built to catch; this
 page describes that mechanism honestly rather than claiming any tool clears it, and
 the false positives above came from Vercel's own users, not from anyone testing this

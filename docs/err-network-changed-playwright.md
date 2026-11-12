@@ -167,7 +167,7 @@ connection dying mid-request for a different reason.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. A network-change abort comes from the operating
 system's own signals to the network stack; no fingerprint work sits anywhere near that
 layer.*

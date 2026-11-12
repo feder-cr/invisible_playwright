@@ -261,6 +261,6 @@ for keeping the store across runs.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The seed keeps the browser
 honest with itself; keeping it honest about where it is standing is still your job.*

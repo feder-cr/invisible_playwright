@@ -452,7 +452,7 @@ the product fields the panel has to be keyed to.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The basis column is the one I
 got wrong first: every number parsed cleanly, and half of them were per 100 g sitting in a
 per-serving field.*

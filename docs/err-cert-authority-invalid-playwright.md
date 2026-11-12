@@ -176,7 +176,7 @@ case where a proxy's behavior is easy to mistake for the browser's own.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. Certificate validation is stock TLS behavior,
 untouched by this project's patching; `ignoreHTTPSErrors` removes that check
 entirely rather than trusting one specific proxy, and that tradeoff is worth reading

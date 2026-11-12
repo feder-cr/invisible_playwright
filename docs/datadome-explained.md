@@ -298,7 +298,7 @@ and [the checklist for when one site detects you](playwright-detected-as-bot.md)
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright).
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright).
 DataDome does not publish its scoring model or the full list of what its
 collector checks, so this page draws a line between DataDome's own
 documentation and outside reverse engineering everywhere that line exists,

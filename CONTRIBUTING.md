@@ -4,9 +4,9 @@ Thanks for your interest in improving this project. Contributions are welcome vi
 
 ## Quick links
 
-- **Bug or idea?** Open an [issue](https://github.com/feder-cr/invisible_playwright/issues/new/choose).
+- **Bug or idea?** Open an [issue](https://github.com/oss-invisible/playwright/issues/new/choose).
 - **Security issue?** Do **not** open a public issue - see [SECURITY.md](SECURITY.md).
-- **The C++ patches** live in the companion repo [feder-cr/firefox_antidetect_patch](https://github.com/feder-cr/firefox_antidetect_patch) (branch `stealth/151`). Bugs in fingerprint spoofing usually belong there.
+- **The C++ patches** live in the companion repo [oss-invisible/firefox_antidetect_patch](https://github.com/oss-invisible/firefox_antidetect_patch) (branch `stealth/151`). Bugs in fingerprint spoofing usually belong there.
 
 ## Scope
 
@@ -16,7 +16,7 @@ This repository ships the **Python wrapper** (`invisible_playwright`) around a p
 - The CLI (`invisible-playwright fetch`, `invisible-playwright version`)
 - Tests, docs, examples, packaging
 
-The fingerprint, the engine download and the browser protocol client are shared by every wrapper and live in [invisible_core](https://github.com/feder-cr/invisible_core).
+The fingerprint, the engine download and the browser protocol client are shared by every wrapper and live in [invisible_core](https://github.com/oss-invisible/core).
 
 Out of scope (belongs in `firefox_antidetect_patch`):
 
@@ -30,8 +30,8 @@ To *use* the package you do not need any of this: see [Install](README.md#instal
 The steps below are for working on the code, with [uv](https://docs.astral.sh/uv/).
 
 ```bash
-git clone https://github.com/feder-cr/invisible_playwright.git
-cd invisible_playwright
+git clone https://github.com/oss-invisible/playwright.git
+cd playwright
 uv venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 uv pip install -e ".[dev]"
@@ -66,9 +66,9 @@ CI must be green before merge.
 
 Before opening, please:
 
-- Search [existing issues](https://github.com/feder-cr/invisible_playwright/issues) - the bug may already be tracked.
+- Search [existing issues](https://github.com/oss-invisible/playwright/issues) - the bug may already be tracked.
 - Reproduce on the **latest release** if possible.
-- Confirm the issue is in the Python wrapper, not the patched Firefox itself. If a fingerprint is leaking or a detector flags the browser, open the issue at `feder-cr/firefox_antidetect_patch` instead.
+- Confirm the issue is in the Python wrapper, not the patched Firefox itself. If a fingerprint is leaking or a detector flags the browser, open the issue at `oss-invisible/firefox_antidetect_patch` instead.
 
 Include:
 

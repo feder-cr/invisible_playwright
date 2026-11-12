@@ -236,7 +236,7 @@ browser rather than trusting the scheme alone.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The SOCKS5
 authentication described here exists because the stock engine did not do it, and the
 patch is the reason the scheme can be handed back to the engine at all.*

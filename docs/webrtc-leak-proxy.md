@@ -288,6 +288,6 @@ another case where the protective setting is itself visible, and
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright).
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright).
 The dead-gate story is ours, and the rule it produced now applies to every gate we
 run.*

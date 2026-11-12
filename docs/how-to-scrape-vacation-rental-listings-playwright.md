@@ -305,7 +305,7 @@ currency and tax on a listing depend on where the request appears to come from.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The first version of this
 crawl stored the card's headline rate as the price, and the gap only surfaced when a spot
 check against the checkout total came back different on every single row.*

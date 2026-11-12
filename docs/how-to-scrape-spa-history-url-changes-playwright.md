@@ -284,7 +284,7 @@ and [the two causes of a destroyed execution context](execution-context-destroye
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The stale-handle bug in
 section four cost me an afternoon before I understood it was a lifecycle problem, not a
 selector one.*

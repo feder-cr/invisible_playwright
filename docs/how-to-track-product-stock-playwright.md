@@ -284,7 +284,7 @@ watch list outgrows one session.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The seed is what turns 500
 polls of one SKU into one returning shopper instead of 500 machines; the pacing is what
 keeps that shopper from behaving like none.*

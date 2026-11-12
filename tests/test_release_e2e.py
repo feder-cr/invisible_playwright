@@ -221,7 +221,7 @@ def _upstream_version(py: Path) -> str:
         + (out.stdout or "") + " " + (out.stderr or ""))
     return out.stdout.strip().splitlines()[-1]
 
-REPO_URL = "https://github.com/feder-cr/invisible_playwright.git"
+REPO_URL = "https://github.com/oss-invisible/playwright.git"
 REV = os.environ.get("INVPW_E2E_REV", "main")
 
 
@@ -664,7 +664,7 @@ def test_the_published_version_has_a_github_release():
     checked = 0
     cut_short = None
     for version in live:
-        url = ("https://api.github.com/repos/feder-cr/invisible_playwright"
+        url = ("https://api.github.com/repos/oss-invisible/playwright"
                    f"/releases/tags/v{version}")
         try:
             request = urllib.request.Request(url, headers=headers)

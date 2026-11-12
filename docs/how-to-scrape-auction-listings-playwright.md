@@ -335,7 +335,7 @@ ending-soon batch.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The first version of this crawler
 updated one row per listing in place, looked correct for a week, and then could not answer when
 the bidding had accelerated, because every earlier reading was already overwritten.*

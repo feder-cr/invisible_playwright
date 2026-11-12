@@ -207,7 +207,7 @@ for the equivalent honest pattern applied to a different second-factor flow.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. Whether a new Playwright
 capability reaches this engine on day one is a Juggler-sync question before it is
 anything else, and it is worth answering with a test run rather than an assumption.*

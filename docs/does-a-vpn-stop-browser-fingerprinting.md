@@ -248,6 +248,6 @@ the network layer neither a VPN nor a fingerprint fix reaches from JavaScript.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The fingerprint half is
 what it controls; the clean IP and the human pacing are still yours to supply.*

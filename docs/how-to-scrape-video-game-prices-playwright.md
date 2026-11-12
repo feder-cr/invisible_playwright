@@ -362,7 +362,7 @@ for discounts that hide their code behind a reveal interaction.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. An early version of a
 game price tracker keyed rows on title text alone, so a deluxe bundle's price
 overwrote its base edition's row under the same title, and a rolling series reported

@@ -85,7 +85,7 @@ Linux container, because they are presented by the browser rather than read from
 
 ![Two panels listing three values. navigator.webdriver differs, true against false. The
 AudioContext sample rate is 48000 Hz in both. navigator.platform is Win32 in
-both.](https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/img/can-a-website-tell-you-are-on-a-server-values.png)
+both.](https://raw.githubusercontent.com/oss-invisible/playwright/main/docs/img/can-a-website-tell-you-are-on-a-server-values.png)
 
 Three values from one page served from `127.0.0.1`. The audio sample rate is `48000 Hz`
 in both browsers and the platform string is `Win32` in both, so neither of those two is
@@ -230,6 +230,6 @@ and the pacing still depend on where and how you run it.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. It fixes the machine tells a
 server leaks in JavaScript; the datacenter IP and the pacing are still yours to supply.*

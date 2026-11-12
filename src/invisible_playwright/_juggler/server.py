@@ -2289,7 +2289,7 @@ class RequestDispatcher(Dispatcher):
             # ⛔ WHICH ENGINE SENDS IT. A stealth patch dated 2026-08-24
             # stopped reading the body of every POST; through firefox-35 that
             # left `request.post_data` None for every POST, inside a route
-            # guard too (feder-cr/invisible_core#90). From firefox-36 to
+            # guard too (oss-invisible/core#90). From firefox-36 to
             # firefox-48 the engine read it only while interception was on, so
             # without a route it was None, like a form sent empty. From
             # firefox-49 it reads every body up to 10 MB, as upstream's does.

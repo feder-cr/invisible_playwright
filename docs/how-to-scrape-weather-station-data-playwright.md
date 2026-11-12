@@ -356,7 +356,7 @@ discipline a period-by-period archive pull also depends on.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. A wind speed column
 stayed in mph in the feed while a signed-in session displayed km/h on the page, and two
 exports of the same day disagreed until the unit was read from the payload instead of

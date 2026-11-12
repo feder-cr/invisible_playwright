@@ -36,7 +36,7 @@ In scope:
 
 Out of scope:
 
-- Vulnerabilities in the patched Firefox source - report to [feder-cr/firefox_antidetect_patch](https://github.com/feder-cr/firefox_antidetect_patch/security/advisories/new)
+- Vulnerabilities in the patched Firefox source - report to [oss-invisible/firefox_antidetect_patch](https://github.com/oss-invisible/firefox_antidetect_patch/security/advisories/new)
 - Upstream Firefox / mozilla-central - report to Mozilla directly
 - Third-party dependencies - report to those projects
 

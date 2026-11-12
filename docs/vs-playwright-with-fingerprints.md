@@ -146,6 +146,6 @@ for why an engine version pin is worth checking rather than assuming is harmless
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level, with no remote service in the path between a
 seed and the fingerprint it produces.*

@@ -157,7 +157,7 @@ selection like GeeTest's is actually scoring.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. This page explains a
 puzzle captcha's mechanism, not a way around it: the product does not solve captchas,
 and a claim that any tool defeats GeeTest's puzzle step is a different promise than

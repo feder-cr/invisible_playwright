@@ -276,6 +276,6 @@ for shaping the poll that holds the session.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The velocity flag on our
 own poll was ours before it was advice.*

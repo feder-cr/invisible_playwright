@@ -80,7 +80,7 @@ This is worth being direct about, because it is a genuinely different kind of me
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright), a Firefox
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright), a Firefox
 patched at the C++ level. This mechanism has nothing to do with browser fingerprinting, so this page has
 nothing to claim about engine realness one way or the other, honestly: a scraper that respects a site's
 crawl preferences and does not chase invisible links never triggers it in the first place.*

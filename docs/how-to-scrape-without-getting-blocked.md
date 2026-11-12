@@ -179,6 +179,6 @@ scoring model that sits behind this ordering.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level and driven by stock Playwright. The proxy-first mistake
 at the top of this page is one I made before I wrote the checklist it points to.*

@@ -173,7 +173,7 @@ and [SOCKS5 vs HTTP proxy: what each does in the browser](socks5-vs-http-proxy-b
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. The proxy is handed straight to the engine's own
 SOCKS5 handling; a refused handshake is the proxy answering, not the browser failing to
 look real.*

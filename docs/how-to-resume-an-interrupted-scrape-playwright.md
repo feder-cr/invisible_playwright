@@ -277,7 +277,7 @@ persist the profile alongside the checkpoint.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The checkpoint-and-same-seed
 pattern is how a long run recovers from a crash without looking like a new visitor each
 time it restarts.*

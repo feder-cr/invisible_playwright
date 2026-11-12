@@ -209,7 +209,7 @@ and [screen sizes that give a headless machine away](screen-size-headless-tells.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The color-gamut and
 colorDepth disagreement is one I would rather find in my own diff than have a page find
 for me.*

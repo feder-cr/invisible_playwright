@@ -306,7 +306,7 @@ for pacing against an endpoint that watches.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. Clicking a slot to verify it
 was open turned out to place a hold on it, so the check was quietly removing the
 appointments it claimed to be counting.*

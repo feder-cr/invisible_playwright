@@ -210,6 +210,6 @@ rather than hiding anything.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. Steps 1, 2, 3 and 5
 above are all mistakes I have made.*

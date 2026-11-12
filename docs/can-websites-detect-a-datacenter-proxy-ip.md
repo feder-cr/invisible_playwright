@@ -187,6 +187,6 @@ still on a distrusted IP.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The browser half is
 what the patch does; the IP half is the one honest thing it cannot do for you.*

@@ -256,7 +256,7 @@ needs to reproduce one specific machine rather than any seeded one.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level and driven by stock Playwright. The
 engine fetch and the font bundle are the two things this page leans on
 that a plain Playwright container does not have.*

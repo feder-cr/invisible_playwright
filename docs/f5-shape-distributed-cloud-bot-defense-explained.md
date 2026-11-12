@@ -68,7 +68,7 @@ What it does not touch: the server-side evaluation itself, which happens on F5's
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright), a Firefox
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright), a Firefox
 patched at the C++ level. F5's own documentation stops at category-level language for what its
 telemetry evaluation checks; this page stops there too rather than filling the gap with
 reverse-engineered specifics nobody has published for this particular vendor as of this writing.*

@@ -199,7 +199,7 @@ network layer that sits entirely outside Kasada's client-side script.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright).
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright).
 Kasada does not publish a source tree the way BotD or CreepJS do, so this page leans on
 public reverse-engineering rather than our own release gates. Where the other detector
 pages here say "read from source," this one says "read from someone else's afternoon of

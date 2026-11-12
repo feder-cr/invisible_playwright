@@ -33,5 +33,5 @@ def test_no_page_links_the_old_repository_or_runs_the_old_command():
              for n, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
              for old in OLD if old.lower() in line.lower()]
     assert not found, ("these name the MCP server by its old name, which now leads elsewhere: use "
-                       "github.com/feder-cr/invisible_playwright_mcp and `uvx invisible-playwright-mcp`:\n"
+                       "github.com/oss-invisible/playwright_mcp and `uvx invisible-playwright-mcp`:\n"
                        + "\n".join(found))

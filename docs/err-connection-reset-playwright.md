@@ -147,7 +147,7 @@ for the earlier failure of not reaching the proxy in the first place.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. A TCP reset is generated on the wire, by the
 proxy, the origin, or something between them; the browser's identity layer has no
 part in it either way.*

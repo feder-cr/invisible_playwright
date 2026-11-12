@@ -364,7 +364,7 @@ where the cursor gets checkpointed.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The URL filter and the
 unchecked 200 are both mistakes that shipped here first: one put every operation into the
 same bucket, the other wrote empty rows over a throttle message and called the run a

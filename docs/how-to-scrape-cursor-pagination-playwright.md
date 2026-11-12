@@ -360,7 +360,7 @@ the fan-out a chain forces one level up.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The checkpoint that stored
 only the cursor is the mistake this page corrects: an expired token came back as a
 healthy 200 carrying the head of the list, and the resume reported success while

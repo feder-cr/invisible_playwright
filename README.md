@@ -1,22 +1,22 @@
 <div align="center">
 <picture>
-  <source media="(max-width: 374px) and (prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/banner-small-dark.gif">
-  <source media="(max-width: 374px)" srcset="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/banner-small-light.gif">
-  <source media="(max-width: 1239px) and (prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/banner-phone-dark.gif">
-  <source media="(max-width: 1239px)" srcset="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/banner-phone-light.gif">
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/banner-dark.gif">
-  <img alt="invisible_playwright, Playwright on an anti-detect Firefox. An animation: the two-line switch from Playwright, the fingerprint set inside the engine, a mouse that moves like a hand, and the bot tests it passes." src="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/banner-light.gif" width="100%">
+  <source media="(max-width: 374px) and (prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/oss-invisible/playwright/main/docs/banner-small-dark.gif">
+  <source media="(max-width: 374px)" srcset="https://raw.githubusercontent.com/oss-invisible/playwright/main/docs/banner-small-light.gif">
+  <source media="(max-width: 1239px) and (prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/oss-invisible/playwright/main/docs/banner-phone-dark.gif">
+  <source media="(max-width: 1239px)" srcset="https://raw.githubusercontent.com/oss-invisible/playwright/main/docs/banner-phone-light.gif">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/oss-invisible/playwright/main/docs/banner-dark.gif">
+  <img alt="invisible_playwright, Playwright on an anti-detect Firefox. An animation: the two-line switch from Playwright, the fingerprint set inside the engine, a mouse that moves like a hand, and the bot tests it passes." src="https://raw.githubusercontent.com/oss-invisible/playwright/main/docs/banner-light.gif" width="100%">
 </picture>
 <p align="center">
-  <a href="https://github.com/feder-cr/invisible_playwright/blob/badges/counters/launches_daily.csv"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Ffeder-cr%2Finvisible_playwright%2Fbadges%2Fdocs%2Fbadges%2Flaunches.json&style=for-the-badge" alt="browser launches"></a>
-  <a href="https://github.com/feder-cr/firefox_antidetect_patch/releases"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Ffeder-cr%2Finvisible_playwright%2Fbadges%2Fdocs%2Fbadges%2Fdownloads.json&style=for-the-badge" alt="engine downloads"></a>
-  <a href="https://github.com/feder-cr/invisible_playwright/stargazers"><img src="https://img.shields.io/github/stars/feder-cr/invisible_playwright?style=for-the-badge&logo=github&color=e8a317" alt="GitHub stars"></a>
+  <a href="https://github.com/oss-invisible/playwright/blob/badges/counters/launches_daily.csv"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Foss-invisible%2Fplaywright%2Fbadges%2Fdocs%2Fbadges%2Flaunches.json&style=for-the-badge" alt="browser launches"></a>
+  <a href="https://github.com/oss-invisible/firefox_antidetect_patch/releases"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Foss-invisible%2Fplaywright%2Fbadges%2Fdocs%2Fbadges%2Fdownloads.json&style=for-the-badge" alt="engine downloads"></a>
+  <a href="https://github.com/oss-invisible/playwright/stargazers"><img src="https://img.shields.io/github/stars/oss-invisible/playwright?style=for-the-badge&logo=github&color=e8a317" alt="GitHub stars"></a>
 </p>
 <h3 align="center">Playwright gets caught by anti-bots and captchas.<br>
 This one runs on an anti-detect Firefox with an undetected fingerprint, compatible with your existing Playwright code.</h3>
 </div>
 
-![invisible_playwright - 5/5 detection suites passed](https://raw.githubusercontent.com/feder-cr/invisible_playwright/7a8693c6b4386e9a84dd93bedc479ca8654482e1/docs/screenshots/hero.gif)
+![invisible_playwright - 5/5 detection suites passed](https://raw.githubusercontent.com/oss-invisible/playwright/7a8693c6b4386e9a84dd93bedc479ca8654482e1/docs/screenshots/hero.gif)
 
 ## How it works
 
@@ -217,7 +217,7 @@ Full list of pinnable keys, how pinning interacts with the Bayesian sampler, and
 
 ### Launch counter
 
-The engine counts launches with an anonymous GET to the `usage-counter` release of the engine's repository (`feder-cr/firefox_antidetect_patch`) on GitHub. This package's launcher and server refuse the two prefs that govern it, `invisible_firefox.usage_ping.enabled` and `invisible_firefox.usage_ping.url`, in `extra_prefs`.
+The engine counts launches with an anonymous GET to the `usage-counter` release of the engine's repository (`oss-invisible/firefox_antidetect_patch`) on GitHub. This package's launcher and server refuse the two prefs that govern it, `invisible_firefox.usage_ping.enabled` and `invisible_firefox.usage_ping.url`, in `extra_prefs`.
 
 ---
 
@@ -239,14 +239,14 @@ invisible-playwright version  # wrapper, core and engine versions, and where the
 library. Two ways to use it without writing code, both one line: from an MCP client
 you already have (Claude Code, Claude Desktop, Cursor),
 `claude mcp add stealth -- uvx invisible-playwright-mcp`, see
-[the MCP server page](https://github.com/feder-cr/invisible_playwright_mcp/wiki/mcp-server); or with an
+[the MCP server page](https://github.com/oss-invisible/playwright_mcp/wiki/mcp-server); or with an
 interface and a model included, needing only an OpenRouter key,
 `uvx invisible-playwright-mcp ui --openrouter-key sk-or-...`, see
-[invisible_playwright_mcp](https://github.com/feder-cr/invisible_playwright_mcp). Same engine underneath, and the second
+[invisible_playwright_mcp](https://github.com/oss-invisible/playwright_mcp). Same engine underneath, and the second
 is a client of the first.
 
 All of it reads better, and is searchable, in
-**[the wiki](https://github.com/feder-cr/invisible_playwright/wiki)**,
+**[the wiki](https://github.com/oss-invisible/playwright/wiki)**,
 organised into four sections instead of one flat list:
 
 - **[Documentation](docs/documentation.md)** -
@@ -284,9 +284,9 @@ read from its own documentation or from confirmed reverse engineering:
 **The other pieces of this one.** The engine is the middle of three, and the
 two around it are how most people reach it:
 
-- **[invisible_core](https://github.com/feder-cr/invisible_core)** - seed to
+- **[invisible_core](https://github.com/oss-invisible/core)** - seed to
   fingerprint to preferences, plus proxy and geolocation. This package pins it.
-- **[invisible_playwright_mcp](https://github.com/feder-cr/invisible_playwright_mcp)** - this engine as an MCP
+- **[invisible_playwright_mcp](https://github.com/oss-invisible/playwright_mcp)** - this engine as an MCP
   server (`uvx invisible-playwright-mcp`, for any client that brings its own
   model) and, in the same package, an interface with a model included, from
   one command. The interface is a client of the server, with no private path
@@ -324,7 +324,7 @@ Two rules hold across everything below. Every value is decided **before a page c
 ask**, inside the browser, so there is no JavaScript shim to find. And every value
 comes from **one profile**, so no two surfaces contradict each other, which is how a
 spoofed browser is usually caught. Source:
-[feder-cr/firefox_antidetect_patch](https://github.com/feder-cr/firefox_antidetect_patch).
+[oss-invisible/firefox_antidetect_patch](https://github.com/oss-invisible/firefox_antidetect_patch).
 
 **Identity**
 - `navigator`, the user agent and the client hints are derived together, so they cannot disagree: [does Playwright set navigator.webdriver](docs/does-playwright-set-navigator-webdriver.md), [client hints and Sec-Fetch](docs/client-hints-sec-fetch.md).
@@ -357,7 +357,7 @@ spoofed browser is usually caught. Source:
 
 ## License
 
-MIT - see [LICENSE](https://github.com/feder-cr/invisible_playwright/blob/main/LICENSE). The patched Firefox binary is distributed under the MPL-2.0 (Firefox upstream license). The C++ patches against mozilla-central that produce that binary are at [feder-cr/firefox_antidetect_patch](https://github.com/feder-cr/firefox_antidetect_patch).
+MIT - see [LICENSE](https://github.com/oss-invisible/playwright/blob/main/LICENSE). The patched Firefox binary is distributed under the MPL-2.0 (Firefox upstream license). The C++ patches against mozilla-central that produce that binary are at [oss-invisible/firefox_antidetect_patch](https://github.com/oss-invisible/firefox_antidetect_patch).
 
 ---
 
@@ -369,12 +369,12 @@ This project is for educational purposes only. It is provided as-is, with no war
 
 <p align="center">
   Built by <a href="https://it.linkedin.com/in/federico-elia-5199951b6">Federico Elia</a>
-  &nbsp;<a href="https://it.linkedin.com/in/federico-elia-5199951b6"><img src="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/badges/linkedin.svg" alt="LinkedIn"></a>
+  &nbsp;<a href="https://it.linkedin.com/in/federico-elia-5199951b6"><img src="https://raw.githubusercontent.com/oss-invisible/playwright/main/docs/badges/linkedin.svg" alt="LinkedIn"></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/feder-cr/invisible_playwright/actions/workflows/tests.yml"><img src="https://github.com/feder-cr/invisible_playwright/actions/workflows/tests.yml/badge.svg" alt="tests"></a>
-  <a href="https://github.com/feder-cr/invisible_playwright/blob/main/LICENSE"><img src="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/badges/license.svg" alt="License: MIT"></a>
-  <a href="https://www.python.org/downloads/"><img src="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/badges/python.svg" alt="Python 3.11+"></a>
-  <a href="https://github.com/feder-cr/firefox_antidetect_patch/releases"><img src="https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/badges/firefox.svg" alt="Firefox 159.0"></a>
+  <a href="https://github.com/oss-invisible/playwright/actions/workflows/tests.yml"><img src="https://github.com/oss-invisible/playwright/actions/workflows/tests.yml/badge.svg" alt="tests"></a>
+  <a href="https://github.com/oss-invisible/playwright/blob/main/LICENSE"><img src="https://raw.githubusercontent.com/oss-invisible/playwright/main/docs/badges/license.svg" alt="License: MIT"></a>
+  <a href="https://www.python.org/downloads/"><img src="https://raw.githubusercontent.com/oss-invisible/playwright/main/docs/badges/python.svg" alt="Python 3.11+"></a>
+  <a href="https://github.com/oss-invisible/firefox_antidetect_patch/releases"><img src="https://raw.githubusercontent.com/oss-invisible/playwright/main/docs/badges/firefox.svg" alt="Firefox 159.0"></a>
 </p>

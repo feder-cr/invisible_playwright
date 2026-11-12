@@ -130,7 +130,7 @@ right value directly.
 a seed report different canvas and WebGL readback hashes and even a different device
 pixel ratio, while two sessions launched with the same seed report identical hashes and
 identical
-pixels.](https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/img/canvas-seed-vs-no-seed.png)
+pixels.](https://raw.githubusercontent.com/oss-invisible/playwright/main/docs/img/canvas-seed-vs-no-seed.png)
 
 Four sessions above, one page served from `127.0.0.1`, hashes computed inside the page
 so the numbers and the picture come from the same run. The two unseeded sessions
@@ -289,7 +289,7 @@ last step is to pin the identity so a failure is reproducible.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The seed is the same
 lever whether you are hiding rotation or reproducing a bug: pin it and the machine
 stops moving.*

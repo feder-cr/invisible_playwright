@@ -183,7 +183,7 @@ for what an agent-driven session still needs to handle itself.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. A bundled CLI is a
 convenience, not a new capability; the engine underneath it is doing what it was
 already doing.*

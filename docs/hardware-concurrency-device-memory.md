@@ -183,6 +183,6 @@ of these are components of it.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. The three values are conditioned on each other here,
 which is the part that is easy to get wrong when they are sampled independently.*

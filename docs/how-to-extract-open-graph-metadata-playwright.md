@@ -268,7 +268,7 @@ for the other metadata block that lives in the same head.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The placeholder-body caveat
 is here because a head that parses perfectly is the most convincing way to record a page
 you never actually loaded.*

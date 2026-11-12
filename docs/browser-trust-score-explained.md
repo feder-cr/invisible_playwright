@@ -259,7 +259,7 @@ for the compare-against-a-stock-browser method that keeps these numbers honest.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The three numbers on this
 page get conflated because they all look like a percentage; none of them are the same
 percentage.*

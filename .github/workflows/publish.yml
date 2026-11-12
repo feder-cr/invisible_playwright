@@ -15,7 +15,7 @@ name: publish
 # convention.
 #
 # BEFORE THE FIRST RUN, on PyPI: Manage project -> Publishing -> add a GitHub
-# publisher with owner `feder-cr`, repository `invisible_playwright`, workflow
+# publisher with owner `oss-invisible`, repository `playwright`, workflow
 # `publish.yml`, environment `pypi`. Until that exists the upload fails with
 # `invalid-publisher`, which is the correct failure: nothing has said this
 # workflow may speak for this project. Revoke the long-lived token AFTER the

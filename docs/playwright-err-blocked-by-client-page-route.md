@@ -216,7 +216,7 @@ behavior sits among the other signals a site can check.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The error code is
 upstream Chromium naming; the fact that a route handler and a real extension can
 produce it identically is the part worth knowing before you rely on either.*

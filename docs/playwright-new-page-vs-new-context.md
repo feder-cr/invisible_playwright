@@ -145,7 +145,7 @@ way.
 with browser.new_page reports an inner size of 1280 by 720 on a 1366 by 768 screen. The
 same build opened with new_context and no viewport reports 1366 by 683. The patched
 engine opened with browser.new_page reports 1920 by 947, the same as its own
-new_context.](https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/img/new-page-vs-new-context-viewport.png)
+new_context.](https://raw.githubusercontent.com/oss-invisible/playwright/main/docs/img/new-page-vs-new-context-viewport.png)
 
 One page served from `127.0.0.1`, three sessions, headless throughout.
 
@@ -270,7 +270,7 @@ rather than let the seed choose it.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. This one was a
 mistake in our own wrapper, found by reading Playwright's source and then measured
 before it was believed.*

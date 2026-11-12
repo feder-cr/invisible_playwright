@@ -222,6 +222,6 @@ and [reading the canvas and WebGL hashes on BrowserLeaks](browserleaks-canvas-we
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. WebGPU got its own page the
 week a consistency check read one surface we had covered and one we had not.*

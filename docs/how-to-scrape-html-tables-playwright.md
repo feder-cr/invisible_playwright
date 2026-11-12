@@ -269,6 +269,6 @@ for the typed-output step once the table is out as plain Python.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The extract-before-you-
 paginate rule is a mistake I shipped before I documented it.*

@@ -286,7 +286,7 @@ for the session-reuse pattern this one sits next to.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The consent banner is the
 canonical cross-origin iframe, which is why "the button will not click" turned out to be
 a process-model question.*

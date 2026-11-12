@@ -194,7 +194,7 @@ specific comparison that names what it could and could not verify.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. This page names its own conflict of interest in the
 first paragraph because that's the discipline it's asking of everyone else's benchmark,
 including any that would have made this project look good.*

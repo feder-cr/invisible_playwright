@@ -405,7 +405,7 @@ keyed on the version id.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The lexical version sort is
 not a hypothetical here: a version check that compared release strings directly read 1.10.0
 as older than 1.9.0, which is why the tuple parse is the first thing on this page.*

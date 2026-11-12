@@ -362,7 +362,7 @@ feed out one record at a time.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The count that stopped at
 exactly 10000 was read as a total before it was read as a ceiling, and a pager built on it
 reported a complete run that was nothing of the kind.*

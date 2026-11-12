@@ -200,7 +200,7 @@ blocking you.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The comparison is
 architectural, not a put-down: zendriver does its layer well, and the honest
 caveat about IP, quotas and behaviour applies to both.*

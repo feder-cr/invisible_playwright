@@ -131,7 +131,7 @@ getter anyone can catch out of place.
 ![Two panels listing four values. navigator.vendor is an empty string and
 navigator.productSub is 20100101 in both the bundled Firefox and the patched engine.
 navigator.webdriver differs, true against false. Function.prototype.toString returns
-the same native-code string in both.](https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/img/navigator-vendor-productsub-firefox-values.png)
+the same native-code string in both.](https://raw.githubusercontent.com/oss-invisible/playwright/main/docs/img/navigator-vendor-productsub-firefox-values.png)
 
 The two brand constants come back identical from both browsers: `navigator.vendor` is
 the empty string and `navigator.productSub` is `20100101`, which is what this page says
@@ -265,6 +265,6 @@ argument in its sharpest form.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. These two fields cost me
 nothing to get right, which is the entire argument.*

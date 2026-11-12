@@ -248,7 +248,7 @@ for the same mechanism seen from the screenshot side.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The endpoint-first order on
 this page is the one that survives both a markup change and this browser's own canvas
 defense.*

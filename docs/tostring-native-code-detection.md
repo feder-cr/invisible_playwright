@@ -169,7 +169,7 @@ about artefacts you did not choose to add.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. There is no toString shim anywhere in this codebase for
 the pristine-reference check to catch, because the getter it would have to disguise was
 never overridden in the first place.*

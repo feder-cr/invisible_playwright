@@ -202,6 +202,6 @@ side channel in another place.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. The service-worker option is exposed rather than
 forced here, because blocking is the right call for some jobs and a signal for others.*

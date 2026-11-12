@@ -268,6 +268,6 @@ full table instead of a truncated one.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The price-is-a-race problem
 is one we measured before we wrote about it.*

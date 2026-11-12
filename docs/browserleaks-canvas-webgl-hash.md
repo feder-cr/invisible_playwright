@@ -239,6 +239,6 @@ signature is the pixels, the renderer string is a reported value, and both have 
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The two hashes above are
 real measurements, reproduced to the byte on two operating systems from one seed.*

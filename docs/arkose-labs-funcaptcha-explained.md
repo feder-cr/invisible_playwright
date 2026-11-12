@@ -77,7 +77,7 @@ The **puzzle itself is a different kind of gate entirely**, the same structural 
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright), a Firefox
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright), a Firefox
 patched at the C++ level. Arkose's own materials stop at category-level claims about its risk engine,
 and this page stops there too for anything not independently corroborated. It does not describe, and
 this project does not build, a way to solve FunCaptcha's puzzles for you.*

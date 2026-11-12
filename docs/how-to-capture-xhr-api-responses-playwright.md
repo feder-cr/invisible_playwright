@@ -297,7 +297,7 @@ absent signal fails the same way a wrong one does.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The abort-everything-heavy
 optimization at the end is one I shipped before I measured what it did to the request
 silhouette.*

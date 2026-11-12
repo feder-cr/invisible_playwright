@@ -88,7 +88,7 @@ What sits outside that: the server-side, pre-cache header and protocol analysis 
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright).
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright).
 Fastly documents its headless-detection script in enough detail to quote the signal names and
 cookie directly; its broader behavioral-correlation model and the newer `BOT-ANALYSIS` signal are
 not published at the same depth, and this page says so rather than filling the gap with a guess.*

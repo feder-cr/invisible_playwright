@@ -170,6 +170,6 @@ which takes the consistency idea considerably further.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright).
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright).
 We gate every release on BotD, so the detector names and the compared values above
 come out of its source and not out of memory.*

@@ -251,6 +251,6 @@ score, and [how to compare fields instead of reading verdicts](how-to-test-bot-d
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The boundary value
 in this page is a bug we shipped, found on a touch laptop, and fixed in place.*

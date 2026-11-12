@@ -168,6 +168,6 @@ JavaScript layer there is no override to find and no seam to detect.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright).
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright).
 CreepJS is a release gate here. The lie names above are quoted from its source and
 not paraphrased, because the exact strings are what you will see in a report.*

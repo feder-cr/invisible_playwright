@@ -205,6 +205,6 @@ surface, and [WebGL renderer strings](webgl-renderer-strings.md).
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. The filtering approach described above is one we
 tried and abandoned for the reason given.*

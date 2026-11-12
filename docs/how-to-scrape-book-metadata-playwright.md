@@ -398,7 +398,7 @@ upsert.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. An early version of this
 keyed rows on the work and stored one publication year, so a paperback reprint overwrote the
 hardback it shared a title with, and the format column was the last thing anyone thought to

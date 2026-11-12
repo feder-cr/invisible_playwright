@@ -223,6 +223,6 @@ linked throughout.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. Every rule on this page exists because breaking it
 cost us something first.*

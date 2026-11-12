@@ -6,7 +6,7 @@ nav_order: 1
 
 # Browser fingerprinting and bot detection, from the source
 
-Documentation for [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+Documentation for [invisible_playwright](https://github.com/oss-invisible/playwright),
 plus a set of standalone explainers. Each one is written against the current source of
 the thing it describes, and several of them record something we got wrong first.
 
@@ -22,8 +22,8 @@ the thing it describes, and several of them record something we got wrong first.
 - **[Integrations](integrations/)** - running this inside Scrapy, Crawlee, Robot
   Framework, CodeceptJS, test runners and Playwright MCP, including which frameworks
   it does not fit and why.
-- **[The agent on top](https://github.com/feder-cr/invisible_playwright_mcp/wiki)** - this engine also
-  drives [invisible_playwright_mcp](https://github.com/feder-cr/invisible_playwright_mcp), an AI agent you instruct in
+- **[The agent on top](https://github.com/oss-invisible/playwright_mcp/wiki)** - this engine also
+  drives [invisible_playwright_mcp](https://github.com/oss-invisible/playwright_mcp), an AI agent you instruct in
   plain language; its wiki covers the agent layer the way this one covers the
   browser: comparisons, blocked agents, and task guides.
 

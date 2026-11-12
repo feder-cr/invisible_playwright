@@ -156,6 +156,6 @@ same value-versus-output problem on a different surface.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright).
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright).
 The measurements above are ours: ten seeds, two engine
 builds, and two host operating systems. The wrong first hypothesis is ours too.*

@@ -183,6 +183,6 @@ and [waiting for a specific API response](wait-for-specific-api-response-playwri
 
 ---
 
-*From [invisible_playwright](https://github.com/feder-cr/invisible_playwright).
+*From [invisible_playwright](https://github.com/oss-invisible/playwright).
 The three-arm table is our own run and the test page is printed above so you
 can reproduce it rather than take our word for it.*

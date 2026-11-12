@@ -100,7 +100,7 @@ constructed rather than real. Presence with the right value is the only pass.
 ![One panel listing three values read from the patched engine, headless:
 navigator.platform Win32, navigator.oscpu Windows NT 10.0 with Win64 and x64, and the
 full user agent for Firefox 151.0 on Windows. A note says the bundled Firefox returned
-the same values.](https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/img/navigator-platform-oscpu-consistency-values.png)
+the same values.](https://raw.githubusercontent.com/oss-invisible/playwright/main/docs/img/navigator-platform-oscpu-consistency-values.png)
 
 All three read from one page served from `127.0.0.1`, and the bundled Firefox returned
 the same three, so the panel shows the agreed state rather than a difference.
@@ -276,7 +276,7 @@ reproduces them on every run.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The user agent is the
 string everyone changes; navigator.platform and navigator.oscpu are the two nobody
 remembers, and they are the ones that give the container away.*

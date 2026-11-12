@@ -470,7 +470,7 @@ picking up from the last id you held.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The CDP event was the first
 answer tried here and it is the one every thread recommends, and it reported nothing on a
 page that read its stream with fetch: not a broken hook, just a hook waiting for an

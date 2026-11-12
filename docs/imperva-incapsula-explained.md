@@ -79,7 +79,7 @@ That says nothing about the network-layer fingerprint, which depends on the TLS 
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright).
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright).
 Imperva does not publish its 700-dimension list or its `reese84` payload format, so this page
 draws a line between what Imperva's own materials state in category terms and what outside
 reverse engineering has reconstructed in specifics, the same way this corpus treats DataDome

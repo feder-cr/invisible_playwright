@@ -279,7 +279,7 @@ for where the trusted-event check first shows up.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The upload works like stock
 Playwright; the honest note about which half of it the page can actually see is the part
 worth keeping.*

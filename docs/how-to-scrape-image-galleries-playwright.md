@@ -313,6 +313,6 @@ subresource request](client-hints-sec-fetch.md) for why the in-context fetch pas
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The 403-on-the-downloader
 mistake in the last section is one I made before I made the fetch stay in the tab.*

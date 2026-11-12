@@ -208,6 +208,6 @@ and [testing detection without fooling yourself with a verdict](how-to-test-bot-
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. It hides that a script is
 present; the pacing is still yours to get right.*

@@ -220,7 +220,7 @@ separate, and you supply the clean proxy and human pacing.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The trusted-events half
 is solved; the straight-line-motion half is honestly not, and this page says which is
 which.*

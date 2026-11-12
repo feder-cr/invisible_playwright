@@ -137,7 +137,7 @@ for what to check first when a site specifically challenges headless traffic.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. This page separates
 display mode from browser identity because conflating the two sends people
 switching a setting that was never the cause.*

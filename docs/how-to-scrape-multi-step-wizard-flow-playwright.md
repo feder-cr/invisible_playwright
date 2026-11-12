@@ -254,6 +254,6 @@ mid-step re-render can produce.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The step-three redirect that
 is really a state problem is a mistake I have made more than once.*

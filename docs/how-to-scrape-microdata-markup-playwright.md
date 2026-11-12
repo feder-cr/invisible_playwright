@@ -402,7 +402,7 @@ where the price and image cases bite hardest.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. An early version of this
 extractor read `textContent` off every `[itemprop]` and produced rows where each price
 was an empty string and each date was a human label. Nothing errored and the row count

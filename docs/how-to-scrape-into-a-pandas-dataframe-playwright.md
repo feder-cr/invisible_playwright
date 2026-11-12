@@ -244,6 +244,6 @@ for multi-page collection.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The leading-zero SKU bug
 above is one I shipped into a join before I learned to print dtypes first.*

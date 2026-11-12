@@ -236,7 +236,7 @@ images come from a background request rather than the initial HTML.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The direct-attribute read is
 faster, quieter, and the one I reach for first; the scroll-and-decode fallback is for the
 pages that leave me no choice.*

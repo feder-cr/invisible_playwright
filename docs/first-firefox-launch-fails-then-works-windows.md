@@ -106,4 +106,4 @@ No. Neither made any difference in our testing; the failure tracked the executab
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright), on a failure that only ever showed up once per path and never explained itself in its own words.*
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright), on a failure that only ever showed up once per path and never explained itself in its own words.*

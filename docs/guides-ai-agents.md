@@ -20,7 +20,7 @@ Playwright, or not to touch Firefox, at all.
 These pages are for developers wiring an agent to this engine. The
 agent-experience side - what to run, which agent products compare how, what to
 check when an agent gets blocked - lives on the
-[invisible_playwright_mcp wiki](https://github.com/feder-cr/invisible_playwright_mcp/wiki), the agent built on this
+[invisible_playwright_mcp wiki](https://github.com/oss-invisible/playwright_mcp/wiki), the agent built on this
 same engine.
 
 ## Framework integrations

@@ -106,4 +106,4 @@ Playwright's own system requirements name Debian 12 and 13 and Ubuntu 22.04, 24.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright), which ships and tests its own engine on both Linux architectures, not only the one most laptops happen to have.*
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright), which ships and tests its own engine on both Linux architectures, not only the one most laptops happen to have.*

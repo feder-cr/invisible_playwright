@@ -240,6 +240,6 @@ and [how to test whether your browser is detected](how-to-test-bot-detection.md)
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The DOM check above is one
 I run against a real session before repeating any claim about what a page can see.*

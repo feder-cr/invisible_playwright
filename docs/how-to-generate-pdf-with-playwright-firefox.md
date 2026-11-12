@@ -220,7 +220,7 @@ for the capture step this PDF route builds on.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The point is not that Firefox
 is missing something - it is that a capability you cannot fake is more honest to work with
 than a string you can.*

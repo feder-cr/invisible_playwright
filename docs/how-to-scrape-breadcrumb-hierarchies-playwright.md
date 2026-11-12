@@ -371,7 +371,7 @@ for the click-through shape that makes every trail contextual, and
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The contextual trail is the one
 that shipped wrong here: a tree built by clicking cards out of category listings, where every
 trail agreed with the listing it came from, and the same leaf sat under three parents before
