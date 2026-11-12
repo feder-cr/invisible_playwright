@@ -185,13 +185,55 @@ def _who_holds(port: int) -> str:
     return "; no ss or netstat to say who holds it"
 
 
+def uid_from_proc_net(text: str, port: int) -> Optional[int]:
+    """The uid of the socket bound to local port ``port`` in the text of one of /proc/net/{udp,udp6,tcp,tcp6}, or None.
+
+    A row is ``sl local_address rem_address st tx:rx tr:tm retrnsmt uid timeout inode ...``; the local address is
+    ``HEX_ADDRESS:HEX_PORT``. The client of a DNS question is a socket still open (it waits for the answer), on an
+    ephemeral port of its own."""
+    for line in text.splitlines()[1:]:
+        fields = line.split()
+        if len(fields) < 8 or ":" not in fields[1]:
+            continue
+        try:
+            if int(fields[1].rsplit(":", 1)[1], 16) == port:
+                return int(fields[7])
+        except ValueError:
+            continue
+    return None
+
+
+def owner_of_the_peer(protocol: str, peer) -> Optional[int]:
+    """The uid of the process that sent a question to the trap, read where the kernel says it (Linux), or None when
+    the socket cannot be found any more or the machine is not Linux. ``peer`` is the (address, port...) of the client."""
+    if not sys.platform.startswith("linux"):
+        return None
+    six = ":" in str(peer[0])
+    names = ("udp6" if six else "udp",) if protocol == "udp" else ("tcp6" if six else "tcp",)
+    for name in names:
+        try:
+            with open("/proc/net/" + name, encoding="utf-8") as table:
+                uid = uid_from_proc_net(table.read(), int(peer[1]))
+        except OSError:
+            continue
+        if uid is not None:
+            return uid
+    return None
+
+
 class ResolverTrap:
-    """A resolver on loopback that counts what it is asked. See the module docstring."""
+    """A resolver on loopback that counts what it is asked. See the module docstring.
+
+    It counts what the processes of the USER THAT RUNS THE TEST ask (``only_uid``, by default the effective uid: under
+    ``sudo`` the browser and the test are root). A question from a socket of another user is answered and listed in
+    :attr:`foreign`, not counted: /etc/resolv.conf is the machine's, and on a CI runner the agent of the runner asks for
+    github.com through it (run 43188313516: the browser was blamed for names it never asked). There is no list of names.
+    A question whose socket cannot be found any more counts as the browser's."""
 
     available, reason = _trap_capability()
 
     def __init__(self, answers: Optional[Dict[str, str]] = None, *, port: int = 53,
-                 rewrite_resolv_conf: bool = True):
+                 rewrite_resolv_conf: bool = True, only_uid: Optional[int] = None, owner_of=None):
         self.answers = {k.lower(): v for k, v in (answers or {}).items()}
         self.port = port
         #: The loopback address the trap listens on once it is bound (see TRAP_ADDRESSES).
@@ -199,6 +241,10 @@ class ResolverTrap:
         self.rewrite_resolv_conf = rewrite_resolv_conf
         #: Every question: (name, qtype, "udp"|"tcp").
         self.queries: List[DohQuery] = []
+        #: The questions of other users' processes: (query, uid). Answered, not counted.
+        self.foreign: List[Tuple[DohQuery, int]] = []
+        self.only_uid = only_uid if only_uid is not None else (os.geteuid() if hasattr(os, "geteuid") else None)
+        self._owner_of = owner_of or owner_of_the_peer
         self._lock = threading.Lock()
         self._sockets: List[socket.socket] = []
         #: The threads that answer on `_sockets`, and the flag that ends them: see `_restore`.
@@ -221,7 +267,11 @@ class ResolverTrap:
 
     def describe(self) -> str:
         with self._lock:
-            return ", ".join("%s/%d (%s)" % q for q in self.queries) or "nothing"
+            seen = ", ".join("%s/%d (%s)" % q for q in self.queries) or "nothing"
+            if self.foreign:
+                seen += " [and %d question(s) of other users' processes, not counted: %s]" % (
+                    len(self.foreign), ", ".join(sorted({q.name for q, _ in self.foreign})))
+            return seen
 
     # --- control -------------------------------------------------------------------------------------------------
     def __enter__(self) -> "ResolverTrap":
@@ -327,13 +377,17 @@ class ResolverTrap:
         return made
 
     # --- answering -----------------------------------------------------------------------------------------------
-    def _respond(self, message: bytes, protocol: str) -> Optional[bytes]:
+    def _respond(self, message: bytes, protocol: str, peer=None) -> Optional[bytes]:
         try:
             query = parse_query(message)
         except ValueError:
             return None
+        owner = self._owner_of(protocol, peer) if peer is not None and self.only_uid is not None else None
         with self._lock:
-            self.queries.append(DohQuery(query.name, query.qtype, protocol))
+            if owner is not None and owner != self.only_uid:
+                self.foreign.append((DohQuery(query.name, query.qtype, protocol), owner))
+            else:
+                self.queries.append(DohQuery(query.name, query.qtype, protocol))
         if query.name in self.answers:
             return answer_for(self.answers, query)
         return build_response(query, RCODE_REFUSED)
@@ -346,7 +400,7 @@ class ResolverTrap:
                 continue
             except OSError:
                 return
-            response = self._respond(data, "udp")
+            response = self._respond(data, "udp", peer)
             if response is not None:
                 try:
                     sock.sendto(response, peer)
@@ -356,14 +410,14 @@ class ResolverTrap:
     def _serve_tcp(self, listener: socket.socket) -> None:
         while not self._ending.is_set():
             try:
-                conn, _ = listener.accept()
+                conn, peer = listener.accept()
             except socket.timeout:
                 continue
             except OSError:
                 return
-            threading.Thread(target=self._tcp_conversation, args=(conn,), daemon=True).start()
+            threading.Thread(target=self._tcp_conversation, args=(conn, peer), daemon=True).start()
 
-    def _tcp_conversation(self, conn: socket.socket) -> None:
+    def _tcp_conversation(self, conn: socket.socket, peer=None) -> None:
         try:
             conn.settimeout(5)
             while True:
@@ -377,7 +431,7 @@ class ResolverTrap:
                     if not chunk:
                         return
                     message += chunk
-                response = self._respond(message, "tcp")
+                response = self._respond(message, "tcp", peer)
                 if response is None:
                     return
                 conn.sendall(struct.pack("!H", len(response)) + response)
