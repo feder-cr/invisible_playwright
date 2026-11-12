@@ -1,0 +1,92 @@
+name: root-gather-diag (why the ICE gather finds nothing under root, on the runner)
+
+# A hunt, not a gate. The gate legs that run as root (e2e.realness and e2e.doh on Linux, run 43188313516) read "the gather produced no candidate at
+# all ([])" and an ICE name never asked; the same tests as the runner's own user give candidates, and in Docker (root, sudo -H -E, the trap, userns allowed)
+# they give candidates too. In the logs of the root legs the processes `child` (the socket process, where ICE runs) wrote nothing. This job runs four steps
+# in a row on one runner, on the engine of that gate run: A as the gate, B as the runner's user, C as A with the sandbox of the socket process and of the
+# content processes switched off (a measurement, never a setting of the product), D as A without the resolver trap. It starts on a push that touches
+# this file.
+
+on:
+  push:
+    paths:
+      - '.github/workflows/root-gather-diag.yml'
+      - 'scripts/root_gather_diag.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GITHUB_TOKEN: ${{ github.token }}
+  GH_TOKEN: ${{ github.token }}
+  ENGINE_RUN_ID: '43188313516'
+  ENGINE_REPO: feder-cr/firefox_antidetect_patch
+  CORE_REF: candidate/core-63-r5
+  SEAL_TAG: firefox-63-candidate
+
+jobs:
+  diag:
+    name: root-gather-diag (ubuntu-24.04, engine of run 43188313516)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with: { fetch-depth: 1 }
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: { python-version: '3.11' }
+      - name: Install the core under test, the wrapper and the test deps, as the gate does
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "playwright==$(cat scripts/playwright_pin.txt)"
+          sudo "$(which python)" -m playwright install-deps firefox
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+          export INVISIBLE_CORE_AUTOFIX=off INVISIBLE_CORE_PIN=allow
+          CORE_GIT="git+https://github.com/feder-cr/invisible_core@$CORE_REF"
+          python -m pip install --quiet "$CORE_GIT"
+          python -m pip install --quiet ".[dev]"
+          python -m pip install --quiet --force-reinstall "$CORE_GIT"
+          python -c "from importlib.metadata import version; print('core', version('invisible-core'), 'wrapper', version('invisible-playwright'))"
+      - name: The engine of the gate run (the one that went red)
+        run: |
+          mkdir -p art ff
+          gh run download "$ENGINE_RUN_ID" --repo "$ENGINE_REPO" --name asset-linux-x86_64 --dir art
+          set -- art/firefox-*-stealth-linux-x86_64.*
+          [ "$#" -eq 1 ] && [ -e "$1" ] || { echo "expected one archive, found: $*"; ls -la art; exit 1; }
+          tar xzf "$1" -C ff
+          echo "FF_EXE=$PWD/ff/firefox" >> "$GITHUB_ENV"
+          python -m invisible_core seal --binary "$PWD/ff/firefox" --tag "$SEAL_TAG" -o "$PWD/gate.seal.json"
+          echo "INVISIBLE_SEAL_FILE=$PWD/gate.seal.json" >> "$GITHUB_ENV"
+          sha256sum ff/firefox | tee engine.sha256
+      - name: A - root, the line of the gate
+        if: always()
+        run: bash scripts/root_gather_diag.sh A
+      - name: B - the runner's own user
+        if: always()
+        run: bash scripts/root_gather_diag.sh B
+      - name: C - root, the sandbox of the socket and content processes off (measurement)
+        if: always()
+        run: bash scripts/root_gather_diag.sh C
+      - name: D - root, no resolver trap
+        if: always()
+        run: bash scripts/root_gather_diag.sh D
+      - name: The table
+        if: always()
+        run: |
+          for s in A B C D; do cat diag/$s/summary.txt 2>/dev/null; echo; done | tee diag/table.txt
+          { echo '## root-gather-diag'; echo '```'; cat diag/table.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload what was written down
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: root-gather-diag-${{ github.run_id }}
+          path: |
+            diag
+            engine.sha256
+          if-no-files-found: warn
+          retention-days: 14
