@@ -4,7 +4,8 @@
 # with the engine 63 and in 3 of 20 with the published engine: the popup is announced while still at about:blank and the
 # navigation to its destination never reaches the client. This branch's server writes, to $INVPW_HUNT_POPUP_TRACE, every engine
 # event of a page's birth per session (attach, frames, navigations with url and id, ready, load events) and the moment each
-# page is announced. Three arms, the file twenty times at four workers each:
+# page is announced, what the wrapper sends the client for each frame, and the start and end of every test (to tie each popup
+# to its test). Two arms (Linux was green 20 of 20), the file twenty times at four workers each:
 #   win-63    windows-2022, the Windows engine of round 7 (run 43211837926), the round's core, this branch's wrapper
 #   linux-63  ubuntu-24.04, the Linux engine of round 7, same core and wrapper
 #   win-62    windows-2022, the published engine, the wrapper of main with the same trace patched in, the core of its pin
@@ -32,8 +33,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { arm: win-63, os: windows-2022 }
-          - { arm: linux-63, os: ubuntu-24.04 }
           - { arm: win-62, os: windows-2022 }
     defaults:
       run:
@@ -52,9 +51,10 @@ jobs:
         if: matrix.arm == 'win-62'
         run: |
           set -e
-          cp scripts/hunt_popup_trace_patch.py "$RUNNER_TEMP/"
+          cp scripts/hunt_popup_trace_patch.py scripts/hunt_popup_trace_patch2.py "$RUNNER_TEMP/"
           git checkout origin/main -- src tests pyproject.toml scripts/playwright_pin.txt
           python "$RUNNER_TEMP/hunt_popup_trace_patch.py"
+          python "$RUNNER_TEMP/hunt_popup_trace_patch2.py"
           git log -1 --format='main at %h' origin/main
       - name: Install
         run: |

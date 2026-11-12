@@ -985,6 +985,13 @@ class FrameDispatcher(Dispatcher):
     detached = False
 
     def emit(self, method: str, params: Optional[Dict] = None) -> None:
+        if _HUNT_TRACE_PATH and method in ("navigated", "loadstate"):
+            try:
+                _hunt_trace(session=getattr(self.page, "session", None), method="EMIT " + method, frame=self.frame_id,
+                            url=(params or {}).get("url"), name=json.dumps(params or {})[:120],
+                            announced=getattr(self.page, "_announced", None))
+            except Exception:
+                pass
         if method == "loadstate" and params and params.get("add") in ("domcontentloaded", "load"):
             page = self.page
             with page._announce_lock:
@@ -1028,6 +1035,11 @@ class FrameDispatcher(Dispatcher):
                          {"url": url, "name": name,
                           "parentFrame": parent_frame.channel if parent_frame else None,
                           "loadStates": load_states or ["commit"]})
+        try:
+            _hunt_trace(session=getattr(page, "session", None), method="FRAME_CREATED", frame=frame_id, url=url,
+                        name=",".join(load_states or ["commit"]), main=parent_frame is None)
+        except Exception:
+            pass
 
     # ── the engines, which belong to the page ───────────────────────────────
     #
