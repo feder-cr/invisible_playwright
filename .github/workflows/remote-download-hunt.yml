@@ -1,0 +1,107 @@
+# remote-download-hunt.yml - hunt scaffolding, never merged. Runs only on a push to a `hunt/remote-download**` branch.
+#
+# `download.save_as` on a served browser was seen answering "Download.save_as: canceled" to a client that connects to it. This
+# job runs scripts/remote_download_repro.py (a text and a binary attachment; save_as, path, failure) on four arms: our engine
+# served by launch_server with Playwright's own client and with the library's own client, the library in-process, and
+# Playwright's own Firefox served by Playwright's own launch-server (the reference). Two variants: the published 0.50.1 with its
+# published engine, and this branch's wrapper (round 7) with the round's core and the Linux or Windows engine of round 6.
+name: remote download hunt
+
+on:
+  push:
+    branches: ['hunt/remote-download**']
+
+permissions:
+  contents: read
+
+env:
+  GITHUB_TOKEN: ${{ github.token }}
+  GH_TOKEN: ${{ github.token }}
+  INVISIBLE_CORE_AUTOFIX: 'off'
+  INVISIBLE_CORE_PIN: allow
+
+jobs:
+  repro:
+    name: ${{ matrix.variant }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+        variant: [published-0.50.1, round-7]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with: { fetch-depth: 1 }
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: { python-version: '3.11' }
+      - name: Linux system deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+      - name: The published 0.50.1 and its engine
+        if: matrix.variant == 'published-0.50.1'
+        run: |
+          python -m pip install --quiet --upgrade pip
+          python -m pip install --quiet "invisible-playwright==0.50.1" "playwright==$(cat scripts/playwright_pin.txt)" psutil
+          echo "FF=$(cd "$RUNNER_TEMP" && python -m invisible_playwright fetch | tail -1)" >> "$GITHUB_ENV"
+      - name: This branch's wrapper, the round's core, the engine of round 6
+        if: matrix.variant == 'round-7'
+        run: |
+          set -e
+          CORE_GIT="git+https://github.com/feder-cr/invisible_core@cc2f0cd47901fdfd8d266baf723e9fefffa46aac"
+          python -m pip install --quiet --upgrade pip
+          python -m pip install --quiet "$CORE_GIT"
+          python -m pip install --quiet "."
+          python -m pip install --quiet --force-reinstall "$CORE_GIT"
+          python -m pip install --quiet "playwright==$(cat scripts/playwright_pin.txt)" psutil
+          mkdir -p art ff
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            gh run download 43203723323 --repo feder-cr/firefox_antidetect_patch --name asset-linux-x86_64 --dir art
+            tar xzf art/firefox-*-stealth-linux-x86_64.tar.gz -C ff; EXE="$PWD/ff/firefox"
+          else
+            gh run download 43203723323 --repo feder-cr/firefox_antidetect_patch --name asset-win-x86_64 --dir art
+            python -c "import glob, zipfile; zipfile.ZipFile(glob.glob('art/firefox-*-stealth-win-x86_64.*')[0]).extractall('ff')"
+            EXE="$PWD/ff/firefox.exe"
+          fi
+          python -m invisible_core seal --binary "$EXE" --tag firefox-63-candidate -o "$PWD/seal.json"
+          echo "FF=$EXE" >> "$GITHUB_ENV"
+          echo "INVISIBLE_SEAL_FILE=$PWD/seal.json" >> "$GITHUB_ENV"
+      - name: Playwright's own Firefox (the reference)
+        run: python -m playwright install --with-deps firefox || python -m playwright install firefox
+      - name: The four arms
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          mkdir -p evidence
+          python -c "import importlib.metadata as m; print('invisible-playwright', m.version('invisible-playwright'), '| invisible-core', m.version('invisible-core'), '| playwright', m.version('playwright'))" | tee evidence/versions.txt
+          cp scripts/remote_download_repro.py "$RUNNER_TEMP/remote_download_repro.py"
+          cd "$RUNNER_TEMP"      # outside the checkout: the script imports the INSTALLED wrapper, not this branch's src/
+          set +e
+          if [ "$RUNNER_OS" = "Linux" ]; then RUN="xvfb-run -a"; else RUN=""; fi
+          $RUN python remote_download_repro.py --binary "$FF" --out "$GITHUB_WORKSPACE/evidence/result.json" 2>&1 | tee "$GITHUB_WORKSPACE/evidence/run.log"
+          {
+            echo "## ${{ matrix.variant }} on ${{ matrix.os }}"
+            echo
+            echo '```'
+            cat "$GITHUB_WORKSPACE/evidence/versions.txt"
+            grep -E "^(stock|ours-)" "$GITHUB_WORKSPACE/evidence/run.log" || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Close every Firefox left
+        if: always()
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then pkill -9 -f firefox || true; else taskkill //F //IM firefox.exe //T || true; fi
+      - name: Upload the evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: remote-download-${{ matrix.variant }}-${{ matrix.os }}-${{ github.run_id }}
+          path: evidence
+          if-no-files-found: warn
+          retention-days: 14
