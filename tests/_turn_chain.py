@@ -28,11 +28,13 @@ The names and the addresses are RFC 2606 / RFC 5737: nothing in a test can be mi
 """
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import hmac
 import json
 import socket
 import struct
+import subprocess
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -50,10 +52,31 @@ TURN_PORT = 3478
 RELAYED = ("198.51.100.7", 50000)
 #: Where the gateway's datagrams come from. A browser that sends direct comes from 127.0.0.1.
 EXIT_HOST = "127.0.0.2"
+#: The exit of a lab that a browser accepts as a real one: a documentation address (RFC 5737, TEST-NET-2, like the TURN server's) that
+#: the host holds on its loopback interface (`lab_exit_address`). A mapped address in 127/8 is thrown away by nICEr as bogus.
+LAB_EXIT = "198.51.100.9"
 MAGIC = 0x2112A442
 PASSWORD = "qwerty"
 REALM = "hermetic"
 NONCE = "6e6f6e6365"
+
+
+@contextlib.contextmanager
+def lab_exit_address(address: str = LAB_EXIT):
+    """Hold ``address`` on the loopback interface for the length of the block (Linux, root: ``ip addr add``), so that a gateway can send
+    from it and a browser reads it as a real exit. It FAILS, never skips, when it cannot (a missing root is a failure of the host the
+    suite was given): the suite that uses it is listed for Linux only."""
+    listing = subprocess.run(["ip", "-4", "-o", "addr", "show", "dev", "lo"], capture_output=True, text=True, check=False)
+    held = (" %s/" % address) in listing.stdout
+    if not held:
+        done = subprocess.run(["ip", "addr", "add", "%s/32" % address, "dev", "lo"], capture_output=True, text=True, check=False)
+        if done.returncode != 0:
+            raise RuntimeError("cannot hold %s on lo (needs root and iproute2 on Linux): %s" % (address, (done.stderr or done.stdout).strip()))
+    try:
+        yield address
+    finally:
+        if not held:
+            subprocess.run(["ip", "addr", "del", "%s/32" % address, "dev", "lo"], capture_output=True, text=True, check=False)
 
 
 # ── STUN / TURN wire ───────────────────────────────────────────────────────────
@@ -151,15 +174,17 @@ class Chain(DohGateway):
     #: What the product asks "what is my address" of: answered with the exit.
     whoami_names = ("api.ipify.org", "ifconfig.me", "icanhazip.com")
 
-    def __init__(self, *, rtt_ms: int = 130, relay_host: Optional[str] = None) -> None:
+    def __init__(self, *, rtt_ms: int = 130, relay_host: Optional[str] = None, exit_host: str = EXIT_HOST) -> None:
         # The address of this host first: on a host with no default route the test skips, with no server started yet.
         relay_host = relay_host or this_host_address()
+        #: Where the gateway's datagrams and connections leave from: what the TURN server hears and what the page must read as its srflx.
+        self.exit_ip = exit_host
         self.turn = TurnServer()
         self.doh = FakeDoh({TURN_NAME: TURN_IP, PAGE_NAME: "127.0.0.1"})
         self.page = Page(self)
-        super().__init__("chain", self.doh, udp="relay", tcp_exit=EXIT_HOST, udp_exit=EXIT_HOST,
+        super().__init__("chain", self.doh, udp="relay", tcp_exit=exit_host, udp_exit=exit_host,
                          relay_host=relay_host, rtt_ms=rtt_ms,
-                         exit_host=EXIT_HOST, tcp_data_delay=True)
+                         exit_host=exit_host, tcp_data_delay=True)
 
     def close(self) -> None:
         super().close()
@@ -179,7 +204,7 @@ class Chain(DohGateway):
         if (atyp == 1 and dport != 53 and len(payload) >= 20 and payload[:2] == b"\x00\x01"
                 and struct.unpack("!I", payload[4:8])[0] == MAGIC):
             # a STUN binding request to anyone else: answered by the gateway, with the exit as the mapped address
-            answer(host, dport, _message(0x0101, payload[8:20], _attr(0x0020, _xor_addr(EXIT_HOST, out_port))))
+            answer(host, dport, _message(0x0101, payload[8:20], _attr(0x0020, _xor_addr(self.exit_ip, out_port))))
         return None                                      # a name, port 53, anything else: dropped (and in datagram_log)
 
     # --- what a failed test says ----------------------------------------------
@@ -303,7 +328,7 @@ class Page:
                 parts = cand.split()
                 ip, port = (parts[4], int(parts[5])) if len(parts) > 5 else ("", 0)
                 seen = [(a[0], a[1]) for a in chain.turn.allocations]
-                ok = bool(seen) and (ip, port) in seen and ip == EXIT_HOST
+                ok = bool(seen) and (ip, port) in seen and ip == chain.exit_ip
                 outer.verdicts.append({"srflx": "%s:%d" % (ip, port), "seen_by_the_turn": ["%s:%d" % s for s in seen], "ok": ok})
                 body = json.dumps({"ok": ok}).encode()
                 self.send_response(200)

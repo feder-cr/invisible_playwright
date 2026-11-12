@@ -83,8 +83,10 @@ def _resolve_through_doh(chain, name, qtype=QTYPE_A, target=DOH_BOOTSTRAP):
     return payload
 
 
-def test_a_client_walks_the_whole_road_and_the_turn_server_sees_the_gateways_exit():
-    with c.Chain(rtt_ms=20, relay_host="127.0.0.1") as chain:
+@pytest.mark.parametrize("exit_host", [c.EXIT_HOST, "127.0.0.3"])
+def test_a_client_walks_the_whole_road_and_the_turn_server_sees_the_gateways_exit(exit_host):
+    """Whatever address the gateway's exit is (``exit_host``: the e2e of the chain by name gives it a documentation address held on lo)."""
+    with c.Chain(rtt_ms=20, relay_host="127.0.0.1", exit_host=exit_host) as chain:
         # the name of the TURN server is asked of the DoH, through a CONNECT: the answer is an address
         answer = _resolve_through_doh(chain, c.TURN_NAME)
         assert socket.inet_ntoa(answer[-4:]) == c.TURN_IP
@@ -117,8 +119,8 @@ def test_a_client_walks_the_whole_road_and_the_turn_server_sees_the_gateways_exi
         port = struct.unpack("!H", mapped[2:4])[0] ^ (c.MAGIC >> 16)
         ip = socket.inet_ntoa(struct.pack("!I", struct.unpack("!I", mapped[4:8])[0] ^ c.MAGIC))
         # the XOR-MAPPED-ADDRESS is the source the TURN server saw: the gateway's exit, not this client
-        assert ip == c.EXIT_HOST and (ip, port) in [(a[0], a[1]) for a in chain.turn.allocations]
-        assert {s[0] for s in chain.turn.seen} == {c.EXIT_HOST}
+        assert ip == exit_host and (ip, port) in [(a[0], a[1]) for a in chain.turn.allocations]
+        assert {s[0] for s in chain.turn.seen} == {exit_host}
         # nothing was carried by name or to port 53: the only datagrams are the two Allocates, by address
         assert [(h, p, a) for h, p, a, _t in chain.datagram_log] == [(c.TURN_IP, c.TURN_PORT, 1)] * 2
         assert chain.refused == []

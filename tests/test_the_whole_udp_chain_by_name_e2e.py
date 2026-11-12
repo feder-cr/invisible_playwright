@@ -37,21 +37,16 @@ from _udp_line import declared_udp, egress_by_proxy, measure_servers
 pytestmark = pytest.mark.e2e
 
 #: Loopback goes through the proxy too (as in test_doh_through_the_proxy_e2e.py), so the road of the page is observable.
-#:
-#: ⛔ `media.peerconnection.ice.loopback`: the gateway's datagrams leave from 127.0.0.2 (so that a TURN server hearing 127.0.0.1 proves a
-#: browser that went around it), hence the TURN server tells the browser, in the XOR-MAPPED-ADDRESS of its answer, that its address is
-#: 127.0.0.2. A retail Firefox throws that answer away as "bogus" (a loopback mapped address, `nr_stun_transport_addr_check` in
-#: stun_client_ctx.cpp, unless the ICE context allows loopback: turn_client_ctx.cpp, flag set by this pref in nricectx.cpp): it keeps
-#: retransmitting the same Allocate and never gathers (measured on the giro 3 binary: the gateway delivered the 401 and then the success
-#: within 5 ms, the browser read both from the relay's socket and retransmitted the Allocate 5 times in 2 s; the same chain with the pref
-#: passes at 130 ms). It is the lab's address, not a behaviour of the product: on the real network the mapped address is the exit's.
-PREFS = {"network.proxy.allow_hijacking_localhost": True, "network.proxy.no_proxies_on": "",
-         "media.peerconnection.ice.loopback": True}
+PREFS = {"network.proxy.allow_hijacking_localhost": True, "network.proxy.no_proxies_on": ""}
 
 
 @pytest.fixture
 def gateway(monkeypatch):
-    with chain_mod.Chain(rtt_ms=130) as chain:
+    # ⛔ THE EXIT OF THE LAB IS NOT A LOOPBACK ADDRESS. The TURN server tells the browser, in the XOR-MAPPED-ADDRESS of its answer, the
+    # address it heard the Allocate from: the gateway's exit. nICEr throws away an answer whose mapped address is loopback as "bogus"
+    # (stun_client_ctx.cpp nr_stun_transport_addr_check, unless the pref `media.peerconnection.ice.loopback` is on, which it is not in a
+    # product), so the exit is a documentation address held on `lo` (root, Linux: the suite of this file is listed for Linux only).
+    with chain_mod.lab_exit_address() as exit_ip, chain_mod.Chain(rtt_ms=130, exit_host=exit_ip) as chain:
         # The probe of the core that asks for the TCP exit goes nowhere (the world has no network but the gateway): it is told
         # the exit of the chain, the address its datagrams leave from. The core's UDP measurement that follows is NOT replaced:
         # it asks the chain's relay for a STUN Binding for real and compares what comes back with that exit, so the road
@@ -83,8 +78,17 @@ def test_a_turn_srflx_by_name_arrives_through_the_relay_before_the_tick(gateway,
             page.wait_for_function("window.__done === true", timeout=9000)
         except Exception:   # noqa: BLE001
             pass
+        try:
+            page.wait_for_function("window.__result.candidates.some(c => c.indexOf(' typ relay ') >= 0)", timeout=3000)
+        except Exception:   # noqa: BLE001
+            pass
         result = page.evaluate("window.__result")
     declared = declared_udp(gateway.proxy, measure_servers(gateway))
     assert declared == "coherent", "the core did not measure the chain's UDP coherent (%s): the engine would not use the relay" % declared + gateway.explain(result)
     ok = result.get("status") == "DONE" and gateway.page.verdicts and gateway.page.verdicts[-1]["ok"]
     assert ok, "the page did not get a server-reflexive candidate that the TURN server saw, before its tick of 2 s:" + gateway.explain(result)
+    # what the PAGE reads: a server-reflexive candidate that is the gateway's exit, and the relay of the TURN server it asked
+    srflx = (result.get("srflx") or "").split()
+    assert len(srflx) > 5 and srflx[4] == gateway.exit_ip, "the srflx of the page is not the exit of the gateway %s: %r" % (gateway.exit_ip, result.get("srflx"))
+    relays = [c.split() for c in (result.get("candidates") or []) if " typ relay " in c]
+    assert relays and (relays[0][4], int(relays[0][5])) == chain_mod.RELAYED, "the page has no relay candidate of the TURN server: %r" % (relays,) + gateway.explain(result)
