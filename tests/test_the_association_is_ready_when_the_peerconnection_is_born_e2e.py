@@ -53,7 +53,8 @@ def test_the_first_datagram_does_not_wait_for_a_handshake(local_https_page, monk
         # ⛔ THE SESSION'S UDP HAS TO BE DECLARED COHERENT, or the engine treats the proxy as a router that drops UDP (no association is
         # asked, no datagram leaves) - the red of the giro 3 gate. The core declares `coherent` when the UDP probe's mapped address IS
         # the TCP exit it discovered; a hermetic test gives it the gateway's TCP exit as every e2e of the line does (the probe that
-        # follows still runs through the relay, for real). With a fixed time zone the core does not discover the exit at all.
+        # follows still runs through the relay, for real). The hermetic world has no network but the gateway, so the core's own discovery of the
+        # exit (third-party echo services) fails and the verdict would be `unmeasured`.
         monkeypatch.setattr(_geo, "discover_egress_ip", egress_by_proxy(gateway))
         prefs = {"network.proxy.allow_hijacking_localhost": True, "network.proxy.no_proxies_on": ""}
         with _launch(binary_path=binary, proxy=gateway.proxy, extra_prefs=prefs, seed=7) as browser:
