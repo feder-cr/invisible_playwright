@@ -199,6 +199,7 @@ def build_prefs(
     show_cursor: Optional[bool] = None,
     session_seed: Optional[int] = None,
     udp_stun_servers: Optional[Any] = None,
+    preload_newtab: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """Fingerprint prefs plus the humanize toggle, which is always set explicitly.
 
@@ -246,6 +247,9 @@ def build_prefs(
         humanize=(_cursor_max_seconds(humanize)
                   if cursor_engine == ENGINE_BINARY else False),
         show_cursor=show_cursor,
+        # Handed to the core only when asked: a core that does not know the option is never called with it,
+        # so a caller who does not use it cannot meet a TypeError from a pairing with an older core.
+        **({} if preload_newtab is None else {"preload_newtab": preload_newtab}),
     ).prefs
     # ⛔ THE TYPING SEED RIDES IN THE PREFS AND NEVER REACHES THE PROFILE.
     #
@@ -523,6 +527,7 @@ class CommonLaunch:
             show_cursor=self._show_cursor,
             session_seed=self.seed,
             udp_stun_servers=self._udp_stun_servers,
+            preload_newtab=self._preload_newtab,
         )
 
     def _arm_cursor_engine(self, owner: Any) -> None:

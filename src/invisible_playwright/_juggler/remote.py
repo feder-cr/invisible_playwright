@@ -769,6 +769,7 @@ def launch_server(host: str = DEFAULT_HOST, port: int = 0, *,
                   humanize: Any = False,
                   motion_budget_s: Optional[float] = None,
                   show_cursor: Optional[bool] = None,
+                  preload_newtab: Optional[bool] = None,
                   locale: str = "auto",
                   timezone: str = "",
                   extra_args: Optional[List[str]] = None,
@@ -823,7 +824,8 @@ def launch_server(host: str = DEFAULT_HOST, port: int = 0, *,
         seed, pin=pin, headless=headless, proxy=proxy, extra_args=extra_args,
         humanize=humanize, locale=locale, timezone=timezone,
         extra_prefs=extra_prefs, binary_path=binary_path,
-        show_cursor=show_cursor, udp_stun_servers=udp_stun_servers)
+        show_cursor=show_cursor, udp_stun_servers=udp_stun_servers,
+        preload_newtab=preload_newtab)
     notes: List[str] = []
     server = _SharedServer()
     endpoint: Optional[RemoteEndpoint] = None

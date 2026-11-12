@@ -38,6 +38,7 @@ class InvisiblePlaywright(_session.CommonLaunch):
         prep_recaptcha: bool = False,
         show_cursor: Optional[bool] = None,
         udp_stun_servers: Optional[Sequence[str]] = None,
+        preload_newtab: Optional[bool] = None,
     ) -> None:
         # See sync launcher: `zoom.stealth.fpp.hw_seed` is int32_t - clamp.
         # One place decides the seed, and a profile directory remembers it
@@ -62,6 +63,8 @@ class InvisiblePlaywright(_session.CommonLaunch):
         # it.
         self._show_cursor = (None if show_cursor is None
                              else bool(show_cursor))
+        self._preload_newtab = (None if preload_newtab is None
+                                else bool(preload_newtab))
         # What the caller ASKED for: "auto" or a tag. The decision is the
         # core's, made in __enter__ from the egress (prepare_session_geo),
         # and there is none before it.

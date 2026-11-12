@@ -102,6 +102,7 @@ class InvisiblePlaywright(_session.CommonLaunch):
         prep_recaptcha: bool = False,
         show_cursor: Optional[bool] = None,
         udp_stun_servers: Optional[Sequence[str]] = None,
+        preload_newtab: Optional[bool] = None,
     ) -> None:
         """
         Args:
@@ -158,6 +159,13 @@ class InvisiblePlaywright(_session.CommonLaunch):
                 page = ctx.new_page()``. First run creates the dir;
                 subsequent runs reuse it. Pair with a stable ``seed=`` to
                 also pin the fingerprint identity across runs.
+            preload_newtab: The New Tab page a retail Firefox keeps preloaded in a
+                process of its own (about 200 MB, and a Mozilla site's process
+                beside it). Default ``None``: the core writes nothing and the
+                retail's behaviour stays. ``False`` is a declaration of yours:
+                the core writes ``browser.newtab.preload`` false and neither
+                process is born. ``True`` says the retail's value aloud. A
+                ``browser.newtab.preload`` in ``extra_prefs`` wins over it.
             show_cursor: Draw the pointer where the automation is, so a
                 person watching the screen can follow the session - the
                 Windows arrow, with the package logo's green halo around it.
@@ -210,6 +218,8 @@ class InvisiblePlaywright(_session.CommonLaunch):
         # it.
         self._show_cursor = (None if show_cursor is None
                              else bool(show_cursor))
+        self._preload_newtab = (None if preload_newtab is None
+                                else bool(preload_newtab))
         # What the caller ASKED for: "auto" or a tag. The decision is the
         # core's, made in __enter__ from the egress (prepare_session_geo),
         # and there is none before it.
