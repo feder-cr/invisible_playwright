@@ -4797,21 +4797,47 @@ class BrowserDispatcher(Dispatcher):
         # middle of the replay of its first events, and the replay then went on with older ones (the initial about:blank, the
         # `navigationStarted` of the same navigation) - the lifecycle ended at about:blank, or with the navigation pending again. The
         # reader takes the gate for each event of a session; the page takes it for the whole of "subscribe, then replay" (`events_gate`).
-        self._events_gate = threading.RLock()
+        # The gate belongs to the CONNECTION (one wrapper, one gate, whoever builds a dispatcher over it).
+        gate = getattr(conn, "_events_gate", None)
+        if gate is None:
+            gate = threading.RLock()
+            try:
+                conn._events_gate = gate
+            except Exception:
+                pass
+        self._events_gate = gate
         self._gate_timeouts = 0
         if not getattr(conn, "_events_gate_installed", False):
-            raw_dispatch = conn.dispatch_event
+            #: The delivery the reader would have made: an override on the instance if there is one, else the class's method looked up
+            #: at each event (a patch of the class made after this dispatcher was built still applies).
+            own = conn.__dict__.get("dispatch_event")
+            stuck = {"until": 0.0}
+            owner = self
+
+            def raw_dispatch(method, params, session):
+                if own is not None:
+                    return own(method, params, session)
+                return type(conn).dispatch_event(conn, method, params, session)
 
             def gated_dispatch(method, params, session):
                 if not session:
                     return raw_dispatch(method, params, session)
-                if self._events_gate.acquire(timeout=self.GATE_WAIT_S):
+                waiting = time.monotonic() >= stuck["until"]
+                got = gate.acquire(timeout=owner.GATE_WAIT_S) if waiting else gate.acquire(blocking=False)
+                if got:
                     try:
                         return raw_dispatch(method, params, session)
                     finally:
-                        self._events_gate.release()
-                # whoever holds the gate does not let go: the event is delivered all the same (the old, unordered way) and counted
-                self._gate_timeouts += 1
+                        gate.release()
+                # ⛔ WHOEVER HOLDS THE GATE DOES NOT LET GO: the event is delivered all the same (the old, unordered way), and the reader does
+                # not wait again for a while (the bound is on the hold, not on each event). Said once per hold, where the connection records
+                # what its handlers failed at.
+                if waiting:
+                    stuck["until"] = time.monotonic() + 30.0
+                    owner._gate_timeouts += 1
+                    errors = getattr(conn, "handler_errors", None)
+                    if isinstance(errors, list) and len(errors) < 32:
+                        errors.append("events gate: held more than %.1fs, events delivered ungated for 30s" % owner.GATE_WAIT_S)
                 return raw_dispatch(method, params, session)
             conn.dispatch_event = gated_dispatch
             try:
