@@ -2560,6 +2560,14 @@ class RouteDispatcher(Dispatcher):
 
 
 # ── page ────────────────────────────────────────────────────────────────────
+def _target_is_gone(error: BaseException) -> bool:
+    """Whether a failed command failed because the target or its session no longer exists (the engine closed the tab under it)."""
+    if isinstance(error, juggler.TargetClosedError):
+        return True
+    text = str(error).lower()
+    return "cannot find session" in text or "target closed" in text or "session closed" in text
+
+
 class PageDispatcher(Dispatcher):
     TYPE = "Page"
     #: No hand until `_build` gives it one: a page without it acts as the
@@ -2692,7 +2700,16 @@ class PageDispatcher(Dispatcher):
     def _build(self, server, context: "BrowserContextDispatcher",
                session: str, conn, opener: Optional["PageDispatcher"]) -> None:
         """The rest of the construction, under `__init__`'s cleanup."""
-        self.injected.install()
+        # ⛔ A TARGET THAT GOES AWAY WHILE ITS PAGE IS BEING INITIALIZED (a download's empty tab, closed by the engine within milliseconds)
+        # makes the engine answer "cannot find session" to the command. That is the detach-before-ready case again, caught a step later:
+        # the page is still built, flagged gone, and announced and closed as Playwright's is - not discarded with a warning.
+        self.gone_while_building = False
+        try:
+            self.injected.install()
+        except Exception as failure:
+            if not _target_is_gone(failure):
+                raise
+            self.gone_while_building = True
         self.actions = context.browser.actions_for_page(
             session, self.lifecycle, self.injected, self.number)
         #: The viewport as the client was told it (the initializer's, then
@@ -2747,7 +2764,11 @@ class PageDispatcher(Dispatcher):
         #: to answer after a reader's pause, see `dialogs.plan_answer_ms`.
         self._dialogs_open: Dict[str, Any] = {}
         self._dialogs_seen = 0
-        self.main_frame_id = self.lifecycle.wait_for_main_frame(timeout=20.0)
+        if self.gone_while_building and self.lifecycle.main_frame is None:
+            # gone before it even announced a frame: a frame of its own name keeps the object whole until it is closed
+            self.main_frame_id = "gone-" + str(self.target_id)
+        else:
+            self.main_frame_id = self.lifecycle.wait_for_main_frame(timeout=20.0)
         # ⛔ The Frame is created BEFORE the Page and adopted after: the Page
         # initializer has to name a mainFrame the client can already resolve.
         # ⛔ WITH WHAT THE LIFECYCLE ALREADY KNOWS OF IT, as every other frame is made (`frame_for`): the initializer is a snapshot, and
@@ -4821,7 +4842,7 @@ class BrowserDispatcher(Dispatcher):
                 # ⛔ A DETACH THAT CAME WHILE THE PAGE WAS BEING BUILT is recorded as early and went by `_handle_detach` with nobody to tell
                 # (the page was not in `_building` yet): waiting for a ready now would wait for ever for a tab that is already gone (a
                 # download's empty tab closes within milliseconds, and a loaded machine builds slowly).
-                detached_already = target_id in self._detached_early
+                detached_already = target_id in self._detached_early or page.gone_while_building
             gone = False
             try:
                 if detached_already:

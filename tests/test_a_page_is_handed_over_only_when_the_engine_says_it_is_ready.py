@@ -401,3 +401,42 @@ def test_a_popup_whose_target_goes_away_while_its_page_is_being_built_is_announc
     while "page" not in announced and time.monotonic() < deadline:
         time.sleep(0.01)
     assert "page" in announced, "the popup that went away while its page was being built was never announced"
+
+
+@pytest.mark.parametrize("command", ["Page.setInitScripts", "Browser.getInfo"])
+def test_a_command_of_the_adoption_that_finds_the_session_gone_announces_and_closes_the_popup(late_browser, command, monkeypatch):
+    """The tab goes away WHILE the adoption initializes it: the engine answers 'cannot find session' to a command of the adoption. Like a
+    detach before the ready, that ends in the page announced and closed (Playwright's does), never in a discard with a warning: the
+    download of a link into a new tab was lost one time in a hundred (independent run, quiet machine)."""
+    import warnings
+    from invisible_core.juggler.connection import ProtocolError
+
+    server, conn = late_browser.server, late_browser.conn
+    context = _new_context(late_browser)
+    conn.released = {"s1"}
+    server.handle({"guid": context.guid, "method": "newPage", "params": {"pageNumber": 1}})
+    opener_target = next(iter(conn.sessions))
+    original_send = conn.send
+
+    def send(method, params=None, session=None, timeout=30):
+        if method == command and session not in (None, "s1"):
+            raise ProtocolError('%s: ERROR: cannot find session with id "%s"' % (method, session))
+        return original_send(method, params, session, timeout)
+
+    monkeypatch.setattr(conn, "send", send)
+    announced = []
+    original = context.emit
+    context.emit = lambda event, params=None: (announced.append(event) if event == "page" else None, original(event, params))[1]
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        target, session = conn.popup_born(opener_target, context.context_id, 1)
+        if command == "Browser.getInfo":
+            conn.say_ready(session)       # this one is asked once the page is ready
+        else:
+            conn.dispatch_event("Browser.detachedFromTarget", {"targetId": target, "sessionId": session}, None)
+        deadline = time.monotonic() + 5
+        while "page" not in announced and time.monotonic() < deadline:
+            time.sleep(0.01)
+        time.sleep(0.2)
+    assert "page" in announced, "the popup whose session was gone was discarded instead of announced"
+    assert not [w for w in caught if "adoption" in str(w.message)], [str(w.message) for w in caught]
