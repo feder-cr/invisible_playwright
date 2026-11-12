@@ -29,16 +29,36 @@ def install_route(context):
 
 
 class Tracer:
-    """The requests the client has heard of and not yet heard the end of (kept for the report; never compared)."""
+    """The requests the client has heard of and not yet heard the end of (kept for the report; never compared). With
+    `events` (the runner's --trace) it also keeps every request event the client reports, per step, for the request-type check."""
 
-    def __init__(self, context):
+    def __init__(self, context, events=False):
         self.open = {}
-        context.on("request", lambda r: self.open.__setitem__(r, "%s %s" % (r.resource_type, r.url.split("/", 3)[-1][:70])))
-        context.on("requestfinished", lambda r: self.open.pop(r, None))
-        context.on("requestfailed", lambda r: self.open.pop(r, None))
+        self.events = [] if events else None
+        self.t0 = time.monotonic()
+        context.on("request", self._started)
+        context.on("requestfinished", lambda r: self._ended(r, "finished"))
+        context.on("requestfailed", lambda r: self._ended(r, "failed"))
+
+    def _started(self, r):
+        self.open[r] = "%s %s" % (r.resource_type, r.url.split("/", 3)[-1][:70])
+        self._event(r, "request")
+
+    def _ended(self, r, kind):
+        self.open.pop(r, None)
+        self._event(r, kind)
+
+    def _event(self, r, kind):
+        if self.events is not None:
+            self.events.append({"ev": kind, "type": r.resource_type, "method": r.method,
+                                "url": "/" + r.url.split("/", 3)[-1][:90], "t": round(time.monotonic() - self.t0, 3)})
 
     def snapshot(self):
         return sorted(self.open.values())[:12]
+
+    def take_events(self):
+        taken, self.events = self.events, []
+        return taken
 
 
 class Journey:
@@ -325,6 +345,9 @@ def run_round(j, tracer, round_no, idle_timeout_ms):
         except Exception:
             rec["idle"] = False
         rec["open_at_idle_end"] = tracer.snapshot()      # for the report, not compared
+        if tracer.events is not None:
+            rec["client_events"] = tracer.take_events()
+            rec["server_events"] = [e for e in journey_site.STATE.events if e["step"] == n]
         snapshot(j, pg, rec)
         rec["pages"] = len(j.ctx.pages)
         rec["extra"] = dict(j.extra)
@@ -339,8 +362,9 @@ def run_round(j, tracer, round_no, idle_timeout_ms):
     return out
 
 
-def drive(browser, origin_a, origin_o, rounds=1, idle_timeout_ms=15000):
-    """`rounds` walks, each in a fresh context and a fresh page. Returns the step records."""
+def drive(browser, origin_a, origin_o, rounds=1, idle_timeout_ms=15000, trace=False):
+    """`rounds` walks, each in a fresh context and a fresh page. Returns the step records. `trace`: keep, per step, the request
+    events the client reported and the hits the server saw (for the report; never compared)."""
     records = []
     for r in range(1, rounds + 1):
         context = browser.new_context()
@@ -348,7 +372,7 @@ def drive(browser, origin_a, origin_o, rounds=1, idle_timeout_ms=15000):
             context.set_default_timeout(TIMEOUT_MS)
             context.set_default_navigation_timeout(TIMEOUT_MS)
             install_route(context)
-            tracer = Tracer(context)
+            tracer = Tracer(context, events=trace)
             page = context.new_page()
             records += run_round(Journey(context, page, origin_a, origin_o), tracer, r, idle_timeout_ms)
         finally:

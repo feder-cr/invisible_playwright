@@ -3,7 +3,7 @@
 same client, same job. Red when our engine does not idle where stock does, and red as a broken control when stock does not
 do what tests/fakeweb/pages.json declares.
 
-    python scripts/run_fakeweb.py --binary PATH [--profile p2|p4] [--patterns a,b] [--repetitions N] [--out FILE]
+    python scripts/run_fakeweb.py --binary PATH [--profile p2|p4] [--patterns a,b] [--repetitions N] [--trace] [--out FILE]
 
 Profile P2: one reused page loads hard pages (tests/fakeweb/sites.py, two origins on 127.0.0.1, every response finite);
 red when our engine does not idle where stock does. Profile P4: a user journey of 17 steps over a small multi-page site
@@ -29,7 +29,7 @@ HARD = ["leaving_beacons_subframe", "leaving_beacons", "cancel_among_beacons"]
 
 def run_p4(args, sync_playwright, not_idle_steps):
     rounds = args.repetitions or 1
-    kw = {"idle_timeout_ms": args.idle_timeout_ms or 15000}
+    kw = {"idle_timeout_ms": args.idle_timeout_ms or 15000, "trace": args.trace}
     origin_a, origin_o, stop = journey_site.start((0, 0))
     try:     # stock first, then ours: the same invocation, one browser at a time
         stock = [] if args.no_stock else profile_p4.run_on_stock(sync_playwright, origin_a, origin_o, rounds, **kw)
@@ -68,6 +68,8 @@ def main(argv=None):
     ap.add_argument("--repetitions", type=int, default=None, help="p2: loads per page (default 10); p4: walks (default 1)")
     ap.add_argument("--idle-timeout-ms", type=int, default=None, help="default 10000 (p2) / 15000 (p4)")
     ap.add_argument("--no-stock", action="store_true", help="candidate only (the verdict then reads pages.json alone)")
+    ap.add_argument("--trace", action="store_true",
+                    help="p4: keep per step the request events the client reported and the hits the server saw (report only)")
     ap.add_argument("--out", default=None)
     args = ap.parse_args(argv)
 

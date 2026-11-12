@@ -398,7 +398,7 @@ class State:
             cls = "page"
         with self.lock:
             self.events.append({"t": round(time.time() - self.t0, 3), "step": self.step, "origin": "AO"[idx],
-                                "method": method, "path": path, "id": ident, "n": (q.get("n") or [""])[0],
+                                "method": method, "path": path, "id": ident, "n": (q.get("n") or [""])[0], "src": (q.get("src") or [""])[0],
                                 "class": cls})
 
 
