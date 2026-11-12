@@ -38,11 +38,11 @@ env:
   GH_TOKEN: ${{ github.token }}
   ENGINE_RUN_ID: ${{ inputs.engine_run_id || '43164943499' }}
   ENGINE_REPO: feder-cr/firefox_antidetect_patch
-  CORE_REF: ${{ inputs.core_ref || 'candidate/core-63-r3' }}
+  CORE_REF: ${{ inputs.core_ref || 'candidate/core-63-r5' }}
   # The wrapper that drives this engine. The tests come from this branch; the package under them comes from the branch the
   # engine's run was judged with: the first run of this workflow used this branch's own wrapper, which is one release
   # older than the core, and its launch failed on a method the newer core no longer has.
-  WRAPPER_REF: udp/wrapper-r3
+  WRAPPER_REF: udp/wrapper-r5
   SEAL_TAG: ${{ inputs.seal_tag || 'firefox-63-candidate' }}
   # The core's own switches: no import-time repair of the core to the wrapper's pin, a pin mismatch only warns. The core under
   # test is the one the engine was built with, whatever this wrapper pins.
