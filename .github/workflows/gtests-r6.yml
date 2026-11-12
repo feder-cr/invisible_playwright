@@ -1,0 +1,122 @@
+name: gtests-r6 (two suites of the engine, on the gtest binaries of a series run)
+
+# A hunt, not a gate. The gtest binaries a RUN of the series repository built (its `gtest-bin-<leg>` artifact) and the two suites the default
+# filter of its release.yml does not name: StealthNrSocketBirth.* and StealthPcUdpProxyKinds.*. They run the way the series runs a leg's gtests
+# (platform/ci/src/scripts/ci/gtest_run.py: one process per suite, red if nothing ran or a named suite is missing), on a Linux and a Windows runner
+# of GitHub. The series repository is public, so `gh run download` needs no secret. To run it on another run, change ENGINE_RUN_ID and push: the
+# workflow starts on a push that touches this file.
+
+on:
+  push:
+    paths:
+      - '.github/workflows/gtests-r6.yml'
+  workflow_dispatch:
+    inputs:
+      engine_run_id:
+        description: 'run of feder-cr/firefox_antidetect_patch whose gtest-bin-* artifacts are the engine'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  GITHUB_TOKEN: ${{ github.token }}
+  GH_TOKEN: ${{ github.token }}
+  ENGINE_RUN_ID: ${{ inputs.engine_run_id || '43203723323' }}
+  ENGINE_REPO: feder-cr/firefox_antidetect_patch
+  # The commit of that run, for the script that runs the gtests (the same file the series uses).
+  SERIES_SHA: 2a25f578b4677b2953656947217658970d4d57f2
+  GTEST_FILTER_INPUT: StealthNrSocketBirth.*:StealthPcUdpProxyKinds.*
+
+jobs:
+  linux:
+    name: gtests (ubuntu-24.04, engine of run ${{ inputs.engine_run_id || '43203723323' }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: A display and gdb
+        run: |
+          printf '%s\n' 'Acquire::http::Timeout "60";' 'Acquire::https::Timeout "60";' 'Acquire::Retries "5";' | sudo tee /etc/apt/apt.conf.d/80-ci-network >/dev/null
+          sudo apt-get update
+          sudo apt-get install -y xvfb gdb
+      - name: The gtest binaries of the run, and the script that runs them
+        run: |
+          gh run download "$ENGINE_RUN_ID" --repo "$ENGINE_REPO" --name gtest-bin-linux-x86_64 --dir gtest-run
+          tar -C gtest-run -xf gtest-run/gtest-bin.tar
+          curl -fsSL "https://raw.githubusercontent.com/${ENGINE_REPO}/${SERIES_SHA}/platform/ci/src/scripts/ci/gtest_run.py" -o gtest_run.py
+          ls gtest-run | head
+      - name: The two suites
+        run: |
+          mkdir -p gtest-cores gtest-reports
+          sudo sysctl -q -w kernel.core_pattern="$PWD/gtest-cores/core.%p"
+          set +e
+          xvfb-run -a python3 gtest_run.py --root gtest-run --reports gtest-reports --cores gtest-cores 2>&1 | tee gtest.log
+          echo "GTEST_EXIT=${PIPESTATUS[0]}" >> "$GITHUB_ENV"
+      - name: What the suites said
+        if: always()
+        run: |
+          echo "== exit: ${GTEST_EXIT:-unknown}"
+          grep -E "^\[ (RUN|       OK|  FAILED|  PASSED|  SKIPPED) \]|#12:|^Ran |: exited|ERROR" gtest.log || true
+          echo "== failure messages"
+          grep -B2 -A12 "Failure" gtest.log | head -150 || true
+      - name: Upload the log and the reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: gtests-r6-linux-${{ github.run_id }}
+          path: |
+            gtest.log
+            gtest-reports/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Verdict
+        if: always()
+        run: |
+          if [ "${GTEST_EXIT:-1}" != "0" ]; then echo "gtest_run.py exited ${GTEST_EXIT:-unknown}: red"; exit 1; fi
+
+  windows:
+    name: gtests (windows-2022, engine of run ${{ inputs.engine_run_id || '43203723323' }})
+    runs-on: windows-2022
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: The gtest binaries of the run, and the script that runs them
+        run: |
+          gh run download "$ENGINE_RUN_ID" --repo "$ENGINE_REPO" --name gtest-bin-win-x86_64 --dir gtest-run
+          ( cd gtest-run && tar -xf gtest-bin.tar )
+          curl -fsSL "https://raw.githubusercontent.com/${ENGINE_REPO}/${SERIES_SHA}/platform/ci/src/scripts/ci/gtest_run.py" -o gtest_run.py
+          ls gtest-run | head
+      - name: The two suites
+        run: |
+          mkdir -p gtest-reports
+          set +e
+          python gtest_run.py --root gtest-run --reports gtest-reports 2>&1 | tee gtest.log
+          echo "GTEST_EXIT=${PIPESTATUS[0]}" >> "$GITHUB_ENV"
+      - name: What the suites said
+        if: always()
+        run: |
+          echo "== exit: ${GTEST_EXIT:-unknown}"
+          grep -E "^\[ (RUN|       OK|  FAILED|  PASSED|  SKIPPED) \]|#12:|^Ran |: exited|ERROR" gtest.log || true
+          echo "== failure messages"
+          grep -B2 -A12 "Failure" gtest.log | head -150 || true
+      - name: Upload the log and the reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: gtests-r6-windows-${{ github.run_id }}
+          path: |
+            gtest.log
+            gtest-reports/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Verdict
+        if: always()
+        run: |
+          if [ "${GTEST_EXIT:-1}" != "0" ]; then echo "gtest_run.py exited ${GTEST_EXIT:-unknown}: red"; exit 1; fi
