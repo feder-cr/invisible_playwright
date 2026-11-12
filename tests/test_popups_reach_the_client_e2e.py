@@ -15,12 +15,19 @@ opener (`page.opener()`). Stock Firefox (Playwright 1.62) gives an opener in all
 asserted for all four; if the engine ever returns None for a noopener kind the test says so.
 
 One extra case proves that the other-site target is really in another process, so that the matrix cannot quietly become a
-same-site test: opening it adds a content process below the test; the same-site target does not.
+same-site test: opening it adds a content process below the test; the same-site target does not. That case has a browser
+of its own that starts no content process by itself (`QUIET_PREFS`, test-only): a browser as shipped preallocates content
+processes and refills its pool whenever it gets to it, and its preloaded New Tab page starts a process of its own and, in
+some countries, one more for a Mozilla site, about a second later and with any page. Counted between two reads, any of
+those was taken for the popup's doing. Where the system names a process by its site (Linux, `NAMED_BY_SITE`), the case
+also asks by name: the other-site popup's process is the process of `http://localhost`. It runs on Windows too: there is
+no skip, so the count stays the same on every system.
 """
 from __future__ import annotations
 
 import importlib
 import os
+import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -28,9 +35,15 @@ from pathlib import Path
 
 import pytest
 
+from _processes import NAMED_BY_SITE, site_pids
+
 pytestmark = pytest.mark.e2e
 
 OWN, OTHER = "127.0.0.1", "localhost"
+
+#: The browser of the process case starts no content process by itself: no pool of preallocated processes, and no
+#: preloaded New Tab page (which starts a process of its own and, in some countries, one for a Mozilla site). Test-only.
+QUIET_PREFS = dict(NAMED_BY_SITE, **{"dom.ipc.processPrelaunch.fission.number": 0, "browser.newtab.preload": False})
 KINDS = {
     "a-blank": "a1",
     "a-noopener": "a2",
@@ -72,6 +85,35 @@ def site():
     yield srv.server_address[1]
     srv.shutdown()
     srv.server_close()
+
+
+@pytest.fixture(params=["in-process", "stock-client"])
+def quiet_browser(request, firefox_binary):
+    """A browser of its own for the process case, on each transport, that starts no content process by itself."""
+    if request.param == "in-process":
+        from invisible_playwright import InvisiblePlaywright
+
+        with InvisiblePlaywright(binary_path=firefox_binary, headless=True, extra_prefs=QUIET_PREFS) as b:
+            yield b
+        return
+    try:
+        sync_playwright = importlib.import_module("playwright.sync_api").sync_playwright
+    except ImportError as exc:
+        pytest.fail("the stock Playwright client is missing (%s): install the wrapper with its dev extra" % exc,
+                    pytrace=False)
+    from invisible_playwright._juggler.remote import launch_server
+
+    server = launch_server(headless=True, binary_path=firefox_binary, locale="en-US", timezone="Europe/Rome",
+                           extra_prefs=QUIET_PREFS)
+    try:
+        with sync_playwright() as p:
+            b = p.firefox.connect(server.ws_endpoint)
+            try:
+                yield b
+            finally:
+                b.close()
+    finally:
+        server.close()
 
 
 def _route(context):
@@ -135,10 +177,12 @@ def _quiet(engine_dir, seconds=3.0, limit=30.0):
     return last
 
 
-def test_the_other_site_popup_runs_in_another_process(browser, firefox_binary, site):
+def test_the_other_site_popup_runs_in_another_process(quiet_browser, firefox_binary, site):
     """The control of the matrix above: the popup to `localhost` adds a content process, the one to `127.0.0.1` does not."""
+    import psutil
+
     engine_dir = str(Path(firefox_binary).resolve().parent)
-    context = browser.new_context()
+    context = quiet_browser.new_context()
     page = context.new_page()
     page.goto("http://%s:%d/main" % (OWN, site))
     before = _quiet(engine_dir)
@@ -156,3 +200,7 @@ def test_the_other_site_popup_runs_in_another_process(browser, firefox_binary, s
     assert not (same - before), "a popup to the opener's own site started a process: %s" % sorted(same - before)
     assert len(other - base) >= 1, "the other-site popup added no content process: %s -> %s" % (
         sorted(base), sorted(other))
+    if sys.platform.startswith("linux"):      # only Linux names a process by its site; elsewhere the count above is the proof
+        children = psutil.Process(os.getpid()).children(recursive=True)
+        assert site_pids(children, "http://" + OTHER, engine_dir) & (other - base), (
+            "none of the new processes is the process of %s: %s" % (OTHER, sorted(other - base)))
