@@ -22,9 +22,11 @@ LOAD_MARGIN_MS = 1500
 #: The visits of one page in one context, by kind of road. With NO proxy and the native DNS the retail is measured in loopback
 #: and is exact: h2, h3, h3 over three visits. BEHIND A PROXY the names are resolved by DoH, the browser learns the Alt-Svc
 #: from the first answer and the retail (Windows 159, DoH forced like our core, 15 sessions per condition) takes its time to
-#: move to h3: with UDP free h2/h2/h3 in 9 sessions, h2/h2/h2 in 4 and h2/h3/h3 in 2, never h3 on the first visit; so the
-#: page is visited up to ``PROXY_VISITS`` times, and every proxy road makes the same number of visits (a road where UDP is
-#: dropped reads h2 on all of them, as the retail does in 15 of 15).
+#: move to h3: with UDP free h2/h2/h3 in 9 sessions, h2/h2/h2 in 4 and h2/h3/h3 in 2 in the first runs, and h3 already on the
+#: first visit (h3, h2, h2) in 3 sessions of 15 in the third, when the DNS answer carried the HTTPS record; so the page is
+#: visited up to ``PROXY_VISITS`` times, and every proxy road makes the same number of visits (a road where UDP is dropped
+#: reads h2 on all of them, as the retail does in 15 of 15: the one outcome that repeats). The fixture's first visit is h2
+#: because it is reached by an address (no HTTPS record exists), not because the retail never reads h3 first.
 DIRECT_VISITS = 3
 PROXY_VISITS = 5
 
@@ -102,8 +104,29 @@ def expected_protocols(road: str) -> str:
         return "h2, h3, h3 over %d visits (no proxy, native DNS)" % visits
     if road == _H3_PROXY_ROAD:
         return ("h2 on the first visit, then h3 from a later visit on and h3 on every one after it, within %d visits "
-                "(retail with DoH and UDP free: h2/h2/h3 in 9 of 15, h2/h2/h2 in 4, h2/h3/h3 in 2; never h3 first)" % visits)
+                "(retail with DoH and UDP free: h2/h2/h3 in 9 of 15, h2/h2/h2 in 4, h2/h3/h3 in 2, and h3 first in 3 of 15 in the "
+                "third run when the DNS answer carries the HTTPS record; this fixture has none: h2 first)" % visits)
     return "h2 on every one of %d visits, as fast as the first (retail with UDP dropped: h2/h2/h2 in 15 of 15)" % visits
+
+
+def no_https_record(host: str, doh: Any = None) -> List[str]:
+    """What is wrong with the claim "the first visit of this fixture is h2", as sentences; an empty list when nothing is.
+
+    The retail reads h3 at the first visit when the DNS answer for the site carries the HTTPS record (type 65): the third
+    retail run did in 3 sessions of 15. The fixture reads h2 first only if no such record can reach the browser: the server
+    is reached by an ADDRESS (no name, no lookup), and the FakeDoh, when one is in the path, has never served a type 65 with
+    data (``FakeDoh.https_served``)."""
+    problems: List[str] = []
+    try:
+        ipaddress.ip_address(host.strip("[]"))
+    except ValueError:
+        problems.append("the server is reached by the name %r: its DNS answer could carry an HTTPS record, and the retail "
+                        "reads h3 at the first visit when it does" % host)
+    served = list(getattr(doh, "https_served", ())) if doh is not None else []
+    if served:
+        problems.append("the FakeDoh served an HTTPS record (type 65) for %s: the first visit may read h3, as the retail does"
+                        % sorted(set(served)))
+    return problems
 
 
 def judge_visits(road: str, protocols: Sequence[str], walls_ms: Sequence[float]) -> List[str]:
@@ -113,8 +136,9 @@ def judge_visits(road: str, protocols: Sequence[str], walls_ms: Sequence[float])
     both have :func:`visits_for` entries. The rules, from the retail:
 
     * ``direct``: exactly h2, h3, h3.
-    * ``socks5_coherent``: the first visit is h2 (behind a proxy the names are resolved by DoH and the retail never reads
-      h3 at visit 1: that is an error); every later visit is h2 or h3, but once one is h3 all the following are (h3 never goes back to h2); and at
+    * ``socks5_coherent``: the first visit is h2 (the fixture is reached by an address: no HTTPS record exists, so nothing
+      tells the browser about h3 before the first connection; the retail itself reads h3 first when the DNS answer carries
+      the record, so this is a rule of the fixture, checked with :func:`no_https_record`); every later visit is h2 or h3, but once one is h3 all the following are (h3 never goes back to h2); and at
       least one visit is h3 (it is NOT required at the second: h2/h2/h3 is the commonest retail sequence).
     * the roads where UDP is dropped: h2 on every visit, and no visit loads more than :data:`LOAD_MARGIN_MS` slower than the
       first (a fallback that waits for a timeout is a tell)."""
@@ -127,8 +151,8 @@ def judge_visits(road: str, protocols: Sequence[str], walls_ms: Sequence[float])
     if len(walls_ms) != visits:
         problems.append("%d load times for %d visits: %s" % (len(walls_ms), visits, walls_ms))
     if protocols and protocols[0] == "h3":
-        problems.append("visit 1 read h3: nothing had told the browser yet that the server speaks h3 (the retail never "
-                        "reads h3 at the first visit)")
+        problems.append("visit 1 read h3: in this fixture nothing had told the browser yet that the server speaks h3 (no "
+                        "name, no HTTPS record): something told it, or the fixture changed")
     if len(protocols) == visits:
         if road == _DIRECT_ROAD:
             if protocols != ["h2", "h3", "h3"]:

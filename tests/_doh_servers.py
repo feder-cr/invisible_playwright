@@ -68,7 +68,7 @@ DOH_PROVIDER_PREFS = {"network.trr.uri": "https://%s%s" % (DOH_HOST, DOH_PATH),
 #: Every CONNECT target the gateways hand to the FakeDoh.
 DOH_TARGETS = frozenset({(DOH_BOOTSTRAP, DOH_PORT), (DOH_HOST, DOH_PORT)})
 
-QTYPE_A, QTYPE_AAAA = 1, 28
+QTYPE_A, QTYPE_AAAA, QTYPE_HTTPS = 1, 28, 65
 RCODE_OK, RCODE_SERVFAIL, RCODE_NXDOMAIN, RCODE_REFUSED = 0, 2, 3, 5
 DOH_TTL = 30
 
@@ -240,6 +240,10 @@ class FakeDoh:
         self._failed: Set[Tuple[str, int]] = set()
         #: Every query, in order.
         self.queries: List[DohQuery] = []
+        #: The names for which this server answered a type 65 (HTTPS) query WITH DATA. It never does: the retail Firefox reads
+        #: h3 at its first visit when the DNS answer carries that record, so a test that expects h2 first (the h3 e2e) asserts
+        #: that this stays empty, and says so if the server learns to serve it.
+        self.https_served: List[str] = []
         #: Every TLS connection served: (via, negotiated protocol).
         self.connections: List[Tuple[str, str]] = []
         #: The TLS handshakes that did not complete (a client that refused the certificate): (via, error).
@@ -396,7 +400,11 @@ class FakeDoh:
             return _Reply(503, b"", "text/plain", delay, False, record)
         if kind == "servfail":
             return _Reply(200, build_response(query, RCODE_SERVFAIL), "application/dns-message", delay, False, record)
-        return _Reply(200, answer_for(names, query), "application/dns-message", delay, False, record)
+        message = answer_for(names, query)
+        if query.qtype == QTYPE_HTTPS and struct.unpack("!H", message[6:8])[0] > 0:
+            with self._lock:
+                self.https_served.append(query.name)
+        return _Reply(200, message, "application/dns-message", delay, False, record)
 
     def _serve_h1(self, tls: ssl.SSLSocket, via: str) -> None:
         buffer = b""
@@ -716,7 +724,7 @@ def _recv_exact(s: socket.socket, n: int) -> bytes:
 
 __all__ = [
     "DOH_BOOTSTRAP", "DOH_HOST", "DOH_PATH", "DOH_PORT", "DOH_PROVIDER_PREFS", "DOH_TARGETS", "DOH_TTL", "H2_AVAILABLE", "QTYPE_A",
-    "QTYPE_AAAA", "RCODE_NXDOMAIN", "RCODE_OK", "RCODE_REFUSED", "RCODE_SERVFAIL", "DohAnswer", "DohGateway", "DohQuery",
+    "QTYPE_AAAA", "QTYPE_HTTPS", "RCODE_NXDOMAIN", "RCODE_OK", "RCODE_REFUSED", "RCODE_SERVFAIL", "DohAnswer", "DohGateway", "DohQuery",
     "FAILURE_KINDS", "FakeDoh", "Query",
     "answer_for", "build_response", "encode_query", "is_loopback", "make_certificate", "parse_query", "pump",
     "relay", "wait_until",

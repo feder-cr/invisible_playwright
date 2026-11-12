@@ -1,23 +1,32 @@
 """HTTP/3 behind a proxy: visits of one page read the protocols a retail Firefox reads, road by road.
 
 ⛔ THE KNOWN-BAD INPUT: an engine that refuses HTTP/3 whenever a proxy is in use reads `h2` on every visit behind a SOCKS5 gateway
-that relays UDP where the same Firefox reads `h3` after the first visits; one that reads `h3` at the FIRST visit behind a proxy
-(the retail never does); and one that tries h3 over a UDP that goes nowhere makes the page wait for a timeout before it falls
-back to h2.
+that relays UDP where the same Firefox reads `h3` after the first visits; one that reads `h3` at the FIRST visit of THIS
+fixture (see below: it is not a retail fact, it is a property of the fixture); and one that tries h3 over a UDP that goes nowhere
+makes the page wait for a timeout before it falls back to h2.
 
 THE REFERENCE is a retail Firefox 159 on Windows, measured with DoH forced like our core (15 sessions per condition, one
-profile per session). With UDP free the sequence is h2/h2/h3 in 9 sessions, h2/h2/h2 in 4 and h2/h3/h3 in 2: NEVER h3 at the first
-visit, and h3 does not have to come at the second. With UDP blocked it is h2/h2/h2 in 15 of 15, with no delay of the load. With no
+profile per session). With UDP free the first runs read h2/h2/h3 in 9 sessions, h2/h2/h2 in 4 and h2/h3/h3 in 2, and h3 does
+not have to come at the second visit. THE THIRD RUN (Windows, DoH and UDP free) READ h3 AT THE FIRST VISIT IN 3 SESSIONS OF 15
+(h3, h2, h2): behind a proxy "visit 1 is always h2" is NOT a retail fact. With UDP blocked it is h2/h2/h2 in 15 of 15, with no
+delay of the load: the only outcome of the retail that repeats every time. With no
 proxy and the native DNS (measured in loopback) it is h2, h3, h3. The method is the retail's: one context, the same page again
 and again (``?v=N`` keeps each visit off the HTTP cache), a pause of two seconds after each load so that the Alt-Svc it carries
 settles, and the ``nextHopProtocol`` of the navigation entry of the document,
 ``performance.getEntriesByType('navigation')[0].nextHopProtocol``. What each road reads is in ``_udp_line.expected_protocols``
 and is judged by ``_udp_line.judge_visits``.
 
+WHY VISIT 1 IS h2 HERE. The retail reads h3 at the first visit when the DNS answer carries the HTTPS record (type 65, with
+``alpn=h3``): the browser then knows before it connects. The server of these tests is reached by its ADDRESS, so no name is
+looked up and no HTTPS record exists; and the FakeDoh of the tests (tests/_doh_servers.py) never serves a type 65 with data
+(``FakeDoh.https_served`` stays empty; each test below asserts it, or that the page was reached by an address). That is what
+makes the first visit h2 in a hermetic test, and only that: a FakeDoh that learns to serve type 65 changes the expectation
+for the name it serves, and this test says so before it goes red on a protocol.
+
 THE VISITS. No proxy: three, exactly h2, h3, h3. Behind a proxy: FIVE, on every road (the same number for all, for symmetry), and
 all five are done (no early stop: the judge is a pure function of the list, so it is deterministic). On the road with UDP free
-the first visit must be h2, at least one visit must be h3 within the five, and once a visit is h3 the next ones are h3 too; the
-second visit is not required to be h3. On the roads without usable UDP every one of the five is h2 and visits 2 to 5 load no more
+the first visit must be h2 (the fixture has no HTTPS record), at least one visit must be h3 within the five, and once a visit is
+h3 the next ones are h3 too; the second visit is not required to be h3. On the roads without usable UDP every one of the five is h2 and visits 2 to 5 load no more
 than ``LOAD_MARGIN_MS`` slower than the first. Time: about 3 s a visit (load plus the pause), so about 15 s of browsing per
 proxy test and 9 s for the one with no proxy.
 
@@ -42,7 +51,8 @@ import time
 import pytest
 
 from _host_address import this_host_address
-from _udp_line import declared_udp, egress_by_proxy, expected_protocols, judge_visits, measure_servers, visits_for
+from _udp_line import (declared_udp, egress_by_proxy, expected_protocols, judge_visits, measure_servers, no_https_record,
+                       visits_for)
 
 pytestmark = [pytest.mark.e2e, pytest.mark.usefixtures("the_udp_line")]
 
@@ -111,6 +121,7 @@ def test_a_page_with_no_proxy_reads_h2_then_h3_then_h3(monkeypatch):
     from _h3_server import H3Server
 
     with H3Server(this_host_address()) as server:
+        assert not no_https_record(server.address), no_https_record(server.address)
         protocols, walls = _visits("direct", server, monkeypatch, egress_by_proxy(direct=EXIT_DIRECT))
         problems = judge_visits("direct", protocols, walls)
         assert not problems, "; ".join(problems) + ". " + _report("direct", protocols, walls, server)
@@ -123,6 +134,7 @@ def test_a_page_behind_a_gateway_that_relays_udp_starts_on_h2_reaches_h3_within_
 
     host = this_host_address()
     with H3Server(host) as server, _gateway("socks5_coherent", host) as gateway:
+        assert not no_https_record(host), no_https_record(host)
         protocols, walls = _visits("socks5_coherent", server, monkeypatch, egress_by_proxy(gateway), proxy=gateway.proxy,
                                   udp_stun_servers=measure_servers(gateway))
         carried = [(h, p) for h, p, _data in gateway.datagrams if (h, p) == (host, server.port)]
@@ -145,6 +157,7 @@ def test_a_page_behind_a_socks5_proxy_that_is_not_coherent_reads_h2_on_every_vis
 
     host = this_host_address()
     with H3Server(host) as server, _gateway(road, host) as gateway:
+        assert not no_https_record(host), no_https_record(host)
         protocols, walls = _visits(road, server, monkeypatch, egress_by_proxy(gateway), proxy=gateway.proxy,
                                   udp_stun_servers=measure_servers(gateway))
         to_the_server = [(h, p) for h, p, _data in gateway.datagrams if (h, p) == (host, server.port)]
@@ -193,6 +206,7 @@ def test_a_page_behind_an_http_proxy_reads_h2_on_every_visit_and_loads_without_d
             said = _report("http_proxy", protocols, walls, server) + "; CONNECTs to the server: %d" % len(connects)
         problems = judge_visits("http_proxy", protocols, walls)
         assert not problems, "; ".join(problems) + ". " + said
+        assert not no_https_record(host, doh), no_https_record(host, doh)
         assert connects, "the page did not go through the proxy. " + said
         assert not server.quic_peers, "a QUIC connection reached the server direct, around the proxy: %s. %s" % (server.quic_peers, said)
     finally:

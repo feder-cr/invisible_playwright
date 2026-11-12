@@ -232,3 +232,33 @@ def test_a_series_of_the_wrong_length_is_an_error():
     assert line.judge_visits("socks5_coherent", ["h2", "h2", "h3"], [900, 300, 310])
     assert line.judge_visits("socks5_coherent", ["h2", "h2", "h3", "h3", "h3"], [900, 300, 310])
     assert line.judge_visits("socks5_no_udp", ["h2", "h2", "h2"], [900, 300, 310])
+
+
+# ------------------------------------------------------------------------------------------ the first visit is h2 by fixture
+# The retail reads h3 at the first visit when the DNS answer carries the HTTPS record (type 65): the third retail run did in 3
+# sessions of 15. The e2e expects h2 first only because the fixture has no such record.
+def test_a_page_reached_by_an_address_has_no_https_record_to_wait_for():
+    assert line.no_https_record("192.0.2.1") == []
+    assert line.no_https_record("[2001:db8::1]") == []
+
+
+def test_a_page_reached_by_a_name_may_have_one_and_the_check_says_so():
+    problems = line.no_https_record("site.test")
+    assert problems and "HTTPS record" in problems[0]
+
+
+def test_the_fake_doh_never_serves_a_type_65_with_data_and_the_check_reads_what_it_served():
+    import _doh_servers as doh_servers
+
+    server = doh_servers.FakeDoh({"site.test": "192.0.2.1"})
+    try:
+        query = doh_servers.parse_query(doh_servers.encode_query("site.test", doh_servers.QTYPE_HTTPS))
+        message = doh_servers.answer_for({"site.test": "192.0.2.1"}, query)
+        assert int.from_bytes(message[6:8], "big") == 0, "a type 65 answer with data: the h2-first expectation no longer holds"
+        assert server.https_served == []
+        assert line.no_https_record("192.0.2.1", server) == []
+        server.https_served.append("site.test")        # a FakeDoh that learned to serve the record
+        problems = line.no_https_record("192.0.2.1", server)
+        assert problems and "site.test" in problems[0]
+    finally:
+        server.close()
