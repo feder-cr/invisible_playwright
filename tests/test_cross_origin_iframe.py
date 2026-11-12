@@ -219,10 +219,18 @@ def test_the_iframe_runs_in_another_process(firefox_binary, cross_origin_harness
 
     with InvisiblePlaywright(seed=42, binary_path=firefox_binary, humanize=False) as browser:
         page = browser.new_context().new_page()
-        page.goto(cross_origin_harness["parent_url"], wait_until="domcontentloaded", timeout=30_000)
+        # ⛔ `load`, NOT `domcontentloaded`. The `domcontentloaded` of a page says nothing about its frames: the
+        # frame of another site is listed as soon as it is attached, and its url is the one of its navigation,
+        # which commits in the frame's own process, usually AFTER the page's domcontentloaded. Read straight after
+        # a `domcontentloaded` goto the url was empty in 26 reads of 30 on firefox-62 (stock Playwright Firefox,
+        # whose frames commit in the process of the page, had it 30 of 30). After the `load` of the page the url
+        # was there 30 of 30 on both, with no wait: that is what is asserted here, so a `goto` that returns
+        # with a cross-site frame still without its url fails this test.
+        page.goto(cross_origin_harness["parent_url"], wait_until="load", timeout=30_000)
         page.wait_for_selector("iframe#ifr_plain", timeout=10_000)
         frame = page.query_selector("iframe#ifr_plain").content_frame()
-        assert frame is not None and cross_origin_harness["child_origin"] in frame.url
+        assert frame is not None and cross_origin_harness["child_origin"] in frame.url, (
+            f"after the load of the page the iframe of the other site has url {getattr(frame, 'url', None)!r}")
         assert_other_process(page.main_frame, frame)
 
 
