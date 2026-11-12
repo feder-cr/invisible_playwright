@@ -531,11 +531,16 @@ _RELAY_PROBE_JS = r"""async (stun) => {
 }"""
 
 
+# The two prefs that decide where ICE runs are LOCKED to the retail value by the engine (toolkit/xre/nsAppRunner.cpp, after the user
+# prefs are loaded): a caller that asks for the ICE in the process of the page, or for no socket process, gets the socket process all the
+# same, and the srflx is born through the relay. Both rows below are such callers; the first is the default.
 _ICE_PREFS = [
     {},                                                          # the engine's default: ICE in the socket process
-    {"media.peerconnection.mtransport_process": False},          # ICE in the process of the page
+    {"media.peerconnection.mtransport_process": False},          # a caller asks for the ICE in the process of the page: locked
+    {"network.process.enabled": False},                          # a caller asks for no socket process: locked
 ]
-_ICE_IDS = ["ice_in_the_socket_process", "ice_in_the_content_process"]
+_ICE_IDS = ["ice_in_the_socket_process", "the_caller_asks_for_ice_in_the_content_process_and_the_lock_wins",
+            "the_caller_asks_for_no_socket_process_and_the_lock_wins"]
 
 
 def _gather_behind_a_coherent_gateway(monkeypatch, credentials, ice_prefs, rtt_ms, page_first_ms=None):
@@ -586,10 +591,11 @@ def test_a_gateway_with_coherent_udp_gives_the_page_a_srflx_born_through_its_rel
     """The default engine, a SOCKS5 gateway that relays UDP and whose UDP exit is its TCP exit: the page's STUN request
     goes THROUGH the relay and the srflx it gets is the gateway's exit.
 
-    The two places ICE can run are both held: in the socket process (the engine's default, `media.peerconnection.
-    mtransport_process`; the sockets are NrSocket's) and in the process of the page (UDPSocketParent's sockets), each
-    with a gateway that wants no credentials and with one that does. A request that does not take the relay ends in
-    an ICE error 701 and no srflx; the failure message says what the gateway saw.
+    ICE runs in the socket process (the sockets are NrSocket's, where the layer is attached) whatever the caller asks:
+    `media.peerconnection.mtransport_process` and `network.process.enabled` are locked to their retail value by the engine,
+    so a caller who sets either to false (rows 2 and 3) gets the same srflx through the relay as the default. Each with a
+    gateway that wants no credentials and with one that does. A request that does not take the relay ends in an ICE
+    error 701 and no srflx; the failure message says what the gateway saw.
 
     The gateway is local (tests/_socks_servers.py): the TCP exit and the UDP exit it reports are documentation addresses,
     and the STUN server the page is given is a documentation address too, so the only road to it is the relay. The page
