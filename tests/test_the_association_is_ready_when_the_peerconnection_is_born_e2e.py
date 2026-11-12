@@ -23,6 +23,7 @@ import time
 import pytest
 
 from _socks_servers import STUN_NUMBER, STUN_PORT, coherent
+from _udp_line import egress_by_proxy
 from test_webrtc_realness import _e2e_binary, _launch  # noqa: F401
 
 pytestmark = pytest.mark.e2e
@@ -43,11 +44,17 @@ _PC_JS = """async (stun) => {
 }"""
 
 
-def test_the_first_datagram_does_not_wait_for_a_handshake(local_https_page):
+def test_the_first_datagram_does_not_wait_for_a_handshake(local_https_page, monkeypatch):
     binary = _e2e_binary()
     if not binary:
         pytest.skip("no patched binary (set STEALTHFOX_E2E_BINARY)")
+    from invisible_core import _geo
     with coherent(user="alice", password="s3cret", rtt_ms=RTT_MS) as gateway:
+        # ⛔ THE SESSION'S UDP HAS TO BE DECLARED COHERENT, or the engine treats the proxy as a router that drops UDP (no association is
+        # asked, no datagram leaves) - the red of the giro 3 gate. The core declares `coherent` when the UDP probe's mapped address IS
+        # the TCP exit it discovered; a hermetic test gives it the gateway's TCP exit as every e2e of the line does (the probe that
+        # follows still runs through the relay, for real). With a fixed time zone the core does not discover the exit at all.
+        monkeypatch.setattr(_geo, "discover_egress_ip", egress_by_proxy(gateway))
         prefs = {"network.proxy.allow_hijacking_localhost": True, "network.proxy.no_proxies_on": ""}
         with _launch(binary_path=binary, proxy=gateway.proxy, extra_prefs=prefs, seed=7) as browser:
             page = browser.new_context().new_page()
@@ -58,6 +65,10 @@ def test_the_first_datagram_does_not_wait_for_a_handshake(local_https_page):
         granted = [a for a in gateway.associations if a[1] is not None]
         first = next((t for host, port, _atyp, t in gateway.datagram_log if host == STUN_NUMBER), None)
     assert granted, "the proxy was never asked for an association"
+    # the first association of the gateway is the core's own UDP probe, made before the browser exists: it is no pool
+    # association of the engine, and counting it made this test pass with an engine that asked for none
+    granted = granted[1:]
+    assert granted, "the engine never asked the proxy for an association (only the core's probe did): the session's UDP was not declared coherent"
     ready_before = [a for a in granted if gateway.wall0 + a[1] < t_pc]
     assert ready_before, (
         "no association was completed before the PeerConnection was born (granted at %s s from the gateway's start, the "
