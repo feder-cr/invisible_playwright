@@ -66,6 +66,9 @@ STUN_NUMBER = "198.51.100.5"
 MEASURE_NUMBER = "198.51.100.6"
 #: A page the gateway serves itself, for a test that loads one through the proxy (a name nothing else resolves).
 WEB_NAME = "page.test"
+#: The same page by an address (RFC 5737 TEST-NET-3): since the browser resolves names itself and connects by address, a
+#: test that loads the gateway's page through a SOCKS gateway names it by this one.
+WEB_ADDRESS = "203.0.113.80"
 #: The echo endpoints the product asks for its TCP exit.
 WHOAMI4 = ("api.ipify.org", 80)
 WHOAMI6 = ("api6.ipify.org", 80)
@@ -299,7 +302,7 @@ class Gateway:
         if (host, port) == WHOAMI6:
             self._send(c, self._reply(4))  # no IPv6 exit
             return
-        if (host, port) == (WEB_NAME, 80):  # a page that only the gateway can reach
+        if (host, port) in ((WEB_NAME, 80), (WEB_ADDRESS, 80)):  # a page that only the gateway can reach
             self._send(c, self._reply(0))
             _ = c.recv(4096)
             body = b"<html><body>behind the gateway</body></html>"

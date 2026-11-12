@@ -415,7 +415,7 @@ def _gather_behind_a_coherent_gateway(monkeypatch, credentials, ice_prefs, rtt_m
         pytest.skip("no patched binary (set STEALTHFOX_E2E_BINARY)")
     from invisible_core import _geo
 
-    from _socks_servers import STUN_NUMBER, STUN_PORT, coherent
+    from _socks_servers import STUN_NUMBER, STUN_PORT, WEB_ADDRESS, coherent
     stun = f"stun:{STUN_NUMBER}:{STUN_PORT}"
     user, password = credentials or (None, None)
     # The relay sits on the address of this host, as a real gateway's does: the engine's ICE sockets are bound to an
@@ -432,7 +432,7 @@ def _gather_behind_a_coherent_gateway(monkeypatch, credentials, ice_prefs, rtt_m
                 page.goto("about:blank")
             else:
                 # A page that is loaded through the gateway, and a while later asks for WebRTC.
-                page.goto("http://page.test/")
+                page.goto("http://%s/" % WEB_ADDRESS)       # by address: the browser resolves names itself
                 page.wait_for_timeout(page_first_ms)
             res = page.evaluate(_RELAY_PROBE_JS, stun)
         carried = [(host, port) for host, port, _payload in gateway.datagrams]

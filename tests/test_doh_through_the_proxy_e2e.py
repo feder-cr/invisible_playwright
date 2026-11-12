@@ -111,6 +111,10 @@ def _hermetic_session(monkeypatch):
     """
     monkeypatch.setattr("invisible_playwright.launcher.prepare_session_geo", lambda tz, proxy, locale, **_kw: GEO)
     monkeypatch.setattr(InvisiblePlaywright, "_assert_uscita_invariata", lambda self: None)
+    # The core also asks the exit of a SOCKS5 proxy (its UDP measurement, invisible_core._udp_exit): api.ipify.org, icanhazip.com and
+    # checkip.amazonaws.com BY NAME through the gateway of the context, which the tests below read as "a CONNECT carried a name"
+    # (run 43164943499, Windows). The answer is declared here too.
+    monkeypatch.setattr("invisible_core._geo.discover_egress_ip", lambda *_a, **_k: GEO.egress_ip)
 
 
 # --------------------------------------------------------------------------------------------------------- helpers

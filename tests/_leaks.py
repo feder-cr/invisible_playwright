@@ -172,6 +172,19 @@ def _trap_capability() -> Tuple[bool, str]:
 TRAP_ADDRESSES = ("127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4", "127.0.0.5", "127.0.0.6", "127.0.0.7", "127.0.0.8")
 
 
+def _who_holds(port: int) -> str:
+    """What the machine says about the sockets of `port` (Linux: ss), for the message of a trap that could not bind."""
+    import subprocess
+    for command in (["ss", "-H", "-lntup"], ["netstat", "-lntup"]):
+        try:
+            done = subprocess.run(command, capture_output=True, text=True, timeout=10)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        lines = [line for line in done.stdout.splitlines() if (":%d " % port) in line]
+        return "; held by: " + (" | ".join(lines) if lines else "nothing listed by %s" % command[0])
+    return "; no ss or netstat to say who holds it"
+
+
 class ResolverTrap:
     """A resolver on loopback that counts what it is asked. See the module docstring."""
 
@@ -257,8 +270,8 @@ class ResolverTrap:
                     self.address = address
                     break
             if not made:
-                raise OSError("the resolver trap found no port it could bind for TCP and UDP (port %d on %s; the last error: %s)"
-                              % (self.port, ", ".join(addresses), self._bind_error))
+                raise OSError("the resolver trap found no port it could bind for TCP and UDP (port %d on %s; the last error: %s)%s"
+                              % (self.port, ", ".join(addresses), self._bind_error, _who_holds(self.port)))
         finally:
             for s in discarded:
                 s.close()
