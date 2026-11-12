@@ -9,7 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [0.51.0] - 2026-11-12
 
 ### Changed
-- Engine firefox-63 through invisible-core 63.66.0, which this version pins. Behind a proxy: names are resolved by the browser's own
+- Engine firefox-63 through invisible-core 63.67.0, which this version pins (63.67.0 is 63.66.0 with the protocol mirror regenerated from the published engine; the mirror of 63.66.0 differed from it). Behind a proxy: names are resolved by the browser's own
   DNS-over-HTTPS through the proxy (not by the machine's resolver; checked with a resolver trap on Linux), WebRTC and HTTP/3 send
   their UDP through the proxy's relay when its UDP was measured to leave from the same address as its TCP, and a proxy whose UDP
   does not hold (including one whose UDP leaves from another address) is treated as a router that drops it (HTTP/3 falls back to
@@ -26,7 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   `invisible_playwright.async_api.InvisiblePlaywright` and `launch_server`): by default the browser keeps it, as a retail Firefox does.
   A retail Firefox keeps the New Tab page ready in a content process of its own; with the option it is not started. `None` writes
   nothing, `True` says the retail value aloud, and a `browser.newtab.preload` in `extra_prefs` wins over it. Needs invisible-core
-  63.66.0. Measured on Windows (run 43211271731), on an engine build of the firefox-63 candidate line (not the published engine), one
+  63.66.0 or later. Measured on Windows (run 43211271731), on an engine build of the firefox-63 candidate line (not the published engine), one
   page of a site, five alternating runs: the browser's processes together take 448-454 MB as shipped and 231-239 MB with the option
   (private memory 301-307 against 158-171 MB).
 
@@ -60,10 +60,11 @@ comparison run is saved). The result of a `window.open` (`null` or a window) is 
   (a `target=_blank` link, or `window.open` from a click) can be announced to the client while it is still on `about:blank`; its `url`
   then stays `about:blank`, or its `load` never arrives. Seen on a Windows runner with the library's client in the same process and four
   workers running the popup tests in parallel (`test_popups_reach_the_client_e2e.py`, 20 runs): with the firefox-63 engine 17 cases of 640
-  in 12 of 20 runs; with the published firefox-62 engine (so also with 0.50.1) 15 cases of 640. On Linux (the firefox-63 engine) 0 red in
-  20 runs. In the last two runs with Playwright's own client over a served browser none was red. The defect is in the hand-over of the popup's page in this
-  package, not in the engine; the correction is in 0.51.1. Not measured: a served launch with numbers of its own, other machines, a run
-  without parallel workers, macOS.
+  in 12 of 20 runs; with the published firefox-62 engine (so also with 0.50.1) 15 cases of 640. Both causes found are in the wrapper: the hand-over of
+  a new page to the client, and the replay of a new page's events while live ones are being delivered. The correction of the first alone,
+  not in this release, lowers the red cases over 20 runs from 15 to 2 with engine 62 and from 17 to 13 with engine 63; the correction of the
+  second is under test. On Linux no run was red (0 of 20). Not measured: a served
+  launch with numbers of its own, other machines, a run without parallel workers, macOS.
 
 ## [0.50.1] - 2026-11-12
 
