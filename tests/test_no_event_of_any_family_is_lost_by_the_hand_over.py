@@ -132,3 +132,120 @@ def test_a_dialog_opened_during_the_hand_over_can_be_accepted_by_the_client(poin
     assert "dialog" in told
     assert [a[1].get("dialogId") for a in answers] == ["d1"], "the engine was not answered: %s" % answers
     assert answers[0][1].get("accept") is True
+
+
+def test_an_event_that_does_not_fit_in_the_hold_is_not_lost_in_silence(monkeypatch):
+    """The hold has a cap (it bounds the memory of a page that never finishes building). The events beyond it are lost, and the loss is said once,
+    with its count, when the hold ends."""
+    import warnings
+
+    from invisible_playwright._juggler import server as server_mod
+    monkeypatch.setattr(server_mod.PageDispatcher, "HELD_CAP", 8)      # the birth of the page already holds a few events
+    parking, told, trace = Parking(), {}, []
+    with pytest.MonkeyPatch.context() as mp:
+        _install(mp, parking, told)
+        original_emit = base.Dispatcher.emit
+
+        def spy(self, method, params=None):
+            if getattr(self, "TYPE", "") == "BrowserContext" and method in ("console", "page"):
+                trace.append(method)
+            return original_emit(self, method, params)
+        mp.setattr(base.Dispatcher, "emit", spy)
+        server = remote._SharedServer()
+        browser_type = remote.SharedBrowserType(server)
+        LocalUtilsDispatcher(server)
+        conn = PopupEngine()
+        browser = remote.SharedBrowserDispatcher(server, browser_type, conn, "firefox/1")
+        try:
+            context = server.object(server.handle({"guid": browser.guid, "method": "newContext", "params": {}})["context"]["guid"])
+            server.handle({"guid": context.guid, "method": "newPage", "params": {"pageNumber": 1}})
+            opener_target = next(t for t in conn.sessions if t != TARGET)
+            del trace[:]
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                conn.attach(opener_target, context.context_id)
+                conn.frame()
+                conn.commit()
+                for i in range(len(POINTS)):
+                    assert parking.reached[i].wait(5)
+                    if i == 0:
+                        for _ in range(20):
+                            _send(conn, "console")      # the hold takes what is left of its 8, loses the rest
+                    parking.release[i].set()
+                conn.ready()
+                assert _wait(lambda: "page" in trace)
+                assert _wait(lambda: _thread() is None)
+            lost = [str(w.message) for w in caught if "were lost while it was handed over" in str(w.message)]
+            kept = trace.count("console")
+            assert 0 < kept < 20, "the hold keeps %d of 20" % kept
+            assert len(lost) == 1, "the loss was said %d times: %s" % (len(lost), lost)
+            assert "%d event(s)" % (20 - kept) in lost[0] and "more than 8" in lost[0], lost[0]
+        finally:
+            parking.open_all()
+            try:
+                server.shutdown()
+            except Exception:
+                pass
+
+
+class ChooserEngine(PopupEngine):
+    """The engine as far as a file chooser needs it: the injected script is built, the node is adopted into the utility world, it is asked
+    whether it takes several files."""
+
+    def frame(self):
+        self.dispatch_event("Page.frameAttached", {"frameId": FRAME, "parentFrameId": None}, SESSION)
+        for world in ("", "__ctx_aux__"):          # the page's own world and the utility one, under the names the client looks for
+            self.dispatch_event("Runtime.executionContextCreated", {
+                "executionContextId": "e%s" % world, "auxData": {"frameId": FRAME, "name": world}}, SESSION)
+
+    def send(self, method, params=None, session=None, timeout=30):
+        if method == "Runtime.evaluate":
+            return {"result": {"objectId": "injected-1"}}
+        if method == "Page.adoptNode":
+            return {"remoteObject": {"objectId": "adopted-1"}}
+        if method == "Runtime.callFunction":
+            return {"result": {"value": True}}
+        return super().send(method, params, session, timeout)
+
+
+@pytest.mark.parametrize("point", range(len(POINTS)), ids=POINTS)
+def test_a_file_chooser_opened_during_the_hand_over_reaches_the_client_and_can_be_answered(point):
+    """The chooser is told once, with the handle of its input element (the client answers a chooser through that handle) and its `isMultiple`."""
+    parking, told, chooser = Parking(), {}, []
+    with pytest.MonkeyPatch.context() as mp:
+        _install(mp, parking, told)
+        original_emit = base.Dispatcher.emit
+
+        def spy(self, method, params=None):
+            if getattr(self, "TYPE", "") == "Page" and method == "fileChooser" and getattr(self, "target_id", None) == TARGET:
+                chooser.append(params)
+            return original_emit(self, method, params)
+        mp.setattr(base.Dispatcher, "emit", spy)
+        server = remote._SharedServer()
+        browser_type = remote.SharedBrowserType(server)
+        LocalUtilsDispatcher(server)
+        conn = ChooserEngine()
+        browser = remote.SharedBrowserDispatcher(server, browser_type, conn, "firefox/1")
+        try:
+            context = server.object(server.handle({"guid": browser.guid, "method": "newContext", "params": {}})["context"]["guid"])
+            server.handle({"guid": context.guid, "method": "newPage", "params": {"pageNumber": 1}})
+            opener_target = next(t for t in conn.sessions if t != TARGET)
+            conn.attach(opener_target, context.context_id)
+            conn.frame()
+            conn.commit()
+            for i in range(len(POINTS)):
+                assert parking.reached[i].wait(5), "the adoption thread never reached %s" % POINTS[i]
+                if i == point:
+                    conn.dispatch_event("Page.fileChooserOpened", {"element": {"objectId": "input-1"}, "executionContextId": "e"}, SESSION)
+                parking.release[i].set()
+            conn.ready()
+            assert _wait(lambda: chooser), "the file chooser opened during the hand-over never reached the client (%s)" % (conn.handler_errors,)
+            assert _wait(lambda: _thread() is None)
+            assert len(chooser) == 1 and chooser[0]["isMultiple"] is True
+            assert server.object(chooser[0]["element"]["guid"]) is not None, "the client has no handle to answer the chooser through"
+        finally:
+            parking.open_all()
+            try:
+                server.shutdown()
+            except Exception:
+                pass
