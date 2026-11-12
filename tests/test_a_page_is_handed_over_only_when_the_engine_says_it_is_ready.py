@@ -553,3 +553,29 @@ def test_a_download_that_comes_while_the_adoption_fails_is_said_once_on_the_open
         time.sleep(0.2)
     assert state["delivered"], "the adoption never failed"
     assert said.count("download") == 1, "the download that came while the adoption failed was said %d times: %r" % (said.count("download"), said)
+
+
+def test_the_opener_of_a_target_the_engine_already_took_away_is_not_remembered(late_browser):
+    """A download cannot come from a target that is detached: no entry is made for it (the table of openers is for the targets the
+    engine still has when their adoption ends without announcing them)."""
+    from types import SimpleNamespace
+
+    gone = SimpleNamespace(target_id="t-gone", opener="o-1", gone=True)
+    with late_browser._targets_lock:
+        late_browser._remember_opener(gone)
+    assert "t-gone" not in late_browser._gone_openers
+
+
+def test_the_opener_of_a_failed_adoption_lives_until_the_target_detaches_and_the_cap_holds(late_browser):
+    from types import SimpleNamespace
+
+    alive = SimpleNamespace(target_id="t-alive", opener="o-2", gone=False)
+    with late_browser._targets_lock:
+        late_browser._remember_opener(alive)
+    assert late_browser._gone_openers.get("t-alive") == "o-2", "the opener of a failed adoption was not remembered"
+    late_browser._handle_detach("t-alive", "s-alive")
+    assert "t-alive" not in late_browser._gone_openers, "the entry outlived the detach of its target"
+    for number in range(20):
+        with late_browser._targets_lock:
+            late_browser._remember_opener(SimpleNamespace(target_id="t%d" % number, opener="o", gone=False))
+    assert len(late_browser._gone_openers) == 16 and "t0" not in late_browser._gone_openers and "t19" in late_browser._gone_openers

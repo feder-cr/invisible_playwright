@@ -4670,8 +4670,10 @@ class BrowserDispatcher(Dispatcher):
         self._adoptions: Dict[str, _Adoption] = {}
         #: The last 16 targets that were NOT announced (dropped with their context, or failed), with their trace: for whoever looks.
         self._dropped: "collections.deque" = collections.deque(maxlen=16)
-        #: The opener of the last 16 targets whose adoption ended WITHOUT announcing them: a download that comes after the record is gone is
-        #: still said on the opener (it is never lost, whichever step of the adoption it falls between).
+        #: The opener of the targets whose adoption ended WITHOUT announcing them while the engine still had the target (at most the last
+        #: 16): a download that comes after the record is gone is still said on the opener (it is never lost, whichever step of the
+        #: adoption it falls between). The entry lives until the engine detaches the target (`_handle_detach`), and none is made for a
+        #: target already detached: no download can come from it any more.
         self._gone_openers: "collections.OrderedDict" = collections.OrderedDict()
         #: Adoption failures, by target. The `newPage` waiter re-raises (and
         #: pops) them; capped because a spontaneous popup nobody waits for
@@ -4944,7 +4946,7 @@ class BrowserDispatcher(Dispatcher):
 
     def _remember_opener(self, adoption: Optional["_Adoption"]) -> None:
         """Under `_targets_lock`, in the step that removes the record of a target that is NOT announced."""
-        if adoption is not None and adoption.opener is not None:
+        if adoption is not None and adoption.opener is not None and not adoption.gone:
             self._gone_openers[adoption.target_id] = adoption.opener
             while len(self._gone_openers) > 16:
                 self._gone_openers.popitem(last=False)
@@ -5134,6 +5136,8 @@ class BrowserDispatcher(Dispatcher):
             return
         waiting = None
         with self._targets_lock:
+            # The target is gone: nothing comes from it any more, so the opener kept for its downloads goes too.
+            self._gone_openers.pop(target_id, None)
             adoption = self._adoptions.get(target_id)
             if adoption is not None:
                 adoption.gone = True
