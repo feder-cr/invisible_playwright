@@ -1,0 +1,125 @@
+# newtab-windows-hunt.yml - hunt scaffolding, never merged. Runs only on a push to a `hunt/newtab-windows**` branch.
+#
+# The e2e of the option that turns the preloaded New Tab page off (tests/test_preload_newtab_turns_the_privileged_about_process_off_e2e.py)
+# was seen green only on Linux. This job runs it ten times on Windows, on the Windows engine a run of the series repository built,
+# with the round's core, and then measures the memory of the content processes with and without the option (five alternating
+# rounds). The tests and the wrapper package are this branch's (the round's wrapper plus this file and one script).
+name: newtab windows hunt
+
+on:
+  push:
+    branches: ['hunt/newtab-windows**']
+
+permissions:
+  contents: read
+
+env:
+  GITHUB_TOKEN: ${{ github.token }}
+  GH_TOKEN: ${{ github.token }}
+  ENGINE_RUN_ID: '43188313516'
+  ENGINE_REPO: feder-cr/firefox_antidetect_patch
+  CORE_REF: cc2f0cd47901fdfd8d266baf723e9fefffa46aac
+  SEAL_TAG: firefox-63-candidate
+  INVISIBLE_CORE_AUTOFIX: 'off'
+  INVISIBLE_CORE_PIN: allow
+
+jobs:
+  hunt:
+    name: preload_newtab e2e x10 and memory (windows-2022, engine of run 43188313516)
+    runs-on: windows-2022
+    timeout-minutes: 75
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with: { fetch-depth: 1 }
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: { python-version: '3.11' }
+      - name: The round's core (from git), this branch's wrapper
+        run: |
+          CORE_GIT="git+https://github.com/feder-cr/invisible_core@$CORE_REF"
+          python -m pip install --quiet --upgrade pip
+          python -m pip install --quiet "$CORE_GIT"
+          python -m pip install --quiet ".[dev]"
+          python -m pip install --quiet --force-reinstall "$CORE_GIT"
+          python -m pip install --quiet "playwright==$(cat scripts/playwright_pin.txt)"
+          python - <<'PY'
+          import inspect, json
+          from importlib.metadata import distribution, version
+          from invisible_core import prefs
+          raw = distribution("invisible-core").read_text("direct_url.json")
+          got = (json.loads(raw).get("vcs_info") or {}).get("commit_id") if raw else None
+          print("invisible-core", version("invisible-core"), "from", got, "| invisible-playwright", version("invisible-playwright"))
+          print("compose_session_prefs knows preload_newtab:", "preload_newtab" in inspect.signature(prefs.compose_session_prefs).parameters)
+          PY
+      - name: The Windows engine of the run
+        run: |
+          set -e
+          mkdir -p art ff
+          gh run download "$ENGINE_RUN_ID" --repo "$ENGINE_REPO" --name asset-win-x86_64 --dir art
+          set -- art/firefox-*-stealth-win-x86_64.*
+          [ "$#" -eq 1 ] && [ -e "$1" ] || { echo "expected one firefox-*-stealth-win-x86_64 archive in art/, found: $*"; exit 1; }
+          python -c "import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall('ff')" "$1"
+          [ -e ff/firefox.exe ] || { echo "no ff/firefox.exe"; exit 1; }
+          python -m invisible_core seal --binary "$PWD/ff/firefox.exe" --tag "$SEAL_TAG" -o "$PWD/seal.json"
+          echo "FF_EXE=$PWD/ff/firefox.exe" >> "$GITHUB_ENV"
+          echo "INVISIBLE_SEAL_FILE=$PWD/seal.json" >> "$GITHUB_ENV"
+      - name: The preload_newtab e2e, ten times
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          export INVPW_BINARY_PATH="$FF_EXE" STEALTHFOX_E2E_BINARY="$FF_EXE"
+          mkdir -p evidence/e2e
+          pass=0; fail=0
+          for n in $(seq 1 10); do
+            log="evidence/e2e/run_$(printf '%02d' "$n").log"
+            set +e
+            python -m pytest tests/test_preload_newtab_turns_the_privileged_about_process_off_e2e.py -m e2e -o addopts= \
+              -p no:cacheprovider --timeout 300 -q -rA > "$log" 2>&1
+            code=$?
+            set -e
+            skipped=$(grep -cE "^SKIPPED " "$log" || true)
+            passed=$(grep -cE "^PASSED " "$log" || true)
+            if [ "$code" = "0" ] && [ "$skipped" = "0" ] && [ "$passed" = "2" ]; then pass=$((pass+1)); else fail=$((fail+1)); fi
+            echo "run $n: exit=$code passed=$passed skipped=$skipped $(tail -1 "$log")"
+          done
+          {
+            echo "## preload_newtab e2e x10 on windows-2022 (engine of run $ENGINE_RUN_ID, core $CORE_REF, tests $GITHUB_SHA)"
+            echo
+            echo "| runs with 2 passed and no skip | runs red |"
+            echo "|---|---|"
+            echo "| $pass | $fail |"
+            echo
+            echo '```'
+            grep -hE "^(FAILED|ERROR|SKIPPED) " evidence/e2e/run_*.log | sort | uniq -c | sort -rn | head -20
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Close every Firefox left (after the e2e)
+        if: always()
+        shell: pwsh
+        run: |
+          Get-Process firefox -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          "left: " + @(Get-Process firefox -ErrorAction SilentlyContinue).Count
+      - name: Memory of the content processes, with and without the option (five alternating rounds)
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          set +e
+          python scripts/newtab_memory_probe.py --binary "$FF_EXE" --out evidence/memory --rounds 5 --seconds 10 \
+            2>&1 | tee evidence/memory.log
+          sed -n '/^## Content processes/,$p' evidence/memory.log >> "$GITHUB_STEP_SUMMARY"
+      - name: Close every Firefox left (after the memory)
+        if: always()
+        shell: pwsh
+        run: |
+          Get-Process firefox -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          "left: " + @(Get-Process firefox -ErrorAction SilentlyContinue).Count
+      - name: Upload all the evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: newtab-windows-hunt-${{ github.run_id }}
+          path: evidence
+          if-no-files-found: warn
+          retention-days: 14
