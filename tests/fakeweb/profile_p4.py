@@ -328,6 +328,7 @@ def snapshot(j, pg, rec):
 
 def run_round(j, tracer, round_no, idle_timeout_ms):
     out = []
+    walk = journey_site.STATE.begin_walk()      # the site tags what it sees with the walk, stock and ours both use steps 1..N
     for n, (name, method) in enumerate(STEPS, 1):
         j.extra = {}
         journey_site.STATE.set_step(n)      # a held response of the site is released when the walk reaches its step
@@ -347,7 +348,6 @@ def run_round(j, tracer, round_no, idle_timeout_ms):
         rec["open_at_idle_end"] = tracer.snapshot()      # for the report, not compared
         if tracer.events is not None:
             rec["client_events"] = tracer.take_events()
-            rec["server_events"] = [e for e in journey_site.STATE.events if e["step"] == n]
         snapshot(j, pg, rec)
         rec["pages"] = len(j.ctx.pages)
         rec["extra"] = dict(j.extra)
@@ -359,6 +359,11 @@ def run_round(j, tracer, round_no, idle_timeout_ms):
                 rec["error"] = rec["error"] or ("cleanup: " + first_line(exc))
         rec["seconds"] = round(time.monotonic() - t0, 2)
         out.append(rec)
+    if tracer.events is not None:
+        # read once, at the end: a request fired on pagehide reaches the server after its step's own work is done
+        time.sleep(0.5)
+        for rec in out:
+            rec["server_events"] = journey_site.STATE.events_of(walk, rec["n"])
     return out
 
 

@@ -126,12 +126,12 @@ jobs:
           cat fakeweb-p4-summary.md
           echo "JOURNEY_REPORT_EXIT=$rc" >> "$GITHUB_ENV"
           exit 0
-      - name: Request types of our browser (one traced walk)
+      - name: Request types of stock Firefox and of our browser (one traced walk each)
         if: always()
         timeout-minutes: 10
         run: |
           set +e
-          xvfb-run -a python -u scripts/run_fakeweb.py --profile p4 --binary "$INVPW_BINARY_PATH" --repetitions 1 --no-stock --trace \
+          xvfb-run -a python -u scripts/run_fakeweb.py --profile p4 --binary "$INVPW_BINARY_PATH" --repetitions 1 --trace \
             --out fakeweb-p4-trace.json 2>&1 | tee fakeweb-p4-trace.log
           echo "runner exited ${PIPESTATUS[0]}"
           python scripts/fakeweb_p4_report.py trace fakeweb-p4-trace.json > fakeweb-p4-trace-summary.md
@@ -167,7 +167,9 @@ jobs:
             *) echo "journey: RED, the journey step did not finish (${JOURNEY_REPORT_EXIT:-unset})"; red=1;;
           esac
           case "${TRACE_REPORT_EXIT:-unset}" in
-            0) echo "request types: green";;
+            0) echo "request types: green, ours does what stock does";;
+            1) echo "request types: RED, ours differs from stock, see the summary"; red=1;;
+            2) echo "request types: RED, BROKEN CONTROL: stock reported no sendBeacon (not a finding about ours)"; red=1;;
             *) echo "request types: RED (${TRACE_REPORT_EXIT:-the trace step did not finish}), see the summary"; red=1;;
           esac
           exit "$red"

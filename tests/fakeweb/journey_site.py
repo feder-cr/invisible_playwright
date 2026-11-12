@@ -362,6 +362,7 @@ class State:
         self.step = 0
         self.t0 = time.time()
         self.events = []
+        self.walk = 0
         self.cond = threading.Condition()
         self.released = set()
 
@@ -369,6 +370,18 @@ class State:
         with self.cond:
             self.step = n
             self.cond.notify_all()
+
+    def begin_walk(self):
+        """A new walk starts: its events are told apart from those of the walks before (every walk uses steps 1..N)."""
+        with self.lock:
+            self.walk += 1
+            return self.walk
+
+    def events_of(self, walk, step):
+        """The events the server logged during `step` of `walk`, as of now (read it once the walk is over: a request fired
+        while leaving a page reaches the server after the step's own work is done)."""
+        with self.lock:
+            return [e for e in self.events if e["walk"] == walk and e["step"] == step]
 
     def release(self, rid):
         with self.cond:
@@ -397,7 +410,7 @@ class State:
         else:
             cls = "page"
         with self.lock:
-            self.events.append({"t": round(time.time() - self.t0, 3), "step": self.step, "origin": "AO"[idx],
+            self.events.append({"t": round(time.time() - self.t0, 3), "walk": self.walk, "step": self.step, "origin": "AO"[idx],
                                 "method": method, "path": path, "id": ident, "n": (q.get("n") or [""])[0], "src": (q.get("src") or [""])[0],
                                 "class": cls})
 

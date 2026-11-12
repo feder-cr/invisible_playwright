@@ -2,7 +2,7 @@
 
 The verdict of the job is made here, so it is tested here: a difference on a sound walk is red, a broken control is red with
 another message and is not counted as a difference of ours, a clean run is green, and a sendBeacon reported with another
-resource type than `beacon` is red.
+resource type than `beacon` is red. With a traced stock walk the trace verdict is "same as stock" per kind of request.
 """
 from __future__ import annotations
 
@@ -108,6 +108,89 @@ def test_trace_is_red_when_the_server_saw_a_keepalive_the_client_never_reported(
 
 def test_trace_is_red_when_there_is_no_sendbeacon_at_all():
     assert report.trace({"candidate": [{"client_events": [], "server_events": []}]})[1] == 1
+
+
+def _records(beacon_type="beacon", server_ka=1, client_ka=1, beacons=2):
+    """One step record: `beacons` sendBeacon requests of resource type `beacon_type` (all reported and all seen),
+    one keepalive POST, and `client_ka` reported / `server_ka` seen keepalive fetches."""
+    return _trace(beacon_type, server_ka, client_ka)["candidate"]
+
+
+def _both(stock=None, ours=None):
+    return {"stock": _records(**(stock or {})), "candidate": _records(**(ours or {}))}
+
+
+def test_trace_with_a_stock_walk_is_green_when_the_types_are_equal():
+    text, code = report.trace(_both())
+    assert code == 0, text
+    assert "| sendBeacon | 2 | beacon: 2 | 1 | 2 | beacon: 2 | 1 |" in text
+
+
+def test_trace_with_a_stock_walk_does_not_compare_exact_counts():
+    ours = _records()
+    ours[0]["client_events"] = ours[0]["client_events"] + [_client("POST", "/beacon?src=ad&n=5", "beacon")]
+    assert report.trace({"stock": _records(), "candidate": ours})[1] == 0
+
+
+def test_trace_with_a_stock_walk_is_red_when_ours_reports_other_where_stock_says_beacon():
+    text, code = report.trace(_both(ours={"beacon_type": "other"}))
+    assert code == 1
+    assert "sendBeacon" in text and "other" in text and "beacon" in text and "stock reported {beacon}" in text
+
+
+def test_trace_with_a_stock_walk_is_green_when_stock_does_the_same_odd_thing():
+    assert report.trace(_both(stock={"beacon_type": "ping"}, ours={"beacon_type": "ping"}))[1] == 0
+
+
+def test_trace_with_a_stock_walk_is_red_when_ours_leaves_more_unreported_than_stock():
+    text, code = report.trace(_both(stock={"server_ka": 2, "client_ka": 2}, ours={"server_ka": 3, "client_ka": 1}))
+    assert code == 1
+    assert "keepalive fetch: the server saw 2 request(s) ours never reported, stock left 0 unreported" in text
+
+
+def test_trace_with_a_stock_walk_is_green_when_both_leave_the_same_unreported():
+    text, code = report.trace(_both(stock={"server_ka": 3, "client_ka": 1}, ours={"server_ka": 3, "client_ka": 1}))
+    assert code == 0, text
+    assert "| keepalive fetch | 1 | fetch: 1 | 3 | 1 | fetch: 1 | 3 |" in text
+
+
+def test_trace_with_a_stock_walk_that_reported_no_sendbeacon_is_a_broken_control():
+    stock = [{"client_events": [_client("GET", "/r?kind=json&id=ka1", "fetch")], "server_events": []}]
+    text, code = report.trace({"stock": stock, "candidate": _records()})
+    assert code == 2
+    assert "BROKEN CONTROL" in text and "not a difference of ours" in text
+
+
+def test_a_stock_synthesized_for_no_stock_has_no_events_and_keeps_the_absolute_rules():
+    data = _trace()
+    data["stock"] = [{"round": 1, "n": 1, "ok": True, "idle": True}]
+    assert report.trace(data)[1] == 0
+    data = _trace(beacon_type="ping")
+    data["stock"] = [{"round": 1, "n": 1, "ok": True, "idle": True}]
+    assert report.trace(data)[1] == 1
+
+
+def test_the_site_tags_events_with_the_walk_and_a_late_event_is_collected_with_its_step():
+    """The lost-event case, without a browser: a request fired on pagehide reaches the server after the step's own read
+    but before the next step is set. Reading once at the end of the walk, by walk and step, finds it; the walks do not mix."""
+    from fakeweb import journey_site
+
+    state = journey_site.State()
+    assert state.begin_walk() == 1
+    state.set_step(1)
+    state.record(0, "GET", "/", {})
+    first_read = state.events_of(1, 1)                      # what the old read at the end of step 1 saw
+    state.record(1, "POST", "/beacon", {"t": ["pagehide"], "n": ["1"]})      # the pagehide beacon, after that read
+    state.set_step(2)
+    state.record(0, "GET", "/article/1", {})
+    assert [e["path"] for e in first_read] == ["/"]
+    assert [e["path"] for e in state.events_of(1, 1)] == ["/", "/beacon"]
+    assert [e["path"] for e in state.events_of(1, 2)] == ["/article/1"]
+    assert state.begin_walk() == 2
+    state.set_step(1)
+    state.record(0, "GET", "/", {})
+    assert len(state.events_of(2, 1)) == 1 and len(state.events_of(1, 1)) == 2
+    assert all(e["walk"] in (1, 2) for e in state.events)
 
 
 def test_the_site_records_what_the_report_reads_and_the_tracer_keeps_what_the_client_reports():

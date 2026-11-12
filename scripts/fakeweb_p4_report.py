@@ -2,13 +2,15 @@
 """Reads the JSON that `scripts/run_fakeweb.py --profile p4` writes and prints Markdown for the job's step summary.
 
     python scripts/fakeweb_p4_report.py journey FILE   # per walk: step, stock ok/idle, ours ok/idle, equal or different
-    python scripts/fakeweb_p4_report.py trace FILE     # a --trace walk of ours: request types the client reported, keepalive counts
+    python scripts/fakeweb_p4_report.py trace FILE     # a --trace walk of stock and of ours: request types the client reported, keepalive counts
 
 journey: exit 0 when ours equals stock on every step of every walk whose control is sound; 1 when it differs on a step of a
 sound walk; 2 when a control is broken (stock is not as pages.json declares), 3 for both. A walk with a broken control is not
 judged: its differences are listed, but only the broken control is the verdict there.
-trace: exit 0 when every sendBeacon request the client reported has the type `beacon`, there is at least one, and the client
-reported at least as many keepalive fetches as the server saw; 1 otherwise.
+trace: with a traced stock walk, ours must do what stock does: exit 0 when, for each kind, ours reported the same set of resource
+types as stock and left no more server hits unreported; 1 otherwise; 2 when stock reported no sendBeacon (a broken control, not a
+difference of ours). Without a traced stock walk (--no-stock): exit 0 when every sendBeacon request the client reported has the
+type `beacon`, there is at least one, and the client reported at least as many keepalive requests as the server saw; 1 otherwise.
 """
 from __future__ import annotations
 
@@ -89,11 +91,14 @@ def _server_kind(event):       # the site records `id` as the id or, failing tha
     return _kind(event["method"], event["path"], event["id"], event["n"], event.get("src", ""), event["id"])
 
 
-def trace(report):
-    """Returns (markdown, exit code)."""
+KINDS = ("sendBeacon", "keepalive POST", "keepalive fetch", "parked keepalive")
+
+
+def _counts(records):
+    """Per kind: the request types the client reported, and how many hits the server saw."""
     client = collections.defaultdict(collections.Counter)
     server = collections.Counter()
-    for rec in report["candidate"]:
+    for rec in records:
         for e in rec.get("client_events", []):
             if e["ev"] == "request":
                 kind = _client_kind(e)
@@ -103,11 +108,67 @@ def trace(report):
             kind = _server_kind(e)
             if kind:
                 server[kind] += 1
-    out = ["## Request types of our browser (one walk, trace)", "",
+    return client, server
+
+
+def _types(counter):
+    return ", ".join("%s: %d" % (t, c) for t, c in sorted(counter.items())) or "-"
+
+
+def _unreported(client, server, kind):
+    return max(0, server[kind] - sum(client[kind].values()))
+
+
+def trace(report):
+    """Returns (markdown, exit code). With a real stock walk (its records carry client_events): ours must do what stock does.
+    Without one (--no-stock, stock is synthesized): the absolute rules."""
+    client, server = _counts(report["candidate"])
+    stock_records = report.get("stock") or []
+    has_stock = any("client_events" in rec for rec in stock_records)
+    if not has_stock:
+        return _trace_absolute(client, server)
+    s_client, s_server = _counts(stock_records)
+    out = ["## Request types, stock Firefox and ours (one traced walk each)", "",
+           ("| request | stock: client reported | stock: by resource type | stock: server saw | "
+            "ours: client reported | ours: by resource type | ours: server saw |"), "|---|---|---|---|---|---|---|"]
+    for kind in KINDS:
+        out.append("| %s | %d | %s | %d | %d | %s | %d |" % (
+            kind, sum(s_client[kind].values()), _types(s_client[kind]), s_server[kind],
+            sum(client[kind].values()), _types(client[kind]), server[kind]))
+    broken, problems = [], []
+    if not s_client["sendBeacon"]:
+        broken.append("stock reported no sendBeacon request (the site sends several per page): the control did not run as expected")
+    else:
+        for kind in KINDS:
+            ours_types, stock_types = set(client[kind]), set(s_client[kind])
+            if ours_types != stock_types:
+                problems.append("%s: ours reported the resource types {%s}, stock reported {%s}" % (
+                    kind, ", ".join(sorted(ours_types)), ", ".join(sorted(stock_types))))
+            ours_lost, stock_lost = _unreported(client, server, kind), _unreported(s_client, s_server, kind)
+            if ours_lost > stock_lost:
+                problems.append("%s: the server saw %d request(s) ours never reported, stock left %d unreported" % (
+                    kind, ours_lost, stock_lost))
+    out += [""]
+    if broken:
+        out += ["**BROKEN CONTROL** (not a difference of ours)", ""] + ["- " + p for p in broken]
+        code = 2
+    elif problems:
+        out += ["**Verdict: RED**, ours differs from stock", ""] + ["- " + p for p in problems]
+        code = 1
+    else:
+        out.append("**Verdict: green**: ours reports the same resource types as stock for every kind, "
+                   "and no more requests the server saw go unreported than with stock.")
+        code = 0
+    out += ["", "Exact counts are shown, not compared (timing can move one request)."]
+    out.append("")
+    return "\n".join(out), code
+
+
+def _trace_absolute(client, server):
+    out = ["## Request types of our browser (one walk, trace; stock was not traced)", "",
            "| request | client reported | by resource type | server saw |", "|---|---|---|---|"]
-    for kind in ("sendBeacon", "keepalive POST", "keepalive fetch", "parked keepalive"):
-        types = ", ".join("%s: %d" % (t, c) for t, c in sorted(client[kind].items())) or "-"
-        out.append("| %s | %d | %s | %d |" % (kind, sum(client[kind].values()), types, server[kind]))
+    for kind in KINDS:
+        out.append("| %s | %d | %s | %d |" % (kind, sum(client[kind].values()), _types(client[kind]), server[kind]))
     problems = []
     beacons = client["sendBeacon"]
     if not beacons:
