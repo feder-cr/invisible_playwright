@@ -143,14 +143,14 @@ class TurnServer:
                     self.sock.sendto(_message(0x0113, tid, err), src)
                     continue
                 user = attrs[0x0006].decode(errors="replace")
-                key = hashlib.md5(("%s:%s:%s" % (user, REALM, PASSWORD)).encode()).digest()
+                key = hashlib.md5(("%s:%s:%s" % (user, REALM, PASSWORD)).encode(), usedforsecurity=False).digest()
                 body = (_attr(0x0016, _xor_addr(*RELAYED)) + _attr(0x0020, _xor_addr(src[0], src[1])) +
                         _attr(0x000D, struct.pack("!I", 600)))
                 self.allocations.append((src[0], src[1], user, time.monotonic()))
                 self.sock.sendto(_message(0x0103, tid, body, key), src)
             elif mtype in (0x0004, 0x0008, 0x0009):                # Refresh, CreatePermission, ChannelBind
                 user = attrs.get(0x0006, b"").decode(errors="replace")
-                key = hashlib.md5(("%s:%s:%s" % (user, REALM, PASSWORD)).encode()).digest()
+                key = hashlib.md5(("%s:%s:%s" % (user, REALM, PASSWORD)).encode(), usedforsecurity=False).digest()
                 body = _attr(0x000D, struct.pack("!I", 600)) if mtype == 0x0004 else b""
                 self.sock.sendto(_message(mtype | 0x0100, tid, body, key), src)
 

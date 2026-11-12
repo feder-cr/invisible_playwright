@@ -220,6 +220,7 @@ def test_a_gateway_hands_the_knobs_over_with_the_connection():
         s, code = _socks_connect(gw.port, ds.DOH_BOOTSTRAP, 443)
         assert code == 0
         context = ssl.create_default_context()
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
         context.check_hostname = False
         context.verify_mode = ssl.CERT_NONE
         context.set_alpn_protocols(["http/1.1"])
