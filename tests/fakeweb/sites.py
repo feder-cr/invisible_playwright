@@ -433,15 +433,18 @@ class Handler(BaseHTTPRequestHandler):
         return self._send(400, "text/plain", b"bad kind")
 
 
-def start(ports=(8311, 8312), bind="127.0.0.1", public_host="127.0.0.1"):
+def start(ports=(8311, 8312), bind="127.0.0.1", public_host=("127.0.0.1", "localhost")):
     """Start both origins on daemon threads. Returns (origin_a, origin_b, stop).
 
     bind: address to listen on (0.0.0.0 = all interfaces, e.g. to reach it from a container).
-    public_host: host name written into the pages for the origins A and O.
+    public_host: host name written into the pages for A and O, one string for both or a pair (A, O). The default pair makes
+    A `127.0.0.1` and O `localhost`: two different SITES for Fission (two ports of one host are one site, and a frame of the
+    "other origin" would never leave the page's process).
     """
+    hosts = (public_host, public_host) if isinstance(public_host, str) else tuple(public_host)
     state = State()
     servers = [Site((bind, p), Handler, i, state) for i, p in enumerate(ports)]
-    state.origins = ["http://%s:%d" % (public_host, s.server_address[1]) for s in servers]
+    state.origins = ["http://%s:%d" % (hosts[i], s.server_address[1]) for i, s in enumerate(servers)]
     for s in servers:
         threading.Thread(target=s.serve_forever, daemon=True).start()
 

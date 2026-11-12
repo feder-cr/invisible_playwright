@@ -19,7 +19,25 @@ def install_route(context):
 
 def navigate(page, url, *, idle_timeout_ms):
     rec = {"idle": False, "err": None, "seconds": None}
+    # The requests the client has heard of and not yet heard the end of: a navigation that does not idle says who is still in flight
+    # (type, method, url, frame). The process that hosts a request is not readable by a client.
+    open_requests = {}
+
+    def started(request):
+        try:
+            frame = request.frame.url[:100]
+        except Exception:
+            frame = None
+        open_requests[id(request)] = {"type": request.resource_type, "method": request.method, "url": request.url[:160],
+                                      "frame": frame, "t": round(time.monotonic() - t0, 2)}
+
+    def ended(request):
+        open_requests.pop(id(request), None)
+
     t0 = time.monotonic()
+    page.on("request", started)
+    page.on("requestfinished", ended)
+    page.on("requestfailed", ended)
     try:
         page.goto(url, wait_until="commit", timeout=15000)
         page.wait_for_load_state("networkidle", timeout=idle_timeout_ms)
@@ -27,6 +45,13 @@ def navigate(page, url, *, idle_timeout_ms):
     except Exception as exc:        # recorded, the run goes on: the verdict compares outcomes
         text = str(exc).strip()
         rec["err"] = (text.splitlines()[0] if text else repr(exc))[:200]
+        rec["in_flight"] = list(open_requests.values())[:30]
+    finally:
+        for event, handler in (("request", started), ("requestfinished", ended), ("requestfailed", ended)):
+            try:
+                page.remove_listener(event, handler)
+            except Exception:
+                pass
     rec["seconds"] = round(time.monotonic() - t0, 2)
     return rec
 
