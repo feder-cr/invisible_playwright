@@ -65,7 +65,9 @@ def test_the_four_states_are_reached_on_a_real_page(firefox_binary):
             while page["targetId"] not in sessions and time.time() < deadline:
                 time.sleep(0.02)
             v = Lifecycle(c, sessions[page["targetId"]])
-            time.sleep(0.5)
+            # Page.ready, not a fixed 0.5 s: the Windows census lost that race (run 43307193708).
+            v.wait_for_page_ready(30)
+            v.wait_for_main_frame(30)
 
             result = v.goto("http://127.0.0.1:%d/" % port,
                             until="load", timeout=30)

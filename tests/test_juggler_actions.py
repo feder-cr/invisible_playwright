@@ -126,7 +126,10 @@ def _open(binary, body):
     lifecycle = Lifecycle(c, sess)
     inj = InjectedScript(c, sess)
     inj.install()
-    time.sleep(0.4)
+    # The page is the caller's when the engine says it is ready, as Playwright hands it over (Page.ready); a fixed 0.4 s was a race
+    # that the Windows census lost (run 43307193708: "no frame: the page has not announced its main frame yet", 6 tests).
+    lifecycle.wait_for_page_ready(30)
+    lifecycle.wait_for_main_frame(30)
     lifecycle.goto("http://127.0.0.1:%d/" % srv.server_address[1],
                    until="load", timeout=30)
     actions = Actions(c, sess, lifecycle, inj, acts=PageActs(1),

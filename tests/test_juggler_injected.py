@@ -71,7 +71,9 @@ def _open(binary, body):
     lifecycle = Lifecycle(c, sess)
     inj = ini.InjectedScript(c, sess)
     inj.install()
-    time.sleep(0.4)
+    # Page.ready, not a fixed 0.4 s: the Windows census lost that race (run 43307193708).
+    lifecycle.wait_for_page_ready(30)
+    lifecycle.wait_for_main_frame(30)
     lifecycle.goto("http://127.0.0.1:%d/" % srv.server_address[1],
                    until="load", timeout=30)
 
