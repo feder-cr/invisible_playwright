@@ -1013,18 +1013,34 @@ class FrameDispatcher(Dispatcher):
 
     def emit(self, method: str, params: Optional[Dict] = None) -> None:
         if method == "loadstate" and params:
-            if params.get("add"):
-                self.told_states.add(params["add"])
-            if params.get("remove"):
-                self.told_states.discard(params["remove"])
-        if method == "loadstate" and params and params.get("add") in ("domcontentloaded", "load"):
-            page = self.page
-            with page._announce_lock:
-                if not page._announced:
-                    page._said_before_announcement.append((self, dict(params)))
-                super().emit(method, params)
-            return
+            # ⛔ A LOAD STATE IS TOLD ONCE. The hand-over reconciles the frame with the lifecycle and the page's own listener then hears the
+            # same `DOMContentLoaded`/`load`: whichever comes second finds the state already told and says nothing (a `page.on("load")`
+            # that fired twice). A commit removes the states first, so the next document's are told again.
+            state = params.get("add")
+            told = bool(state) and not params.get("remove") and state in self.told_states
+            if state in ("domcontentloaded", "load"):
+                page = self.page
+                with page._announce_lock:
+                    # ⛔ KEPT FOR THE REPLAY EVEN WHEN THE CLIENT KNOWS IT ALREADY (from the snapshot of the initializer, or from the
+                    # reconciliation): the replay after the announcement is what makes `page.on("load")` run for a popup that loaded
+                    # before the client heard of it, once per frame and state.
+                    if not page._announced and not any(
+                            f is self and p.get("add") == state for f, p in page._said_before_announcement):
+                        page._said_before_announcement.append((self, dict(params)))
+                    if not told:
+                        self._track_states(params)
+                        super().emit(method, params)
+                return
+            if told:
+                return
+            self._track_states(params)
         super().emit(method, params)
+
+    def _track_states(self, params: Dict) -> None:
+        if params.get("add"):
+            self.told_states.add(params["add"])
+        if params.get("remove"):
+            self.told_states.discard(params["remove"])
 
     def detach(self) -> None:
         """The frame left the page: its handles go (their frame is no more), the frame itself stays and refuses."""
@@ -1043,9 +1059,13 @@ class FrameDispatcher(Dispatcher):
     def __init__(self, server, page: "PageDispatcher", frame_id: str,
                  url: str = "about:blank", name: str = "",
                  load_states: Optional[List[str]] = None,
-                 parent_frame: Optional["FrameDispatcher"] = None) -> None:
+                 parent_frame: Optional["FrameDispatcher"] = None,
+                 told_commit: Any = None) -> None:
         self.page = page
         self.frame_id = frame_id
+        #: Which commit of the lifecycle the client was last told (its place in the engine's stream): two documents at the same address
+        #: and with the same name differ only by this (`PageDispatcher._reconcile_frame`).
+        self.told_commit = told_commit
         self.parent_frame = parent_frame
         #: ⛔ Kept here because the INITIALIZER is a snapshot: the client reads
         #: the url from it once, at creation, and afterwards only from
@@ -2793,6 +2813,7 @@ class PageDispatcher(Dispatcher):
         # replay.
         self._held: Optional[List] = []
         self._held_lock = threading.Lock()
+        self._frames_lock = threading.RLock()
         #: The events that did not fit in the hold (`HELD_CAP`): counted, and said once when the hold ends (`_install_events`).
         self._held_dropped = 0
         #: ⛔ THE `domcontentloaded` AND `load` OF A POPUP THAT ARE SAID BEFORE IT IS ANNOUNCED. The page is built at once and announced when
@@ -2911,7 +2932,8 @@ class PageDispatcher(Dispatcher):
             server, self, self.main_frame_id,
             url=getattr(known, "url", "") or "",
             name=getattr(known, "name", "") or "",
-            load_states=sorted(getattr(known, "states", []) or []) or None)
+            load_states=sorted(getattr(known, "states", []) or []) or None,
+            told_commit=self._last_commit(known))
         viewport = self.viewport_size
         # `pageNumber` is ours, not Playwright's: the number the page's
         # rhythms are drawn under (`pointer.py` and the actions' nonce read it
@@ -2973,13 +2995,21 @@ class PageDispatcher(Dispatcher):
     def announce(self, context: "BrowserContextDispatcher", replay: bool) -> None:
         """Tell the client of the page (the context's `page` event) and, for a popup, say again the load states it reached before:
         under one lock, so a state said live in between waits for the ones that came first."""
-        with self._announce_lock:
+        # ⛔ NOT A PAGE THAT WAS CLOSED BEFORE ITS ANNOUNCEMENT (the context or the browser closed while it was being adopted): the close
+        # has sent `close` and `__dispose__` for its guid, and a `page` event that names it makes the client throw. The close's lock first,
+        # as in `_deliver`: the close is either over (nothing is announced) or waits for the announcement (and follows it).
+        with self._close_lock, self._announce_lock:
+            if self._announced_closed:
+                self._announced = True
+                self._said_before_announcement = []
+                return
             context.emit("page", {"page": self.channel})
             earlier, self._said_before_announcement = self._said_before_announcement, []
             self._announced = True
             if replay:
                 for frame, params in earlier:
                     if not frame.detached:
+                        frame.told_states.discard(params["add"])      # said again on purpose: the emit would call it a duplicate
                         frame.emit("loadstate", params)
 
     def settle_events(self) -> None:
@@ -3013,9 +3043,9 @@ class PageDispatcher(Dispatcher):
         # ones were, and the rest were dropped.) The ones this handler does not
         # read - `Page.frameAttached` and the other events the lifecycle owns -
         # reach nothing here, and the lifecycle's own announcements are
-        # reconciled below. Delivered under the lock, so a live event waits for
-        # the held ones and keeps their order: a response handled before its
-        # request is dropped as unknown.
+        # reconciled below. A live event waits for the held ones and keeps
+        # their order: a response handled before its request is dropped as
+        # unknown.
         #
         # ⛔ AND EACH EVENT ONCE, AT ITS LAST PLACE. One that arrived after the
         # subscriber was registered but before the replay marked the session
@@ -3023,11 +3053,23 @@ class PageDispatcher(Dispatcher):
         # hands it over a second time, behind events older than it. It is the
         # same params object both times; keeping its last occurrence restores
         # the order the engine sent them in and announces each request once.
-        with self._held_lock:
-            held, self._held = self._held or [], None
+        #
+        # ⛔ THE HOLD ENDS WHEN IT IS EMPTY, NOT WHEN IT IS TAKEN. The held events are delivered in rounds, outside the lock, and
+        # `_held` is cleared only by a round that finds nothing: while a round is being delivered, a live event from the reader still
+        # goes to the hold and waits for its turn. (Clearing it first, a live event went straight to its handler beside the round,
+        # and a response could be handled before the request it answers.)
+        delivered: Dict[int, Any] = {}      # the params objects already delivered, kept alive so their ids are not reused
+        while True:
+            with self._held_lock:
+                held = self._held
+                if not held:
+                    self._held = None
+                    break
+                self._held = []
             last = {id(params): i for i, (_, params) in enumerate(held)}
             for i, (method, params) in enumerate(held):
-                if last[id(params)] == i:
+                if last[id(params)] == i and id(params) not in delivered:
+                    delivered[id(params)] = params
                     try:
                         self._deliver(method, params)
                     except Exception:
@@ -3062,8 +3104,19 @@ class PageDispatcher(Dispatcher):
         (not while the held events are delivered: their handlers may ask the engine, and the reader thread that answers needs the lock).
         """
         with self.lifecycle._cv:
+            # ⛔ NOT ON A PAGE THAT CLOSED IN THE MEANTIME. The close detaches the lifecycle (no hook) and tells the client the page is gone
+            # (`__dispose__`); the flag is set under the close's lock before it waits for this one. A hook put back now, and a frame
+            # made under a page the client has dropped, is a `__create__` under a parent that no longer exists.
+            if self._announced_closed:
+                return
             self.lifecycle.announce = self._on_lifecycle
             self._reconcile_frames()
+
+    @staticmethod
+    def _last_commit(known: Any) -> Any:
+        """The place in the engine's stream of the last document the lifecycle holds for this frame (None: none with an id)."""
+        commits = getattr(known, "_commits", None)
+        return commits[-1][0] if commits else None
 
     CANON_STATES = ("commit", "domcontentloaded", "load", "networkidle")
 
@@ -3077,6 +3130,8 @@ class PageDispatcher(Dispatcher):
         """Say to the client what the lifecycle heard between the snapshot of the initializer and the hook: the frames born or gone, the
         document a frame committed, the load states it reached. Under the lifecycle's lock."""
         lifecycle = self.lifecycle
+        if self._announced_closed:
+            return
         for frame_id in list(self._frames):
             if frame_id not in lifecycle.frames:
                 child = self._frames.pop(frame_id, None)
@@ -3098,12 +3153,15 @@ class PageDispatcher(Dispatcher):
 
     def _reconcile_frame(self, frame: "FrameDispatcher", known: Any) -> None:
         url, name = known.url or "", known.name or ""
-        if url and (url, name) != (frame.url, frame.name):     # no address yet: nothing committed, nothing to say
-            # a document the client was not told: what a commit says (`_on_lifecycle`), once
+        commit = self._last_commit(known)
+        # A document the client was not told: a different address or name, or the same ones with another commit (a reload, a
+        # navigation to the same address, between the snapshot and the hook).
+        if url and ((url, name) != (frame.url, frame.name) or commit != frame.told_commit):     # no address yet: nothing committed
+            # what a commit says (`_on_lifecycle`), once
             self._forget_said_before_announcement(frame)
             for state in self.CANON_STATES:
                 frame.emit("loadstate", {"remove": state})
-            frame.url, frame.name = url, name
+            frame.url, frame.name, frame.told_commit = url, name, commit
             navigation = known._commits[-1][1] if known._commits else None
             frame.emit("navigated", {"url": url, "name": name, "newDocument": self.navigation_document(navigation)})
         for state in self.CANON_STATES:
@@ -3179,6 +3237,7 @@ class PageDispatcher(Dispatcher):
             self._forget_said_before_announcement(child)
             for state in ("commit", "domcontentloaded", "load", "networkidle"):
                 child.emit("loadstate", {"remove": state})
+            child.told_commit = self._last_commit(self.lifecycle.frame(frame_id))
             child.url = url or ""
             child.name = name or ""
             child.emit("navigated", {
@@ -3526,18 +3585,24 @@ class PageDispatcher(Dispatcher):
         """
         if frame_id == self.frame.frame_id:
             return self.frame
-        existing = self._frames.get(frame_id)
-        if existing is not None and not existing.disposed:
-            return existing
-        frame = self.lifecycle.frame(frame_id)
-        parent_id = getattr(frame, "parent", None)
-        made = FrameDispatcher(
-            self.server, self, frame_id,
-            url=getattr(frame, "url", "") or "",
-            parent_frame=self.frame_for(parent_id) if parent_id else None,
-            load_states=sorted(getattr(frame, "states", []) or []) or ["commit"])
-        self._frames[frame_id] = made
-        return made
+        # ⛔ CHECK AND CREATE IN ONE STEP. The reader thread (a held `eventFired` of a child, a frame the lifecycle announces) and the
+        # adoption thread (the reconciliation of the hand-over) both come here for a frame that is new: without the lock each saw
+        # no dispatcher and made one, two `__create__` for one frame, and the load states went to one of them. Recursive: the parent
+        # is made by the same call.
+        with self._frames_lock:
+            existing = self._frames.get(frame_id)
+            if existing is not None and not existing.disposed:
+                return existing
+            frame = self.lifecycle.frame(frame_id)
+            parent_id = getattr(frame, "parent", None)
+            made = FrameDispatcher(
+                self.server, self, frame_id,
+                url=getattr(frame, "url", "") or "",
+                parent_frame=self.frame_for(parent_id) if parent_id else None,
+                load_states=sorted(getattr(frame, "states", []) or []) or ["commit"],
+                told_commit=self._last_commit(frame))
+            self._frames[frame_id] = made
+            return made
 
     def op_set_interception(self, params: Dict) -> Any:
         """`page.route()`: hold this page's requests until a handler answers.

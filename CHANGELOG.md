@@ -22,6 +22,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   while the popup was being built blocked its page for good, because no client had been told of it and none could answer it), a `crash`, a file chooser. All
   of them are given back now, in the order they arrived. The only bound left is the memory of the buffer (512 events): an event beyond it is
   lost and a `RuntimeWarning` says how many, once per page.
+- The hand-over holds when the engine's reader, the adoption and a close run at the same time: a `load` is told to the client once (not twice,
+  so `page.on("load")` runs once); an event the engine sends while the held ones are being given back waits for them (a response is never handled
+  before its request); a document committed at the same address as the previous one is told; a page closed while it was being adopted is not given
+  frames, and is not announced, after its `__dispose__`; one frame never gets two dispatchers.
 
 ## [0.51.0] - 2026-11-12
 
