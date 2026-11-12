@@ -966,6 +966,16 @@ class FrameDispatcher(Dispatcher):
     #: closed, and a script that handles "detached" (an iframe a framework removed) never saw it.
     detached = False
 
+    def emit(self, method: str, params: Optional[Dict] = None) -> None:
+        if method == "loadstate" and params and params.get("add") in ("domcontentloaded", "load"):
+            page = self.page
+            with page._announce_lock:
+                if not page._announced:
+                    page._said_before_announcement.append((self, dict(params)))
+                super().emit(method, params)
+            return
+        super().emit(method, params)
+
     def detach(self) -> None:
         """The frame left the page: its handles go (their frame is no more), the frame itself stays and refuses."""
         self.detached = True
@@ -2658,6 +2668,14 @@ class PageDispatcher(Dispatcher):
         # replay.
         self._held: Optional[List] = []
         self._held_lock = threading.Lock()
+        #: ⛔ THE `domcontentloaded` AND `load` OF A POPUP THAT ARE SAID BEFORE IT IS ANNOUNCED. The page is built at once and announced when
+        #: the engine says Page.ready, which is also when its document commits, so the document may have loaded before the client hears
+        #: of the page: a `page.on("load")` registered in the handler of the `page` event would never fire. Playwright's own page is
+        #: reported after its ready and the listener hears the load. Those two states are said again right after the announcement, in
+        #: their order (the first time they set the state the client reads, so `wait_for_load_state` returns at once).
+        self._announce_lock = threading.RLock()
+        self._announced = False
+        self._said_before_announcement: List = []
         self.lifecycle = Lifecycle(conn, session)
         self.injected = InjectedScript(conn, session)
         conn.add_listener(self._route_juggler_event)
@@ -2738,7 +2756,7 @@ class PageDispatcher(Dispatcher):
         known = self.lifecycle.frame(self.main_frame_id)
         self.frame = FrameDispatcher(
             server, self, self.main_frame_id,
-            url=getattr(known, "url", "") or "about:blank",
+            url=getattr(known, "url", "") or "",
             name=getattr(known, "name", "") or "",
             load_states=sorted(getattr(known, "states", []) or []) or None)
         viewport = self.viewport_size
@@ -2798,6 +2816,18 @@ class PageDispatcher(Dispatcher):
         after them, the client would be told a frame of `about:blank` that is loaded already and never hears the `load`.
         """
         self.lifecycle.wait_for_page_ready(timeout=timeout)
+
+    def announce(self, context: "BrowserContextDispatcher", replay: bool) -> None:
+        """Tell the client of the page (the context's `page` event) and, for a popup, say again the load states it reached before:
+        under one lock, so a state said live in between waits for the ones that came first."""
+        with self._announce_lock:
+            context.emit("page", {"page": self.channel})
+            earlier, self._said_before_announcement = self._said_before_announcement, []
+            self._announced = True
+            if replay:
+                for frame, params in earlier:
+                    if not frame.detached:
+                        frame.emit("loadstate", params)
 
     def settle_events(self) -> None:
         """Return once every event the engine sent before this call has been handled: its reply comes after them, on one stream."""
@@ -4816,7 +4846,7 @@ class BrowserDispatcher(Dispatcher):
             # this build is recorded as early (see `_handle_detach`) and the
             # close is announced right after, so the client always sees the
             # page before its close - never a close for a page it has not met.
-            context.emit("page", {"page": page.channel})
+            page.announce(context, replay=not requested)
             with self._targets_lock:
                 self._adopting.discard(target_id)
                 self._openers.pop(target_id, None)

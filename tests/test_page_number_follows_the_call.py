@@ -243,6 +243,9 @@ class _Page:
     def settle_events(self):
         pass
 
+    def announce(self, context, replay):
+        context.emit("page", {"page": self.channel})
+
     def announce_closed(self):
         pass
 

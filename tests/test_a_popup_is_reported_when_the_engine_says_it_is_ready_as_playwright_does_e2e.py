@@ -145,3 +145,32 @@ def test_a_popup_whose_destination_answers_after_25_seconds_is_reported_then(fir
         info.value.close()
 
     _drive(mode, firefox_binary, body)
+
+
+@pytest.mark.parametrize("mode", MODES)
+@pytest.mark.parametrize("opener", ["#open1500", "#link1500"])
+def test_a_listener_registered_in_the_page_handler_hears_the_load_of_the_popup(firefox_binary, site, mode, opener):
+    """Stock Playwright: `context.on("page", lambda p: p.on("load", ...))` fires for a popup that loads after the event (4 s and 25 s
+    destinations); the popup is reported when its ready comes, which is when its document commits, so the load may be said before the
+    client has the page. `wait_for_load_state` in the same handler returns at once."""
+    def body(ctx, page):
+        page.goto(site, wait_until="load", timeout=30000)
+        heard, waited = [], []
+
+        def on_page(popup):
+            popup.on("load", lambda p: heard.append(time.monotonic()))
+            t = time.monotonic()
+            popup.wait_for_load_state("load", timeout=10000)
+            waited.append(time.monotonic() - t)
+
+        ctx.on("page", on_page)
+        with page.expect_popup(timeout=20000) as info:
+            page.click(opener)
+        deadline = time.monotonic() + 5
+        while not heard and time.monotonic() < deadline:
+            page.wait_for_timeout(50)
+        assert heard, "the listener registered in the handler of the page event never heard the load of the popup"
+        assert waited and waited[0] < 2.0, "wait_for_load_state in the handler took %r" % (waited,)
+        info.value.close()
+
+    _drive(mode, firefox_binary, body)
