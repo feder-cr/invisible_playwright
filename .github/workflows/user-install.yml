@@ -94,12 +94,12 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: '3.11' }
 
-      # Only what the TEST needs. The package under test is installed by the
+      # Only what the TEST needs (and `uv`, for the wait below to ask uv, which the release test installs the package with). The package under test is installed by the
       # test itself, into a venv it creates, from the index - installing it
       # here as well would put a second copy on the path and the assertions
       # would be reading the wrong one.
       - name: Test harness only
-        run: python -m pip install --upgrade pip pytest packaging
+        run: python -m pip install --upgrade pip pytest packaging uv
 
       # PyPI does not serve a new version to pip the instant twine finishes, and
       # this workflow runs on the ledger pull request, which the publish run
@@ -115,9 +115,11 @@ jobs:
       # started later, was green). Those are three different pages of the index, and
       # the job only needs the one pip installs from.
       #
-      # So the question asked here is pip's own: `pip download invisible-playwright==X`,
-      # the same client, the same index, no cache. Bounded at ten minutes: a forgotten
-      # publish still fails, and it fails HERE, saying that the index does not have the
+      # So the question asked here is the INSTALLERS' own, both: the upgrade test installs with pip, the release test with uv (the README's
+      # way in), so each round asks `pip download invisible-playwright==X` AND `uv pip compile` of it (no cache, nothing installed), and the
+      # job goes on only after three rounds in a row in which both said yes, 15 s apart (one yes proves that one request saw the version, not
+      # that the next is served by the same node of the index); a no restarts the count and a call that does not answer in two minutes is
+      # a no. Bounded at ten minutes: a forgotten publish still fails, and it fails HERE, saying that the index does not have the
       # version, instead of three steps later as a test that compares two versions.
       #
       # Only on the ledger pull request. A scheduled or dispatched run is not
@@ -134,21 +136,40 @@ jobs:
           deadline = time.monotonic() + 600
           deadline = min(deadline, time.monotonic() + float(os.environ.get("INDEX_WAIT_SECONDS", "600")))
           poll = float(os.environ.get("INDEX_WAIT_POLL", "15"))
-          n = 0
+          need = int(os.environ.get("INDEX_WAIT_CONFIRMATIONS", "3"))
+          call_limit = float(os.environ.get("INDEX_WAIT_CALL_SECONDS", "120"))
+          asks = [
+              ("pip", [sys.executable, "-m", "pip", "download", "--no-deps", "--no-cache-dir", "--disable-pip-version-check", "--quiet",
+                       "-d", tempfile.mkdtemp(), f"{dist}=={version}"], None),
+              ("uv", [sys.executable, "-m", "uv", "pip", "compile", "-", "--no-deps", "--no-cache", "--quiet"], f"{dist}=={version}\n"),
+          ]
+
+
+          def round_says():
+              """An empty string when every installer resolves the version, else what the first that did not said."""
+              for tool, command, stdin in asks:
+                  try:
+                      r = subprocess.run(command, input=stdin, capture_output=True, text=True, timeout=call_limit)
+                  except subprocess.TimeoutExpired:
+                      return f"{tool} did not answer within {call_limit:.0f} s"
+                  if r.returncode != 0:
+                      return f"{tool} said: " + ((r.stderr.strip().splitlines() or [""])[-1])
+              return ""
+
+
+          n = streak = 0
           said = ""
           while True:
               n += 1
-              r = subprocess.run([sys.executable, "-m", "pip", "download", "--no-deps", "--no-cache-dir",
-                                  "--disable-pip-version-check", "--quiet", "-d", tempfile.mkdtemp(),
-                                  f"{dist}=={version}"], capture_output=True, text=True)
-              if r.returncode == 0:
-                  print(f"::notice::pip downloads {dist} {version} from the index (attempt {n})")
+              said = round_says()
+              streak = 0 if said else streak + 1
+              if streak >= need:
+                  print(f"::notice::pip and uv resolve {dist} {version} from the index, {need} rounds in a row (attempt {n})")
                   sys.exit(0)
-              said = (r.stderr.strip().splitlines() or [""])[-1]
               if time.monotonic() >= deadline:
                   minutes = int(float(os.environ.get("INDEX_WAIT_SECONDS", "600")) // 60) or 1
                   print(f"::error::the index does not have {dist} {version} yet, after {minutes} minutes "
-                        f"and {n} attempts (pip said: {said})")
+                        f"and {n} attempts, {streak} of {need} rounds in a row ({said})")
                   sys.exit(1)
               time.sleep(poll)
           PY
