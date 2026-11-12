@@ -2229,7 +2229,8 @@ browser reads that decision.
   repository that builds and ships the engine. The engine's compiled default
   says the same from the next build. Engines older than firefox-21 do not read
   the pref and are not counted. To opt out of the ping, set
-  `invisible_firefox.usage_ping.enabled` to `False` in `extra_prefs`.
+  `invisible_firefox.usage_ping.enabled` to `False` in `extra_prefs`. (Since 0.51.0 this is no longer possible: the
+  counter cannot be turned off or redirected.)
 - **The `browser launches` badge is back.** It was removed in 0.7.2 because the
   counter behind it lived on a repository that had been deleted, so the badge
   would have redrawn a frozen number every morning. The counter has lived on
