@@ -19,6 +19,15 @@ its process: only the back-forward cache can end the worker, which is the case J
 another site (with strategy 1 the top changes process), by `page.goto` (Page.navigate gives the top a new browsing
 context even on the same site) or by the page's own `location.href` (the same browsing context). Hosts a.test / b.test / c.test resolve to one local server
 (`network.dns.localDomains`): two hosts are two sites, one port.
+
+THE PRECONDITION IS FIREFOX'S, NOT OURS. Whether a document goes into the back-forward cache is Firefox's decision, taken when the
+next navigation starts (nsDocShell::InternalLoad -> Document::CanSavePresentation, CanonicalBrowsingContext::AllowedInBFCache), and
+a document that is refused is refused for good: it is loaded again on the way back. What refuses it is anything in flight in the
+document's load group at that moment (a dedicated worker's script fetch is one: a worker that has not started yet makes the page
+non-restorable, measured 0 of 8 restored when leaving right after `load`, 8 of 8 after one round trip to the worker) and the
+page's `pageshow` not yet run (it clears the loading mark). So the test leaves only when every document it holds has had its
+`pageshow` and its worker has answered, and a run whose page was still loaded again is not a result of ours: the gesture is
+repeated on a fresh browser, up to ATTEMPTS times, and only ATTEMPTS refusals in a row fail, loudly.
 """
 from __future__ import annotations
 
@@ -29,6 +38,14 @@ from http.server import BaseHTTPRequestHandler
 import pytest
 
 from _servers import LocalServer
+
+#: How many times the whole gesture may be started again because Firefox did not put the page in the cache (see above).
+ATTEMPTS = 3
+
+
+class _NotRestored(Exception):
+    """Firefox loaded the page again instead of restoring it: the precondition of the test, not a verdict on it."""
+
 
 STRATEGY_1 = {
     "fission.autostart": True,
@@ -129,6 +146,15 @@ def _index(events, start, method, pred=lambda p: True):
     return None
 
 
+def _wait_cacheable(page):
+    """Until every document of the page that records `pageshow` has had it: a document whose `load` handlers are still running,
+    or whose `pageshow` has not run, is still marked as loading and Firefox will not cache it (Document::OnPageShow clears
+    the mark). The worker's own start is the round trips the caller made before."""
+    def shown():
+        return all(frame.evaluate("(window.__shown || [0]).length >= 1") for frame in page.frames)
+    assert _wait(shown, 10.0), "a document of the page never ran its pageshow: %r" % [f.url for f in page.frames]
+
+
 def _ask(page, where):
     target = page if where == "top" else next(f for f in page.frames if f.url.endswith("/frame-worker"))
     return target.evaluate("window.__ask()")
@@ -141,6 +167,51 @@ def _ask(page, where):
 def test_a_worker_leaves_with_its_page_for_the_cache_and_comes_back_the_same(firefox_binary, sites, events, where,
                                                                              away, how, engine_at_least):
     engine_at_least("firefox-62")
+
+    def attempt():
+        del events[:]                      # the events of this attempt only: the ids and the order are read from them
+        _gesture(firefox_binary, sites, events, where, away, how)
+
+    _until_restored(attempt)
+
+
+def _until_restored(attempt, attempts=ATTEMPTS):
+    """Run `attempt` until Firefox has put the page in the cache. A verdict of ours (any other failure) ends it at once."""
+    refused = []
+    for _ in range(attempts):
+        try:
+            attempt()
+            return
+        except _NotRestored as why:
+            refused.append(str(why))
+    raise AssertionError(
+        "Firefox did not put the page in the back-forward cache in %d attempts out of %d, so this test proves nothing: %r"
+        % (len(refused), attempts, refused))
+
+
+def test_a_refused_page_is_tried_again_and_only_attempts_refusals_in_a_row_fail():
+    calls = []
+
+    def refused_twice():
+        calls.append(1)
+        if len(calls) < ATTEMPTS:
+            raise _NotRestored("loaded again")
+
+    _until_restored(refused_twice)
+    assert len(calls) == ATTEMPTS
+
+    calls.clear()
+    with pytest.raises(AssertionError, match="proves nothing"):
+        _until_restored(lambda: (calls.append(1), (_ for _ in ()).throw(_NotRestored("loaded again"))))
+    assert len(calls) == ATTEMPTS
+
+    calls.clear()                                   # a verdict of ours is not retried
+    with pytest.raises(ValueError):
+        _until_restored(lambda: (calls.append(1), (_ for _ in ()).throw(ValueError("ours"))))
+    assert len(calls) == 1
+
+
+def _gesture(firefox_binary, sites, events, where, away, how):
     from invisible_playwright import InvisiblePlaywright
 
     with InvisiblePlaywright(seed=42, binary_path=firefox_binary, humanize=False,
@@ -159,6 +230,7 @@ def test_a_worker_leaves_with_its_page_for_the_cache_and_comes_back_the_same(fir
                 "the frame of the worker is not listed with its url: %r" % [f.url for f in page.frames])
         assert _ask(page, where) == 1
         assert _ask(page, where) == 2
+        _wait_cacheable(page)
 
         # 2. the top goes forward: the worker ends for the client, before the new page commits
         forward = len(events)
@@ -176,8 +248,8 @@ def test_a_worker_leaves_with_its_page_for_the_cache_and_comes_back_the_same(fir
         # 3. back from the cache: the same worker, told once, after the restored document's contexts are cleared
         back = len(events)
         page.go_back(wait_until="load")
-        assert page.evaluate("window.__shown") == [False, True], (
-            "the page was loaded again instead of restored from the back-forward cache, so this test proves nothing")
+        if page.evaluate("window.__shown") != [False, True]:
+            raise _NotRestored("the page was loaded again instead of restored: __shown = %r" % page.evaluate("window.__shown"))
         if not _wait(lambda: _index(events, back, "Page.workerCreated", lambda p: p["workerId"] == wid) is not None):
             other = [p["workerId"] for m, p in events[back:] if m == "Page.workerCreated"]
             raise AssertionError(("the restored worker was announced under a NEW id %s, not %s: " % (other, wid)
