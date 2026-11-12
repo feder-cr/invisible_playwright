@@ -65,16 +65,14 @@ jobs:
                 --out "evidence/probe/${label}_${n}.json" --seconds 18 "$@" 2>&1 | tee -a evidence/probe/probe.log || true
             done
           }
-          probe retail_site_pool0          "$RETAIL" --pool 0
-          probe retail_blank_pool0         "$RETAIL" --pool 0 --blank
-          probe retail_site_pooldefault    "$RETAIL" --pool -1
-          probe ours_bare_site_pool0       "$FF" --pool 0
-          probe ours_bare_blank_pool0      "$FF" --pool 0 --blank
-          probe ours_bare_site_pooldefault "$FF" --pool -1
-          probe ours_lib_site_pool0        "$FF" --pool 0 --via-wrapper
-          probe ours_lib_blank_pool0       "$FF" --pool 0 --via-wrapper --blank
-          probe ours_lib_site_count1       "$FF" --pool 0 --via-wrapper --pref dom.ipc.processCount.webIsolated=1
-          probe ours_lib_site_pooldefault  "$FF" --pool -1 --via-wrapper
+          probe retail_site                "$RETAIL" --pool 0
+          probe retail_blank               "$RETAIL" --pool 0 --blank
+          probe ours_bare_site             "$FF" --pool 0
+          probe ours_lib_site              "$FF" --pool 0 --via-wrapper
+          probe ours_lib_site_newtab_off   "$FF" --pool 0 --via-wrapper --pref browser.newtabpage.enabled=false
+          probe ours_lib_site_preload_off  "$FF" --pool 0 --via-wrapper --pref browser.newtab.preload=false
+          probe ours_lib_site_crossword_off "$FF" --pool 0 --via-wrapper --pref browser.newtabpage.activity-stream.widgets.system.crossword.enabled=false
+          probe ours_lib_site_widgets_off  "$FF" --pool 0 --via-wrapper --pref browser.newtabpage.activity-stream.widgets.system.enabled=false
           {
             echo "## One page, which content processes (kind tab), names by site"
             echo

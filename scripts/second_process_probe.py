@@ -29,11 +29,8 @@ PREFS = {
     "dom.ipc.processCount.webIsolated": 4,
     "fission.processSiteNames": True,
     "network.dns.localDomains": "a.test,b.test,c.test",
-    # a new profile opens nothing of its own
+    # a new profile shows no first-run page; the New Tab page and its preloading are left as the browser ships them
     "browser.shell.checkDefaultBrowser": False,
-    "browser.startup.homepage": "about:blank",
-    "browser.startup.page": 0,
-    "browser.newtabpage.enabled": False,
     "browser.aboutwelcome.enabled": False,
     "startup.homepage_welcome_url": "",
     "startup.homepage_welcome_url.additional": "",
@@ -115,7 +112,30 @@ def final_table(seen, started):
     return final
 
 
+def remote_types(log_base):
+    """pid -> the remote types the engine's log says that process was given, in order."""
+    import glob
+    import re
+
+    types = {}
+    line = re.compile(r"Setting remoteType of process (\d+) to (\S+)|Changing remoteType of process (\d+) from \S+ to (\S+)")
+    for path in glob.glob(log_base + "*"):
+        try:
+            with open(path, encoding="utf-8", errors="replace") as fh:
+                for text in fh:
+                    m = line.search(text)
+                    if m:
+                        pid, kind = (m.group(1), m.group(2)) if m.group(1) else (m.group(3), m.group(4))
+                        types.setdefault(int(pid), []).append(kind)
+        except OSError:
+            continue
+    return types
+
+
 def report(args, url, names, final, hits, started, extra=None):
+    types = remote_types(os.path.splitext(args.out)[0] + ".moz")
+    for row in final:
+        row["remote_type"] = " -> ".join(types.get(row["pid"], [])) or None
     record = {"label": args.label, "firefox": args.firefox, "firefox_sha256": sha256(args.firefox), "url": url, "pool": args.pool,
               "prefs": args.pref, "via_wrapper": args.via_wrapper, "seconds": args.seconds, "names": names, "final": final,
               "hits": [dict(h, t=round(h["t"] - started, 2)) for h in hits]}
@@ -125,7 +145,7 @@ def report(args, url, names, final, hits, started, extra=None):
     tabs = [f for f in final if f["kind"] == "tab" and not f.get("gone")]
     print("%-26s url=%-12s pool=%-2s %s page asked at %s; tab processes at the end: %s" % (
         args.label, url.split("/")[-1][:12], args.pool, " ".join(args.pref), [h["t"] for h in hits if h["path"] == "/plain"][:1],
-        [(f["name"], "born %+.2f" % f["born"], "%s MB" % f["rss_mb"]) for f in tabs]))
+        [(f["remote_type"] or f["name"], "born %+.2f" % f["born"], "%s MB" % f["rss_mb"]) for f in tabs]))
     print("   names over time: %s" % [(n["at"], n["pid"], n["name"]) for n in names if n["kind"] == "tab"])
     return 0
 
@@ -138,7 +158,12 @@ def via_wrapper(args, prefs, url, server, hits):
 
     keep = ("fission.", "dom.ipc.", "network.dns.localDomains")
     extra_prefs = {k: v for k, v in prefs.items() if k.startswith(keep)}
+    for item in args.pref:          # a pref named on the command line always reaches the engine
+        name, _, value = item.partition("=")
+        extra_prefs[name] = json.loads(value)
     names, seen, marks = [], {}, {}
+    os.environ["MOZ_LOG"] = "Process:5,ProcessIsolation:5,timestamp,sync"
+    os.environ["MOZ_LOG_FILE"] = os.path.splitext(args.out)[0] + ".moz"
     started = time.time()
     try:
         with InvisiblePlaywright(seed=42, binary_path=args.firefox, humanize=False, headless=True,
