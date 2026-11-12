@@ -3,7 +3,9 @@
 # tests/test_fission_strategy1_bench.py::test_same_site_other_port_stays_in_process was red in 14 of 30 runs of the whole
 # e2e suite ("a same-site frame changed the processes of the sites: [P] -> [P, P2]") and never when run alone. This job
 # repeats a copy of it that records what P2 is: whose child, when it was born against the instants of the test, and what the
-# engine logged when it started it. Four workers on this file alone gave 0 red runs of 40; with other e2e tests running beside it, 9 of 40: only that phase is kept.
+# engine logged when it started it. Four workers on this file alone gave 0 red runs of 40; with other e2e tests running beside it, 9 of 40: that phase gave the table of the processes and the engine's log.
+# Now: one page opened by a retail Firefox of the same version and by ours, started the same way, with the
+# processes named by site.
 name: same-site diag
 
 on:
@@ -41,33 +43,46 @@ jobs:
           sudo "$(which python)" -m playwright install-deps firefox
       - name: Fetch the published firefox binary
         run: echo "FF=$(python -m invisible_playwright fetch | tail -1)" >> "$GITHUB_ENV"
-      - name: Phase 2, the same while other e2e tests run on two more workers
+      - name: Retail Firefox of the same version
+        run: |
+          set -eu
+          mkdir -p retail evidence/probe
+          curl -fsSL --retry 3 -o retail/firefox.tar.xz "https://ftp.mozilla.org/pub/firefox/releases/159.0/linux-x86_64/en-US/firefox-159.0.tar.xz"
+          sha256sum retail/firefox.tar.xz | tee evidence/probe/retail.sha256
+          tar -xJf retail/firefox.tar.xz -C retail
+          grep -E "^(Version|BuildID)=" retail/firefox/application.ini | tee evidence/probe/retail.version
+          grep -E "^(Version|BuildID)=" "$(dirname "$FF")/application.ini" | tee evidence/probe/ours.version
+          echo "RETAIL=$PWD/retail/firefox/firefox" >> "$GITHUB_ENV"
+      - name: Which content processes one page starts, retail and ours
         env:
-          INVPW_BINARY_PATH: ${{ env.FF }}
           PYTHONUNBUFFERED: "1"
-          DIAG_REPS: "24"
-          DIAG_ARMS: "log"
         run: |
           set -u
-          mkdir -p evidence/phase2
-          export DIAG_DIR="$PWD/evidence/phase2"
-          (
-            set +e
-            while [ ! -e evidence/phase2/done ]; do
-              xvfb-run -a python -m pytest tests/test_juggler_actions.py -m e2e -o addopts= -p no:cacheprovider -n 2 \
-                --timeout 300 -q >> evidence/phase2/load.log 2>&1
+          probe() {   # label firefox extra args...
+            label="$1"; bin="$2"; shift 2
+            for n in 1 2 3; do
+              xvfb-run -a python scripts/second_process_probe.py --firefox "$bin" --label "$label" \
+                --out "evidence/probe/${label}_${n}.json" --seconds 18 "$@" 2>&1 | tee -a evidence/probe/probe.log || true
             done
-          ) &
-          load=$!
-          set +e
-          xvfb-run -a python -m pytest tests/test_fission_strategy1_bench.py -k "test_diag" -m e2e -o addopts= \
-            -p no:cacheprovider -n 2 --dist load --timeout 300 -q > evidence/phase2/pytest.log 2>&1
-          echo "phase 2 pytest exit=$?"
-          set -e
-          touch evidence/phase2/done
-          wait "$load" || true
-          tail -5 evidence/phase2/pytest.log
-          python scripts/same_site_diag_report.py evidence/phase2 | tee -a "$GITHUB_STEP_SUMMARY"
+          }
+          probe retail_site_pool0          "$RETAIL" --pool 0
+          probe retail_blank_pool0         "$RETAIL" --pool 0 --blank
+          probe retail_site_pooldefault    "$RETAIL" --pool -1
+          probe ours_bare_site_pool0       "$FF" --pool 0
+          probe ours_bare_blank_pool0      "$FF" --pool 0 --blank
+          probe ours_bare_site_pooldefault "$FF" --pool -1
+          probe ours_lib_site_pool0        "$FF" --pool 0 --via-wrapper
+          probe ours_lib_blank_pool0       "$FF" --pool 0 --via-wrapper --blank
+          probe ours_lib_site_count1       "$FF" --pool 0 --via-wrapper --pref dom.ipc.processCount.webIsolated=1
+          probe ours_lib_site_pooldefault  "$FF" --pool -1 --via-wrapper
+          {
+            echo "## One page, which content processes (kind tab), names by site"
+            echo
+            echo '```'
+            cat evidence/probe/retail.version evidence/probe/ours.version
+            cat evidence/probe/probe.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload all the evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
