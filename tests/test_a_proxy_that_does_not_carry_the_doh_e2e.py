@@ -24,6 +24,7 @@ Not covered: an `https` page (the page server is plain HTTP), a proxy with crede
 """
 from __future__ import annotations
 
+import importlib
 import ipaddress
 import json
 import os
@@ -190,7 +191,8 @@ def test_this_browser_behind_a_proxy_that_does_or_does_not_carry_the_doh(firefox
 @pytest.mark.parametrize("kind", ["socks5", "http"])
 def test_stock_firefox_behind_the_same_proxy(doh, pages, kind, road):
     """The reference: Playwright's own Firefox with the same proxy (no assertion on its outcome: it is the measurement)."""
-    from playwright.sync_api import sync_playwright
+    # the INSTALLED playwright on purpose (its own Firefox is the reference), loaded by name as the other stock-client tests do
+    sync_playwright = importlib.import_module("playwright.sync_api").sync_playwright
 
     proxy = _proxy(kind, doh, road)
     try:
