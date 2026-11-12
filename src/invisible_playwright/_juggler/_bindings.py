@@ -1,81 +1,88 @@
-"""`expose_binding` / `expose_function`: the scripts the page runs, and the way a call is read and answered.
+"""`expose_binding` / `expose_function`: the script a page runs, and the way a call is read and answered.
 
-THE SHAPE. One transport per context, one small function per exposed name.
+THE RULE: THE PAGE SEES `foo` AND NOTHING ELSE. A page can list the names on its window, so a transport left there ("a binding
+function", a controller) is the driver's signature. Nothing is left:
 
-* The transport is Juggler's own binding (`Browser.addBinding`), installed once per context under the name Playwright uses
-  (`__playwright__binding__`). The engine exports a native function by that name into the page's main world of every
-  document, present and future, in every process, and raises `Page.bindingCalled` when it is called. Its script is the
-  controller below: it keeps the calls waiting for an answer and hands each one a promise.
-* An exposed name is only a function that asks the controller. It is installed as an init script (the documents to come)
-  and run once in the main world of the documents that exist (`defineProperty` on a configurable property, so running it
-  twice, as a document born between the two steps would, changes nothing).
-* The answer travels the other way: the client runs the Python function, sends `resolve` or `reject` to the BindingCall,
-  and the server calls `controller.deliver(seq, ok, value)` in the context the call came from.
+* One engine binding PER EXPOSED NAME (`Browser.addBinding` for a context, `Page.addBinding` for a page), under a native name chosen
+  for the session. The engine puts the native function on the window of every document of the page or context, present and future,
+  in every process, BEFORE any script of the page, and then runs the script below.
+* The script takes the native function off the window at once and keeps it in a closure; defines `foo` (an ordinary function whose
+  source says nothing of what it is for); and hands the engine, through the native function, the function that answers a call
+  (the engine keeps it as an object of that context and reports its id: `payload.bindingEnd`).
+* A call travels as a JSON string through the native function; the answer is `Runtime.callFunction` on the kept function.
 
-LIMIT, SAID HERE. Arguments and results cross as JSON: `undefined`, functions and `NaN` arrive as `null`, and a `Date` as
-its ISO string. Playwright's own channel carries those; a caller who needs one passes it as a string.
+LIMIT, SAID HERE. Arguments and results cross as JSON: `undefined`, functions and `NaN` arrive as `null`, and a `Date` as its ISO
+string. A caller who needs one passes it as a string. Workers do not get the function (the engine installs bindings in the frames
+of a page, as Playwright's does).
 """
 from __future__ import annotations
 
+import functools
 import json
 
-#: The native function Juggler exports; Playwright's own name for its transport, so a page that lists its globals sees what
-#: a stock Playwright page with an exposed function shows.
-TRANSPORT = "__playwright__binding__"
-CONTROLLER = "__playwright__binding__controller__"
 
-#: Run by the engine in each main world right after it exports the native function. Everything the page's own code could
-#: replace later (`JSON.stringify`, `Map`, `Promise`) is taken now, before any of it runs.
-CONTROLLER_JS = """(() => {
-  if (globalThis.%(controller)s) return;
-  const native = globalThis.%(transport)s;
-  const stringify = JSON.stringify, pending = new Map();
-  let seq = 0;
-  Object.defineProperty(globalThis, '%(controller)s', {
-    value: Object.freeze({
-      call(name, args) {
-        return new Promise((resolve, reject) => {
-          const id = ++seq;
-          pending.set(id, { resolve, reject });
-          try { native(stringify({ name, seq: id, args })); }
-          catch (e) { pending.delete(id); reject(e); }
-        });
-      },
-      deliver(id, ok, value) {
-        const waiting = pending.get(id);
-        if (!waiting) return;
-        pending.delete(id);
-        if (ok) waiting.resolve(value); else waiting.reject(new Error(value));
-      },
-    }),
-    enumerable: false, configurable: true, writable: false,
-  });
-})()""" % {"controller": CONTROLLER, "transport": TRANSPORT}
+def install_script(native: str, name: str) -> str:
+    """Run by the engine in each document, after it exports the native function `native` on the window."""
+    return (
+        "(() => {"
+        " const send = globalThis[%(native)s];"
+        " try { delete globalThis[%(native)s]; } catch (e) {}"
+        " if (typeof send !== 'function') return;"
+        " const text = JSON.stringify, waiting = new Map();"
+        " let last = 0;"
+        " const ask = (name, args) => new Promise((resolve, reject) => {"
+        "   const id = ++last; waiting.set(id, [resolve, reject]);"
+        "   try { send(text({ name, seq: id, args })); } catch (e) { waiting.delete(id); reject(e); } });"
+        " const f = { [%(name)s]: function (...args) { return ask(%(name)s, args); } }[%(name)s];"
+        " Object.defineProperty(globalThis, %(name)s,"
+        "   { value: f, writable: true, configurable: true, enumerable: true });"
+        " send(function (id, ok, value) {"
+        "   const w = waiting.get(id); if (!w) return; waiting.delete(id);"
+        "   if (ok) w[0](value); else w[1](new Error(value)); });"
+        " })()") % {"native": json.dumps(native), "name": json.dumps(name)}
 
 
-def install_script(name: str) -> str:
-    """The function `name` on the page: it asks the controller, which is looked up at the CALL (the init script that
-    makes this function may run before the engine has installed the controller)."""
-    return ("(() => { const name = %s;"
-            " const f = function (...args) { return globalThis.%s.call(name, args); };"
-            " Object.defineProperty(f, 'name', { value: name, configurable: true });"
-            " Object.defineProperty(globalThis, name, { value: f, writable: true, configurable: true, enumerable: true });"
-            " })()") % (json.dumps(name), CONTROLLER)
+def remove_script(native: str, name: str) -> str:
+    """The same binding again, as the engine runs the last one it was given for a native name: it takes the native function
+    off the window and the exposed function with it. A document that exists loses `foo`; one to come never gets it."""
+    return ("(() => { try { delete globalThis[%s]; } catch (e) {}"
+            " try { delete globalThis[%s]; } catch (e) {} })()") % (json.dumps(native), json.dumps(name))
 
 
-def remove_script(name: str) -> str:
-    return "(() => { try { delete globalThis[%s]; } catch (e) {} })()" % json.dumps(name)
-
-
-#: In the main world of the call's context: answer the call `seq`.
-DELIVER = ("(seq, ok, value) => { const c = globalThis.%s;"
-           " if (c) c.deliver(seq, ok, value); }") % CONTROLLER
+#: `Runtime.callFunction` with the kept function as the first argument.
+DELIVER = "(end, seq, ok, value) => end(seq, ok, value)"
 
 
 def read_call(payload) -> tuple:
-    """`(name, seq, args)` of a `Page.bindingCalled` payload, or `None` if it is not one of ours."""
+    """`(name, seq, args)` of a `Page.bindingCalled` payload, or `None` if it is not a call."""
     try:
         data = json.loads(payload) if isinstance(payload, str) else payload
         return str(data["name"]), int(data["seq"]), list(data.get("args") or [])
     except (TypeError, ValueError, KeyError):
         return None
+
+
+@functools.lru_cache(maxsize=16)
+def engine_supports(engine_dir: str) -> bool:
+    """Whether the engine in `engine_dir` has `Page.addBinding` and the binding that hands its end over.
+
+    Read from the engine's own files (the schema of its protocol, and its Runtime), so an engine without them is known BEFORE a
+    function is exposed: there is no fallback to a name on the window, and a clear refusal is the answer. An engine that cannot
+    be read is treated as one that cannot."""
+    if not engine_dir:
+        return False
+    try:
+        import os
+
+        from invisible_core.juggler._gen_protocol import protocol_source
+        _label, text = protocol_source(engine_dir)
+        if text.count("'addBinding'") < 2:
+            return False
+        omni = os.path.join(engine_dir, "omni.ja")
+        if os.path.isfile(omni):
+            from invisible_core.jar import open_jar
+            jar = open_jar(omni)
+            return b"bindingEnd" in jar.read("modules/juggler/content/Runtime.js")
+        return True
+    except BaseException:
+        return False

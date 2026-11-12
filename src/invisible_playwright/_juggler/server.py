@@ -36,6 +36,7 @@ import pathlib
 import sys
 import tempfile
 import queue
+import secrets
 import threading
 import time
 import warnings
@@ -2547,35 +2548,36 @@ class BindingCallDispatcher(Dispatcher):
     TYPE = "BindingCall"
     METHODS = {"resolve": "op_resolve", "reject": "op_reject"}
 
-    def __init__(self, server, page: "PageDispatcher", frame: "FrameDispatcher", context_id: str, name: str,
-                 seq: int, args: List[Any]) -> None:
+    def __init__(self, server, page: "PageDispatcher", frame: "FrameDispatcher", context_id: str, native: str,
+                 name: str, seq: int, args: List[Any]) -> None:
         self.page = page
         self.context_id = context_id
+        self.native = native
         self.seq = seq
         super().__init__(server, page, {
             "frame": frame.channel, "name": name,
             "args": [_serialize(a) for a in args]})
 
     @staticmethod
-    def answer_unknown(injected, context_id: str, seq: int, name: str) -> None:
-        BindingCallDispatcher._deliver(injected, context_id, seq, False, 'Function "%s" is not exposed' % name)
-
-    @staticmethod
-    def _deliver(injected, context_id: str, seq: int, ok: bool, value: Any) -> None:
+    def _deliver(page: "PageDispatcher", context_id: str, native: str, seq: int, ok: bool, value: Any) -> None:
+        end = page._binding_ends.get((context_id, native))
+        if end is None:
+            return          # the document left (or never handed its end over): nobody is waiting
         try:
-            injected.call_raw(context_id, _bindings.DELIVER,
-                              [{"value": seq}, {"value": ok}, {"value": value}], by_value=True, timeout=10.0)
+            page.injected.call_raw(context_id, _bindings.DELIVER,
+                                   [{"objectId": end}, {"value": seq}, {"value": ok}, {"value": value}],
+                                   by_value=True, timeout=10.0)
         except Exception:
             pass            # the document left: nobody is waiting for the answer
 
     def op_resolve(self, params: Dict) -> Any:
-        self._deliver(self.page.injected, self.context_id, self.seq, True, _deserialize(params.get("result")))
+        self._deliver(self.page, self.context_id, self.native, self.seq, True, _deserialize(params.get("result")))
         self.dispose()
         return None
 
     def op_reject(self, params: Dict) -> Any:
         error = (params.get("error") or {}).get("error") or {}
-        self._deliver(self.page.injected, self.context_id, self.seq, False,
+        self._deliver(self.page, self.context_id, self.native, self.seq, False,
                       error.get("message") or error.get("name") or "binding failed")
         self.dispose()
         return None
@@ -2764,6 +2766,8 @@ class PageDispatcher(Dispatcher):
         self._binding_jobs: "queue.Queue" = queue.Queue()
         self._binding_worker: Optional[threading.Thread] = None
         self._binding_lock = threading.Lock()
+        #: (execution context, native name) -> objectId of the function that answers the calls made there (see `_bindings`).
+        self._binding_ends: Dict[tuple, str] = {}
         self.main_frame_id = self.lifecycle.wait_for_main_frame(timeout=20.0)
         # ⛔ The Frame is created BEFORE the Page and adopted after: the Page
         # initializer has to name a mainFrame the client can already resolve.
@@ -3756,36 +3760,19 @@ class PageDispatcher(Dispatcher):
     # ── expose_binding / expose_function ────────────────────────────────────
     def op_expose_binding(self, params: Dict) -> Any:
         """`page.expose_binding` / `page.expose_function`: the function `name` on this page, in the page's own world
-        (a site can see it, which is what the caller asked for). See `_bindings` for the shape: the context's transport,
-        a small function per name, installed for the documents to come (an init script of this page) and for the
-        documents that exist (run once in their main world)."""
+        (a site can see it, which is what the caller asked for, and nothing else: see `_bindings`). The engine installs it
+        in every document of the page, present and future, in every process the frames live in."""
         name = params["name"]
-        script = _bindings.install_script(name)
-        self._exposed[name] = script
-        self.context.ensure_binding_transport()
-        self.injected.add_init_script(script)
-        self.run_in_main_worlds(script)
+        native = self.context.binding_native(name)
+        self.context.require_binding_engine()
+        self._exposed[name] = native
+        self.send("Page.addBinding", {"name": native, "script": _bindings.install_script(native, name)})
 
         def undo() -> None:
             self._exposed.pop(name, None)
-            self.injected.remove_init_script(script)
-            self.run_in_main_worlds(_bindings.remove_script(name))
+            self.send("Page.addBinding", {"name": native, "script": _bindings.remove_script(native, name)})
         handle = DisposableDispatcher(self.server, self, undo)
         return {"disposable": handle.channel}
-
-    def run_in_main_worlds(self, script: str) -> None:
-        """`script` in the page's own world of every document that exists now.
-
-        THE MAIN WORLD, and not the utility one the rest of this package works in: a function the caller exposes is for
-        the page to call. The contexts are the ones the engine announced with the empty world name."""
-        injected = self.injected
-        for (_frame, world), context in list(injected.contexts.items()):
-            if world != "":
-                continue
-            try:
-                injected._evaluate_in(context, script, by_value=True, timeout=10.0)
-            except Exception:
-                pass            # a document that left meanwhile has nothing to define
 
     def _on_binding_called(self, params: Dict) -> None:
         """The page called an exposed function. Announced to the client from a worker, in order, and not here.
@@ -3794,7 +3781,12 @@ class PageDispatcher(Dispatcher):
         that called, see `_announce_binding`), which only the reader can deliver. In order, because two calls made one
         after the other are announced one after the other: one worker per page, started by the first call and gone after
         thirty idle seconds."""
-        call = _bindings.read_call(params.get("payload"))
+        payload = params.get("payload")
+        if isinstance(payload, dict) and payload.get("bindingEnd"):
+            # The page-side end of a binding, handed over by its script once, before any call: kept for the answers.
+            self._binding_ends[(params.get("executionContextId"), params.get("name"))] = payload["bindingEnd"]
+            return
+        call = _bindings.read_call(payload)
         if call is None:
             return
         self._binding_jobs.put((params.get("executionContextId"), call))
@@ -3827,9 +3819,9 @@ class PageDispatcher(Dispatcher):
         `url` is still the empty one. The address is asked of the document that called, and the call waits (a second
         at most) until the client has been told that same address."""
         injected = self.injected
-        if name not in self._exposed and name not in self.context._exposed:
-            BindingCallDispatcher.answer_unknown(injected, context_id, seq, name)
-            return
+        native = self._exposed.get(name) or self.context._exposed.get(name)
+        if native is None:
+            return          # nothing exposed under this name here: the page's promise cannot be answered, and was not offered
         frame = self.frame_for(injected.frame_of_context(context_id) or self.frame.frame_id)
         try:
             href = injected.call_raw(context_id, "() => location.href", [], by_value=True, timeout=5.0).get("value")
@@ -3838,7 +3830,7 @@ class PageDispatcher(Dispatcher):
         end = time.monotonic() + 1.0
         while href and frame.committed_url != href and time.monotonic() < end:
             time.sleep(0.005)
-        binding = BindingCallDispatcher(self.server, self, frame, context_id, name, seq, args)
+        binding = BindingCallDispatcher(self.server, self, frame, context_id, native, name, seq, args)
         self.emit("bindingCall", {"binding": binding.channel})
 
     def op_bring_to_front(self, params: Dict) -> Any:
@@ -4211,57 +4203,50 @@ class BrowserContextDispatcher(Dispatcher):
         #: The caller's context-level init scripts, in order. The engine's
         #: command replaces the list, so the accumulation lives here.
         self._init_scripts: List[str] = []
-        #: `context.expose_binding` names -> the script that makes the function, and whether the transport is installed.
+        #: `context.expose_binding` names -> the engine's native name for each (see `binding_native`).
         self._exposed: Dict[str, str] = {}
-        self._transport_installed = False
+        self._native_names: Dict[str, str] = {}
         self._transport_lock = threading.Lock()
 
     @property
     def conn(self) -> "juggler.Connection":
         return self.browser.conn
 
-    def ensure_binding_transport(self) -> None:
-        """Juggler's binding under Playwright's name, once per context: the engine puts it in every document of every
-        page of the context, present and future, and the controller script with it (see `_bindings`)."""
+    def binding_native(self, name: str) -> str:
+        """The name of the engine's native function for the exposed function `name`: unique to this context and this
+        session, chosen here (the page never sees it: its script takes it off the window before any script of the page)."""
         with self._transport_lock:
-            if self._transport_installed:
-                return
-            self._browser_send("Browser.addBinding", {"name": _bindings.TRANSPORT, "script": _bindings.CONTROLLER_JS})
-            self._transport_installed = True
+            native = self._native_names.get(name)
+            if native is None:
+                native = "__%s_%d" % (self.browser.binding_token, len(self._native_names))
+                self._native_names[name] = native
+            return native
+
+    def require_binding_engine(self) -> None:
+        """Exposed functions need the engine that hands the page-side end of a binding over and has `Page.addBinding`.
+        With an engine that does not, they REFUSE: the way around it is a global on the window that a page can list,
+        and that is the tell this design exists to avoid."""
+        if not _bindings.engine_supports(self.browser.engine_dir):
+            raise ProtocolException(
+                "expose_function() and expose_binding() need a newer engine than this one (the one with "
+                "Page.addBinding and the binding that hands its end over): this engine would have to leave a "
+                "name on the page's window to answer the calls, and a page can list its globals")
 
     def op_expose_binding(self, params: Dict) -> Any:
         """`context.expose_binding` / `context.expose_function`: the function `name` on every page of the context,
-        present and future. Documents to come get it from the context's init scripts, documents that exist from one
-        run of the same script in their main world: one definition, idempotent, so a document born between the two
-        gets it twice and keeps one."""
+        present and future. The engine installs it in every document of every page, in every process (see
+        `_bindings`); one registration, no init script, nothing run by this server in the documents."""
         name = params["name"]
-        script = _bindings.install_script(name)
-        self._exposed[name] = script
-        self.ensure_binding_transport()
-        self._init_scripts.append(script)
-        self._browser_send("Browser.setInitScripts", {"scripts": [{"script": s} for s in self._init_scripts]})
-        for page in list(self.pages):
-            page.run_in_main_worlds(script)
+        native = self.binding_native(name)
+        self.require_binding_engine()
+        self._exposed[name] = native
+        self._browser_send("Browser.addBinding", {"name": native, "script": _bindings.install_script(native, name)})
 
         def undo() -> None:
             self._exposed.pop(name, None)
-            if script in self._init_scripts:
-                self._init_scripts.remove(script)
-            self._browser_send("Browser.setInitScripts", {"scripts": [{"script": s} for s in self._init_scripts]})
-            for page in list(self.pages):
-                page.run_in_main_worlds(_bindings.remove_script(name))
+            self._browser_send("Browser.addBinding", {"name": native, "script": _bindings.remove_script(native, name)})
         handle = DisposableDispatcher(self.server, self, undo)
         return {"disposable": handle.channel}
-
-    def released(self) -> None:
-        """⛔ THE BROWSER'S LIST LET GO TOO. Every way a context ends passes
-        here, and `browser.contexts` kept each one - with its options, its
-        owner (the connection that made it, and through it the socket) and
-        its init scripts - for the life of the browser."""
-        try:
-            self.browser.contexts.remove(self)
-        except ValueError:
-            pass
 
     def op_context_init_script(self, params: Dict) -> Any:
         """The same, for every page of this context - present and future.
@@ -4539,6 +4524,10 @@ class BrowserDispatcher(Dispatcher):
                  service_workers_enabled: bool = True,
                  layout: str = "us", pointer_draws: bool = False) -> None:
         self.conn = conn
+        #: Chosen for this browser: the prefix of the native names of its exposed functions (see `_bindings`), and the
+        #: directory of its engine (set by `launch`), which says whether the engine has what they need.
+        self.binding_token = secrets.token_hex(6)
+        self.engine_dir = ""
         #: Whether this browser's pages walk the pointer onto their targets
         #: (`pointer.py`): the launcher chose the Python generator. Off for a
         #: browser built without saying so, which acts as the caller wrote.
@@ -5523,6 +5512,7 @@ class BrowserTypeDispatcher(Dispatcher):
         except BaseException:
             conn.close()
             raise
+        browser.engine_dir = os.path.dirname(str(executable))
         return {"browser": browser.channel}
 
 
