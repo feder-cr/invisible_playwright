@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+- The end-to-end tests that look at content processes ask for the processes of a site by its name and no longer
+  compare two counts. The browser starts processes of its own (the pool refill, and a process for a Mozilla site that the
+  New Tab page starts about a second after its own), and under load one of them arrived between the two reads and
+  looked like the effect of the frame under test: 14 of 30 runs of the whole suite were red on the same-site control.
+  The tests turn on `fission.processSiteNames` (test-only, never the product's) so that a process is named by its
+  site. Linux only; elsewhere these tests skip.
+
 ## [0.50.1] - 2026-11-12
 
 0.50.0 was tagged and never published: its end-to-end gate was red on two tests that counted processes.
