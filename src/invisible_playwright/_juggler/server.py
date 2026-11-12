@@ -2793,6 +2793,8 @@ class PageDispatcher(Dispatcher):
         # replay.
         self._held: Optional[List] = []
         self._held_lock = threading.Lock()
+        #: The events that did not fit in the hold (`HELD_CAP`): counted, and said once when the hold ends (`_install_events`).
+        self._held_dropped = 0
         #: ⛔ THE `domcontentloaded` AND `load` OF A POPUP THAT ARE SAID BEFORE IT IS ANNOUNCED. The page is built at once and announced when
         #: the engine says Page.ready, which is also when its document commits, so the document may have loaded before the client hears
         #: of the page: a `page.on("load")` registered in the handler of the `page` event would never fire. Playwright's own page is
@@ -3030,6 +3032,11 @@ class PageDispatcher(Dispatcher):
                         self._deliver(method, params)
                     except Exception:
                         pass
+        if self._held_dropped:
+            warnings.warn(
+                "invisible_playwright: %d event(s) of the page of target %s were lost while it was handed over to its dispatcher: more than "
+                "%d were held (the cap that bounds the memory of a page that never finishes building)"
+                % (self._held_dropped, self.target_id, self.HELD_CAP), RuntimeWarning, stacklevel=2)
         # ⛔ THE HAND-OVER IS ONE STEP, UNDER THE LIFECYCLE'S LOCK (`_hear_lifecycle`). What the client is told of a frame comes from two
         # places: the initializer, a snapshot of what the lifecycle knew when the frame dispatcher was made, and the lifecycle's own
         # announcements through a hook installed here. An event the lifecycle heard AFTER the snapshot and BEFORE the hook was told to
@@ -3183,7 +3190,9 @@ class PageDispatcher(Dispatcher):
 
     #: Events held while the page is being built. The birth of a page is a
     #: burst of a few dozen; a page that never finishes building must not
-    #: grow this without bound.
+    #: grow this without bound. The ones beyond the cap are lost, and not in
+    #: silence: they are counted and said once, with the count, when the
+    #: hold ends (`_install_events`).
     HELD_CAP = 512
 
     def _route_juggler_event(self, method: str, params: Dict,
@@ -3195,6 +3204,8 @@ class PageDispatcher(Dispatcher):
                 if self._held is not None:
                     if len(self._held) < self.HELD_CAP:
                         self._held.append((method, params))
+                    else:
+                        self._held_dropped += 1
                     return
         self._deliver(method, params)
 

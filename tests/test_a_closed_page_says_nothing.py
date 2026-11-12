@@ -57,6 +57,7 @@ def _page(handled):
     page.disposed = False
     page._held = None
     page._held_lock = threading.Lock()
+    page._held_dropped = 0
     page._detach_listeners = lambda: None
     page._hear_lifecycle = lambda: None
     page.context = types.SimpleNamespace(browser=types.SimpleNamespace(

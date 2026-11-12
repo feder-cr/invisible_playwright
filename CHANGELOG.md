@@ -11,6 +11,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 - The project moved to the oss-invisible GitHub organization: every GitHub link, the issue templates and the package URLs point to github.com/oss-invisible/playwright. The PyPI name and the import name do not change; the old addresses redirect.
 
+### Fixed
+- A popup (a `window.open` or a `target=_blank` link) could be handed to the client at `about:blank`, with the blank page's `load`, when it
+  was opened with no route on the context: the commit of its address, or its `DOMContentLoaded` and `load`, arrived while the page was being
+  handed from its buffer to its dispatcher and was told to nobody (`page.url` stayed `about:blank`, or `wait_for_load_state("load")` timed
+  out). Measured on Windows with the library's client in the same process, `test_popups_reach_the_client_e2e.py` x20 on 4 workers: 3 runs
+  red with the published firefox-62 engine and 11 with firefox-63. The page is now handed over in one step: what the client was not told is
+  said once, in order, and nothing the engine sent in that period is lost.
+- The same hand-over dropped every event that is not a request: a `console` message, a `pageError`, a `dialog` (an `alert()` that opened
+  while the popup was being built blocked its page for good, because no client had been told of it and none could answer it), a `crash`, a file chooser. All
+  of them are given back now, in the order they arrived. The only bound left is the memory of the buffer (512 events): an event beyond it is
+  lost and a `RuntimeWarning` says how many, once per page.
+
 ## [0.51.0] - 2026-11-12
 
 ### Changed
