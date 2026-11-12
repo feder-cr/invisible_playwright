@@ -16,7 +16,7 @@ BUILD = "scripts/ci_lab_geoip.py build"
 REAL = "scripts/ci_real_geoip_check.py"
 RUNS_PYTEST = {
     "tests.yml": "      - name: Run pytest\n",
-    "e2e.yml": "      - name: Run the full e2e suite under a virtual display\n",
+    "e2e.yml": "      - name: Run the full e2e suite under a virtual display, without the root ones\n",
     "webrtc-e2e.yml": "      - name: Run WebRTC realness e2e (xvfb for the headless Firefox)\n",
 }
 
