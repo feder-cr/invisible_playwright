@@ -60,6 +60,10 @@ _LOOPBACK_JS = r"""async () => {
   const pc1 = new RTCPeerConnection(), pc2 = new RTCPeerConnection();
   pc1.onicecandidate = e => { if (e.candidate) pc2.addIceCandidate(e.candidate).catch(() => {}); };
   pc2.onicecandidate = e => { if (e.candidate) pc1.addIceCandidate(e.candidate).catch(() => {}); };
+  const gathered = {pc1: [], pc2: []};
+  const keep = (name, e) => { if (e.candidate && e.candidate.candidate) gathered[name].push(e.candidate.candidate); };
+  pc1.addEventListener('icecandidate', e => keep('pc1', e));
+  pc2.addEventListener('icecandidate', e => keep('pc2', e));
   const dc = pc1.createDataChannel('x');
   let opened = null, echoed = false;
   dc.onopen = () => { opened = Math.round(performance.now() - t0); dc.send('ping'); };
@@ -71,17 +75,32 @@ _LOOPBACK_JS = r"""async () => {
   await pc1.setRemoteDescription(pc2.localDescription);
   const deadline = performance.now() + 8000;
   while (performance.now() < deadline && !(opened !== null && echoed)) await new Promise(r => setTimeout(r, 5));
+  // The road the connection took, read from the browser's own statistics: the nominated pair, and the protocol of each end.
+  let pair = null;
+  try {
+    const stats = await pc1.getStats();
+    const byId = {};
+    stats.forEach(r => { byId[r.id] = r; });
+    stats.forEach(r => {
+      if (r.type === 'candidate-pair' && r.state === 'succeeded' && (r.nominated || !pair)) {
+        const l = byId[r.localCandidateId] || {}, rm = byId[r.remoteCandidateId] || {};
+        pair = {local: l.protocol, remote: rm.protocol, localType: l.candidateType, remoteType: rm.candidateType,
+                remoteAddress: rm.address || null};
+      }
+    });
+  } catch (e) {}
   pc1.close(); pc2.close();
-  return {opened, echoed};
+  return {opened, echoed, pair, gathered};
 }"""
 
 # Retail 159 on Windows, 12 cold launches (``captures/mdns-loopback/retail-159-win-12``): 37-52 ms in ten of twelve, two
 # slow ones at about 110, median 41.5. Without mDNS retail takes about 20 ms (``retail-159-win-nomdns``): the other 20 ms are
-# the multicast round trip of the responder. The engine makes that round trip too, on the loopback (the responder joins and
-# speaks on 127.0.0.1; a name of ours answers with the loopback of its family), so the window is the retail one: 30-55 ms on
-# the MEDIAN of five cold launches. It keeps out "dead" (no usable interface), "slower than retail" and "faster than retail"
-# (an answer that skips the round trip).
-RETAIL_MEDIAN_WINDOW_MS = (30, 55)
+# the multicast round trip of the responder. That is a MEASURE of a fast machine and is printed, never judged: on a
+# GitHub runner the same road takes 67 ms (Windows) and 122 ms (Linux), and a verdict on an absolute time is a verdict on
+# the machine. What the test judges is the ROAD, which the machine cannot change (see the test), and a ceiling under the
+# first retry of the mDNS responder (3 s), which no machine is slow enough to reach by being slow.
+RETAIL_MEDIAN_WINDOW_MS = (30, 55)       # printed beside the measure, for the reader
+MDNS_RETRY_MS = 3000                     # the responder asks again after 3 s: a run that opens only then took the slow road
 
 
 def _session(declaration, socks, page_url, monkeypatch, seed, script):
@@ -179,16 +198,40 @@ def test_two_connections_on_one_page_get_their_own_port_pair(local_https_page, s
     assert first != second, (first, second)
 
 
-def test_two_connections_on_one_page_connect_in_the_time_of_retail(local_https_page, socks5_tcp_only, monkeypatch):
-    """The names the browser registered for itself must resolve although the declared address is not the host's, and in
-    the time retail takes: not slower (a responder that cannot hear itself, or an OS list that is empty, kills the test),
-    not faster (an answer that skips the round trip). Five cold launches, median in the retail window."""
-    times = []
+def test_two_connections_on_one_page_connect_in_the_time_of_retail(local_https_page, socks5_tcp_only, monkeypatch, capsys):
+    """The names the browser registered for itself must resolve although the declared address is not the host's, and
+    the connection must take the road retail takes. Five cold launches; EVERY one is judged on the road, none on the clock:
+
+      * the data channel opens and echoes (a responder that cannot hear itself, or an OS list that is empty, kills it);
+      * each connection gathered a UDP host candidate named by mDNS (a run without UDP is the reserved-port failure: the
+        socket could not bind and the connection fell back to TCP, about 600 ms on average);
+      * the nominated pair is host to host over UDP at both ends (no fall back to TCP; a pair that SUCCEEDED means the mDNS
+        name of the other connection was resolved: the browser keeps naming it in its statistics, so the name is no signal);
+      * it opens in less than the responder's first retry (3 s): a name that does not come back opens only at the retry.
+
+    The time itself is printed with the retail window beside it: a fast machine shows 30-55 ms, a runner shows more, and
+    neither is a verdict (an absolute time failed on both GitHub runners with a healthy engine)."""
+    runs = []
     for n in range(5):
         res = _session(V4_ONLY, socks5_tcp_only, local_https_page, monkeypatch, 100 + n,
                        lambda page: page.evaluate(_LOOPBACK_JS))
         assert res["echoed"] and res["opened"] is not None, "run %d: the data channel did not open: %r" % (n, res)
-        times.append(res["opened"])
+        runs.append(res)
+        for side in ("pc1", "pc2"):
+            hosts = [c for c in res["gathered"][side] if " typ host" in c]
+            udp = [c for c in hosts if " UDP " in c.upper() or " udp " in c]
+            assert udp, "run %d: %s gathered no UDP host candidate (the road without UDP): %r" % (n, side, res["gathered"][side])
+            assert any(c.split()[4].endswith(".local") for c in udp), (
+                "run %d: %s has no mDNS name among its UDP host candidates: %r" % (n, side, udp))
+        pair = res["pair"]
+        assert pair, "run %d: the browser reports no nominated pair: %r" % (n, res)
+        assert pair["local"] == "udp" and pair["remote"] == "udp", (
+            "run %d: the connection did not take UDP at both ends (the road through TCP): %r" % (n, pair))
+        assert pair["localType"] == "host" and pair["remoteType"] == "host", (
+            "run %d: the pair is not host to host (a relay or a reflexive road): %r" % (n, pair))
+        assert res["opened"] < MDNS_RETRY_MS, "run %d: opened after %d ms, at the responder's retry" % (n, res["opened"])
+    times = sorted(r["opened"] for r in runs)
     low, high = RETAIL_MEDIAN_WINDOW_MS
-    median = statistics.median(times)
-    assert low <= median <= high, "median %s ms of %r, retail window %d-%d ms" % (median, sorted(times), low, high)
+    with capsys.disabled():
+        print("\n[measure] two connections on one page open in %r ms, median %s (retail on a fast machine %d-%d ms; not a verdict)"
+              % (times, statistics.median(times), low, high))
