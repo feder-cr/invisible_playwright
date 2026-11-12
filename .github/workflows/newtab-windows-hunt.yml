@@ -22,6 +22,8 @@ env:
   SEAL_TAG: firefox-63-candidate
   INVISIBLE_CORE_AUTOFIX: 'off'
   INVISIBLE_CORE_PIN: allow
+  # the ten runs were green in run 43208482426 (10 of 10); this push measures the memory, with two more runs as a check
+  E2E_RUNS: '2'
 
 jobs:
   hunt:
@@ -72,7 +74,7 @@ jobs:
           export INVPW_BINARY_PATH="$FF_EXE" STEALTHFOX_E2E_BINARY="$FF_EXE"
           mkdir -p evidence/e2e
           pass=0; fail=0
-          for n in $(seq 1 10); do
+          for n in $(seq 1 "${E2E_RUNS:-10}"); do
             log="evidence/e2e/run_$(printf '%02d' "$n").log"
             set +e
             python -m pytest tests/test_preload_newtab_turns_the_privileged_about_process_off_e2e.py -m e2e -o addopts= \
@@ -92,7 +94,7 @@ jobs:
             echo "| $pass | $fail |"
             echo
             echo '```'
-            grep -hE "^(FAILED|ERROR|SKIPPED) " evidence/e2e/run_*.log | sort | uniq -c | sort -rn | head -20
+            grep -hE "^(FAILED|ERROR|SKIPPED) " evidence/e2e/run_*.log | sort | uniq -c | sort -rn | head -20 || true
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Close every Firefox left (after the e2e)
@@ -102,6 +104,7 @@ jobs:
           Get-Process firefox -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
           "left: " + @(Get-Process firefox -ErrorAction SilentlyContinue).Count
       - name: Memory of the content processes, with and without the option (five alternating rounds)
+        if: always()
         env:
           PYTHONUNBUFFERED: "1"
         run: |
