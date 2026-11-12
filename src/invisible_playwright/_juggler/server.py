@@ -3059,13 +3059,8 @@ class PageDispatcher(Dispatcher):
         # goes to the hold and waits for its turn. (Clearing it first, a live event went straight to its handler beside the round,
         # and a response could be handled before the request it answers.)
         delivered: Dict[int, Any] = {}      # the params objects already delivered, kept alive so their ids are not reused
-        while True:
-            with self._held_lock:
-                held = self._held
-                if not held:
-                    self._held = None
-                    break
-                self._held = []
+
+        def give_back(held: List) -> None:
             last = {id(params): i for i, (_, params) in enumerate(held)}
             for i, (method, params) in enumerate(held):
                 if last[id(params)] == i and id(params) not in delivered:
@@ -3074,6 +3069,24 @@ class PageDispatcher(Dispatcher):
                         self._deliver(method, params)
                     except Exception:
                         pass
+
+        # A round ends when the reader is quiet. After FOUR rounds the rest is given back with the lock held (the old way): a page
+        # that prints in a tight loop while it is born cannot keep the hold open for ever. The handlers do not wait for the reader, so
+        # the lock is only a delay for it.
+        for _ in range(4):
+            with self._held_lock:
+                held = self._held
+                if not held:
+                    self._held = None
+                    break
+                self._held = []
+            give_back(held)
+        else:
+            with self._held_lock:
+                while self._held:
+                    held, self._held = self._held, []
+                    give_back(held)
+                self._held = None
         if self._held_dropped:
             warnings.warn(
                 "invisible_playwright: %d event(s) of the page of target %s were lost while it was handed over to its dispatcher: more than "
