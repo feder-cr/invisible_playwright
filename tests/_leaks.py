@@ -272,6 +272,32 @@ def descends_from(pid: int, root: int, parent=parent_of) -> bool:
     return False
 
 
+def is_a_browser_process(pid: int, proc: str = "/proc") -> bool:
+    """Whether a process is the browser's own (the main process, ``firefox``, or ``firefox-bin``), by its name in /proc/<pid>/comm.
+    Its children (content, socket, forkserver) are found by their parents."""
+    try:
+        with open(os.path.join(proc, str(pid), "comm"), encoding="utf-8", errors="replace") as handle:
+            return handle.read().strip() in ("firefox", "firefox-bin", "firefox.exe")
+    except OSError:
+        return False
+
+
+def under_a_browser(pid: int, root: int, parent=parent_of, is_browser=is_a_browser_process) -> bool:
+    """Whether ``pid`` is a browser process or one of its descendants, going up the parents and stopping at ``root`` (the test
+    process: it is NOT the browser, and neither is anything it runs that is not a browser, like the core's own download of a
+    database) or at a process with no parent known (at most 64 steps)."""
+    for _ in range(64):
+        if is_browser(pid):
+            return True
+        if pid == root:
+            return False
+        up = parent(pid)
+        if up is None or up <= 1 or up == pid:
+            return False
+        pid = up
+    return False
+
+
 def who_asked(protocol: str, peer) -> Optional[Asker]:
     """Who sent a question to the trap, read where the kernel says it (Linux): the row of the client's socket in /proc/net
     gives the user and the inode, and the inode gives the process that holds it. None off Linux or when the socket is
@@ -302,19 +328,21 @@ def owner_of_the_peer(protocol: str, peer) -> Optional[int]:
 class ResolverTrap:
     """A resolver on loopback that counts what it is asked. See the module docstring.
 
-    It counts what the PROCESSES OF THE TEST ask: the test process itself and its descendants (the browser), found from the
-    socket the question came from (its inode, the process that holds it, its parents up to ``root_pid``, by default this
-    process). A question from any other process is answered and listed in :attr:`foreign` with its pid and command, not
-    counted: /etc/resolv.conf is the machine's, and on a CI runner the agent of the runner, even as root, asks for github.com
-    through it (run 43188313516, 43211837926: the browser was blamed for names it never asked, and a user filter cannot tell
-    a root agent from a root browser). There is no list of names. A question whose process cannot be traced is judged by
-    its user (``only_uid``, by default the effective uid), and one whose socket cannot be found any more counts as the browser's."""
+    It counts what the BROWSER asks, and the test says "the browser asked the resolver of the machine". The browser is found from
+    the socket the question came from (its inode, the process that holds it, its parents up to ``root_pid``, by default the
+    test process): a question counts if that process is the browser or descends from it. A question from any other process is
+    answered and listed in :attr:`foreign` with its pid and command, not counted: /etc/resolv.conf is the machine's, and on a
+    CI runner the agent of the runner, even as root, asks for github.com through it; and the test process's own python (the
+    core, which asks github.com for the latest GeoIP tag when no database is given) is not the browser either (runs
+    43188313516, 43211837926: the browser was blamed for names it never asked, and a user filter cannot tell them apart). There
+    is no list of names. A question whose process cannot be traced is judged by its user (``only_uid``, by default the
+    effective uid), and one whose socket cannot be found any more counts as the browser's."""
 
     available, reason = _trap_capability()
 
     def __init__(self, answers: Optional[Dict[str, str]] = None, *, port: int = 53,
                  rewrite_resolv_conf: bool = True, only_uid: Optional[int] = None, owner_of=None,
-                 root_pid: Optional[int] = None, parent_of_pid=None):
+                 root_pid: Optional[int] = None, parent_of_pid=None, is_browser=None):
         self.answers = {k.lower(): v for k, v in (answers or {}).items()}
         self.port = port
         #: The loopback address the trap listens on once it is bound (see TRAP_ADDRESSES).
@@ -326,6 +354,7 @@ class ResolverTrap:
         self.foreign: List[Tuple[DohQuery, Asker]] = []
         self.root_pid = root_pid if root_pid is not None else os.getpid()
         self._parent_of = parent_of_pid or parent_of
+        self._is_browser = is_browser or is_a_browser_process
         self.only_uid = only_uid if only_uid is not None else (os.geteuid() if hasattr(os, "geteuid") else None)
         self._owner_of = owner_of or who_asked
         self._lock = threading.Lock()
@@ -472,7 +501,7 @@ class ResolverTrap:
         ours = True
         if asker is not None:
             if asker.pid is not None:
-                ours = descends_from(asker.pid, self.root_pid, self._parent_of)
+                ours = under_a_browser(asker.pid, self.root_pid, self._parent_of, self._is_browser)
             elif self.only_uid is not None:
                 ours = asker.uid == self.only_uid
         with self._lock:

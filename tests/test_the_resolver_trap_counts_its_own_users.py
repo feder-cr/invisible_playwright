@@ -12,7 +12,8 @@ import socket
 import pytest
 
 from _doh_servers import QTYPE_A, encode_query
-from _leaks import Asker, ResolverTrap, descends_from, owner_of_the_peer, row_from_proc_net, uid_from_proc_net, who_asked
+from _leaks import (Asker, ResolverTrap, descends_from, owner_of_the_peer, row_from_proc_net, uid_from_proc_net,
+                    under_a_browser, who_asked)
 
 pytestmark = pytest.mark.unit
 
@@ -113,15 +114,31 @@ def test_the_owner_of_a_question_that_waits_for_its_answer_is_always_found():
 
 
 # ----------------------------------------------------------------------------------------------- by the tree of processes
-#: A machine: the test is pid 100, the browser 400 under it (a content process 777 under the browser), the agent of the runner 555
-#: under the provisioner 1 - as ROOT too, the user a filter cannot tell from the root browser.
-PARENT = {400: 100, 777: 400, 555: 90, 90: 1}
+#: A machine: the test is pid 100 (its core makes its own requests); the browser is 400, started by the test, with a content
+#: process 777 under it; the agent of the runner is 555 under the provisioner 90 - as ROOT too, the user a filter cannot tell
+#: from the root browser.
+PARENT = {400: 100, 777: 400, 555: 90, 90: 1, 650: 100}
+BROWSERS = {400}
+
+
+def _trap(owner, answers, **kwargs):
+    return ResolverTrap(answers, port=0, rewrite_resolv_conf=False, only_uid=0, root_pid=100, parent_of_pid=PARENT.get,
+                        is_browser=lambda pid: pid in BROWSERS, owner_of=owner, **kwargs)
 
 
 def test_a_process_is_the_root_or_one_of_its_descendants():
     assert descends_from(100, 100, PARENT.get) and descends_from(777, 100, PARENT.get) and descends_from(400, 100, PARENT.get)
     assert not descends_from(555, 100, PARENT.get)
     assert not descends_from(300, 100, PARENT.get), "a process with no known parent is not a descendant"
+
+
+def test_the_browser_and_what_it_starts_are_under_a_browser_and_the_test_and_the_rest_are_not():
+    def under(pid):
+        return under_a_browser(pid, 100, PARENT.get, lambda p: p in BROWSERS)
+    assert under(400) and under(777)
+    assert not under(100), "the test process is not the browser"
+    assert not under(650), "a process the test started that is not a browser (a download) is not the browser"
+    assert not under(555) and not under(300)
 
 
 def test_a_row_of_proc_net_gives_the_user_and_the_inode():
@@ -131,30 +148,33 @@ def test_a_row_of_proc_net_gives_the_user_and_the_inode():
 
 def test_a_root_process_that_is_not_the_browsers_is_foreign_even_with_the_same_user():
     """The agent of the runner runs as root, like the browser under sudo: the user cannot separate them, the tree does."""
-    with ResolverTrap({"github.com": "127.0.0.1"}, port=0, rewrite_resolv_conf=False, only_uid=0, root_pid=100,
-                      parent_of_pid=PARENT.get,
-                      owner_of=lambda protocol, peer: Asker(0, 555, "Runner.Provisioner: /opt/agent/provisioner")) as trap:
+    with _trap(lambda protocol, peer: Asker(0, 555, "Runner.Provisioner: /opt/agent/provisioner"), {"github.com": "127.0.0.1"}) as trap:
         assert _ask(trap, "github.com")
         assert trap.names() == [] and [q.name for q, _ in trap.foreign] == ["github.com"]
         say = trap.describe()
         assert "github.com from pid 555" in say and "Runner.Provisioner" in say and "not counted" in say
 
 
+def test_the_test_process_itself_and_its_own_python_are_not_the_browser():
+    """The core of the test process asks github.com for the latest GeoIP tag: a question of the test, not of the browser."""
+    for pid in (100, 650):
+        with _trap(lambda protocol, peer, pid=pid: Asker(0, pid, "python"), {"github.com": "127.0.0.1"}) as trap:
+            _ask(trap, "github.com")
+            assert trap.names() == [] and len(trap.foreign) == 1, pid
+
+
 def test_the_browser_and_what_it_starts_are_counted():
-    for pid in (100, 400, 777):
-        with ResolverTrap({"page-d.test": "127.0.0.1"}, port=0, rewrite_resolv_conf=False, only_uid=0, root_pid=100,
-                          parent_of_pid=PARENT.get, owner_of=lambda protocol, peer, pid=pid: Asker(0, pid, "firefox")) as trap:
+    for pid in (400, 777):
+        with _trap(lambda protocol, peer, pid=pid: Asker(0, pid, "firefox"), {"page-d.test": "127.0.0.1"}) as trap:
             assert _ask(trap, "page-d.test")
             assert trap.names() == ["page-d.test"] and trap.foreign == [], pid
 
 
 def test_a_process_that_cannot_be_traced_is_judged_by_its_user():
-    with ResolverTrap({"a.test": "127.0.0.1"}, port=0, rewrite_resolv_conf=False, only_uid=0, root_pid=100,
-                      parent_of_pid=PARENT.get, owner_of=lambda protocol, peer: Asker(1001, None, "")) as trap:
+    with _trap(lambda protocol, peer: Asker(1001, None, ""), {"a.test": "127.0.0.1"}) as trap:
         _ask(trap, "a.test")
         assert trap.names() == [] and len(trap.foreign) == 1
-    with ResolverTrap({"b.test": "127.0.0.1"}, port=0, rewrite_resolv_conf=False, only_uid=0, root_pid=100,
-                      parent_of_pid=PARENT.get, owner_of=lambda protocol, peer: Asker(0, None, "")) as trap:
+    with _trap(lambda protocol, peer: Asker(0, None, ""), {"b.test": "127.0.0.1"}) as trap:
         _ask(trap, "b.test")
         assert trap.names() == ["b.test"] and trap.foreign == []
 
