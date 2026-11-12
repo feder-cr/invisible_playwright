@@ -37,7 +37,6 @@ jobs:
       matrix:
         include:
           - { arm: iso-63-main, engine: firefox-63 }
-          - { arm: iso-62-rel, engine: firefox-62 }
     defaults:
       run:
         shell: bash
@@ -52,6 +51,7 @@ jobs:
           set -e
           cp scripts/hunt_popup_trace_patch.py scripts/hunt_popup_trace_patch2.py scripts/hunt_popup_fix_server.patch "$RUNNER_TEMP/"
           git -c core.autocrlf=false checkout origin/main -- src tests pyproject.toml scripts/playwright_pin.txt
+          python -c "import sys; p=sys.argv[1]; d=open(p,'rb').read(); open(p,'wb').write(d.replace(bytes([13,10]), bytes([10])))" "$RUNNER_TEMP/hunt_popup_fix_server.patch"
           git -c core.autocrlf=false apply "$RUNNER_TEMP/hunt_popup_fix_server.patch"
           python "$RUNNER_TEMP/hunt_popup_trace_patch.py"
           python "$RUNNER_TEMP/hunt_popup_trace_patch2.py"
