@@ -51,7 +51,7 @@ class _SlowEngine(EventListeners):
 
 
 class _Page:
-    def __init__(self, server, context, session, target_id, number, opener=None):
+    def __init__(self, server, context, session, target_id, number, opener=None, is_gone=None):
         self.target_id = target_id
         self.number = number
         self.channel = {"guid": "page-" + target_id}

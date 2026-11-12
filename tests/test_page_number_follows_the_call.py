@@ -230,7 +230,7 @@ class _Page:
     """The `PageDispatcher` seen from the numbering: what it was given."""
 
     def __init__(self, server, context, session, target_id, number,
-                 opener=None):
+                 opener=None, is_gone=None):
         self.target_id = target_id
         self.number = number
         self.opener = opener

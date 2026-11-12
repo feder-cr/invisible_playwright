@@ -261,12 +261,12 @@ def test_a_popup_that_never_gets_its_ready_ends_with_its_context_and_says_nothin
         conn.popup_born(opener_target, context.context_id, 1)
         time.sleep(0.5)
         assert not announced, "a popup with no ready was announced"
-        assert late_browser._building, "the popup is not waiting"
+        assert any(a.state == "waiting" for a in late_browser._adoptions.values()), "the popup is not waiting"
         server.handle({"guid": context.guid, "method": "close", "params": {}})
         deadline = time.monotonic() + 5
-        while late_browser._building and time.monotonic() < deadline:
+        while late_browser._adoptions and time.monotonic() < deadline:
             time.sleep(0.01)
-        assert not late_browser._building, "closing the context did not end the wait of the popup"
+        assert not late_browser._adoptions, "closing the context did not end the wait of the popup"
         time.sleep(0.2)
     assert not announced, "a popup of a closed context was announced"
     assert not [w for w in caught if "adoption" in str(w.message)], [str(w.message) for w in caught]
@@ -320,7 +320,7 @@ def test_a_download_started_by_a_popup_that_is_not_announced_is_reported_on_its_
     opener.emit = lambda event, params=None: (said.append((event, params)), original(event, params))[1]
     target, session = conn.popup_born(opener_target, context.context_id, 1)
     deadline = time.monotonic() + 5
-    while target not in late_browser._building and time.monotonic() < deadline:
+    while not (target in late_browser._adoptions and late_browser._adoptions[target].state == "waiting") and time.monotonic() < deadline:
         time.sleep(0.01)
     conn.dispatch_event("Browser.downloadCreated", {
         "uuid": "u1", "browserContextId": context.context_id, "pageTargetId": target, "frameId": "f" + target,
@@ -355,7 +355,7 @@ def test_the_load_of_a_popup_said_before_its_announcement_is_said_again_right_af
     opener_target = next(iter(conn.sessions))
     target, session = conn.popup_born(opener_target, context.context_id, 1)
     deadline = time.monotonic() + 5
-    while target not in late_browser._building and time.monotonic() < deadline:
+    while not (target in late_browser._adoptions and late_browser._adoptions[target].state == "waiting") and time.monotonic() < deadline:
         time.sleep(0.01)
     frame_id, url = "f" + target, "http://127.0.0.1/slow"
     conn.dispatch_event("Page.navigationStarted", {"frameId": frame_id, "navigationId": "n1", "url": url}, session)

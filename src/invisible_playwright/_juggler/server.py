@@ -2560,6 +2560,36 @@ class RouteDispatcher(Dispatcher):
 
 
 # ── page ────────────────────────────────────────────────────────────────────
+class _Adoption:
+    """ONE ENGINE TARGET ON ITS WAY TO THE CLIENT: the single record of where it is, and the only thing an event about it may change.
+
+    attached  - the engine said `Browser.attachedToTarget`; nothing is built yet
+    building  - the adoption thread is making the `PageDispatcher` (init scripts, replay, the main frame)
+    waiting   - the page is built and waits for the engine's `Page.ready` (a popup: for as long as the engine takes)
+    announced - the client was told of the page (`page` event); it lives in the registries
+
+    and `gone`, set by the engine's `Browser.detachedFromTarget` AT ANY MOMENT, whatever the state.
+
+    ⛔ THE INVARIANT, which `test_every_order_of_the_events_of_a_popup_gives_one_page_event` proves over EVERY order of attach, frame,
+    commit, ready, detach and of the adoption's own steps: a target that was attached and is not a page a caller asked for gives the client
+    EXACTLY ONE `page` event, at its ready or at its disappearance (and its close right after, if it disappeared), unless its context closed
+    first. The adoption never decides alone that a target is lost: every wait it makes looks at `gone`, every command it sends that finds
+    the session gone ends in the same place as a detach. This replaces four patches of the same race (a detach before the ready, during
+    the build, between the build and the wait, and a command answered 'cannot find session').
+    """
+
+    __slots__ = ("target_id", "opener", "context_id", "requested", "state", "gone", "page")
+
+    def __init__(self, target_id: str, opener: Optional["PageDispatcher"], context_id: Optional[str] = None) -> None:
+        self.target_id = target_id
+        self.opener = opener
+        self.context_id = context_id
+        self.requested: Optional[bool] = None
+        self.state = "attached"
+        self.gone = False
+        self.page: Optional["PageDispatcher"] = None
+
+
 def _target_is_gone(error: BaseException) -> bool:
     """Whether a failed command failed because the target or its session no longer exists (the engine closed the tab under it)."""
     if isinstance(error, juggler.TargetClosedError):
@@ -2621,8 +2651,10 @@ class PageDispatcher(Dispatcher):
 
     def __init__(self, server, context: "BrowserContextDispatcher",
                  session: str, target_id: str, number: int,
-                 opener: Optional["PageDispatcher"] = None) -> None:
+                 opener: Optional["PageDispatcher"] = None, is_gone=None) -> None:
         self.context = context
+        #: Whether the engine has taken the target away (the adoption's record says so): every wait of the build looks at it.
+        self._is_gone = is_gone or (lambda: False)
         #: True while `page.route()` holds this page's requests. The context
         #: keeps its own flag: a request is offered to the page's handlers
         #: first, and the client falls through to the context's.
@@ -2697,6 +2729,21 @@ class PageDispatcher(Dispatcher):
             self.injected.detach()
             raise
 
+    def _main_frame_unless_gone(self) -> str:
+        """The main frame id, waiting for the engine to announce it - for as long as the target exists. A tab that is closed before the
+        engine announced its frame (a download's) never will: the wait ends at once and a frame of our own name keeps the object whole."""
+        waited = 0.0
+        while True:
+            try:
+                return self.lifecycle.wait_for_main_frame(timeout=0.1)
+            except TimeoutError:
+                waited += 0.1
+                if self._is_gone():
+                    self.gone_while_building = True
+                    return "gone-" + str(self.target_id)
+                if waited >= 20.0:
+                    raise
+
     def _build(self, server, context: "BrowserContextDispatcher",
                session: str, conn, opener: Optional["PageDispatcher"]) -> None:
         """The rest of the construction, under `__init__`'s cleanup."""
@@ -2764,11 +2811,7 @@ class PageDispatcher(Dispatcher):
         #: to answer after a reader's pause, see `dialogs.plan_answer_ms`.
         self._dialogs_open: Dict[str, Any] = {}
         self._dialogs_seen = 0
-        if self.gone_while_building and self.lifecycle.main_frame is None:
-            # gone before it even announced a frame: a frame of its own name keeps the object whole until it is closed
-            self.main_frame_id = "gone-" + str(self.target_id)
-        else:
-            self.main_frame_id = self.lifecycle.wait_for_main_frame(timeout=20.0)
+        self.main_frame_id = self._main_frame_unless_gone()
         # ⛔ The Frame is created BEFORE the Page and adopted after: the Page
         # initializer has to name a mainFrame the client can already resolve.
         # ⛔ WITH WHAT THE LIFECYCLE ALREADY KNOWS OF IT, as every other frame is made (`frame_for`): the initializer is a snapshot, and
@@ -4567,24 +4610,15 @@ class BrowserDispatcher(Dispatcher):
         # constructor has fully run.
         self._targets_lock = threading.Lock()
         self._page_targets: Dict[str, PageDispatcher] = {}
-        #: Targets whose adoption thread is still building. `op_new_page`
-        #: waits on these instead of building a second dispatcher.
-        self._adopting: set = set()
-        #: The page that opened each target being adopted (None if it has no announced opener): a download started by a popup that
-        #: is not announced yet belongs to its opener (Playwright's ffBrowser._onDownloadCreated).
-        self._openers: Dict[str, Optional[PageDispatcher]] = {}
-        #: Pages built and waiting for their Page.ready, by target (announced to the client after it).
-        self._building: Dict[str, PageDispatcher] = {}
+        #: Every target between its attach and its announcement, by id, ONE record each (`_Adoption`): where it is (attached, building,
+        #: waiting for its ready, announced), whether the engine took it away, its page, its opener. `op_new_page` waits on these
+        #: instead of building a second dispatcher; a download of a tab not announced yet is attributed through it.
+        self._adoptions: Dict[str, _Adoption] = {}
         #: Adoption failures, by target. The `newPage` waiter re-raises (and
         #: pops) them; capped because a spontaneous popup nobody waits for
         #: must not grow this for the life of the browser.
         self._adopt_errors: Dict[str, Exception] = {}
-        #: Targets detached BEFORE their adoption finished (a popup closed
-        #: faster than it attached). The adoption still emits `page` first and
-        #: the close right after, so the client always sees them in order.
-        #: Ending the page - registries, session, listeners - is
-        #: `announce_closed`'s job alone: see `_page_over`.
-        self._detached_early: set = set()
+        #: Ending the page - registries, session, listeners - is `announce_closed`'s job alone: see `_page_over`.
         #: ⛔ HOW A NEW TARGET LEARNS ITS PAGE NUMBER (see `_spawn_adoption`).
         #: `Browser.newPage` requests sent and not yet answered, by context;
         #: and the number each answered request named for its target, until
@@ -4790,11 +4824,10 @@ class BrowserDispatcher(Dispatcher):
         with self._targets_lock:
             if not self._adopt_enabled:
                 return
-            if target_id in self._page_targets or target_id in self._adopting:
+            if target_id in self._page_targets or target_id in self._adoptions:
                 return
-            self._adopting.add(target_id)
             opener = self._page_targets.get(opener_id) if opener_id else None
-            self._openers[target_id] = opener
+            self._adoptions[target_id] = _Adoption(target_id, opener, browser_context_id)
             if opener is not None:
                 opener.popups_opened += 1
                 number: Optional[int] = popup_number(opener.number,
@@ -4811,57 +4844,76 @@ class BrowserDispatcher(Dispatcher):
             daemon=True, name="invpw-adopt-%s" % target_id[:8])
         thread.start()
 
+    # ── the states of an adoption: the ONLY places a record changes state. Each is one method so that a test can stop the adoption thread
+    #    between any two of them and deliver an event of the engine there.
+    def _enter_building(self, adoption: "_Adoption", requested: bool) -> None:
+        with self._targets_lock:
+            adoption.requested = requested
+            adoption.state = "building"
+
+    def _enter_waiting(self, adoption: "_Adoption", page: "PageDispatcher") -> bool:
+        """The page is built and is registered as waiting for its ready. Returns whether the engine took the target away meanwhile - the
+        detach that came before this line found no page to tell, and a wait now would be for ever."""
+        with self._targets_lock:
+            adoption.page = page
+            adoption.state = "waiting"
+            return adoption.gone or page.gone_while_building
+
+    def _enter_announced(self, adoption: "_Adoption", page: "PageDispatcher", context: "BrowserContextDispatcher") -> bool:
+        """The client is told of the page, and the page is registered. Returns whether the engine took the target away before this
+        point: the close is announced right after the page, so the client always sees the page before its close."""
+        page.announce(context, replay=not adoption.requested)
+        with self._targets_lock:
+            adoption.state = "announced"
+            gone = adoption.gone
+            self._adoptions.pop(adoption.target_id, None)
+            self._page_targets[adoption.target_id] = page
+            context.pages.append(page)
+            self._pages_ready.notify_all()
+        return gone
+
     def _adopt_target(self, target_id: str, session_id: Optional[str],
                       browser_context_id: Optional[str],
                       opener: Optional[PageDispatcher],
                       number: Optional[int]) -> None:
-        """Build the `PageDispatcher` for one engine target, then announce it.
+        """Build the `PageDispatcher` for one engine target, then announce it, along the states of its `_Adoption`.
 
         A popup goes through EXACTLY the same construction as a `newPage`
         page - lifecycle, injected script, buffered-event replay, cursor acts -
         so it behaves like any other page and carries no observable marker of
         how it was opened. Stealth is preserved by doing nothing special.
+
+        ⛔ A PAGE A CALLER ASKED FOR (`Browser.newPage`) WAITS AT MOST 20 s FOR ITS Page.ready, AND FAILS LOUDLY; A POPUP WAITS AS LONG AS
+        THE ENGINE TAKES, AND SAYS NOTHING. That is Playwright's own: its popup is reported on Page.ready and not before, with no limit - a
+        destination that answers 204 or never answers gives no `page` event at all (measured, stock Playwright 1.62 and its Firefox: none in
+        30 s), one that answers after 25 s gives it at 25 s. The wait ends when the target goes away or its context closes.
         """
+        with self._targets_lock:
+            adoption = self._adoptions.get(target_id)
         page = None
-        # ⛔ A PAGE A CALLER ASKED FOR (`Browser.newPage`) WAITS AT MOST 20 s FOR ITS Page.ready, AND FAILS LOUDLY; A POPUP WAITS AS LONG
-        # AS THE ENGINE TAKES, AND SAYS NOTHING. That is Playwright's own: its popup is reported on Page.ready and not before, with no
-        # limit - a destination that answers 204 or never answers gives no `page` event at all (measured, stock Playwright 1.62 and its
-        # Firefox: none in 30 s), one that answers after 25 s gives it at 25 s. The wait ends when the target goes away or its context
-        # closes.
         requested = number is None
         try:
+            self._enter_building(adoption, requested)
             if number is None:
                 number = self._number_of_requested(
                     target_id, browser_context_id, timeout=60.0)
             session = session_id or self.session_for(target_id, timeout=20.0)
             context = self._context_for_popup(browser_context_id)
             page = PageDispatcher(self.server, context, session, target_id,
-                                  number, opener=opener)
-            with self._targets_lock:
-                self._building[target_id] = page
-                # ⛔ A DETACH THAT CAME WHILE THE PAGE WAS BEING BUILT is recorded as early and went by `_handle_detach` with nobody to tell
-                # (the page was not in `_building` yet): waiting for a ready now would wait for ever for a tab that is already gone (a
-                # download's empty tab closes within milliseconds, and a loaded machine builds slowly).
-                detached_already = target_id in self._detached_early or page.gone_while_building
-            gone = False
+                                  number, opener=opener, is_gone=lambda: adoption.gone)
+            gone = self._enter_waiting(adoption, page)
             try:
-                if detached_already:
-                    raise juggler.TargetClosedError("the target went away while its page was being built")
-                page.wait_until_ready(timeout=20.0 if requested else None)
+                if not gone:
+                    page.wait_until_ready(timeout=20.0 if requested else None)
             except juggler.TargetClosedError:
                 # Gone before it was ready (a download's empty tab, a popup the site closed at once): announced and closed right
-                # after, as Playwright's is and as a detach that beats the adoption always was (`_detached_early`).
+                # after, as Playwright's is.
                 gone = True
-            finally:
-                with self._targets_lock:
-                    self._building.pop(target_id, None)
             if gone and not requested and context.disposed:
                 # Its context closed while it waited for a ready that never came: it was never announced and is not now.
                 page.announce_closed()
                 with self._targets_lock:
-                    self._adopting.discard(target_id)
-                    self._detached_early.discard(target_id)
-                    self._openers.pop(target_id, None)
+                    self._adoptions.pop(target_id, None)
                     self._pages_ready.notify_all()
                 return
             # ⛔ THE EVENTS THAT COME WITH THE READY ARE APPLIED FIRST. The engine says Page.ready and, in the same turn, the commit of
@@ -4869,21 +4921,9 @@ class BrowserDispatcher(Dispatcher):
             # to a slow destination, measured) where Playwright's says the destination. A round trip to the engine comes back after
             # everything it sent before it.
             page.settle_events()
-            # ⛔ `page` BEFORE the registration, on purpose. A detach racing
-            # this build is recorded as early (see `_handle_detach`) and the
-            # close is announced right after, so the client always sees the
-            # page before its close - never a close for a page it has not met.
-            page.announce(context, replay=not requested)
-            with self._targets_lock:
-                self._adopting.discard(target_id)
-                self._openers.pop(target_id, None)
-                self._page_targets[target_id] = page
-                context.pages.append(page)
-                early = target_id in self._detached_early
-                if early:
-                    self._detached_early.discard(target_id)
-                self._pages_ready.notify_all()
-            if early:
+            # ⛔ `page` BEFORE the registration, on purpose: the client always sees the page before its close, never a close for a page it
+            # has not met.
+            if self._enter_announced(adoption, page, context):
                 page.announce_closed()
         except Exception as failure:
             if page is not None:
@@ -4893,9 +4933,7 @@ class BrowserDispatcher(Dispatcher):
                 except Exception:
                     pass
             with self._targets_lock:
-                self._adopting.discard(target_id)
-                self._detached_early.discard(target_id)
-                self._openers.pop(target_id, None)
+                self._adoptions.pop(target_id, None)
                 self._adopt_errors[target_id] = failure
                 while len(self._adopt_errors) > 64:
                     self._adopt_errors.pop(next(iter(self._adopt_errors)))
@@ -4958,9 +4996,15 @@ class BrowserDispatcher(Dispatcher):
                 self._pages_ready.wait(left)
 
     def end_waits_of(self, context: "BrowserContextDispatcher") -> None:
-        """A context is closing: the popups of it that are still waiting for a Page.ready that never came stop waiting."""
+        """A context is closing: every target of it still on its way to the client is taken away (`gone`, in whichever state it is) and
+        the pages that already wait for a Page.ready that never came stop waiting."""
         with self._targets_lock:
-            waiting = [p for p in self._building.values() if p.context is context]
+            waiting = []
+            for a in self._adoptions.values():
+                if a.context_id == context.context_id:
+                    a.gone = True
+                    if a.state == "waiting" and a.page is not None:
+                        waiting.append(a.page)
         for page in waiting:
             try:
                 page.lifecycle.detach()
@@ -4969,21 +5013,26 @@ class BrowserDispatcher(Dispatcher):
 
     def _handle_detach(self, target_id: Optional[str],
                        session_id: Optional[str]) -> None:
-        """The engine reports a target gone: an engine-side close (or a popup
-        that died before it finished attaching). Never blocks the reader."""
+        """The engine reports a target gone: an engine-side close (or a popup that died before it finished attaching). Never blocks the
+        reader.
+
+        A target still on its way to the client (attached, building or waiting for its ready) only gets `gone` set on its record, and a
+        page that is already waiting is told: its wait ends. The adoption thread does the rest, in whichever state it is - there is no
+        state in which this event is lost."""
         if not target_id:
             return
-        building = None
+        waiting = None
         with self._targets_lock:
+            adoption = self._adoptions.get(target_id)
+            if adoption is not None:
+                adoption.gone = True
+                if adoption.state == "waiting":
+                    waiting = adoption.page
             page = self._page_targets.get(target_id)
-            if page is None and target_id in self._adopting:
-                self._detached_early.add(target_id)
-                building = self._building.get(target_id)
-                if building is None:
-                    return
-        if building is not None:
-            # Built and waiting for its Page.ready: the wait ends now (TargetClosedError) and the adoption announces the page closed.
-            building.lifecycle.detach()
+        if adoption is not None:
+            if waiting is not None:
+                # Built and waiting for its Page.ready: the wait ends now (TargetClosedError) and the adoption announces the page closed.
+                waiting.lifecycle.detach()
             return
         if page is None:
             # A target that never became a page: only its buffered events
@@ -5276,14 +5325,15 @@ class BrowserDispatcher(Dispatcher):
         target = params.get("pageTargetId")
         with self._targets_lock:
             announced = self._page_targets.get(target)
+            adoption = self._adoptions.get(target)
             # The page whose frame the download came from: announced, or built and waiting for its Page.ready.
-            page = announced or self._building.get(target)
+            page = announced or (adoption.page if adoption is not None else None)
             # ⛔ THE PAGE THE DOWNLOAD IS REPORTED ON. A download that starts in a new tab (a `target=_blank` link or a `window.open` to a
             # `Content-Disposition: attachment`) comes from a tab the client has not been told of: the tab waits for a Page.ready that never
             # comes and is closed by the engine at once. Playwright reports it on the OPENER in that case (ffBrowser._onDownloadCreated:
             # "if it's a new window download, report it on the pop-up's opener"); looking only among the announced pages, as this did,
             # lost the download altogether.
-            origin = announced or self._openers.get(target)
+            origin = announced or (adoption.opener if adoption is not None else None)
         if context is None:
             return
         directory = self._downloads_dir(params.get("browserContextId"))
