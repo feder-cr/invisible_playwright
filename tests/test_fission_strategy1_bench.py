@@ -460,3 +460,97 @@ def test_the_frames_have_their_urls_when_goto_returns(browser, cross_site_loop, 
             empty.append((i, urls))
         page.context.close()
     assert not empty, "frames with no url right after goto, in %d of 50 runs: %s" % (len(empty), empty[:3])
+
+
+# ── hunt scaffolding (never merged): what is the second process of the same-site control? ─────────────────────
+# The control above was red in 14 of 30 suite runs with "[P] -> [P, P2]". These copies of it record, for every run, the
+# table of the engine's processes below the worker (pid, parent, name, birth), the instants of the test, and (arm `log`)
+# the engine's own log of why it starts a content process (MOZ_LOG Process and ProcessIsolation, parent process).
+
+DIAG_DIR = os.environ.get("DIAG_DIR") or ""
+DIAG_REPS = int(os.environ.get("DIAG_REPS") or 0)
+
+
+def process_table(engine_dir):
+    import psutil
+
+    rows = []
+    try:
+        procs = psutil.Process(os.getpid()).children(recursive=True)
+    except psutil.Error:
+        return rows
+    for proc in procs:
+        try:
+            if not os.path.normcase(proc.exe()).startswith(os.path.normcase(engine_dir)):
+                continue
+            cmd = proc.cmdline()
+            rows.append({"pid": proc.pid, "ppid": proc.ppid(), "name": proc.name(), "born": round(proc.create_time(), 3),
+                         "kind": (cmd[-1] if "-contentproc" in cmd else "parent"),
+                         "args": [a[:48] for a in cmd[1:] if not a.startswith("/")][:24],
+                         "threads": proc.num_threads(), "rss_mb": round(proc.memory_info().rss / 1e6, 1)})
+        except (psutil.Error, ValueError, IndexError):
+            continue
+    return sorted(rows, key=lambda r: r["born"])
+
+
+@pytest.mark.e2e
+@pytest.mark.parametrize("rep", range(DIAG_REPS))
+def test_diag_cross_site_load(rep, page, cross_site_loop, engine_dir):
+    """The test that runs just before the control in the suite, as load and as its predecessor."""
+    test_cross_site_iframe_gets_its_own_process(page, cross_site_loop, engine_dir)
+
+
+@pytest.mark.e2e
+@pytest.mark.parametrize("rep", range(DIAG_REPS))
+@pytest.mark.parametrize("arm", ["log", "nolog"])
+def test_diag_same_site(arm, rep, firefox_binary, cross_site_loop, engine_dir, monkeypatch):
+    from invisible_playwright import InvisiblePlaywright
+
+    tag = "%s_%02d_%s" % (arm, rep, os.environ.get("PYTEST_XDIST_WORKER", "gw"))
+    log_base = os.path.join(DIAG_DIR, "moz_" + tag)
+    if arm == "log":
+        monkeypatch.setenv("MOZ_LOG", "Process:5,ProcessIsolation:5,timestamp")
+        monkeypatch.setenv("MOZ_LOG_FILE", log_base)
+    rec = {"tag": tag, "arm": arm, "worker_pid": os.getpid(), "t": {}, "tables": {}}
+
+    def mark(key):
+        rec["t"][key] = round(time.time(), 3)
+
+    mark("start")
+    try:
+        with InvisiblePlaywright(seed=42, binary_path=firefox_binary, humanize=False, headless=True,
+                                 extra_prefs=dict(FISSION_ON, **{"dom.ipc.processPrelaunch.fission.number": 0})) as browser:
+            page = browser.new_context().new_page()
+            page.set_default_timeout(3000)
+            page.set_default_navigation_timeout(20000)
+            mark("page_open")
+            page.goto(cross_site_loop["plain"])
+            mark("goto_done")
+            before = quiet(engine_dir)
+            mark("before_read")
+            rec["tables"]["before"] = process_table(engine_dir)
+            page.evaluate("(u) => { const f = document.createElement('iframe'); f.id = 's'; f.src = u;"
+                          " document.body.appendChild(f); }", cross_site_loop["leaf"])
+            mark("frame_added")
+            rec["leaf_reported"] = wait_for(page, lambda: any(r["path"] == "/report/loaded" and r["query"]["path"] == ["/leaf"]
+                                                              for r in cross_site_loop["reports"]))
+            mark("leaf_reported")
+            after = quiet(engine_dir)
+            mark("after_read")
+            rec["tables"]["after"] = process_table(engine_dir)
+            rec["before"], rec["after"], rec["changed"] = sorted(before), sorted(after), after != before
+            if after != before:
+                page.wait_for_timeout(10000)
+                mark("ten_seconds_later")
+                rec["tables"]["ten_seconds_later"] = process_table(engine_dir)
+                rec["later"] = sorted(site_processes(engine_dir))
+                rec["frames"] = [frame.url for frame in page.frames]
+    finally:
+        mark("closed")
+        if DIAG_DIR:
+            Path(DIAG_DIR, "rec_%s.json" % tag).write_text(json.dumps(rec, indent=1), encoding="utf-8")
+            if not rec.get("changed") and rep >= 2:        # keep the engine's log of the red runs and of two green ones
+                for path in Path(DIAG_DIR).glob("moz_%s*" % tag):
+                    path.unlink()
+    assert rec["leaf_reported"]
+    assert not rec["changed"], "a same-site frame changed the processes of the sites: %s -> %s" % (rec["before"], rec["after"])
