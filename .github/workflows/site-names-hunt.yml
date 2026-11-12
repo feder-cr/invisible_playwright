@@ -1,0 +1,99 @@
+# site-names-hunt.yml - hunt scaffolding, never merged. Runs only on a push to a `hunt/site-names**` branch.
+#
+# The tests that look at content processes now ask for the processes of a site by its name (tests/_processes.py). This job
+# repeats them, 24 times each, while other e2e tests load the machine, next to the OLD comparison of two counts that was
+# red in 14 of 30 runs: the new ones must stay green, the old one is expected to fail under the same load. It also records
+# the real process names. It never fails on test failures: the numbers are in the step summary.
+name: site names hunt
+
+on:
+  push:
+    branches: ['hunt/site-names**']
+
+permissions:
+  contents: read
+
+env:
+  GITHUB_TOKEN: ${{ github.token }}
+
+jobs:
+  hunt:
+    name: processes by the name of the site, under load
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with: { fetch-depth: 1 }
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: { python-version: '3.11' }
+      - name: Install wrapper + test deps (+ pinned Playwright)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ".[dev]"
+          python -m pip install "playwright==$(cat scripts/playwright_pin.txt)"
+      - name: System deps (xvfb + Firefox runtime libs)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+          sudo "$(which python)" -m playwright install-deps firefox
+      - name: Fetch the published firefox binary
+        run: echo "FF=$(python -m invisible_playwright fetch | tail -1)" >> "$GITHUB_ENV"
+      - name: The hunt tests, with a load of other e2e tests beside them
+        env:
+          INVPW_BINARY_PATH: ${{ env.FF }}
+          PYTHONUNBUFFERED: "1"
+          HUNT_REPS: "24"
+        run: |
+          set -u
+          mkdir -p evidence
+          export HUNT_DIR="$PWD/evidence"
+          (
+            set +e
+            while [ ! -e evidence/done ]; do
+              xvfb-run -a python -m pytest tests/test_juggler_actions.py -m e2e -o addopts= -p no:cacheprovider -n 2 \
+                --timeout 300 -q >> evidence/load.log 2>&1
+            done
+          ) &
+          load=$!
+          set +e
+          xvfb-run -a python -m pytest tests/test_hunt_site_names_e2e.py -m e2e -o addopts= -p no:cacheprovider \
+            -n 2 --dist load --timeout 300 -q -rA > evidence/pytest.log 2>&1
+          echo "hunt pytest exit=$?"
+          set -e
+          touch evidence/done
+          wait "$load" || true
+          {
+            echo "### Hunt: processes by the name of the site (24 reps each)"
+            echo
+            echo "| test | passed | failed |"
+            echo "|---|---|---|"
+            for t in test_hunt_new_same_site test_hunt_new_cross_site test_hunt_old_same_site test_hunt_service_worker; do
+              p=$(grep -c "^PASSED .*::${t}\[" evidence/pytest.log || true)
+              f=$(grep -c "^FAILED .*::${t}\[" evidence/pytest.log || true)
+              echo "| \`${t}\` | ${p} | ${f} |"
+            done
+            echo
+            echo "#### Names of the content processes (names.json)"
+            echo
+            echo '```json'
+            cat evidence/names.json 2>/dev/null || echo "(no names.json)"
+            echo
+            echo '```'
+            echo
+            echo "#### Last lines of the log"
+            echo
+            echo '```'
+            tail -5 evidence/pytest.log
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Upload all the evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: site-names-hunt-${{ github.run_id }}
+          path: evidence
+          if-no-files-found: warn
+          retention-days: 14
