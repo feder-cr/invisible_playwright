@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-## [0.50.1] - 2026-11-11
+## [0.50.1] - 2026-11-12
 
 0.50.0 was tagged and never published: its end-to-end gate was red on two tests that counted processes.
 0.50.1 is 0.50.0 with those tests corrected.
