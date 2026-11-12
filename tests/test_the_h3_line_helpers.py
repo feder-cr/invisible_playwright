@@ -431,4 +431,6 @@ def test_a_server_that_can_bind_nothing_says_so_after_a_bounded_number_of_tries(
     with pytest.raises(RuntimeError) as raised:
         module._tcp_server_on_a_port_udp_binds("127.0.0.1")
     assert "both TCP and UDP" in str(raised.value) and "127.0.0.1" in str(raised.value), str(raised.value)
-    assert len(_FakeUdpSocket.tried) == module._WITNESS_TRIES, len(_FakeUdpSocket.tried)
+    import _ports
+
+    assert len(_FakeUdpSocket.tried) == _ports.TRIES, len(_FakeUdpSocket.tried)

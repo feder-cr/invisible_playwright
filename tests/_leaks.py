@@ -31,6 +31,8 @@ from pathlib import Path
 from typing import Dict, Iterable, List, NamedTuple, Optional, Set, Tuple
 
 from _doh_servers import RCODE_REFUSED, DohQuery, answer_for, build_response, parse_query
+from _ports import candidates
+from _ports import who_holds as _who_holds
 
 RESOLV_CONF = Path("/etc/resolv.conf")
 
@@ -170,19 +172,6 @@ def _trap_capability() -> Tuple[bool, str]:
 #: takes the first one it can bind and writes THAT address into /etc/resolv.conf (a resolv.conf names no port). With a free
 #: port (port=0) only 127.0.0.1 is used.
 TRAP_ADDRESSES = ("127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4", "127.0.0.5", "127.0.0.6", "127.0.0.7", "127.0.0.8")
-
-
-def _who_holds(port: int) -> str:
-    """What the machine says about the sockets of `port` (Linux: ss), for the message of a trap that could not bind."""
-    import subprocess
-    for command in (["ss", "-H", "-lntup"], ["netstat", "-lntup"]):
-        try:
-            done = subprocess.run(command, capture_output=True, text=True, timeout=10)
-        except (OSError, subprocess.SubprocessError):
-            continue
-        lines = [line for line in done.stdout.splitlines() if (":%d " % port) in line]
-        return "; held by: " + (" | ".join(lines) if lines else "nothing listed by %s" % command[0])
-    return "; no ss or netstat to say who holds it"
 
 
 class Asker(NamedTuple):
@@ -435,11 +424,11 @@ class ResolverTrap:
         try:
             addresses = TRAP_ADDRESSES if self.port != 0 else TRAP_ADDRESSES[:1]
             for address in addresses:
-                for attempt in range(200):
-                    made = self._bind_once(discarded, address)
+                # A port asked for (53) is tried once per address; with 0 the numbers are the harness's sequence (tests/_ports.py): the
+                # system's own pick, then numbers drawn below the ephemeral range, where Windows' excluded UDP blocks are not.
+                for wanted in ([self.port] if self.port != 0 else candidates(200)):
+                    made = self._bind_once(discarded, address, wanted)
                     if made:
-                        break
-                    if self.port != 0:
                         break
                 if made:
                     self.address = address
@@ -458,10 +447,11 @@ class ResolverTrap:
             self._threads.append(t)
             t.start()
 
-    def _bind_once(self, discarded: List[socket.socket], address: str = "127.0.0.1") -> List[socket.socket]:
-        """One attempt: the sockets bound, or [] after putting what it opened in ``discarded``."""
+    def _bind_once(self, discarded: List[socket.socket], address: str = "127.0.0.1", wanted: Optional[int] = None) -> List[socket.socket]:
+        """One attempt, on the number ``wanted`` (the trap's own port when None, 0 for the system's pick): the sockets bound, or [] after
+        putting what it opened in ``discarded``."""
         made: List[socket.socket] = []
-        port = self.port
+        port = self.port if wanted is None else wanted
         for family, host, required in ((socket.AF_INET, address, True), (socket.AF_INET6, "::1", False)):
             pair: List[socket.socket] = []    # this family's TCP and UDP, kept or dropped together
             try:
