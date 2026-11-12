@@ -10,6 +10,7 @@ saw, so a road that works also gives the page a server-reflexive candidate.
 """
 from __future__ import annotations
 
+import random
 import socket
 import sys
 import struct
@@ -17,6 +18,12 @@ import threading
 from typing import Dict, Iterable, List, Tuple
 
 _MAGIC = b"\x21\x12\xa4\x42"
+
+#: How many port numbers the witness tries before it gives up, and where it draws them from after the system's own pick.
+TRIES = 200
+#: Below the start of Windows' dynamic range (49152), where its excluded ranges are reserved in blocks of a hundred, and
+#: below Linux's ephemeral range (32768): a number drawn here is not the next of a sequence the system hands out.
+DRAW_FROM = (20000, 32767)
 
 
 class Witness:
@@ -26,36 +33,44 @@ class Witness:
         self.tcp: List[Tuple[str, int]] = []
         self._lock = threading.Lock()
         self._closed = False
-        # One port number for both: the TCP listener takes one, the UDP socket the same (retry with another if it is busy).
-        # TCP FIRST: Windows keeps big excluded ranges for TCP and hands out ephemeral ports in sequence, so a UDP-first pick
-        # can land in a range TCP may not bind (WinError 10013), again and again (the resolver trap does the same).
-        last: Exception = OSError("no port")
-        for _ in range(20):
+        # One port number for both, TCP and UDP. Each try binds TCP and then UDP on the same number; if either is refused, both
+        # are released and another number is tried. The first try is the system's own pick (TCP, port 0). The others are drawn
+        # at random: Windows hands out ephemeral TCP ports in sequence and keeps excluded ranges of a hundred ports for UDP
+        # inside the same zone, so "the next pick" lands in the same refused range again and again (WinError 10013, twenty
+        # tries in a row on a work machine). A given ``port`` is tried once and its refusal is raised as it is.
+        self._udp, self._tcp, self.port = self._bind_both(address, port)
+        threading.Thread(target=self._serve_udp, daemon=True).start()
+        threading.Thread(target=self._serve_tcp, daemon=True).start()
+
+    @staticmethod
+    def _bind_both(address: str, port: int):
+        refusals: List[str] = []
+        draw = random.Random()
+        for attempt in range(1 if port else TRIES):
+            wanted = port if port else (0 if attempt == 0 else draw.randint(*DRAW_FROM))
             tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            udp = None
             try:
                 if sys.platform != "win32":    # on Windows SO_REUSEADDR is "share the port": it breaks bind
                     tcp.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                tcp.bind((address, port))
+                tcp.bind((address, wanted))
                 chosen = tcp.getsockname()[1]
-                tcp.listen(16)
                 udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                try:
-                    udp.bind((address, chosen))
-                except OSError:
-                    udp.close()
-                    raise
+                udp.bind((address, chosen))
+                tcp.listen(16)
+                return udp, tcp, chosen
             except OSError as exc:
-                tcp.close()
-                last = exc
                 if port:
+                    tcp.close()
+                    if udp is not None:
+                        udp.close()
                     raise
-                continue
-            self._udp, self._tcp, self.port = udp, tcp, chosen
-            break
-        else:
-            raise last
-        threading.Thread(target=self._serve_udp, daemon=True).start()
-        threading.Thread(target=self._serve_tcp, daemon=True).start()
+                refusals.append("%s: %s" % (wanted or "system pick", exc))
+                tcp.close()
+                if udp is not None:
+                    udp.close()
+        raise OSError("the witness found no port number on %s where both TCP and UDP bind, after %d tries; the last refusals: %s"
+                      % (address, TRIES, "; ".join(refusals[-3:])))
 
     # --- what a test reads ------------------------------------------------------------------------------------------
     def heard(self) -> Dict[str, list]:
