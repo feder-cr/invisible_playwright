@@ -1,0 +1,129 @@
+# popups-fix-hunt.yml - hunt scaffolding, never merged. Runs only on a push to a `hunt/popups-fix**` branch.
+#
+# The proof of the popup fix (the head of fix/popup-handover-loses-no-event, 7d934a6: d135ac2 + 320072a + 7d4c21b + the fixtures). On the code before it,
+# tests/test_popups_reach_the_client_e2e.py at four workers on windows-2022 had 15 red tests in 20 runs with the published engine and
+# 17 with the engine 63 (all in-process, no route, the popup still at about:blank or no load). Two arms, the same file twenty times at
+# four workers, then the load suite (tests/test_popups_under_load_e2e.py, 256 cases) once, both with the popup trace (nodeid per test):
+#   win-63-fix  this branch (0.51.0 + the fix), the core of 0.51.0 (release/63.66.0), the Windows engine of round 7
+#   win-62-fix  main with the fix's server.py applied, the core of its pin, the published engine
+# The criterion: no red test in either arm.
+name: popups fix hunt
+
+on:
+  push:
+    branches: ['hunt/popups-fix**']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: popups-fix-hunt-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GITHUB_TOKEN: ${{ github.token }}
+  GH_TOKEN: ${{ github.token }}
+  INVISIBLE_CORE_AUTOFIX: 'off'
+  INVISIBLE_CORE_PIN: allow
+
+jobs:
+  hunt:
+    name: ${{ matrix.arm }}
+    runs-on: windows-2022
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        arm: [win-63-fix, win-62-fix]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: { python-version: '3.11' }
+      - name: main with the fix and the trace (arm win-62-fix only)
+        if: matrix.arm == 'win-62-fix'
+        run: |
+          set -e
+          cp scripts/hunt_popup_trace_patch.py scripts/hunt_popup_trace_patch2.py scripts/hunt_popup_fix_server.patch \
+             tests/test_popups_under_load_e2e.py "$RUNNER_TEMP/"
+          git checkout origin/main -- src tests pyproject.toml scripts/playwright_pin.txt
+          git apply -3 "$RUNNER_TEMP/hunt_popup_fix_server.patch"
+          python "$RUNNER_TEMP/hunt_popup_trace_patch.py"
+          python "$RUNNER_TEMP/hunt_popup_trace_patch2.py"
+          cp "$RUNNER_TEMP/test_popups_under_load_e2e.py" tests/
+          git log -1 --format='main at %h' origin/main
+      - name: Install
+        run: |
+          set -e
+          python -m pip install --quiet --upgrade pip
+          if [ "${{ matrix.arm }}" = "win-62-fix" ]; then
+            python -m pip install --quiet ".[dev]"
+          else
+            CORE_GIT="git+https://github.com/feder-cr/invisible_core@a790d0d0a3ce7ca4cfd24016c791fc1d9bc0fcfd"
+            python -m pip install --quiet "$CORE_GIT"
+            python -m pip install --quiet ".[dev]"
+            python -m pip install --quiet --force-reinstall "$CORE_GIT"
+          fi
+          python -m pip install --quiet "playwright==$(cat scripts/playwright_pin.txt)"
+          python -c "import importlib.metadata as m; print('invisible-playwright', m.version('invisible-playwright'), '| invisible-core', m.version('invisible-core'))"
+      - name: The engine
+        run: |
+          set -e
+          mkdir -p art ff
+          if [ "${{ matrix.arm }}" = "win-62-fix" ]; then
+            echo "FF=$(cd "$RUNNER_TEMP" && python -m invisible_playwright fetch | tail -1)" >> "$GITHUB_ENV"
+          else
+            gh run download 43211837926 --repo feder-cr/firefox_antidetect_patch --name asset-win-x86_64 --dir art
+            python -c "import glob, zipfile; zipfile.ZipFile(glob.glob('art/firefox-*-stealth-win-x86_64.*')[0]).extractall('ff')"
+            python -m invisible_core seal --binary "$PWD/ff/firefox.exe" --tag firefox-63-candidate -o "$PWD/seal.json"
+            echo "FF=$PWD/ff/firefox.exe" >> "$GITHUB_ENV"; echo "INVISIBLE_SEAL_FILE=$PWD/seal.json" >> "$GITHUB_ENV"
+          fi
+      - name: The popup file twenty times, then the load suite once, four workers, with the trace
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          export INVPW_BINARY_PATH="$FF" STEALTHFOX_E2E_BINARY="$FF"
+          mkdir -p evidence
+          red=0
+          for n in $(seq 1 20); do
+            rr=$(printf '%02d' "$n")
+            export INVPW_HUNT_POPUP_TRACE="$PWD/evidence/trace_$rr.jsonl"
+            set +e
+            python -m pytest tests/test_popups_reach_the_client_e2e.py -m e2e -o addopts= -p no:cacheprovider \
+              -n 4 --dist loadfile --timeout 420 -q -rA --tb=short > "evidence/run_$rr.log" 2>&1
+            set -e
+            f=$(grep -cE "^(FAILED|ERROR) " "evidence/run_$rr.log" || true)
+            red=$((red+f))
+            echo "run $n: red=$f $(tail -1 evidence/run_$rr.log)"
+          done
+          export INVPW_HUNT_POPUP_TRACE="$PWD/evidence/trace_load.jsonl"
+          set +e
+          python -m pytest tests/test_popups_under_load_e2e.py -m e2e -o addopts= -p no:cacheprovider \
+            -n 4 --dist load --timeout 420 -q -rA --tb=short > evidence/load.log 2>&1
+          set -e
+          lred=$(grep -cE "^(FAILED|ERROR) " evidence/load.log || true)
+          {
+            echo "## ${{ matrix.arm }}: red tests in the 20 runs of the popup file: $red; red in the load suite (256): $lred"
+            echo '```'
+            tail -1 evidence/load.log
+            grep -hE "^(FAILED|ERROR) " evidence/run_*.log evidence/load.log | sed -E 's/^(FAILED|ERROR) //' | sort | uniq -c | sort -rn | head -20 || true
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Close every Firefox left
+        if: always()
+        shell: pwsh
+        run: |
+          Get-Process firefox -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          "left: " + @(Get-Process firefox -ErrorAction SilentlyContinue).Count
+      - name: Upload the evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: popups-fix-${{ matrix.arm }}-${{ github.run_id }}
+          path: evidence
+          if-no-files-found: warn
+          retention-days: 14
