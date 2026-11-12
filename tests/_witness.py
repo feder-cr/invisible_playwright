@@ -11,6 +11,7 @@ saw, so a road that works also gives the page a server-reflexive candidate.
 from __future__ import annotations
 
 import socket
+import sys
 import struct
 import threading
 from typing import Dict, Iterable, List, Tuple
@@ -25,23 +26,26 @@ class Witness:
         self.tcp: List[Tuple[str, int]] = []
         self._lock = threading.Lock()
         self._closed = False
-        # One port number for both: the UDP socket takes one, the TCP listener the same (retry with another if it is busy).
+        # One port number for both: the TCP listener takes one, the UDP socket the same (retry with another if it is busy).
+        # TCP FIRST: Windows keeps big excluded ranges for TCP and hands out ephemeral ports in sequence, so a UDP-first pick
+        # can land in a range TCP may not bind (WinError 10013), again and again (the resolver trap does the same).
         last: Exception = OSError("no port")
         for _ in range(20):
-            udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             try:
-                udp.bind((address, port))
-                chosen = udp.getsockname()[1]
-                tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                tcp.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                try:
-                    tcp.bind((address, chosen))
-                except OSError:
-                    tcp.close()
-                    raise
+                if sys.platform != "win32":    # on Windows SO_REUSEADDR is "share the port": it breaks bind
+                    tcp.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                tcp.bind((address, port))
+                chosen = tcp.getsockname()[1]
                 tcp.listen(16)
+                udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                try:
+                    udp.bind((address, chosen))
+                except OSError:
+                    udp.close()
+                    raise
             except OSError as exc:
-                udp.close()
+                tcp.close()
                 last = exc
                 if port:
                     raise

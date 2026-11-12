@@ -987,6 +987,9 @@ _EXPECTED_SIGNATURE = [
     # launch and every later context proxy use the same list; it is not a browser declaration and reaches neither
     # its environment, argv, prefs nor pipe. Both entry points get it.
     ("udp_stun_servers", inspect.Parameter.KEYWORD_ONLY),
+    # Added 2026-11-12 on the owner's decision: the New Tab page a retail Firefox keeps preloaded is turned off only on request
+    # (False); None leaves the engine's default. Passed to the core, a choice of the session; both entry points get it.
+    ("preload_newtab", inspect.Parameter.KEYWORD_ONLY),
 ]
 
 
