@@ -9,34 +9,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [0.51.0] - 2026-11-12
 
 ### Changed
-- Engine firefox-63 through invisible-core 63.66.0, which this version pins. A session behind a proxy now takes every road
-  through it, as a browser at home would: names are resolved by the browser's own DNS-over-HTTPS through the proxy (never by
-  the machine's resolver), WebRTC and HTTP/3 send their UDP through the proxy's relay when its UDP was measured to leave from
-  the same address as its TCP, and a proxy whose UDP does not hold is treated as a router that drops it (HTTP/3 falls back to
-  HTTP/2, ICE gathers no server-reflexive candidate). A proxy given to a context declares its own measured UDP exit. WebRTC no
-  longer reads the machine's network: the interfaces, the default route, the ports and the mDNS names come from the network the
-  session declares.
+- Engine firefox-63 through invisible-core 63.66.0, which this version pins. Behind a proxy: names are resolved by the browser's own
+  DNS-over-HTTPS through the proxy (not by the machine's resolver; checked with a resolver trap on Linux), WebRTC and HTTP/3 send
+  their UDP through the proxy's relay when its UDP was measured to leave from the same address as its TCP, and a proxy whose UDP
+  does not hold (including one whose UDP leaves from another address) is treated as a router that drops it (HTTP/3 falls back to
+  HTTP/2, ICE gathers no server-reflexive candidate). A proxy given to a context declares its own measured UDP exit. The interface
+  list WebRTC gathers is the network the session declares.
 - A STUN server list can be given at launch (`udp_stun_servers`) for the measurement of the proxy's UDP.
 - Every context carries the position the core declares for the session (the geolocation override of the context).
-- The launch counter can no longer be turned off: `invisible_firefox.usage_ping.enabled` and `invisible_firefox.usage_ping.url` are not
-  accepted in `extra_prefs`. Each browser start sends one anonymous GET to the `usage-counter` release of this project; it counts launches.
+- The package's launcher and server refuse the two prefs that govern the launch counter, `invisible_firefox.usage_ping.enabled` and
+  `invisible_firefox.usage_ping.url`, in `extra_prefs` (and in the `firefoxUserPrefs` of a served launch). The engine counts launches with
+  an anonymous GET to the `usage-counter` release of the engine's repository (`feder-cr/firefox_antidetect_patch`).
 
 ### Added
-- `preload_newtab=False` turns off the preloaded New Tab page, on request only (`InvisiblePlaywright`, `AsyncInvisiblePlaywright` and
-  `launch_server`): by default the browser keeps it, as a retail Firefox does. A retail Firefox keeps the New Tab page ready in a content
-  process of its own and, in some countries, a second one for a Mozilla site it loads (`mozgcp.net`); with the option neither is started.
-  `None` writes nothing, `True` says the retail value aloud, and a `browser.newtab.preload` in `extra_prefs` wins over it. Needs
-  invisible-core 63.66.0. Measured on the firefox-63 candidate engine, one page of a site, five alternating runs: on Windows the content
-  processes take 448-454 MB as shipped and 231-239 MB with the option (private memory 301-307 against 158-171 MB); on Linux 882-891
-  against 524-534 MB (private memory 176-185 against 73-76 MB).
+- `preload_newtab=False` turns off the preloaded New Tab page, on request only (`InvisiblePlaywright`,
+  `invisible_playwright.async_api.InvisiblePlaywright` and `launch_server`): by default the browser keeps it, as a retail Firefox does.
+  A retail Firefox keeps the New Tab page ready in a content process of its own; with the option it is not started. `None` writes
+  nothing, `True` says the retail value aloud, and a `browser.newtab.preload` in `extra_prefs` wins over it. Needs invisible-core
+  63.66.0. Measured on Windows (run 43211271731), on an engine build of the firefox-63 candidate line (not the published engine), one
+  page of a site, five alternating runs: the browser's processes together take 448-454 MB as shipped and 231-239 MB with the option
+  (private memory 301-307 against 158-171 MB).
 
 ### Fixed
 - A request the browser resumed and whose channel is replaced and cancelled before the replacement starts (a `fetch` with
   `keepalive`, a beacon) is reported as failed, so it no longer keeps `networkidle` from arriving (engine firefox-63).
 - A navigation the page overtakes (`location.replace`) ends, and the document that overtook it is told (engine firefox-63).
 - A click in a frame under a CSS transform is mapped back to the point the frame shows, and a click in a frame scrolls the
-  element in even when its point is inside the main viewport (invisible-core 63.66.0). The protocol mirror declares
-  `Page.addBinding` of the engine.
+  element in even when its point is inside the main viewport (invisible-core 63.66.0).
 - `request.resource_type` agrees with the pinned driver: a beacon is `beacon` and a CSP report is `cspreport` (it said `other`).
 - A download whose finish is seen before its announcement is marked finished: `save_as`, `path` and `failure` used to wait for ever on it.
   The early finishes the browser keeps are bounded (64) and forgotten with their context. (That the engine sends a finish before the
@@ -45,24 +44,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   made for a target already detached.
 
 ### Known differences from stock Playwright
-Measured against Playwright's own Firefox with the same script, on this version. None of them is a value a page reads; they are what a
-script that drives the browser can observe.
+What a script that drives the browser can observe, from the configuration of Playwright's own Firefox and of a retail Firefox (no
+comparison run is saved). The result of a `window.open` (`null` or a window) is read by the page; the others are what the script sees.
 
 - **A `window.open` from a script with no user gesture is blocked, as in a retail Firefox.** Playwright's own Firefox turns the popup
   blocker off (`dom.disable_open_during_load` false in its `playwright.cfg`); a retail Firefox keeps it on, and so does this browser. So
   `page.evaluate("window.open(url)")` returns `null` to the page and no `page` event comes; the same `window.open` from a click opens
-  the popup on both. Measured against Playwright's own Firefox served by Playwright, the stock client on both: `window.open(url)` from
-  `evaluate` gives `null` here and a window there; `window.open()` with no address, the same; a click that calls `window.open(url)`
-  opens the popup on both. To get stock's behaviour: open the popup from a click; or pass
+  the popup on both. To get stock's behaviour: open the popup from a click; or pass
   `extra_prefs={"dom.disable_open_during_load": False}` for the session, knowing that a page then sees a browser that differs from a
   retail Firefox.
 
 ### Known issues
-- **A popup opened without a route can be announced while it is still on `about:blank`.** On Windows, with several browsers running together
-  on the same machine (4 on 4 CPUs), a popup opened with no route (a `target=_blank` link, or `window.open` from a click) can be announced to
-  the client while it is still on `about:blank`; its `url` then stays `about:blank`, or `load` never arrives. Measured with the firefox-63
-  engine: 13 cases of 680 (11 runs of 20 red); with the firefox-62 engine of 0.50.1: 3 runs of 20. With one browser at a time it has not been
-  seen (102 executions in the gate). On Linux it is being measured. A correction is in progress.
+- **A popup opened without a route can be announced while it is still on `about:blank`.** A popup opened with no route on the context
+  (a `target=_blank` link, or `window.open` from a click) can be announced to the client while it is still on `about:blank`; its `url`
+  then stays `about:blank`, or its `load` never arrives. Seen on a Windows runner with the library's client in the same process and four
+  workers running the popup tests in parallel (`test_popups_reach_the_client_e2e.py`, 20 runs): with the firefox-63 engine 17 cases of 640
+  in 12 of 20 runs; with the published firefox-62 engine (so also with 0.50.1) 15 cases of 640. On Linux (the firefox-63 engine) 0 red in
+  20 runs. In the last two runs with Playwright's own client over a served browser none was red. The defect is in the hand-over of the popup's page in this
+  package, not in the engine; the correction is in 0.51.1. Not measured: a served launch with numbers of its own, other machines, a run
+  without parallel workers, macOS.
 
 ## [0.50.1] - 2026-11-12
 

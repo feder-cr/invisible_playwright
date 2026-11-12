@@ -217,7 +217,7 @@ Full list of pinnable keys, how pinning interacts with the Bayesian sampler, and
 
 ### Launch counter
 
-Each browser start sends one anonymous GET to the `usage-counter` release of this project on GitHub, which is how launches are counted. It is part of the browser and it is not optional: `invisible_firefox.usage_ping.enabled` and `invisible_firefox.usage_ping.url` are not accepted in `extra_prefs`.
+The engine counts launches with an anonymous GET to the `usage-counter` release of the engine's repository (`feder-cr/firefox_antidetect_patch`) on GitHub. This package's launcher and server refuse the two prefs that govern it, `invisible_firefox.usage_ping.enabled` and `invisible_firefox.usage_ping.url`, in `extra_prefs`.
 
 ---
 
