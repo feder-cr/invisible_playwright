@@ -26,7 +26,7 @@ What each 1.62 addition becomes here:
     target into view first, which is `auto`; `none` asks to act on the element
     where it is, and honouring it needs an action path that does not scroll,
     which does not exist. The action still happens, scrolled.
-  * `noGlobal` on exposeBinding: moot, `exposeBinding` is refused as a whole.
+  * `noGlobal` on exposeBinding: not read. The function is always defined on the page's `window`, as `expose_function` documents.
   * `type` "webp" on screenshot: REFUSED. The engine captures PNG and JPEG, and
     answering a webp request with PNG bytes would hand the caller a file that
     is not the format it asked for.
