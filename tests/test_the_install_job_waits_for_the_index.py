@@ -39,6 +39,7 @@ def _run_the_wait(tmp_path, *, succeeds_on_call, seconds=2.0, poll=0.05):
     (tmp_path / "pyproject.toml").write_text('[project]\nname = "invisible-playwright"\nversion = "9.9.9"\n', encoding="utf-8")
     shim = tmp_path / "shim" / "pip"
     shim.mkdir(parents=True)
+    (shim / "__init__.py").write_text("", encoding="utf-8")   # a REGULAR package: a namespace one loses to the pip of the environment
     counter = tmp_path / "calls"
     (shim / "__main__.py").write_text(textwrap.dedent("""
         import pathlib, sys
