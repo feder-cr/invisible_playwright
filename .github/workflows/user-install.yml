@@ -72,9 +72,11 @@ on:
 permissions:
   contents: read
 
+# Only a new push to a ledger pull request cancels the run it supersedes. The
+# weekly schedule and a manual run (both on main) never cancel each other.
 concurrency:
-  group: user-install-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   install:

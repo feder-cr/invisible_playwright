@@ -15,9 +15,12 @@ permissions:
 # cancelled one by one - which left the run marked failed even though nothing
 # had actually failed. Keyed by workflow + ref so tests and e2e never cancel
 # each other; only an older run of THIS workflow on the same branch is replaced.
+# A newer push to a pull request cancels the run it supersedes. Never on main:
+# outside a pull request the group is unique to the run (`github.run_id`), so
+# every commit of main keeps its own finished run (see e2e.yml for why).
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Engine and GeoIP downloads go through the release API with this token.
 # Anonymous requests share a 60-an-hour limit per runner address and are the

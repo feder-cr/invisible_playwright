@@ -38,14 +38,22 @@ on:
 permissions:
   contents: read
 
-# One run of this workflow per branch at a time. A newer push cancels the older
-# in-flight run as a whole, cleanly, instead of leaving its queued jobs to be
-# cancelled one by one - which left the run marked failed even though nothing
-# had actually failed. Keyed by workflow + ref so tests and e2e never cancel
-# each other; only an older run of THIS workflow on the same branch is replaced.
+# A newer push to a pull request cancels the older in-flight run of THIS
+# workflow on that pull request as a whole, cleanly, instead of leaving its
+# queued jobs to be cancelled one by one - which left the run marked failed even
+# though nothing had actually failed. Keyed by workflow + pull request number,
+# so tests and e2e never cancel each other.
+#
+# NEVER on main. The release gate (scripts/e2e_is_green.py) asks for the e2e
+# check-run of the commit being tagged, and a cancelled one refuses the release:
+# with the group keyed by ref, the next push to main cancelled the run of the
+# commit before it. Outside a pull request the group is unique to the run
+# (`github.run_id`), so every commit of main keeps its own finished run, and a
+# pending run is not replaced by a newer one either (a group with a fixed name
+# drops the older pending run, cancel or not).
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Engine and GeoIP downloads go through the release API with this token.
 # Anonymous requests share a 60-an-hour limit per runner address and are the
