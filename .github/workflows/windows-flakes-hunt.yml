@@ -1,5 +1,5 @@
 # windows-flakes-hunt.yml - hunt scaffolding, never merged. Runs only on a push to a `hunt/windows-flakes**` branch.
-# The networkidle round on /x0 left on its own page once (main e2e 43425218633, part 3): ours against stock Playwright Firefox, four at once, x5.
+# The networkidle round on /x0 left on its own page once (main e2e 43425218633, part 3): ours against stock Playwright Firefox, four at once, x5, with the lifecycle traced.
 name: windows flakes hunt
 
 on:
@@ -41,6 +41,7 @@ jobs:
           echo "FF=$(cd "$RUNNER_TEMP" && python -m invisible_playwright fetch | tail -1)" >> "$GITHUB_ENV"
           python scripts/ci_lab_geoip.py build
           python -m playwright install firefox
+          python scripts/hunt_trace_lifecycle.py
       - name: Ours and stock, four at once each, five times
         env:
           PYTHONUNBUFFERED: "1"
@@ -50,7 +51,7 @@ jobs:
           for n in 1 2 3 4 5; do
             for engine in ours stock; do
               for c in 1 2 3 4; do
-                python -u scripts/hunt_netidle.py $engine "$FF" > "evidence/${engine}_${n}_$c.log" 2>&1 &
+                python -u scripts/hunt_netidle.py $engine "$FF" "$PWD/evidence/lc_${engine}_${n}_$c.jsonl" > "evidence/${engine}_${n}_$c.log" 2>&1 &
               done
               wait
             done

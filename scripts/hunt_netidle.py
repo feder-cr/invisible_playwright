@@ -5,11 +5,14 @@ when the server saw the request of /landed relative to goto's return (negative =
 """
 import http.server
 import json
+import os
 import sys
 import threading
 import time
 
 ENGINE = sys.argv[1]
+if len(sys.argv) > 3:
+    os.environ["HUNT_LC_TRACE"] = sys.argv[3]
 REQS = []
 
 
@@ -59,7 +62,8 @@ def rounds(page, Error):
             landed = [t for t, p in REQS if p.startswith("/landed") and t >= t0]
             print("HUNT-ROW " + json.dumps({
                 "engine": ENGINE, "path": path, "round": i, "landed_at_return": url.endswith("/landed"), "goto_ms": round((t1 - t0) * 1000),
-                "landed_request_ms_from_return": round((landed[0] - t1) * 1000) if landed else None, "error": err}), flush=True)
+                "landed_request_ms_from_return": round((landed[0] - t1) * 1000) if landed else None, "error": err,
+                "t0": round(t0, 4), "t1": round(t1, 4), "landed_t": round(landed[0], 4) if landed else None}), flush=True)
 
 
 if ENGINE == "stock":
