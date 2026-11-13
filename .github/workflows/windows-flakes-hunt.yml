@@ -1,0 +1,84 @@
+# windows-flakes-hunt.yml - hunt scaffolding, never merged. Runs only on a push to a `hunt/windows-flakes**` branch.
+# The proof of a test fix of tests/windows-flakes-0512: the changed test x20 alone and x20 under four workers, on Linux and on Windows.
+name: windows flakes hunt
+
+on:
+  push:
+    branches: ['hunt/windows-flakes**']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-flakes-hunt-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GITHUB_TOKEN: ${{ github.token }}
+
+jobs:
+  hunt:
+    name: proof ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        os: [windows-2022, ubuntu-24.04]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: { python-version: '3.11' }
+      - name: Install
+        run: |
+          set -e
+          python -m pip install --quiet --upgrade pip
+          python -m pip install --quiet ".[dev]"
+          python -m pip install --quiet "playwright==$(cat scripts/playwright_pin.txt)"
+          if [ "$RUNNER_OS" = "Linux" ]; then python -m playwright install-deps firefox; fi
+          echo "FF=$(cd "$RUNNER_TEMP" && python -m invisible_playwright fetch | tail -1)" >> "$GITHUB_ENV"
+          python scripts/ci_lab_geoip.py build
+      - name: The isolated-page test x20 alone and x20 under four workers
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          set +e
+          mkdir -p evidence
+          export INVPW_BINARY_PATH="$FF" STEALTHFOX_E2E_BINARY="$FF"
+          RUN=""; [ "$RUNNER_OS" = "Linux" ] && RUN="xvfb-run -a"
+          T=tests/test_an_isolated_page_and_the_next_e2e.py
+          for n in $(seq -w 1 20); do
+            $RUN python -u -m pytest -o addopts= -p no:cacheprovider -m e2e -rA --tb=short --timeout 300 $T > "evidence/alone_$n.log" 2>&1
+            echo "alone $n: $(grep -aE '^=+ .*(passed|failed|error).* =+$' evidence/alone_$n.log | head -1)"
+          done
+          for n in $(seq -w 1 20); do
+            $RUN python -u -m pytest -o addopts= -p no:cacheprovider -m e2e -rA --tb=short --timeout 300 -n 4 --dist loadfile \
+              $T tests/test_a_page_that_moves_on_e2e.py tests/test_a_field_is_typed_after_a_pause.py tests/test_juggler_transport.py > "evidence/loaded_$n.log" 2>&1
+            echo "loaded $n: $(grep -aE '^=+ .*(passed|failed|error).* =+$' evidence/loaded_$n.log | head -1)"
+          done
+          {
+            echo "## the isolated-page test ($RUNNER_OS): alone and under four workers"
+            echo '```'
+            echo "alone passed: $(grep -al 'PASSED tests/test_an_isolated_page_and_the_next_e2e.py' evidence/alone_*.log | wc -l)/20"
+            echo "loaded passed: $(grep -al 'PASSED tests/test_an_isolated_page_and_the_next_e2e.py' evidence/loaded_*.log | wc -l)/20"
+            grep -ahE "^(FAILED|ERROR) " evidence/*.log | cut -c1-220 | sort | uniq -c | sort -rn
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Close every Firefox left
+        if: always()
+        shell: pwsh
+        run: |
+          Get-Process firefox -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          "left: " + @(Get-Process firefox -ErrorAction SilentlyContinue).Count
+      - name: Upload the evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: flakes-proof-${{ matrix.os }}-${{ github.run_id }}
+          path: evidence
+          if-no-files-found: warn
+          retention-days: 14
