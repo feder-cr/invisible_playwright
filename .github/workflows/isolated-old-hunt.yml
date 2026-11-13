@@ -1,0 +1,73 @@
+# isolated-old-hunt.yml - hunt scaffolding, never merged. Runs only on a push to a `hunt/isolated-old**` branch.
+# The new variant of the isolated-page test (the move on the test's signal) must stay red on the release before the fix (0.42.0 + firefox-52).
+name: isolated old hunt
+
+on:
+  push:
+    branches: ['hunt/isolated-old**']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: isolated-old-hunt-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GITHUB_TOKEN: ${{ github.token }}
+
+jobs:
+  hunt:
+    name: isolated old ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: { python-version: '3.11' }
+      - name: The old release and the new one, each variant three rounds x5
+        run: |
+          set +e
+          mkdir -p evidence
+          python -m venv old && python -m venv new
+          if [ "$RUNNER_OS" = "Windows" ]; then O=old/Scripts/python; N=new/Scripts/python; else O=old/bin/python; N=new/bin/python; fi
+          $O -m pip install --quiet invisible-playwright==0.42.0
+          $N -m pip install --quiet .
+          if [ "$RUNNER_OS" = "Linux" ]; then $N -m pip install --quiet playwright==1.61.0 && $N -m playwright install-deps firefox; fi
+          for py in old new; do
+            P=$O; [ $py = new ] && P=$N
+            for variant in signal timer; do
+              for n in 1 2 3 4 5; do
+                $P -u scripts/hunt_isolated_old.py $variant > "evidence/${py}_${variant}_$n.log" 2>&1
+                echo "$py $variant $n: $(grep -a '^wrapper\|^RESULT' evidence/${py}_${variant}_$n.log | tr '\n' ' ')"
+              done
+            done
+          done
+          {
+            echo "## isolated page ($RUNNER_OS): RESULT per release and variant"
+            echo '```'
+            for f in evidence/*.log; do echo "$(basename $f) $(grep -a '^RESULT' $f) $(grep -a 'ERROR' $f | head -1 | cut -c1-160)"; done
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Close every Firefox left
+        if: always()
+        shell: pwsh
+        run: |
+          Get-Process firefox -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          "left: " + @(Get-Process firefox -ErrorAction SilentlyContinue).Count
+      - name: Upload the evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: isolated-old-${{ matrix.os }}-${{ github.run_id }}
+          path: evidence
+          if-no-files-found: warn
+          retention-days: 14
