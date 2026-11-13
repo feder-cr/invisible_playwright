@@ -1,0 +1,80 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# egress-firstrun-hunt.yml - a HUNT, never merged, never a gate.
+#
+# Two first-run questions of the egress gate (studio-gate-di-classe.md, 3.2-3.3) that only a runner can answer:
+#   A. under the Windows sandbox, is the engine's own log (MOZ_LOG=sync,nsHostResolver:5, MOZ_LOG_FILE=<dir>/moz-%PID.log) written, and
+#      does it hold "Calling getaddrinfo for host [native-<nonce>" for a context with NO proxy (the positive control of the sink)?
+#   B. can the engine's own -xpcshell add a lab CA to a fresh profile (x509certdb.addCertFromBase64(pem, "C,,")), and then does a page
+#      with a leaf of that CA (AIA OCSP at 127.0.0.1) load WITHOUT ignore_https_errors and reach the local OCSP listener?
+# The script prints one "HUNT A PASS|FAIL" and one "HUNT B PASS|FAIL" line per leg; the job stays green, the answer is in the log.
+# Runs only on a push to a branch hunt/egress-firstrun*.
+# ─────────────────────────────────────────────────────────────────────────────
+name: egress first-run hunt
+
+on:
+  push:
+    branches: ['hunt/egress-firstrun-slack**']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: egress-firstrun-hunt-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GITHUB_TOKEN: ${{ github.token }}
+
+jobs:
+  hunt:
+    name: hunt (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        os: [windows-2022, ubuntu-24.04]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with: { fetch-depth: 1 }
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: { python-version: '3.11' }
+      - name: Install wrapper + test deps (+ Playwright ONLY as a system tool)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ".[dev]"
+          python -m pip install "playwright==$(cat scripts/playwright_pin.txt)"
+      - name: System deps (xvfb + Firefox runtime libs)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+          sudo "$(which python)" -m playwright install-deps firefox
+      - name: Fetch the published firefox binary
+        run: echo "FF=$(cd "$RUNNER_TEMP" && python -m invisible_playwright fetch | tail -1)" >> "$GITHUB_ENV"
+      - name: The GeoIP database (made by the repository, same bytes every run)
+        run: python scripts/ci_lab_geoip.py build
+      - name: The two first-run questions
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then PRE="xvfb-run -a"; else PRE=""; fi
+          $PRE python -u scripts/hunt_egress_firstrun.py "$FF" --work evidence/egress-firstrun 2>&1 | tee evidence-run.log
+          mkdir -p evidence && cp evidence-run.log evidence/
+      - name: Upload the evidence (logs, results, profile NSS files are not included)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: egress-firstrun-${{ matrix.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            evidence/egress-firstrun/summary.json
+            evidence/egress-firstrun/a/moz
+            evidence/egress-firstrun/b/xpcshell-result-*.json
+            evidence/egress-firstrun/b/add_ca.js
+            evidence/evidence-run.log
+          if-no-files-found: warn
+          retention-days: 14
