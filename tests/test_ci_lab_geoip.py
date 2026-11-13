@@ -65,7 +65,7 @@ def test_the_core_reads_what_it_reads_from_it(database):
         assert ip_to_coordinates(ip, database) == (lat, lon)
 
 
-@pytest.mark.parametrize("address", ["198.51.100.4", "198.51.100.5", "198.51.100.6", "198.51.100.9", "203.0.113.7", "127.0.0.1", lab.addr(1, 178, 11, 5),
+@pytest.mark.parametrize("address", ["198.51.100.4", "198.51.100.5", "198.51.100.6", "198.51.100.9", "203.0.113.7", "127.0.0.1",
                                      "2001:db8::1", "::1"])
 def test_an_address_that_is_not_in_it_is_not_in_the_database_and_never_an_error(database, address):
     from invisible_core._geo import GeoTimezoneError, ip_to_country, ip_to_timezone
@@ -107,3 +107,22 @@ def test_the_evidence_command_writes_the_file_the_judge_reads(tmp_path, monkeypa
     monkeypatch.delenv(lab.ENV, raising=False)
     assert lab.main(["evidence", "--out", str(out)]) == 0
     assert json.loads(out.read_text(encoding="utf-8")) == {"env": "", "exists": False, "sha256": None}
+
+
+@pytest.mark.parametrize("address", [lab.addr(20, 118, 230, 145), lab.addr(8, 8, 8, 8), lab.addr(1, 178, 11, 5), lab.addr(52, 0, 0, 1), lab.addr(223, 255, 255, 1)])
+def test_a_public_address_that_is_not_a_lab_network_answers_the_declared_record(database, address):
+    """A launch with no proxy asks the database for the egress address of the runner, which is not known in advance (run 43351424907 of PR 486: 495
+    errors "egress IP ... not present in the geoip database", every one from a test that launches without a proxy). One declared record answers it."""
+    from invisible_core._geo import ip_to_country, ip_to_timezone
+
+    country, zone, _lat, _lon = lab.FALLBACK
+    assert ip_to_country(address, database) == country and ip_to_timezone(address, database) == zone
+
+
+def test_the_fallback_cuts_out_every_network_of_the_table_and_every_reserved_range():
+    import ipaddress
+
+    cut = lab.fallback_networks()
+    for net in [ipaddress.ip_network(c) for c in lab.NETWORKS] + list(lab.RESERVED):
+        assert not any(n.overlaps(net) for n in cut), "%s is covered by the fallback" % net
+    assert sum(n.num_addresses for n in cut) + sum(ipaddress.ip_network(c).num_addresses for c in lab.NETWORKS) + sum(n.num_addresses for n in lab.RESERVED) == 1 << 32

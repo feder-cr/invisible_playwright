@@ -118,9 +118,42 @@ def encode(value) -> bytes:
     raise TypeError("cannot encode %r" % (value,))
 
 
+#: Every address that is not reserved (RFC 6890: this network, private, shared, loopback, link-local, protocol assignments, documentation,
+#: benchmarking, multicast, the rest of class E) and is not one of the six exits above answers ONE record: the egress address of the machine that
+#: runs a test is not known in advance (a runner of any provider, any region) and a launch with no proxy asks the database for it. Without this
+#: record such a launch ends in "egress IP not present in the geoip database" (run 43351424907 of PR 486: 495 errors of one cause). The record is
+#: declared here, so it is the same on every machine, which a download of the real database is not. The reserved ranges stay "not in the
+#: database", as in the real one: the lab's own exits (the documentation addresses) must not resolve to anything.
+FALLBACK = ("US", "America/New_York", 40.7128, -74.006)
+RESERVED = tuple(ipaddress.ip_network(n) for n in (
+    addr(0, 0, 0, 0) + "/8", addr(10, 0, 0, 0) + "/8", addr(100, 64, 0, 0) + "/10", addr(127, 0, 0, 0) + "/8", addr(169, 254, 0, 0) + "/16",
+    addr(172, 16, 0, 0) + "/12", addr(192, 0, 0, 0) + "/24", addr(192, 0, 2, 0) + "/24", addr(192, 88, 99, 0) + "/24", addr(192, 168, 0, 0) + "/16",
+    addr(198, 18, 0, 0) + "/15", addr(198, 51, 100, 0) + "/24", addr(203, 0, 113, 0) + "/24", addr(224, 0, 0, 0) + "/4", addr(240, 0, 0, 0) + "/4"))
+
+
+def fallback_networks() -> list:
+    """The public space minus the reserved ranges minus the networks of the table: disjoint CIDRs (the writer takes no overlap)."""
+    if FALLBACK is None:  # a test builds the database without it, to stand for one that has no answer for an address
+        return []
+    left = [ipaddress.ip_network("0.0.0.0/0")]
+    for hole in list(RESERVED) + [ipaddress.ip_network(c) for c in NETWORKS]:
+        nxt = []
+        for net in left:
+            if net.overlaps(hole):
+                nxt.extend(net.address_exclude(hole) if net.supernet_of(hole) else [])
+            else:
+                nxt.append(net)
+        left = nxt
+    return sorted(left, key=lambda n: (int(n.network_address), n.prefixlen))
+
+
 def records() -> dict:
-    return {cidr: {"country": {"iso_code": country}, "location": {"latitude": lat, "longitude": lon, "time_zone": zone}}
-            for cidr, (country, zone, lat, lon) in NETWORKS.items()}
+    def one(country, zone, lat, lon):
+        return {"country": {"iso_code": country}, "location": {"latitude": lat, "longitude": lon, "time_zone": zone}}
+
+    table = {cidr: one(*row) for cidr, row in NETWORKS.items()}
+    table.update({str(net): one(*FALLBACK) for net in fallback_networks()})
+    return table
 
 
 def build_bytes() -> bytes:
@@ -175,7 +208,7 @@ def build_bytes() -> bytes:
         "binary_format_minor_version": U16(0),
         "build_epoch": U64(BUILD_EPOCH),
         "database_type": "GeoIP2-City",
-        "description": {"en": "invisible CI lab database: the networks the tests look up"},
+        "description": {"en": "invisible CI lab database: the networks the tests look up, and one record for every other public address"},
         "ip_version": U16(6),
         "languages": ["en"],
         "node_count": U32(count),

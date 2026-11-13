@@ -31,7 +31,9 @@ def test_a_database_that_did_not_come_is_exit_3_and_not_a_finding(monkeypatch, c
 def test_a_database_that_came_and_fails_a_check_is_exit_1_and_names_the_check(tmp_path, monkeypatch, capsys):
     lab = check.lab
     broken = tmp_path / "geoip-aio-all.mmdb"
-    broken.write_bytes(lab.build_bytes())          # the lab database has no 8.8.8.8: the first check fails
+    with monkeypatch.context() as m:
+        m.setattr(lab, "FALLBACK", None)           # no record for 8.8.8.8 in the lab database: the first check fails
+        broken.write_bytes(lab.build_bytes())
     monkeypatch.setattr(check, "product_download", lambda cache: broken)
     assert check.main([]) == 1
     out = capsys.readouterr().out

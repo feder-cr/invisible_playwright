@@ -36,6 +36,16 @@ def _database(tmp_path, name, networks=None):
         lab.NETWORKS.update(old)
 
 
+def _database_without_fallback(tmp_path, name):
+    """The lab table alone, with no record for the other public addresses: a database that has no answer for 8.8.8.8."""
+    old = lab.FALLBACK
+    lab.FALLBACK = None
+    try:
+        return _database(tmp_path, name)
+    finally:
+        lab.FALLBACK = old
+
+
 def test_the_exit_of_a_network_is_the_dot_five_of_its_slash_24():
     assert check.exit_of(lab.net(1, 178, 10)) == lab.addr(1, 178, 10, 5)
 
@@ -76,7 +86,7 @@ def test_a_database_that_does_not_open_or_has_no_country_is_a_finding(tmp_path):
     broken = tmp_path / "broken.mmdb"
     broken.write_bytes(b"not a database")
     assert check.check_open_and_answer(broken)
-    assert check.check_open_and_answer(_database(tmp_path, "lab.mmdb"))  # no 8.8.8.8 in the lab database: no country
+    assert check.check_open_and_answer(_database_without_fallback(tmp_path, "lab.mmdb"))  # no 8.8.8.8 in it: no country
 
 
 def test_the_command_takes_no_argument():
