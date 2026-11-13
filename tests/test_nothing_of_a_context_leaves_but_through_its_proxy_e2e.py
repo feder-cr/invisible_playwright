@@ -27,6 +27,15 @@ witness, and a name looked up natively IS seen by the native sink.
 Expected, case by case, on the published engine firefox-63 and on firefox-64 (the tree with the TURN-by-name fix): ``EXPECTED``, below. Nothing
 here is skipped or marked as an expected failure: a case that is red on firefox-63 is red there, and says which road it is.
 
+The window of a torn-down document (defect B3). A PeerConnection built from ``W.RTCPeerConnection``, where ``W`` is the window of an iframe that
+was removed or of a popup that was closed, had NO proxy config on the engine firefox-63: its sockets were plain (direct UDP and TCP from the host)
+and its ICE server names were resolved in the default context. ``WINDOW_CASES`` makes that window two ways (a detached iframe, a closed popup) behind
+SOCKS5 and behind an HTTP proxy and builds the PeerConnection with a STUN and a TURN-over-TCP server named by name; ``CONTROL_CASES`` builds the
+same PeerConnection from an ATTACHED iframe of the same page (proof that the lab sees the PeerConnection of a sub-window at all). A dead window may
+refuse to build a PeerConnection, or build one that never gathers: that passes the egress assertions (nothing left) but is never hidden, the test
+prints which one happened (``DEAD-WINDOW`` line) and records it as the property ``dead_window_outcome``. ``EXPECTED_WINDOW`` says what each case does
+on firefox-63 (red: the direct UDP/TCP is heard by the witness, the names are looked up natively or in user context 0) and on firefox-64 (green).
+
 The Windows sink is ``_egress_sink.native_lookup_names``; it needs no change here.
 """
 from __future__ import annotations
@@ -84,6 +93,30 @@ CASES = [
 ]
 BY_ID = {c.id: c for c in CASES}
 
+
+@dataclasses.dataclass(frozen=True)
+class WindowCase:
+    window: str     # iframe (detached) | popup (closed) | attached (control: an iframe still in its page)
+    proxy: str      # socks5 | http
+
+    @property
+    def id(self) -> str:
+        return "%s-%s" % (self.window, self.proxy)
+
+    @property
+    def dead(self) -> bool:
+        return self.window != "attached"
+
+
+WINDOW_CASES = [WindowCase(w, p) for w in ("iframe", "popup") for p in ("socks5", "http")]
+CONTROL_CASES = [WindowCase("attached", p) for p in ("socks5", "http")]
+#: The two ICE servers of a window case, by name: the STUN server over UDP and the TURN server over TCP.
+ICE_KINDS = ("stun", "turn")
+#: How long the page waits for the gathering to end, in milliseconds (the witness answers nothing: the ICE agent retries until this ends).
+GATHER_MS = 6000
+#: How long the page waits for a closed popup to say ``closed``, in milliseconds.
+CLOSED_MS = 5000
+
 #: What each case is expected to do, by engine. "green" is the contract; "RED" names the road that leaves the proxy. Held by
 #: test_the_egress_sink_helpers.py (every id is a case, and a RED has its reason).
 EXPECTED: Dict[str, Dict[str, str]] = {
@@ -99,6 +132,13 @@ EXPECTED: Dict[str, Dict[str, str]] = {
         "stun-local-socks5": "RED until B4 is decided",
         "stun-local-http": "RED until B4 is decided",
     },
+}
+
+#: The same for the window cases (``WindowCase.id``). On firefox-64 (fix of B3) every case is green, so it has no row. The controls are green everywhere.
+EXPECTED_WINDOW: Dict[str, Dict[str, str]] = {
+    "firefox-63": {c.id: "RED: the PeerConnection of a torn-down window has no proxy config: its UDP and TCP sockets are direct (the witness hears "
+                         "them) and its ICE server names are looked up in the default context (B3)" for c in WINDOW_CASES},
+    "firefox-64": {},
 }
 
 _FETCH_JS = """async ([host, port, waitMs]) => {
@@ -132,6 +172,59 @@ PROBE_JS = {
 }
 
 
+#: Step 1 of the popup variant: a button whose handler opens the popup and closes it at once. It is CLICKED (a real click holds the user gesture; a
+#: ``window.open`` from an ``evaluate`` has none and the popup blocker answers null, which would test the blocker).
+_POPUP_BUTTON_JS = """() => {
+  const b = document.createElement('button');
+  b.id = 'open-dead'; b.textContent = 'open';
+  b.onclick = () => { window.__popup = window.open('about:blank'); if (window.__popup) window.__popup.close(); };
+  document.body.append(b);
+}"""
+
+#: Steps 1 and 2 of a window case: the window (an iframe that is removed, a popup that was closed, or an iframe that stays), the PeerConnection
+#: built from ITS ``RTCPeerConnection`` with a STUN and a TURN-over-TCP server by name, the offer, and the wait for the end of the gathering. It
+#: returns what happened, so the test can say it: ``made`` (the window exists), ``closed`` (it is dead), ``constructed`` (the constructor did not
+#: throw), ``error``, ``state`` (``iceGatheringState`` at the end), ``started`` (the gathering ran).
+_WINDOW_ICE_JS = """async ([how, stunHost, turnHost, port, gatherMs, closedMs]) => {
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const out = {window: how, made: false, closed: null, constructed: false, error: null, state: null, started: false};
+  let W = null;
+  if (how === 'popup') {
+    W = window.__popup || null;
+    out.made = !!W;
+    const t0 = Date.now();
+    while (W && !W.closed && Date.now() - t0 < closedMs) await sleep(50);
+    out.closed = !!W && W.closed === true;
+  } else {
+    const f = document.createElement('iframe');
+    document.body.append(f);
+    W = f.contentWindow;
+    out.made = !!W;
+    if (how === 'iframe') { f.remove(); out.closed = f.contentWindow === null; }
+  }
+  if (!out.made || (how !== 'attached' && !out.closed)) return out;
+  let pc = null;
+  try {
+    pc = new W.RTCPeerConnection({iceServers: [
+      {urls: 'stun:' + stunHost + ':' + port},
+      {urls: 'turn:' + turnHost + ':' + port + '?transport=tcp', username: 'u', credential: 'p'}]});
+    out.constructed = true;
+    pc.createDataChannel('x');
+    await pc.setLocalDescription(await pc.createOffer());
+  } catch (e) { out.error = String(e && e.name ? e.name + ': ' + e.message : e); }
+  if (pc) {
+    try {
+      const t0 = Date.now();
+      while (pc.iceGatheringState !== 'complete' && Date.now() - t0 < gatherMs) await sleep(100);
+      out.state = pc.iceGatheringState;
+      out.started = out.state !== 'new';
+      pc.close();
+    } catch (e) { out.error = (out.error ? out.error + '; ' : '') + String(e && e.name ? e.name + ': ' + e.message : e); }
+  }
+  return out;
+}"""
+
+
 class Lab:
     """The witness, the nonce, and the names of the cases (every one answered with the witness's address)."""
 
@@ -143,9 +236,15 @@ class Lab:
             return self.witness.address
         return "%s-%s-%s.%s" % (case.kind, case.by, self.nonce, "local" if case.by == "local" else "test")
 
+    def ice_host(self, case: WindowCase, kind: str) -> str:
+        """The name of the STUN (``kind="stun"``) or TURN server of a window case."""
+        return "%s-%s-%s.test" % (kind, case.window, self.nonce)
+
     @property
     def zone(self) -> Dict[str, str]:
-        return {self.host_of(c): self.witness.address for c in CASES if c.by != "ip"}
+        names = {self.host_of(c): self.witness.address for c in CASES if c.by != "ip"}
+        names.update({self.ice_host(c, k): self.witness.address for c in WINDOW_CASES + CONTROL_CASES for k in ICE_KINDS})
+        return names
 
 
 # ------------------------------------------------------------------------------------------------------- fixtures
@@ -272,3 +371,83 @@ def test_the_native_sink_hears_a_native_lookup(firefox_binary, lab, trap, watche
     assert heard and name in native_lookup_names(engine_log, lab.nonce, trap), (
         "a context with no proxy looked %s up natively and the sink did not hear it: %s; log files: %s"
         % (name, native_lookup_names(engine_log, lab.nonce, trap), sorted(os.listdir(str(engine_log)))))
+
+
+# ------------------------------------------------------------------------------------- the window of a torn-down document (B3)
+def _run_window_case(case: WindowCase, firefox_binary, lab: Lab, doh, pages, gateway, watcher):
+    """The page of a proxied context makes the window, builds the PeerConnection from it and waits. Returns (proxy, outcome, reached), where
+    ``reached`` is None when no road shows that the probe ran (a window that did not gather)."""
+    proxy = HttpProxy("http1", doh) if case.proxy == "http" else gateway("gw-context")
+    stun_host, turn_host, port = lab.ice_host(case, "stun"), lab.ice_host(case, "turn"), lab.witness.port
+    reached = None
+    with _launch(firefox_binary) as browser:
+        context, page = _page_in(browser, proxy=proxy.proxy)
+        page.goto(pages.url("page-a.test"), wait_until="load", timeout=30000)
+        if case.window == "popup":
+            page.evaluate(_POPUP_BUTTON_JS)
+            page.click("#open-dead", timeout=10000)
+        outcome = page.evaluate(_WINDOW_ICE_JS, [case.window, stun_host, turn_host, port, GATHER_MS, CLOSED_MS])
+        if outcome["started"]:
+            def done() -> bool:
+                # the TURN server over TCP was handed to the proxy, and the STUN name was asked of the DoH (SOCKS5: by the gateway of the context)
+                if case.proxy == "http":
+                    return _was_handed(case, proxy, turn_host, port)
+                return (lab.witness.address, port) in proxy.connects and bool(doh.queries_for(stun_host, QTYPE_A))
+            reached = ds.wait_until(done, EVIDENCE_SECONDS)
+        context.close()
+    watcher.stop()
+    return proxy, outcome, reached
+
+
+def _what_the_window_did(outcome: dict) -> str:
+    """The sentence that says which of the three things happened in the window (never hidden: printed, recorded, and part of every message)."""
+    if outcome["started"]:
+        return "gathered (iceGatheringState=%s)" % outcome["state"]
+    if not outcome["constructed"]:
+        return "constructor-threw (%s)" % outcome["error"]
+    return "no-gathering (constructed, iceGatheringState=%s, error=%s)" % (outcome["state"], outcome["error"])
+
+
+def _check_window_case(case: WindowCase, outcome: dict, proxy, reached, lab: Lab, doh, trap, watcher, engine_log, record_property):
+    stun_host, turn_host, port = lab.ice_host(case, "stun"), lab.ice_host(case, "turn"), lab.witness.port
+    said = _what_the_window_did(outcome)
+    print("DEAD-WINDOW %s: %s" % (case.id, said))
+    record_property("dead_window_outcome", said)
+    why = (_why(doh, proxy) + "\n  case %s: STUN %s, TURN %s, port %d, witness at %s\n  the window: %s"
+           % (case.id, stun_host, turn_host, port, lab.witness.address, said))
+    assert outcome["made"], "the lab could not make the window (a popup blocked, or an iframe with no window): %s" % outcome + why
+    if case.dead:
+        assert outcome["closed"], "the window is not dead (the popup never said closed, or the iframe still has a window): %s" % outcome + why
+    sink = EgressSink(lab.witness, watcher, engine_log, lab.nonce, trap)
+    assert sink.blind_problems() == [], "the sink cannot be trusted: %s" % sink.blind_problems() + why
+    assert sink.leak_problems() == [], "; ".join(sink.leak_problems()) + why
+    if not case.dead:
+        # The control: the PeerConnection of a sub-window that is still attached gathers, by the road of the context (the sibling cases' green).
+        assert outcome["started"], "the control PeerConnection of an attached iframe never gathered: the lab does not see a sub-window: %s" % outcome + why
+    if outcome["started"]:
+        assert reached, "the proxy was never handed %s:%d, or the DoH never asked %s (the work did not take the road of the context)" % (turn_host, port, stun_host) + why
+        if case.proxy == "socks5":
+            named = named_connects(proxy.connects, _is_address, allowed_names=[ds.DOH_HOST])
+            assert named == [], "the gateway was sent a NAME in a CONNECT: %s (the browser must resolve with the DoH and connect by address)" % named + why
+            for host in (stun_host, turn_host):
+                assert doh.vias_of(host, QTYPE_A) == {proxy.name}, (
+                    "%s was not asked of the DoH by the gateway of the context only: %s" % (host, sorted(doh.vias_of(host, QTYPE_A))) + why)
+    assert "direct" not in {q.via for q in doh.queries}, "something reached the DoH without the proxy" + why
+
+
+@pytest.mark.parametrize("case", WINDOW_CASES, ids=[c.id for c in WINDOW_CASES])
+def test_a_peerconnection_of_a_torn_down_window_leaves_only_through_the_proxy(
+        case, firefox_binary, lab, doh, pages, gateway, trap, watcher, engine_log, record_property):
+    """B3. RED on firefox-63 (the PeerConnection of a torn-down window has no proxy config: direct sockets, names looked up in the default
+    context), GREEN on firefox-64. A window that refuses the PeerConnection, or one that never gathers, passes the egress assertions and says so."""
+    proxy, outcome, reached = _run_window_case(case, firefox_binary, lab, doh, pages, gateway, watcher)
+    _check_window_case(case, outcome, proxy, reached, lab, doh, trap, watcher, engine_log, record_property)
+
+
+@pytest.mark.parametrize("case", CONTROL_CASES, ids=[c.id for c in CONTROL_CASES])
+def test_the_same_peerconnection_of_an_attached_iframe_leaves_only_through_the_proxy(
+        case, firefox_binary, lab, doh, pages, gateway, trap, watcher, engine_log, record_property):
+    """The control of the test above: the same PeerConnection built from an iframe that is still in its page gathers and goes through the proxy of
+    the context (green on firefox-63 and on firefox-64): the lab sees the PeerConnection of a sub-window."""
+    proxy, outcome, reached = _run_window_case(case, firefox_binary, lab, doh, pages, gateway, watcher)
+    _check_window_case(case, outcome, proxy, reached, lab, doh, trap, watcher, engine_log, record_property)
