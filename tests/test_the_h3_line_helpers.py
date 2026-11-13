@@ -435,3 +435,14 @@ def test_a_server_that_can_bind_nothing_says_so_after_a_bounded_number_of_tries(
     import _ports
 
     assert len(_FakeUdpSocket.tried) == _ports.TRIES, len(_FakeUdpSocket.tried)
+
+
+def test_the_server_closes_its_event_loop_on_its_own_thread_when_it_closes():
+    """A loop that is only stopped is closed later by BaseEventLoop.__del__ on whatever thread the garbage collector runs in, and on
+    Windows the proactor's close then waits for the UDP receive still pending on it, for ever (Windows hunt of 13/11, run
+    43377799126: the HTTP/3 e2e hung inside a later goto, the test thread in base_events.__del__ -> proactor close -> _poll).
+    Known-bad: the server before this change stops the loop and never closes it."""
+    with H3Server("127.0.0.1") as server:
+        loop, thread = server._loop, server._thread
+    assert not thread.is_alive(), "the server's thread is still running after close()"
+    assert loop.is_closed(), "the server's event loop was left for the garbage collector to close"

@@ -212,9 +212,20 @@ class H3Server:
             self._quic = self._loop.run_until_complete(
                 serve(address, port, configuration=configuration, create_protocol=Protocol))
             started.set()
-            self._loop.run_forever()
+            try:
+                self._loop.run_forever()
+            finally:
+                # ⛔ THE LOOP IS CLOSED HERE, ON ITS OWN THREAD, after the QUIC server. A loop that is only stopped is closed later by
+                # BaseEventLoop.__del__ on whatever thread the garbage collector runs in, and on Windows the proactor's close then
+                # waits for the UDP receive still pending on it, for ever: the HTTP/3 e2e hung inside a later test's goto or
+                # new_page, the test thread in base_events.__del__ -> proactor close -> _poll (Windows hunt of 13/11, run
+                # 43377799126, 3 runs of 15; PR #486 part 1 twice).
+                self._quic.close()
+                self._loop.run_until_complete(asyncio.sleep(0.05))
+                self._loop.close()
 
-        threading.Thread(target=run, daemon=True).start()
+        self._thread = threading.Thread(target=run, daemon=True)
+        self._thread.start()
         if not started.wait(10):
             raise RuntimeError("the QUIC server did not start")
 
@@ -225,8 +236,9 @@ class H3Server:
     def close(self) -> None:
         self._tcp.shutdown()
         self._tcp.server_close()
-        self._quic.close()
-        self._loop.call_soon_threadsafe(self._loop.stop)
+        if not self._loop.is_closed():
+            self._loop.call_soon_threadsafe(self._loop.stop)
+        self._thread.join(10)
         self._dir.cleanup()
 
     def __enter__(self) -> "H3Server":
