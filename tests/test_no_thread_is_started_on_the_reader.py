@@ -9,8 +9,8 @@ waited). Two listeners of this package started a thread from the reader: `Browse
 NO BROWSER HERE: the real dispatchers over a scripted Juggler connection, and every event of the engine delivered FROM A THREAD OF ITS OWN
 (the reader's stand-in), the way the connection delivers them. `Thread.start` is replaced by a recorder of the thread that called it.
 
-`Page.eventFired(load)` goes through the core's lifecycle, which started a `threading.Timer` for the silence of `networkidle` until the core
-made one thread of deadlines for the connection (`DeadlineClock`): that case is skipped with a core that does not have it.
+`Page.eventFired(load)` is the core's case, tested where the fix is (invisible_core tests/test_no_thread_is_started_on_the_reader.py:
+the silence of `networkidle` on the connection's one thread of deadlines): this file holds the wrapper's two, the adoption and the chooser.
 
 Known-bad input: the thread started in `_spawn_adoption` / `_route_juggler_event` -> two starts from the reader (the adoption and the
 chooser), named in the failure.
@@ -22,7 +22,6 @@ import threading
 
 import pytest
 
-from invisible_core.juggler.connection import EventListeners
 from invisible_playwright._juggler import remote
 from invisible_playwright._juggler.server import LocalUtilsDispatcher
 
@@ -121,21 +120,6 @@ def test_an_attached_target_and_a_file_chooser_start_no_thread_on_the_reader(sta
             assert _wait(lambda: chooser, 5), "the chooser never reached the client (%s)" % (conn.handler_errors,)
         finally:
             type(page).emit = original_emit
-        assert _from_reader(starts) == [], "the reader started %s" % (_from_reader(starts),)
-        assert conn.handler_errors == []
-    finally:
-        reader.stop()
-        server.shutdown()
-
-
-@pytest.mark.skipif(not hasattr(EventListeners, "deadlines"), reason="the installed core still starts a Timer for the silence of networkidle")
-def test_a_load_delivered_on_the_reader_starts_no_thread(starts):
-    server, conn, browser, context, opener_target = _world(starts)
-    reader = _Reader()
-    try:
-        _a_popup_is_announced(conn, reader, browser, context.context_id, opener_target)
-        del starts[:]
-        reader.deliver(lambda: conn.dispatch_event("Page.eventFired", {"frameId": FRAME, "name": "load"}, SESSION))
         assert _from_reader(starts) == [], "the reader started %s" % (_from_reader(starts),)
         assert conn.handler_errors == []
     finally:
