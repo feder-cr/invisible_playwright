@@ -7,6 +7,13 @@ keyboard draws for a session's first field): ours through press_sequentially (th
 sleep(gap) through stock Playwright's keyboard. One JSON line per run with the three series in wall-clock milliseconds, plus the page's
 keyup times and, per run: slip at the last key (page against plan), the smallest gap between two keydowns the page saw, and each key's
 dwell (keyup - keydown, seen by the page) against the planned dwell.
+
+ENGINE HUNT additions: HUNT_STAMPS=1 means the engine was patched by scripts/hunt_patch_omni.py, so the browser prints HUNTKEY lines
+(`browser.dom.window.dump.enabled` is passed for it); ours collects them from the core's ProcessOutput reader (the "hk" field), stock's
+stay in this process's log through DEBUG=pw:browser. Both also return the lines the content process left in window.__hs ("hs"). Every
+arm launches with -purgecaches. The JSON also carries what the summary needs to put the stamps next to the page's events: the wall clock
+(calibrated, sub-millisecond) of each send ("sent_wall_ms"), the page's ordered events ("ev": type, key, handler clock, event clock, all
+absolute ms) and the window of the typing ("win").
 """
 import os
 import http.server
@@ -18,13 +25,43 @@ import time
 from invisible_core.juggler._behaviour import TypingPersona, plan_typing
 
 ENGINE = sys.argv[1]
+STAMPS = os.environ.get("HUNT_STAMPS") == "1"
+DUMP_PREF = {"browser.dom.window.dump.enabled": True}
 TEXT = "someone@example.com"
 PLAN = plan_typing(TEXT, TypingPersona.from_seed(2), nonce=1)
 SENT = []
+SENT_W = []
+HK = []
+
+
+def _anchor():
+    """wall clock = anchor + perf_counter(), the anchor taken on the tick time.time() changes (its granularity can be 15 ms on Windows)"""
+    t0 = time.perf_counter()
+    a = time.time()
+    while time.time() == a and time.perf_counter() - t0 < 0.05:
+        pass
+    return time.time() - time.perf_counter()
+
+
+ANCHOR = _anchor()
+
+
+def wall_ms():
+    return (ANCHOR + time.perf_counter()) * 1000
+
+
+def mark():
+    SENT.append(time.time())
+    SENT_W.append(round(wall_ms(), 3))
+
+
 PAGE = (b"<!doctype html><html><body><input id=f><script>window.__k=[];window.__u=[];document.addEventListener('keydown',"
         b"e=>__k.push([e.key, performance.timeOrigin + performance.now(), performance.timeOrigin + e.timeStamp]),true);"
         b"document.addEventListener('keyup',"
-        b"e=>__u.push([e.key, performance.timeOrigin + performance.now(), performance.timeOrigin + e.timeStamp]),true);</script></body></html>")
+        b"e=>__u.push([e.key, performance.timeOrigin + performance.now(), performance.timeOrigin + e.timeStamp]),true);"
+        b"window.__ev=[];for(const t of ['keydown','keyup'])document.addEventListener(t,"
+        b"e=>__ev.push([t, e.key, performance.timeOrigin + performance.now(), performance.timeOrigin + e.timeStamp]),true);"
+        b"</script></body></html>")
 
 
 class H(http.server.BaseHTTPRequestHandler):
@@ -45,8 +82,12 @@ threading.Thread(target=srv.serve_forever, daemon=True).start()
 url = "http://127.0.0.1:%d/" % srv.server_address[1]
 
 
-def report(page, t_start):
+def report(page, t_start, t_start_wall):
+    if STAMPS:
+        time.sleep(0.5)  # the browser's last HUNTKEY lines travel on a pipe of their own
     keys = page.evaluate("__k")
+    ev = page.evaluate("__ev")
+    hs = page.evaluate("window.__hs ? Array.from(window.__hs) : []")
     ups = page.evaluate("__u")
     planned, t = [], 0.0
     for dwell, gap in PLAN:
@@ -83,21 +124,28 @@ def report(page, t_start):
         "min_keydown_gap_e_ms": min(gaps_e) if gaps_e else None,
         "plan_min_keydown_gap_ms": min(plan_gaps) if plan_gaps else None,
         "all_keys_seen": len(downs) == len(PLAN) and len(releases) == len(PLAN),
+        "sent_wall_ms": list(SENT_W), "ev": [[t, k, round(h, 3), round(e, 3)] for t, k, h, e in ev], "hs": hs, "hk": list(HK),
+        "win": [round(t_start_wall, 3), round(wall_ms(), 3)], "stamps": STAMPS,
     }), flush=True)
 
 
 if ENGINE == "stock":
     from playwright.sync_api import sync_playwright
     with sync_playwright() as p:
-        b = p.firefox.launch(headless=True)
+        kw = {"headless": True, "args": ["-purgecaches"]}
+        if STAMPS:
+            kw["firefox_user_prefs"] = DUMP_PREF
+        b = p.firefox.launch(**kw)
         page = b.new_page()
         for _ in range(5):
             SENT.clear()
+            SENT_W.clear()
             page.goto(url)
             page.click("#f")
             t_start = time.time()
+            t_start_wall = wall_ms()
             for (dwell, gap), ch in zip(PLAN, TEXT):
-                SENT.append(time.time())
+                mark()
                 if ch == "@":
                     page.keyboard.down("Shift")
                 page.keyboard.down(ch)
@@ -106,7 +154,7 @@ if ENGINE == "stock":
                 if ch == "@":
                     page.keyboard.up("Shift")
                 time.sleep(gap / 1000)
-            report(page, t_start)
+            report(page, t_start, t_start_wall)
         b.close()
 else:
     from invisible_core.juggler import keyboard as kb
@@ -114,18 +162,50 @@ else:
 
     def down(self, key, *a, **k):
         if key != "Shift":
-            SENT.append(time.time())
+            mark()
         return real_down(self, key, *a, **k)
 
     kb.Keyboard.down = down
+    if STAMPS:
+        # the browser's output is read by the core's one reader (ProcessOutput); it keeps the last 200 lines only, so the HUNTKEY ones are
+        # also copied out as they arrive
+        from invisible_core.juggler import connection as conn
+
+        def pump(self):
+            try:
+                for raw in iter(self._stream.readline, b""):
+                    text = raw.decode("utf-8", "replace").rstrip("\r\n")
+                    i = text.find("HUNTKEY ")
+                    if i >= 0:
+                        HK.append(text[i + 8:])
+                    with self._cv:
+                        if text.strip():
+                            self._lines.append(text)
+                        if conn._READY in text:
+                            self._ready = True
+                        self._cv.notify_all()
+            except (OSError, ValueError):
+                pass
+            finally:
+                with self._cv:
+                    self._eof = True
+                    self._cv.notify_all()
+
+        conn.ProcessOutput._pump = pump
     from invisible_playwright import InvisiblePlaywright
     for _ in range(5):
         # a fresh browser per run: the plan is the one of the session's first field (typing nonce 1)
-        with InvisiblePlaywright(seed=2, binary_path=sys.argv[2], headless=True) as browser:
+        kw = {"seed": 2, "binary_path": sys.argv[2], "headless": True, "extra_args": ["-purgecaches"]}
+        if STAMPS:
+            kw["extra_prefs"] = DUMP_PREF
+        with InvisiblePlaywright(**kw) as browser:
             SENT.clear()
+            SENT_W.clear()
+            HK.clear()
             page = browser.new_page()
             page.goto(url)
             t_start = time.time()
+            t_start_wall = wall_ms()
             page.locator("#f").press_sequentially(TEXT)
-            report(page, t_start)
+            report(page, t_start, t_start_wall)
 srv.shutdown()
