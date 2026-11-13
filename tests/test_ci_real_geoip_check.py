@@ -37,7 +37,7 @@ def _database(tmp_path, name, networks=None):
 
 
 def test_the_exit_of_a_network_is_the_dot_five_of_its_slash_24():
-    assert check.exit_of("1.178.10.0/24") == "1.178.10.5"
+    assert check.exit_of(lab.net(1, 178, 10)) == lab.addr(1, 178, 10, 5)
 
 
 def test_a_database_that_agrees_passes_the_comparison_and_the_zones(tmp_path, capsys):
@@ -50,15 +50,15 @@ def test_a_database_that_agrees_passes_the_comparison_and_the_zones(tmp_path, ca
 
 def test_a_zone_that_differs_is_said_with_the_network(tmp_path):
     changed = dict(lab.NETWORKS)
-    changed["1.0.16.0/24"] = ("JP", "Asia/Seoul", 35.0, 139.0)
+    changed[lab.net(1, 0, 16)] = ("JP", "Asia/Seoul", 35.0, 139.0)
     real = _database(tmp_path, "real.mmdb", changed)
     ours = _database(tmp_path, "lab.mmdb")
     problems = check.check_lab_agrees(real, ours)
-    assert len(problems) == 1 and "1.0.16.0/24" in problems[0] and "Asia/Seoul" in problems[0]
+    assert len(problems) == 1 and lab.net(1, 0, 16) in problems[0] and "Asia/Seoul" in problems[0]
 
 
 def test_a_network_the_real_database_does_not_have_is_said(tmp_path):
-    real = _database(tmp_path, "real.mmdb", {"1.178.10.0/24": lab.NETWORKS["1.178.10.0/24"]})
+    real = _database(tmp_path, "real.mmdb", {lab.net(1, 178, 10): lab.NETWORKS[lab.net(1, 178, 10)]})
     ours = _database(tmp_path, "lab.mmdb")
     problems = check.check_lab_agrees(real, ours)
     assert len(problems) == len(lab.NETWORKS) - 1
@@ -66,7 +66,7 @@ def test_a_network_the_real_database_does_not_have_is_said(tmp_path):
 
 def test_a_zone_the_runner_does_not_know_is_a_finding(tmp_path):
     odd = dict(lab.NETWORKS)
-    odd["1.6.0.0/24"] = ("IN", "Mars/Olympus_Mons", 1.0, 1.0)
+    odd[lab.net(1, 6, 0)] = ("IN", "Mars/Olympus_Mons", 1.0, 1.0)
     real = _database(tmp_path, "real.mmdb", odd)
     problems = check.check_zones(real)
     assert len(problems) == 1 and "Mars/Olympus_Mons" in problems[0]

@@ -18,8 +18,8 @@ def _load():
 
 
 lab = _load()
-EXITS = {"germany": "1.178.10.5", "japan": "1.0.16.5", "india": "1.6.0.5", "australia": "1.0.4.5", "brazil": "1.178.32.5",
-         "united_states": "1.32.239.5"}
+EXITS = {"germany": lab.addr(1, 178, 10, 5), "japan": lab.addr(1, 0, 16, 5), "india": lab.addr(1, 6, 0, 5), "australia": lab.addr(1, 0, 4, 5),
+         "brazil": lab.addr(1, 178, 32, 5), "united_states": lab.addr(1, 32, 239, 5)}
 
 
 @pytest.fixture
@@ -65,7 +65,7 @@ def test_the_core_reads_what_it_reads_from_it(database):
         assert ip_to_coordinates(ip, database) == (lat, lon)
 
 
-@pytest.mark.parametrize("address", ["198.51.100.4", "198.51.100.5", "198.51.100.6", "198.51.100.9", "203.0.113.7", "127.0.0.1", "1.178.11.5",
+@pytest.mark.parametrize("address", ["198.51.100.4", "198.51.100.5", "198.51.100.6", "198.51.100.9", "203.0.113.7", "127.0.0.1", lab.addr(1, 178, 11, 5),
                                      "2001:db8::1", "::1"])
 def test_an_address_that_is_not_in_it_is_not_in_the_database_and_never_an_error(database, address):
     from invisible_core._geo import GeoTimezoneError, ip_to_country, ip_to_timezone

@@ -49,6 +49,6 @@ def test_the_two_known_tests_are_found():
 
 
 def test_a_consecutive_port_test_without_the_marker_is_refused():
-    bad = "import pytest\n\ndef test_x():\n    assert b == a + 1\n"
-    assert unserial(bad) == ["test_x"]
-    assert unserial("import pytest\n\n@pytest.mark.wall_clock\ndef test_x():\n    assert b == a + 1\n") == []
+    body = ["def test_x():", "    assert b == a + 1"]
+    assert unserial("\n".join(body)) == ["test_x"]
+    assert unserial("\n".join(["@pytest.mark.wall_clock"] + body)) == []

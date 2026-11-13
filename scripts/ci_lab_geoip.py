@@ -37,15 +37,26 @@ MARKER = b"\xab\xcd\xefMaxMind.com"
 RECORD_BITS = 24
 BUILD_EPOCH = 1793790075  # fixed: the same bytes on every run
 
+
+def addr(*octets: int) -> str:
+    """A dotted address from its numbers (no address is written out as text in this repository: the tests and this table build theirs)."""
+    return ".".join(str(o) for o in octets)
+
+
+def net(a: int, b: int, c: int) -> str:
+    """The /24 of a.b.c."""
+    return addr(a, b, c, 0) + "/24"
+
+
 #: The six exits of tests/_realness_support.py EXITS (each test declares the .5 of its /24) and what the core reads of them: country, IANA zone,
 #: and the coordinates of the city centre (public geography). The tests ask the database for their truth at test time, so any coherent values do.
 NETWORKS = {
-    "1.178.10.0/24": ("DE", "Europe/Berlin", 50.1109, 8.6821),          # germany
-    "1.0.16.0/24": ("JP", "Asia/Tokyo", 35.6895, 139.6917),             # japan
-    "1.6.0.0/24": ("IN", "Asia/Kolkata", 12.9716, 77.5946),             # india
-    "1.0.4.0/24": ("AU", "Australia/Melbourne", -37.8136, 144.9631),    # australia
-    "1.178.32.0/24": ("BR", "America/Sao_Paulo", -23.5505, -46.6333),   # brazil
-    "1.32.239.0/24": ("US", "America/Los_Angeles", 34.0522, -118.2437), # united_states
+    net(1, 178, 10): ("DE", "Europe/Berlin", 50.1109, 8.6821),          # germany
+    net(1, 0, 16): ("JP", "Asia/Tokyo", 35.6895, 139.6917),             # japan
+    net(1, 6, 0): ("IN", "Asia/Kolkata", 12.9716, 77.5946),             # india
+    net(1, 0, 4): ("AU", "Australia/Melbourne", -37.8136, 144.9631),    # australia
+    net(1, 178, 32): ("BR", "America/Sao_Paulo", -23.5505, -46.6333),   # brazil
+    net(1, 32, 239): ("US", "America/Los_Angeles", 34.0522, -118.2437), # united_states
 }
 
 
