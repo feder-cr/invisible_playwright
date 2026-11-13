@@ -1,0 +1,105 @@
+# windows-flakes-hunt.yml - hunt scaffolding, never merged. Runs only on a push to a `hunt/windows-flakes**` branch.
+# Which thread of our process holds the GIL while the keys slip: py-spy --gil --threads on the typing run, and the plain round trip, ours against stock.
+name: windows flakes hunt
+
+on:
+  push:
+    branches: ['hunt/windows-flakes**']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-flakes-hunt-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GITHUB_TOKEN: ${{ github.token }}
+
+jobs:
+  hunt:
+    name: flakes hunt ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: { python-version: '3.11' }
+      - name: Install
+        run: |
+          set -e
+          python -m pip install --quiet --upgrade pip
+          python -m pip install --quiet ".[dev]" py-spy==0.4.1
+          python -m pip install --quiet "playwright==$(cat scripts/playwright_pin.txt)"
+          echo "FF=$(cd "$RUNNER_TEMP" && python -m invisible_playwright fetch | tail -1)" >> "$GITHUB_ENV"
+          python scripts/ci_lab_geoip.py build
+          if [ "$RUNNER_OS" = "Linux" ]; then python -m playwright install --with-deps firefox; else python -m playwright install firefox; fi
+      - name: Round trip, and the typing run under py-spy
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          set +e
+          mkdir -p evidence
+          SPY="py-spy"   # a child of py-spy: ptrace scope 1 lets it read its own descendants, no sudo
+          for engine in ours stock; do python -u scripts/hunt_rtt.py $engine "$FF" >> evidence/rtt_alone.log 2>&1; done
+          $SPY record --gil --threads --subprocesses -r 250 -f raw -o evidence/spy_alone.txt -- python -u scripts/hunt_typing.py ours "$FF" > evidence/typing_alone.log 2>&1
+          $SPY record --threads --subprocesses -r 250 -f raw -o evidence/spy_alone_all.txt -- python -u scripts/hunt_typing.py ours "$FF" > evidence/typing_alone_all.log 2>&1
+          for c in 1 2 3; do python -u scripts/hunt_typing.py ours "$FF" > "evidence/typing_load_$c.log" 2>&1 & done
+          $SPY record --gil --threads --subprocesses -r 250 -f raw -o evidence/spy_loaded.txt -- python -u scripts/hunt_typing.py ours "$FF" > evidence/typing_loaded.log 2>&1
+          wait
+          {
+            echo "## threads alive in the middle of the typing ($RUNNER_OS, alone)"
+            echo '```'
+            grep -ah "^HUNT-THREADS" evidence/typing_alone_all.log | head -1 | cut -c1-3000
+            echo '```'
+            echo "## round trip ($RUNNER_OS)"
+            echo '```'
+            grep -ah "^HUNT-RTT" evidence/rtt_alone.log
+            echo '```'
+            for f in spy_alone spy_alone_all spy_loaded; do
+              echo "## $f: samples per thread, and the top leaf functions per thread"
+              echo '```'
+              python - "evidence/$f.txt" <<'PY'
+          import collections, sys
+          threads = collections.Counter(); leaves = collections.defaultdict(collections.Counter)
+          for line in open(sys.argv[1], encoding="utf-8", errors="replace"):
+              line = line.rstrip()
+              if not line:
+                  continue
+              stack, _, n = line.rpartition(" ")
+              n = int(n)
+              frames = stack.split(";")
+              th = frames[0]
+              threads[th] += n
+              leaf = [f for f in frames[1:] if "threading.py" not in f][-3:]
+              leaves[th][" < ".join(reversed(leaf))[:230]] += n
+          for th, n in threads.most_common(8):
+              print(n, th)
+              for leaf, m in leaves[th].most_common(6):
+                  print("    ", m, leaf)
+          PY
+              echo '```'
+            done
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Close every Firefox left
+        if: always()
+        shell: pwsh
+        run: |
+          Get-Process firefox -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          "left: " + @(Get-Process firefox -ErrorAction SilentlyContinue).Count
+      - name: Upload the evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: flakes-prof-${{ matrix.os }}-${{ github.run_id }}
+          path: evidence
+          if-no-files-found: warn
+          retention-days: 14
