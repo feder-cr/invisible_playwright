@@ -494,6 +494,7 @@ def test_a_gateway_that_is_far_away_still_gives_the_page_a_srflx_born_through_it
     assert took_the_relay, "the page's STUN request did not take the relay. " + verdict
 
 
+@pytest.mark.wall_clock  # its verdict compares two durations (near and far): the e2e run gives it the machine alone
 @pytest.mark.e2e
 @pytest.mark.parametrize("ice_prefs", _ICE_PREFS, ids=_ICE_IDS)
 @pytest.mark.usefixtures("the_udp_line")
@@ -517,6 +518,7 @@ def test_the_first_candidate_of_a_gather_does_not_wait_for_a_gateway_that_is_far
         f"the srflx came {far['srflx'] - far['host']} ms after the host candidate. {far_verdict}")
 
 
+@pytest.mark.wall_clock  # its verdict compares two durations (near and far): the e2e run gives it the machine alone
 @pytest.mark.e2e
 @pytest.mark.usefixtures("the_udp_line")
 def test_a_gather_after_the_page_loaded_through_the_gateway_costs_only_the_road_to_the_server(monkeypatch):
