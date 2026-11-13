@@ -18,7 +18,7 @@ import threading
 import time
 
 ROUNDS = 5
-KINDS = ["classic-url", "blob", "data", "module", "nested", "shared", "iframe-srcdoc", "webgpu", "page-gl", "storm", "boot-storm"]
+KINDS = ["classic-url", "blob", "data", "module", "nested", "shared", "iframe-srcdoc", "webgpu", "page-gl", "loop", "storm", "boot-storm"]
 
 BODY = r"""
 var __t0 = performance.now();
@@ -143,6 +143,18 @@ function runExtra(kind, limit) {
     for (var i = 0; i < 20000; i++) { b2 = performance.now(); if (b2 > a) { if (b2 - a < m) m = b2 - a; a = b2; } }
     r.events.push("page clock_us=" + Math.round(m * 1000));
     return Promise.resolve(r);
+  }
+  if (kind === "loop") {
+    // the health of the event loop of a page: animation frames in 2 s, a 50 ms timer, a message channel, an idle callback
+    return new Promise(function (resolve) {
+      var t0 = performance.now(), out = {raf: 0, vis: document.visibilityState, focus: document.hasFocus()};
+      var tick = function () { out.raf++; if (performance.now() - t0 < 2000) requestAnimationFrame(tick); };
+      requestAnimationFrame(tick);
+      var t1 = performance.now(); setTimeout(function () { out.timeout50_ms = Math.round(performance.now() - t1); }, 50);
+      var mc = new MessageChannel(), t2 = performance.now(); mc.port1.onmessage = function () { out.channel_ms = Math.round(performance.now() - t2); }; mc.port2.postMessage(1);
+      if (window.requestIdleCallback) { var t3 = performance.now(); requestIdleCallback(function () { out.idle_ms = Math.round(performance.now() - t3); }); }
+      setTimeout(function () { resolve({kind: kind, status: out.raf > 10 ? "ok" : "raf-starved", first_ms: 0, stages: {}, events: [JSON.stringify(out)], total_ms: 2100}); }, 2100);
+    });
   }
   // storm: every worker kind, the hidden frame and WebGPU started together while the page also renders and computes, as a
   // benchmark page does; a probe is "slow" when it answers after 2500 ms
@@ -288,7 +300,7 @@ def run_probes(page_factory, base, proxy_seen, who, config):
                     out["kind"] = kind
                 else:
                     page.goto(base, wait_until="load", timeout=30000)
-                    out.update(page.evaluate("([k, l]) => (k === 'storm' || k === 'page-gl') ? runExtra(k, l) : runProbe(k, l)", [kind, 25000 if kind == "storm" else 10000]))
+                    out.update(page.evaluate("([k, l]) => (k === 'storm' || k === 'page-gl' || k === 'loop') ? runExtra(k, l) : runProbe(k, l)", [kind, 25000 if kind == "storm" else 10000]))
             except Exception as e:  # noqa: BLE001
                 out.update({"status": "driver-error", "why": "%s: %s" % (type(e).__name__, str(e).splitlines()[0][:200])})
             out.update({"console": console[:8], "page_errors": errors[:5], "driver_workers": workers,
