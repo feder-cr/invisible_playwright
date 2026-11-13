@@ -1,5 +1,5 @@
 # windows-flakes-hunt.yml - hunt scaffolding, never merged. Runs only on a push to a `hunt/windows-flakes**` branch.
-# The networkidle round on /x0 left on its own page once (main e2e 43425218633, part 3): ours against stock Playwright Firefox, four at once, x5, with the lifecycle and the pipe readers stamped.
+# The networkidle round on /x0 left on its own page once (main e2e 43425218633, part 3): ours against stock Playwright Firefox, four at once, x5, with the lifecycle, the pipe reader and the slow listeners inside our process stamped (ours only).
 name: windows flakes hunt
 
 on:
@@ -43,6 +43,7 @@ jobs:
           python -m playwright install firefox
           python scripts/hunt_trace_lifecycle.py
           python scripts/hunt_trace_pipes.py
+          python scripts/hunt_trace_inside.py
       - name: Ours and stock, four at once each, five times
         env:
           PYTHONUNBUFFERED: "1"
@@ -50,9 +51,9 @@ jobs:
           set +e
           mkdir -p evidence
           for n in 1 2 3 4 5; do
-            for engine in ours stock; do
+            for engine in ours; do
               for c in 1 2 3 4; do
-                python -u scripts/hunt_netidle.py $engine "$FF" "$PWD/evidence/lc_${engine}_${n}_$c.jsonl" "$PWD/evidence/pipe_${engine}_${n}_$c.txt" > "evidence/${engine}_${n}_$c.log" 2>&1 &
+                HUNT_INSIDE_TRACE="$PWD/evidence/inside_${engine}_${n}_$c.jsonl" python -u scripts/hunt_netidle.py $engine "$FF" "$PWD/evidence/lc_${engine}_${n}_$c.jsonl" "$PWD/evidence/pipe_${engine}_${n}_$c.txt" > "evidence/${engine}_${n}_$c.log" 2>&1 &
               done
               wait
             done
