@@ -42,7 +42,6 @@ jobs:
           echo "FF=$(cd "$RUNNER_TEMP" && python -m invisible_playwright fetch | tail -1)" >> "$GITHUB_ENV"
           python scripts/ci_lab_geoip.py build
           python -m pip list 2>/dev/null | grep -iE "^(invisible|playwright)" | tee evidence_versions.txt
-          "$(cd "$RUNNER_TEMP" && python -m invisible_playwright fetch | tail -1)" --version 2>/dev/null | tee -a evidence_versions.txt || true
           if [ "$RUNNER_OS" = "Linux" ]; then python -m playwright install --with-deps firefox; else python -m playwright install firefox; fi
       - name: Worker probes, ours and stock, direct and behind a proxy, x5
         env:
@@ -67,7 +66,8 @@ jobs:
           } | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Raw lines that are not ok
         if: always()
-        run: grep -ahv '"status": "ok"' evidence/*.log | cut -c1-900 | head -150
+        run: |
+          grep -ahv '"status": "ok"' evidence/*.log | cut -c1-900 | head -150
       - name: Close every Firefox left
         if: always()
         shell: pwsh
