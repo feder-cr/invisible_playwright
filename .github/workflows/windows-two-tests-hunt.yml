@@ -48,7 +48,7 @@ jobs:
           set +e
           mkdir -p evidence
           export INVPW_BINARY_PATH="$FF" STEALTHFOX_E2E_BINARY="$FF"
-          for n in $(seq -w 1 20); do
+          for n in $(seq -w 1 40); do
             export INVPW_HUNT_POPUP_TRACE="$PWD/evidence/trace_$n.jsonl"
             python -u scripts/run_e2e.py "$FF" tests/test_juggler_transport.py::test_the_public_API_WAITS_for_an_element_that_arrives_late tests/test_cross_origin_iframe.py::test_cross_origin_iframe_frame_locator_resolves_button -rA --tb=short --timeout 200 > "evidence/run_$n.log" 2>&1
             echo "run $n: $(grep -aE '^=+ .*(passed|failed|error).* =+$' evidence/run_$n.log | head -1)"

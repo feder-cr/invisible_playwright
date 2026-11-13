@@ -279,12 +279,21 @@ def test_the_public_API_WAITS_for_an_element_that_arrives_late(firefox_binary):
             # load, and on a Windows runner more than 800 ms can pass between the load and the first read (CI of 13/11, run
             # 43383366904, and 5 runs of 20 in run 43386328818 even after emptying it: the page's timer fired after the emptying).
             # Nothing of the page adds #later, so only this timer can.
+            import time as _ht
+            _t0 = _ht.monotonic()
             page.evaluate("""() => {
                 const box = document.createElement('div');
                 document.body.appendChild(box);
-                setTimeout(() => { box.innerHTML = '<span id=later>arrived</span>'; }, 800);
+                window.__h = {set: performance.now()};
+                setTimeout(() => { window.__h.fired = performance.now(); box.innerHTML = '<span id=later>arrived</span>'; }, 800);
             }""")
-            assert page.query_selector("#later") is None, (
+            _t1 = _ht.monotonic()
+            _q = page.query_selector("#later")
+            _t2 = _ht.monotonic()
+            _h = page.evaluate("() => ({...window.__h, now: performance.now()})")
+            print("HUNT-TIMING evaluate=%.0fms query=%.0fms page=%r found=%s" % (
+                (_t1 - _t0) * 1000, (_t2 - _t1) * 1000, _h, _q is not None), flush=True)
+            assert _q is None, (
                 "the element was already there: the test proves nothing")
             handle = page.wait_for_selector("#later", timeout=8000)
             assert handle is not None
