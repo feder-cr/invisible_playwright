@@ -349,6 +349,16 @@ def test_a_store_that_answers_the_focus_does_not_eat_the_text(firefox_binary, st
         value = page.input_value("#store")
         events = page.evaluate("__events")
     _keys = [round(t) for k, t in events if k == "keydown"]
+    import json as _hj, os as _ho
+    if _ho.environ.get("HUNT_OUT"):
+        _plan = plan_typing(TEXT, TypingPersona.from_seed(seed), nonce=1)
+        _plan_span = sum(a + b for a, b in _plan[:-1])
+        _focus_all = [round(t) for k, t in events if k == "focus"]
+        with open(_ho.environ["HUNT_OUT"], "a") as _hf:
+            print(_hj.dumps({"how": how, "took": round(took, 3), "pause": round(pause, 3), "plan_span_ms": round(_plan_span),
+                             "key_span_ms": (_keys[-1] - _keys[0]) if _keys else None, "keys": len(_keys),
+                             "focus": _focus_all, "first_key": _keys[0] if _keys else None,
+                             "last_focus_to_first_key_ms": (_keys[0] - _focus_all[-1]) if _keys and _focus_all else None}), file=_hf)
     _focus = [round(t) for k, t in events if k == "focus"]
     print("HUNT-TYPE how=%s took=%.2f pause=%.3f bound=%.2f focus=%r key_gaps=%r" % (
         how, took, pause, 2 * pause + ANSWER_MS / 1000 + 0.4 * len(TEXT), _focus,

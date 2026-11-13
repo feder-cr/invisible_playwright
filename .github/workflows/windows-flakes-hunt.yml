@@ -40,22 +40,29 @@ jobs:
           python -m pip install --quiet "playwright==$(cat scripts/playwright_pin.txt)"
           echo "FF=$(cd "$RUNNER_TEMP" && python -m invisible_playwright fetch | tail -1)" >> "$GITHUB_ENV"
           python scripts/ci_lab_geoip.py build
-      - name: Flakes 1, 3 and 4 under four workers, ten times
+      - name: The typing test, twenty times alone and twenty times under four workers
         env:
           PYTHONUNBUFFERED: "1"
         run: |
           set +e
           mkdir -p evidence
           export INVPW_BINARY_PATH="$FF" STEALTHFOX_E2E_BINARY="$FF"
+          T="tests/test_a_field_is_typed_after_a_pause.py::test_a_store_that_answers_the_focus_does_not_eat_the_text"
           for n in $(seq -w 1 10); do
-            python -u -m pytest -o addopts= -p no:cacheprovider -m e2e -s -rA --tb=short --timeout 300 -n 4 --dist loadfile               tests/test_an_isolated_page_and_the_next_e2e.py               tests/test_the_association_is_ready_when_the_peerconnection_is_born_e2e.py               "tests/test_a_field_is_typed_after_a_pause.py::test_a_store_that_answers_the_focus_does_not_eat_the_text"               tests/test_a_page_that_moves_on_e2e.py > "evidence/run_$n.log" 2>&1
-            echo "run $n: $(grep -aE '^=+ .*(passed|failed|error).* =+$' evidence/run_$n.log | head -1)"
+            HUNT_OUT="$PWD/evidence/alone.jsonl" python -u -m pytest -o addopts= -p no:cacheprovider -m e2e -rA --tb=short --timeout 300 "$T" > "evidence/alone_$n.log" 2>&1
+            echo "alone $n: $(grep -aE '^=+ .*(passed|failed|error).* =+$' evidence/alone_$n.log | head -1)"
+          done
+          for n in $(seq -w 1 10); do
+            HUNT_OUT="$PWD/evidence/loaded.jsonl" python -u -m pytest -o addopts= -p no:cacheprovider -m e2e -rA --tb=short --timeout 300 -n 4 --dist loadfile               "$T" tests/test_an_isolated_page_and_the_next_e2e.py tests/test_a_page_that_moves_on_e2e.py tests/test_the_association_is_ready_when_the_peerconnection_is_born_e2e.py > "evidence/loaded_$n.log" 2>&1
+            echo "loaded $n: $(grep -aE '^=+ .*(passed|failed|error).* =+$' evidence/loaded_$n.log | head -1)"
           done
           {
-            echo "## flakes 1, 3, 4"
+            echo "## typing: span / plan and last focus to first key"
             echo '```'
-            grep -ahE "^(FAILED|ERROR) " evidence/run_*.log | cut -c1-220 | sort | uniq -c | sort -rn || true
-            grep -ahoE "HUNT-(ISOLATED|STUN|TYPE).*" evidence/run_*.log | cut -c1-300 || true
+            for f in alone loaded; do
+              python -c "import json,sys,statistics as s; r=[json.loads(l) for l in open(sys.argv[1])]; q=sorted(x['key_span_ms']/x['plan_span_ms'] for x in r if x['key_span_ms']); w=sorted(x['last_focus_to_first_key_ms']-1000*x['pause'] for x in r if x['last_focus_to_first_key_ms']); print(sys.argv[2], len(r), 'span/plan p50 %.2f p95 %.2f max %.2f' % (s.median(q), q[int(len(q)*.95)-1], q[-1]), 'extra before first key ms p50 %d max %d' % (s.median(w), w[-1]), 'took max %.1f' % max(x['took'] for x in r))" "evidence/$f.jsonl" $f
+            done
+            grep -ahE "^(FAILED|ERROR) " evidence/*.log | cut -c1-200 | sort | uniq -c
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Close every Firefox left
