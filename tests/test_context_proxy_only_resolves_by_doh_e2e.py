@@ -89,11 +89,11 @@ def test_a_context_that_is_the_only_proxy_resolves_its_names_by_doh_through_it(f
     assert _asked_outside(doh, "page-a.test") == [], (
         "the DoH was asked for a name that is not the proxied context's: the default context, which has no proxy, must "
         "resolve natively and never use the DoH: %s" % _asked_outside(doh, "page-a.test") + why)
-    # A lookup of a context without `ignore_https_errors` (the default one) can only fail the handshake with the FakeDoh:
-    # a failed handshake is a lookup of the wrong context that reached the DoH through this gateway.
-    assert doh.tls_failures == [], (
-        "a DoH handshake failed: a context that does not accept the FakeDoh certificate (the default context, which has no "
-        "proxy) used the DoH: %s" % doh.tls_failures + why)
+    # A lookup of a context without `ignore_https_errors` (the default one) can only REFUSE the FakeDoh's certificate: a refusal
+    # is a lookup of the wrong context that reached the DoH through this gateway (a dropped connection is not one).
+    assert doh.certificate_refusals() == [], (
+        "a DoH handshake was refused: a context that does not accept the FakeDoh certificate (the default context, which has no "
+        "proxy) used the DoH: %s (every failed handshake: %s)" % (doh.certificate_refusals(), doh.tls_failures) + why)
 
     assert watcher.watched_pids, ("the watcher never saw a browser process (it saw: %s): a watcher that cannot see proves "
                                   "nothing" % watcher.process_names)
