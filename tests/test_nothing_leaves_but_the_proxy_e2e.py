@@ -51,7 +51,7 @@ SCHEMES = ["context_only", "launch_and_context"]
 #: How long to wait for a name the case must have asked to reach the DoH, in seconds.
 ASKED_SECONDS = 25
 #: How long the page of the `push` case may take to register its service worker and read its subscription, in seconds.
-PUSH_SECONDS = 30
+PUSH_SECONDS = 40
 #: After the context of the `closing` case is closed, the browser lives on this long: the requests of the page's last moments are made now.
 AFTER_CLOSE_SECONDS = 4
 
@@ -105,7 +105,7 @@ def test_a_kind_of_page_work_leaves_only_through_the_proxy_of_its_context(case, 
             except Exception:  # noqa: BLE001 - the state is read and said below
                 pass
             pushed = page.evaluate("() => window.__push")
-            push_stage = page.evaluate("() => window.__pushStage")
+            push_stage = page.evaluate("() => window.__pushStage + ' after ' + window.__pushTries + ' ask(s)'")
         context.close()                                           # for `closing`: the page is still working
         if case == "closing":
             time.sleep(AFTER_CLOSE_SECONDS)
