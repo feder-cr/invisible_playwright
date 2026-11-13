@@ -333,6 +333,9 @@ jobs:
           python -m pip install "playwright==$(cat scripts/playwright_pin.txt)"
       - name: Fetch the published firefox binary
         run: echo "FF=$(cd "$RUNNER_TEMP" && python -m invisible_playwright fetch | tail -1)" >> "$GITHUB_ENV"
+      # The GeoIP database made by the repository, as on the Linux run (no download, the same bytes every run).
+      - name: The GeoIP database (made by the repository, same bytes every run)
+        run: python scripts/ci_lab_geoip.py build
       - name: The files of this part, without the linux_only suites
         run: |
           set -e
@@ -357,6 +360,11 @@ jobs:
         run: |
           mapfile -t ARGS < <(tr -d '\r' < "$RUNNER_TEMP/e2e_args.txt")
           python -u scripts/run_e2e.py "$FF" "${ARGS[@]}"
+      - name: The leg ran with the pinned GeoIP database
+        if: always()
+        run: |
+          python scripts/ci_lab_geoip.py evidence --out "$(dirname "$GEOIP_USED_OUT")/geoip-evidence.json" > /dev/null
+          python scripts/ci_lab_geoip.py verify --evidence "$(dirname "$GEOIP_USED_OUT")/geoip-evidence.json" --used "$GEOIP_USED_OUT"
       - name: Close every Firefox left
         if: always()
         shell: pwsh

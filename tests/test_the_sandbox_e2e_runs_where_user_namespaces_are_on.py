@@ -37,7 +37,8 @@ def problems(text: str) -> list:
     out = []
     steps = _steps(text)
     sandbox = [body for name, body in steps if "sandbox e2e" in name]
-    runner = [body for name, body in steps if "scripts/run_e2e.py" in body]
+    # the Linux run (xvfb): the Windows parts of e2e.yml leave the linux_only suites out by reading ci/required-suites.json
+    runner = [body for name, body in steps if "scripts/run_e2e.py" in body and "xvfb-run" in body]
     if len(sandbox) != 1:
         return ["there is no (or more than one) step for the sandbox e2e: %d" % len(sandbox)]
     if len(runner) != 1:
