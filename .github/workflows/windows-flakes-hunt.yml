@@ -1,4 +1,4 @@
-# windows-flakes-hunt.yml - hunt scaffolding, never merged. Runs only on a push to a `hunt/reader-delay**` branch.
+# windows-flakes-hunt.yml - hunt scaffolding, never merged. Runs only on a push to a `hunt/windows-flakes-reader**` branch.
 # Why the pipe reader thread of our process is late: the two listeners that start a thread (Lifecycle._settle's Timer, the adoption of a
 # new target) are the slow ones in every earlier trace. Arms, same machine, four processes at once, alternated: plain Thread.start
 # against a Thread.start that does not wait for the new thread to be scheduled (scripts/hunt_threads.py).
@@ -6,13 +6,13 @@ name: windows flakes hunt
 
 on:
   push:
-    branches: ['hunt/reader-delay**']
+    branches: ['hunt/windows-flakes-reader**']
 
 permissions:
   contents: read
 
 concurrency:
-  group: reader-delay-hunt-${{ github.ref }}
+  group: windows-flakes-reader-hunt-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -20,8 +20,13 @@ env:
 
 jobs:
   hunt:
-    name: reader delay hunt
-    runs-on: windows-2022
+    name: reader delay hunt ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        os: [windows-2022, ubuntu-24.04]
     timeout-minutes: 90
     defaults:
       run:
@@ -38,6 +43,7 @@ jobs:
           python -m pip install --quiet "playwright==$(cat scripts/playwright_pin.txt)"
           echo "FF=$(cd "$RUNNER_TEMP" && python -m invisible_playwright fetch | tail -1)" >> "$GITHUB_ENV"
           python scripts/ci_lab_geoip.py build
+          if [ "$RUNNER_OS" = "Linux" ]; then python -m playwright install --with-deps firefox; else python -m playwright install firefox; fi
           python scripts/hunt_trace_inside.py
           python scripts/hunt_trace_gate.py
           python -c "import sys, os; print(sys.version); print('cpus', os.cpu_count())"
@@ -47,6 +53,11 @@ jobs:
         run: |
           set +e
           mkdir -p evidence
+          # the plain round trip alone, ours then stock (Windows; Linux already measured in 43453630396)
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            for engine in ours stock; do timeout 300 python -u scripts/hunt_rtt.py $engine "$FF" >> evidence/rtt_alone.log 2>&1; done
+            grep -ah "^HUNT-RTT" evidence/rtt_alone.log | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
           for n in 1 2 3 4 5; do
             if [ $((n % 2)) -eq 1 ]; then arms="plain nowait"; else arms="nowait plain"; fi
             for arm in $arms; do
