@@ -1,0 +1,77 @@
+# windows-flakes-hunt.yml - hunt scaffolding, never merged. Runs only on a push to a `hunt/windows-flakes**` branch.
+# The networkidle round on /x0 left on its own page once (main e2e 43425218633, part 3): four copies at once, x10, with the URL read again.
+name: windows flakes hunt
+
+on:
+  push:
+    branches: ['hunt/windows-flakes**']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-flakes-hunt-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GITHUB_TOKEN: ${{ github.token }}
+
+jobs:
+  hunt:
+    name: windows flakes hunt
+    runs-on: windows-2022
+    timeout-minutes: 120
+    strategy:
+      max-parallel: 1
+      matrix:
+        os: [windows-2022]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: { python-version: '3.11' }
+      - name: Install
+        run: |
+          set -e
+          python -m pip install --quiet --upgrade pip
+          python -m pip install --quiet ".[dev]"
+          python -m pip install --quiet "playwright==$(cat scripts/playwright_pin.txt)"
+          echo "FF=$(cd "$RUNNER_TEMP" && python -m invisible_playwright fetch | tail -1)" >> "$GITHUB_ENV"
+          python scripts/ci_lab_geoip.py build
+      - name: Four copies at once, ten times
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          set +e
+          mkdir -p evidence
+          export INVPW_BINARY_PATH="$FF" STEALTHFOX_E2E_BINARY="$FF"
+          for n in $(seq -w 1 10); do
+            for c in 1 2 3 4; do
+              python -u -m pytest -o addopts= -p no:cacheprovider -m e2e -s --tb=short --timeout 300 \
+                tests/test_a_page_that_moves_on_e2e.py -k networkidle > "evidence/run_${n}_$c.log" 2>&1 &
+            done
+            wait
+            echo "run $n: $(grep -ahE '^=+ .*(passed|failed|error).* =+$' evidence/run_${n}_*.log | tr '\n' ' ')"
+          done
+          {
+            echo "## networkidle x40 on Windows"
+            echo '```'
+            grep -ahE "^(FAILED|ERROR) |HUNT-NETIDLE" evidence/run_*.log | cut -c1-250 | sort | uniq -c | sort -rn || true
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Close every Firefox left
+        if: always()
+        shell: pwsh
+        run: |
+          Get-Process firefox -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          "left: " + @(Get-Process firefox -ErrorAction SilentlyContinue).Count
+      - name: Upload the evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-flakes-${{ github.run_id }}
+          path: evidence
+          if-no-files-found: warn
+          retention-days: 14

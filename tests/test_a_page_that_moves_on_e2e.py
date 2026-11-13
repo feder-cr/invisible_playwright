@@ -161,6 +161,14 @@ def test_networkidle_is_reached_on_the_page_that_replaced_ours(page, site, path)
     for i in range(ROUNDS):
         _goto(page, "%s%s?n=%d" % (site, path, i), wait_until="networkidle",
               timeout=15_000)
+        if not page.url.endswith("/landed"):
+            u1 = page.url
+            try:
+                href = page.evaluate("location.href")
+            except Exception as e:
+                href = "ERR " + str(e)[:120]
+            time.sleep(2)
+            print("HUNT-NETIDLE round=%d url=%s href=%s url_after_2s=%s" % (i, u1, href, page.url), flush=True)
         assert page.url.endswith("/landed"), page.url
 
 
