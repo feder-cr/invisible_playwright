@@ -49,11 +49,11 @@ jobs:
         run: |
           set +e
           mkdir -p evidence; cp evidence_versions.txt evidence/versions.txt 2>/dev/null
-          for cfg in direct socks_auth direct_https socks_auth_https http_https direct2; do
+          for cfg in direct direct_https socks_auth_https socks_auth_slow_https http_https direct2; do
             timeout 1500 python -u scripts/hunt_workers.py ours $cfg "$FF" > "evidence/ours_$cfg.log" 2>&1
             echo "ours $cfg exit $?"
           done
-          for cfg in direct socks direct_https socks_https http_https; do
+          for cfg in direct direct_https socks_https socks_slow_https; do
             timeout 1500 python -u scripts/hunt_workers.py stock $cfg > "evidence/stock_$cfg.log" 2>&1
             echo "stock $cfg exit $?"
           done

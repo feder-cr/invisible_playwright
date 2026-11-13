@@ -18,15 +18,20 @@ import threading
 import time
 
 ROUNDS = 5
-KINDS = ["classic-url", "blob", "data", "module", "nested", "shared", "iframe-srcdoc", "webgpu", "page-gl", "storm"]
+KINDS = ["classic-url", "blob", "data", "module", "nested", "shared", "iframe-srcdoc", "webgpu", "page-gl", "storm", "boot-storm"]
 
 BODY = r"""
 var __t0 = performance.now();
+function __clock() {
+  var m = 1e9, a = performance.now(), b;
+  for (var i = 0; i < 20000; i++) { b = performance.now(); if (b > a) { if (b - a < m) m = b - a; a = b; } }
+  return Math.round(m * 1000);
+}
 function __run(post) {
   var at = function () { return Math.round(performance.now() - __t0); };
   post({stage: "nav", at: at(), v: {hc: navigator.hardwareConcurrency, lang: navigator.language,
         langs: (navigator.languages || []).join(","), tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        ua: navigator.userAgent, platform: navigator.platform}});
+        ua: navigator.userAgent, platform: navigator.platform, clock_us: __clock()}});
   try {
     var c = new OffscreenCanvas(1, 1);
     var gl = c.getContext("webgl");
@@ -134,6 +139,9 @@ function runExtra(kind, limit) {
       if (!g || !og) r.status = "gl-error";
     } catch (err) { r.status = "error"; r.events.push("throw:" + err); }
     r.events.push("hasFocus=" + document.hasFocus() + " visibility=" + document.visibilityState);
+    var m = 1e9, a = performance.now(), b2;
+    for (var i = 0; i < 20000; i++) { b2 = performance.now(); if (b2 > a) { if (b2 - a < m) m = b2 - a; a = b2; } }
+    r.events.push("page clock_us=" + Math.round(m * 1000));
     return Promise.resolve(r);
   }
   // storm: every worker kind, the hidden frame and WebGPU started together while the page also renders and computes, as a
@@ -158,7 +166,10 @@ function runExtra(kind, limit) {
 </script></body></html>
 """ % (json.dumps(DEDICATED), json.dumps(SHARED), json.dumps(NESTED))).encode("utf-8")
 
+# the same page, but the storm starts while the page is still being parsed (before DOMContentLoaded), not on a command of the driver
+PAGE_BOOT = PAGE.replace(b"</script></body></html>", b'window.__bootPromise = runExtra("storm", 25000);</script></body></html>')
 ROUTES = {"/": (PAGE, "text/html; charset=utf-8"),
+          "/boot": (PAGE_BOOT, "text/html; charset=utf-8"),
           "/w.js": (DEDICATED.encode(), "text/javascript"),
           "/m.mjs": (DEDICATED.encode(), "text/javascript"),
           "/s.js": (SHARED.encode(), "text/javascript")}
@@ -271,8 +282,13 @@ def run_probes(page_factory, base, proxy_seen, who, config):
             page.on("worker", lambda w: workers.append(w.url[:80]))
             out = {"engine": who, "config": config, "round": rnd, "kind": kind}
             try:
-                page.goto(base, wait_until="load", timeout=30000)
-                out.update(page.evaluate("([k, l]) => (k === 'storm' || k === 'page-gl') ? runExtra(k, l) : runProbe(k, l)", [kind, 25000 if kind == "storm" else 10000]))
+                if kind == "boot-storm":
+                    page.goto(base + "boot", wait_until="commit", timeout=30000)
+                    out.update(page.evaluate("() => window.__bootPromise"))
+                    out["kind"] = kind
+                else:
+                    page.goto(base, wait_until="load", timeout=30000)
+                    out.update(page.evaluate("([k, l]) => (k === 'storm' || k === 'page-gl') ? runExtra(k, l) : runProbe(k, l)", [kind, 25000 if kind == "storm" else 10000]))
             except Exception as e:  # noqa: BLE001
                 out.update({"status": "driver-error", "why": "%s: %s" % (type(e).__name__, str(e).splitlines()[0][:200])})
             out.update({"console": console[:8], "page_errors": errors[:5], "driver_workers": workers,
@@ -362,11 +378,16 @@ def main():
     base = "%s://127.0.0.1:%d/" % ("https" if https else "http", srv.server_address[1])
 
     gw, seen, proxy = None, (lambda: []), None
-    if config in ("socks_auth", "socks"):
-        from _socks_servers import coherent, tcp_only
+    if config in ("socks_auth", "socks", "socks_auth_slow", "socks_slow"):
+        from _socks_servers import EXIT, Gateway, coherent, tcp_only
         if who == "stock":  # stock Firefox cannot authenticate to a SOCKS5 proxy: no-auth gateway only
-            assert config == "socks"
-        gw = tcp_only(user="hunt_user", password="hunt_pw") if config == "socks_auth" else coherent()
+            assert config in ("socks", "socks_slow")
+        if config.endswith("_slow"):  # a far gateway: 200 ms round trip on every answer and half of it on every chunk, TCP only
+            auth = config.startswith("socks_auth")
+            gw = Gateway(udp="refuse", tcp_exit=EXIT, udp_exit=EXIT, rtt_ms=200, tcp_data_delay=True,
+                         user="hunt_user" if auth else None, password="hunt_pw" if auth else None)
+        else:
+            gw = tcp_only(user="hunt_user", password="hunt_pw") if config == "socks_auth" else coherent()
         proxy = gw.proxy
         seen = lambda: list(gw.connects)  # noqa: E731
     elif config == "http":
