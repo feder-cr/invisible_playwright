@@ -348,6 +348,11 @@ def test_a_store_that_answers_the_focus_does_not_eat_the_text(firefox_binary, st
         took = time.monotonic() - started
         value = page.input_value("#store")
         events = page.evaluate("__events")
+    _keys = [round(t) for k, t in events if k == "keydown"]
+    _focus = [round(t) for k, t in events if k == "focus"]
+    print("HUNT-TYPE how=%s took=%.2f pause=%.3f bound=%.2f focus=%r key_gaps=%r" % (
+        how, took, pause, 2 * pause + ANSWER_MS / 1000 + 0.4 * len(TEXT), _focus,
+        [b - a for a, b in zip(([_focus[0]] if _focus else []) + _keys, _keys)]), flush=True)
     assert value == TEXT, "the field holds %r after %s" % (value, how)
     focus = next(t for k, t in events if k == "focus")
     first = next(t for k, t in events if k == "keydown")

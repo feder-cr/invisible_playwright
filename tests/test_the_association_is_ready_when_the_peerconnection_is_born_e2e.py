@@ -67,6 +67,10 @@ def test_the_first_datagram_does_not_wait_for_a_handshake(local_https_page, monk
         t_pc = result["t_pc"] / 1000.0
         granted = [a for a in gateway.associations if a[1] is not None]
         first = next((t for host, port, _atyp, t in gateway.datagram_log if host == STUN_NUMBER), None)
+    print("HUNT-STUN t_pc=%.3f first=%s associations=%r srflx=%s" % (
+        t_pc - gateway.wall0, None if first is None else round(first, 3),
+        [(a[0] if len(a) > 0 else None, None if a[1] is None else round(a[1], 3)) for a in gateway.associations],
+        result.get("t_srflx") and round(result["t_srflx"] / 1000.0 - gateway.wall0, 3)), flush=True)
     assert granted, "the proxy was never asked for an association"
     # the first association of the gateway is the core's own UDP probe, made before the browser exists: it is no pool
     # association of the engine, and counting it made this test pass with an engine that asked for none

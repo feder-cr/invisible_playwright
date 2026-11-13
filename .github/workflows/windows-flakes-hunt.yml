@@ -40,29 +40,22 @@ jobs:
           python -m pip install --quiet "playwright==$(cat scripts/playwright_pin.txt)"
           echo "FF=$(cd "$RUNNER_TEMP" && python -m invisible_playwright fetch | tail -1)" >> "$GITHUB_ENV"
           python scripts/ci_lab_geoip.py build
-          python -m playwright install firefox
-      - name: Ours and stock, four at once each, five times
+      - name: Flakes 1, 3 and 4 under four workers, ten times
         env:
           PYTHONUNBUFFERED: "1"
         run: |
           set +e
           mkdir -p evidence
-          for n in 1 2 3 4 5; do
-            for engine in ours stock; do
-              for c in 1 2 3 4; do
-                python -u scripts/hunt_netidle.py $engine "$FF" > "evidence/${engine}_${n}_$c.log" 2>&1 &
-              done
-              wait
-            done
-            echo "round $n done"
+          export INVPW_BINARY_PATH="$FF" STEALTHFOX_E2E_BINARY="$FF"
+          for n in $(seq -w 1 10); do
+            python -u -m pytest -o addopts= -p no:cacheprovider -m e2e -s -rA --tb=short --timeout 300 -n 4 --dist loadfile               tests/test_an_isolated_page_and_the_next_e2e.py               tests/test_the_association_is_ready_when_the_peerconnection_is_born_e2e.py               "tests/test_a_field_is_typed_after_a_pause.py::test_a_store_that_answers_the_focus_does_not_eat_the_text"               tests/test_a_page_that_moves_on_e2e.py > "evidence/run_$n.log" 2>&1
+            echo "run $n: $(grep -aE '^=+ .*(passed|failed|error).* =+$' evidence/run_$n.log | head -1)"
           done
           {
-            echo "## networkidle rows: engine, landed at return, count"
+            echo "## flakes 1, 3, 4"
             echo '```'
-            cat evidence/*.log | grep -a "^HUNT-ROW" | sed 's/^HUNT-ROW //' | python -c "import sys,json,collections; c=collections.Counter(); [c.update([(r['engine'], r['path'], r['landed_at_return'], r['error'] is not None)]) for r in map(json.loads, sys.stdin)]; [print(k, v) for k, v in sorted(c.items())]"
-            echo "## rows not on /landed at return, with the /landed request time"
-            cat evidence/*.log | grep -a "^HUNT-ROW" | grep -a '"landed_at_return": false' | cut -c1-260
-            grep -ahE "Traceback|Error" evidence/*.log | sort | uniq -c | head -20
+            grep -ahE "^(FAILED|ERROR) " evidence/run_*.log | cut -c1-220 | sort | uniq -c | sort -rn || true
+            grep -ahoE "HUNT-(ISOLATED|STUN|TYPE).*" evidence/run_*.log | cut -c1-300 || true
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Close every Firefox left
