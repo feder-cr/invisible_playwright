@@ -54,6 +54,7 @@ jobs:
         run: |
           mkdir -p evidence
           export INVPW_BINARY_PATH="$FF" STEALTHFOX_E2E_BINARY="$FF"
+          set +e
           for n in 1 2 3; do
             python -u scripts/run_e2e.py "$FF" $FILES -rA --tb=short > "evidence/run_$n.log" 2>&1
             echo "run $n: $(grep -aE '^=+ .*(passed|failed|error).* =+$' evidence/run_$n.log | head -1)"
