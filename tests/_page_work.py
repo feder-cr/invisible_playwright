@@ -54,12 +54,7 @@ CASES: Dict[str, str] = {
     "push": '<script>window.__push = "pending"; window.__pushStage = "start"; (async () => { if (!navigator.serviceWorker) { window.__push = "no-service-worker"; return; }'
             'window.__pushStage = "registering"; const r = await navigator.serviceWorker.register("/sw.js"); window.__pushStage = "registered";'
             'await navigator.serviceWorker.ready; window.__pushStage = "ready";'
-            # The parent process listens for the content process's push messages only once its PushServiceParent exists (dom/push/PushComponents.sys.mjs,
-            # PushServiceBase -> _addListeners), and that is created by an IDLE task of the first window (BrowserGlue "PushService.ensureReady"): a request
-            # sent before it is dropped, never queued, so the call is repeated until it is answered (as a page that retries would).
-            'let sub; for (let i = 1; i <= 15 && sub === undefined; i++) { window.__pushTries = i; sub = await Promise.race([r.pushManager.getSubscription(),'
-            ' new Promise(res => setTimeout(() => res(undefined), 2000))]); }'
-            'if (sub === undefined) return; window.__push = "sub:" + JSON.stringify(sub); window.__pushStage = "subscription-read";'
+            'const sub = await r.pushManager.getSubscription(); window.__push = "sub:" + JSON.stringify(sub); window.__pushStage = "subscription-read";'
             'await r.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: new Uint8Array(65).fill(4)});'
             '})().catch(e => { window.__push = String(window.__push).startsWith("sub:") ? window.__push : "error:" + e.name; });</script>',
 }

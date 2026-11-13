@@ -176,5 +176,3 @@ def test_the_push_page_says_the_step_it_reached():
     page = pw.CASES["push"]
     for stage in ("registering", "registered", "ready", "subscription-read"):
         assert '__pushStage = "%s"' % stage in page, stage
-    # the request of a content process before the parent's PushServiceParent exists is dropped: the page asks again
-    assert "__pushTries" in page and "Promise.race" in page
