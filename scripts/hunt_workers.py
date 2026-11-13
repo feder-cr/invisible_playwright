@@ -18,7 +18,7 @@ import threading
 import time
 
 ROUNDS = 5
-KINDS = ["classic-url", "blob", "data", "module", "nested", "shared"]
+KINDS = ["classic-url", "blob", "data", "module", "nested", "shared", "iframe-srcdoc", "webgpu", "page-gl", "storm"]
 
 BODY = r"""
 var __t0 = performance.now();
@@ -77,7 +77,82 @@ function runProbe(kind, limit) {
       else if (kind === "module") { w = new Worker("/m.mjs", {type: "module"}); wire(w, w); }
       else if (kind === "nested") { w = new Worker(URL.createObjectURL(new Blob([NESTED], {type: "text/javascript"}))); wire(w, w); }
       else if (kind === "shared") { w = new SharedWorker("/s.js?" + Math.random()); wire(w, w.port); w.port.start(); }
+      else if (kind === "iframe-srcdoc") {
+        // a hidden same-origin frame posts a message to the page from an inline script: which comes first, its load or its message
+        var order = [], f = document.createElement("iframe");
+        f.style.display = "none";
+        window.addEventListener("message", function (e) { if (e.data === "hunt-frame") { order.push("message"); got.nav = {v: order.slice(), page_ms: ms()}; first = first === null ? ms() : first; check(); } });
+        f.addEventListener("load", function () { order.push("load"); got.gl = {v: order.slice(), page_ms: ms()}; first = first === null ? ms() : first; check(); });
+        function check() { if (got.nav && got.gl) { got.nav.v = got.gl.v = order.join(","); finish("both"); } }
+        f.srcdoc = "<script>parent.postMessage('hunt-frame','*')<\\/script>";
+        document.body.appendChild(f);
+      }
+      else if (kind === "webgpu") {
+        if (!navigator.gpu) { got.nav = {v: "navigator.gpu absent", page_ms: ms()}; got.gl = got.nav; finish("absent"); }
+        else navigator.gpu.requestAdapter().then(function (a) { got.nav = {v: a ? "adapter" : "null", page_ms: ms()}; got.gl = got.nav; first = ms(); finish("resolved"); },
+                                                 function (e) { events.push("error:" + e); finish("rejected"); });
+      }
     } catch (err) { events.push("throw:" + err); finish("throw"); }
+  });
+}
+
+function heavyLoad() {
+  var out = {};
+  var t = performance.now();
+  try {
+    var c = document.createElement("canvas"); c.width = c.height = 256;
+    var gl = c.getContext("webgl");
+    out.gl = !!gl;
+    if (gl) {
+      var vs = gl.createShader(gl.VERTEX_SHADER); gl.shaderSource(vs, "attribute vec2 p;varying vec2 v;void main(){v=p*.5+.5;gl_Position=vec4(p,0,1);}"); gl.compileShader(vs);
+      var taps = ""; for (var i = 0; i < 96; i++) taps += "a+=texture2D(t,v+vec2(" + (i * 0.001) + "," + (i * 0.0007) + "));";
+      var fs = gl.createShader(gl.FRAGMENT_SHADER); gl.shaderSource(fs, "precision mediump float;varying vec2 v;uniform sampler2D t;void main(){vec4 a=vec4(0);" + taps + "gl_FragColor=a/96.;}"); gl.compileShader(fs);
+      var pr = gl.createProgram(); gl.attachShader(pr, vs); gl.attachShader(pr, fs); gl.linkProgram(pr); gl.useProgram(pr);
+      var b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+      var loc = gl.getAttribLocation(pr, "p"); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+      var tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([9, 9, 9, 255]));
+      var px = new Uint8Array(4);
+      for (var k = 0; k < 6; k++) { gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); }
+    }
+  } catch (e) { out.gl_error = String(e); }
+  out.gl_ms = Math.round(performance.now() - t); t = performance.now();
+  var x = 1; for (var i = 0; i < 1600000; i++) x = Math.imul(x, 1664525) + 1013904223 | 0;
+  out.cpu_ms = Math.round(performance.now() - t); out.x = x;
+  return out;
+}
+function runExtra(kind, limit) {
+  if (kind === "page-gl") {
+    var r = {kind: kind, status: "ok", stages: {}, events: [], first_ms: 0};
+    try {
+      var c = document.createElement("canvas"), g = c.getContext("webgl");
+      var e = g && g.getExtension("WEBGL_debug_renderer_info");
+      r.stages.nav = {v: g ? {renderer: g.getParameter(e ? e.UNMASKED_RENDERER_WEBGL : g.RENDERER)} : {error: "canvas getContext null"}};
+      var o = new OffscreenCanvas(1, 1), og = o.getContext("webgl");
+      var oe = og && og.getExtension("WEBGL_debug_renderer_info");
+      r.stages.gl = {v: og ? {renderer: og.getParameter(oe ? oe.UNMASKED_RENDERER_WEBGL : og.RENDERER)} : {error: "page OffscreenCanvas getContext null"}};
+      if (!g || !og) r.status = "gl-error";
+    } catch (err) { r.status = "error"; r.events.push("throw:" + err); }
+    r.events.push("hasFocus=" + document.hasFocus() + " visibility=" + document.visibilityState);
+    return Promise.resolve(r);
+  }
+  // storm: every worker kind, the hidden frame and WebGPU started together while the page also renders and computes, as a
+  // benchmark page does; a probe is "slow" when it answers after 2500 ms
+  return new Promise(function (resolve) {
+    var t0 = performance.now(), res = {}, kinds = ["classic-url", "blob", "data", "module", "nested", "shared", "iframe-srcdoc", "webgpu"], left = kinds.length;
+    var ms = function () { return Math.round(performance.now() - t0); };
+    kinds.forEach(function (k) {
+      runProbe(k, limit).then(function (r) {
+        res[k] = {status: r.status, first_ms: r.first_ms, done_ms: ms()};
+        if (--left === 0) {
+          var bad = kinds.filter(function (q) { return res[q].status !== "ok"; });
+          var slow = kinds.filter(function (q) { return res[q].status === "ok" && res[q].first_ms > 2500; });
+          resolve({kind: kind, status: bad.length ? "pending" : (slow.length ? "slow" : "ok"), first_ms: Math.max.apply(null, kinds.map(function (q) { return res[q].first_ms || 0; })),
+                   stages: {}, events: [JSON.stringify(res)], total_ms: ms()});
+        }
+      });
+    });
+    setTimeout(function () { res.__load = heavyLoad(); }, 0);
   });
 }
 </script></body></html>
@@ -197,7 +272,7 @@ def run_probes(page_factory, base, proxy_seen, who, config):
             out = {"engine": who, "config": config, "round": rnd, "kind": kind}
             try:
                 page.goto(base, wait_until="load", timeout=30000)
-                out.update(page.evaluate("([k, l]) => runProbe(k, l)", [kind, 10000]))
+                out.update(page.evaluate("([k, l]) => (k === 'storm' || k === 'page-gl') ? runExtra(k, l) : runProbe(k, l)", [kind, 25000 if kind == "storm" else 10000]))
             except Exception as e:  # noqa: BLE001
                 out.update({"status": "driver-error", "why": "%s: %s" % (type(e).__name__, str(e).splitlines()[0][:200])})
             out.update({"console": console[:8], "page_errors": errors[:5], "driver_workers": workers,
@@ -243,13 +318,48 @@ def table(files):
                 [x.get("proxy_connects") for x in rs]))
 
 
+def self_signed_context():
+    """An SSL context for 127.0.0.1 with a throwaway certificate (the browser is told to accept it)."""
+    import datetime
+    import ipaddress
+    import ssl
+    import tempfile
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.x509.oid import NameOID
+    key = ec.generate_private_key(ec.SECP256R1())
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "127.0.0.1")])
+    now = datetime.datetime.now(datetime.timezone.utc)
+    cert = (x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(key.public_key())
+            .serial_number(x509.random_serial_number()).not_valid_before(now - datetime.timedelta(minutes=5))
+            .not_valid_after(now + datetime.timedelta(days=2))
+            .add_extension(x509.SubjectAlternativeName([x509.IPAddress(ipaddress.ip_address("127.0.0.1"))]), critical=False)
+            .sign(key, hashes.SHA256()))
+    d = tempfile.mkdtemp()
+    with open(os.path.join(d, "c.pem"), "wb") as f:
+        f.write(cert.public_bytes(serialization.Encoding.PEM))
+    with open(os.path.join(d, "k.pem"), "wb") as f:
+        f.write(key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ctx.load_cert_chain(os.path.join(d, "c.pem"), os.path.join(d, "k.pem"))
+    return ctx
+
+
 def main():
     who, config = sys.argv[1], sys.argv[2]
+    https = config.endswith("_https")
+    config_name = config
+    if https:
+        config = config[:-len("_https")]
+    config = config.rstrip("2")  # "direct2" is a second run of "direct", to tell a cold first launch from the rest
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tests"))
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Pages)
     srv.daemon_threads = True
+    if https:
+        srv.socket = self_signed_context().wrap_socket(srv.socket, server_side=True)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
-    base = "http://127.0.0.1:%d/" % srv.server_address[1]
+    base = "%s://127.0.0.1:%d/" % ("https" if https else "http", srv.server_address[1])
 
     gw, seen, proxy = None, (lambda: []), None
     if config in ("socks_auth", "socks"):
@@ -272,8 +382,8 @@ def main():
             if proxy:
                 kw["proxy"] = {"server": proxy["server"]}
             b = p.firefox.launch(**kw)
-            ctx = b.new_context()
-            run_probes(ctx.new_page, base, seen, who, config)
+            ctx = b.new_context(ignore_https_errors=True)
+            run_probes(ctx.new_page, base, seen, who, config_name)
             b.close()
     else:
         from unittest import mock
@@ -291,7 +401,8 @@ def main():
                 mock.patch.object(InvisiblePlaywright, "_assert_uscita_invariata", lambda self: None), \
                 mock.patch("invisible_core._geo.discover_egress_ip", lambda *_a, **_k: geo.egress_ip):
             with InvisiblePlaywright(**kw) as browser:
-                run_probes(browser.new_page, base, seen, who, config)
+                factory = (lambda: browser.new_context(ignore_https_errors=True).new_page()) if https else browser.new_page
+                run_probes(factory, base, seen, who, config_name)
     if gw is not None:
         gw.close()
     srv.shutdown()
