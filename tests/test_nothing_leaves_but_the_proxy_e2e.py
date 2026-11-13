@@ -50,6 +50,8 @@ pytestmark = [pytest.mark.e2e, pytest.mark.usefixtures("the_udp_line")]
 SCHEMES = ["context_only", "launch_and_context"]
 #: How long to wait for a name the case must have asked to reach the DoH, in seconds.
 ASKED_SECONDS = 25
+#: How long the page of the `push` case may take to register its service worker and read its subscription, in seconds.
+PUSH_SECONDS = 30
 #: After the context of the `closing` case is closed, the browser lives on this long: the requests of the page's last moments are made now.
 AFTER_CLOSE_SECONDS = 4
 
@@ -97,7 +99,13 @@ def test_a_kind_of_page_work_leaves_only_through_the_proxy_of_its_context(case, 
             waited[name] = ds.wait_until(lambda n=name: doh.queries_for(n, QTYPE_A), ASKED_SECONDS)
         page.wait_for_timeout(int(SETTLE_SECONDS[case] * 1000))
         if case == "push":
+            # A service worker starts a process: wait for the page to leave `pending` (a fixed settle is a guess), and say the step it reached.
+            try:
+                page.wait_for_function("() => window.__push !== 'pending'", timeout=PUSH_SECONDS * 1000)
+            except Exception:  # noqa: BLE001 - the state is read and said below
+                pass
             pushed = page.evaluate("() => window.__push")
+            push_stage = page.evaluate("() => window.__pushStage")
         context.close()                                           # for `closing`: the page is still working
         if case == "closing":
             time.sleep(AFTER_CLOSE_SECONDS)
@@ -106,7 +114,8 @@ def test_a_kind_of_page_work_leaves_only_through_the_proxy_of_its_context(case, 
     why = _why(doh, *gateways) + "\n  the page: opened=%r" % (opened,)
     assert opened is True, "the page of the case %r did not open through the gateway of its context: %s" % (case, opened) + why
     if case == "push":
-        assert pushed.startswith("sub:"), "the page could not register its service worker and read its subscription: %r" % (pushed,) + why
+        assert pushed.startswith("sub:"), (
+            "the page could not register its service worker and read its subscription: %r (last step reached: %s)" % (pushed, push_stage) + why)
 
     # The work was done: the names it needs reached the DoH, by the gateway of the context and by no other road.
     for name in asked_names:

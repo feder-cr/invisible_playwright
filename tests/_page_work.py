@@ -49,9 +49,12 @@ CASES: Dict[str, str] = {
     # are in no zone: the DoH answers NXDOMAIN, and what is asked is where the question goes.
     "closing": '<script>let n = 0; setInterval(() => { for (let k = 0; k < 3; k++) fetch("http://late-" + (n++) + ".test/x")'
                '.catch(() => {}); }, 5);</script>',
-    "push": '<script>window.__push = "pending"; (async () => { if (!navigator.serviceWorker) { window.__push = "no-service-worker"; return; }'
-            'const r = await navigator.serviceWorker.register("/sw.js"); await navigator.serviceWorker.ready;'
-            'const sub = await r.pushManager.getSubscription(); window.__push = "sub:" + JSON.stringify(sub);'
+    # `__pushStage` says how far the page got (registering, registered, ready, subscription-read): a page that stays `pending` names the step it
+    # is stuck in.
+    "push": '<script>window.__push = "pending"; window.__pushStage = "start"; (async () => { if (!navigator.serviceWorker) { window.__push = "no-service-worker"; return; }'
+            'window.__pushStage = "registering"; const r = await navigator.serviceWorker.register("/sw.js"); window.__pushStage = "registered";'
+            'await navigator.serviceWorker.ready; window.__pushStage = "ready";'
+            'const sub = await r.pushManager.getSubscription(); window.__push = "sub:" + JSON.stringify(sub); window.__pushStage = "subscription-read";'
             'await r.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: new Uint8Array(65).fill(4)});'
             '})().catch(e => { window.__push = String(window.__push).startsWith("sub:") ? window.__push : "error:" + e.name; });</script>',
 }

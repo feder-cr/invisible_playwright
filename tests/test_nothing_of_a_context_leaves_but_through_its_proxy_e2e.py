@@ -73,6 +73,11 @@ pytestmark = [pytest.mark.e2e, pytest.mark.usefixtures("the_udp_line")]
 WAIT_MS = {"fetch": 2500, "websocket": 2500, "stun": 5000, "turn_udp": 5000, "turn_tcp": 5000, "turns_tcp": 5000}
 #: How long to wait, in seconds, for the proxy or the DoH to have been handed what the probe asked for.
 EVIDENCE_SECONDS = 20
+#: The lab's own prefs, on top of the DoH provider of ``PREFS``. Every name of a probe is answered with the address of THIS host (the witness), and on
+#: a LAN or a runner that is an RFC 1918 address: the engine's DoH client DROPS such an answer unless ``network.trr.allow-rfc1918`` is true
+#: (TRR.cpp / DNSPacket.cpp: ``aAllowRFC1918 || !addr.IsIPAddrLocal()``), so the name would resolve to nothing and the probe would never connect
+#: (the first run on a runner, 10.1.0.150: the DoH was asked, the gateway never got a CONNECT). The lab declares it; no egress assertion depends on it.
+LAB_PREFS = {"network.trr.allow-rfc1918": True, "media.peerconnection.ice.obfuscate_host_addresses": True}
 
 
 @dataclasses.dataclass(frozen=True)
@@ -88,6 +93,12 @@ class Case:
     @property
     def tcp(self) -> bool:
         return self.kind not in ("stun", "turn_udp")
+
+    @property
+    def refused_by_the_browser(self) -> bool:
+        """``turns:`` by an IP: the browser never tries it (nricectx.cpp, ``ToNicerTurnStruct``: "TLS requires FQDN, not IP address"), on every
+        proxy and none: no connection is made to prove a road. The case keeps every egress assertion (witness, watcher, native lookup)."""
+        return self.kind == "turns_tcp" and self.by == "ip"
 
 
 CASES = [
@@ -134,11 +145,9 @@ EXPECTED: Dict[str, Dict[str, str]] = {
         "stun-local-socks5": "RED: the ICE resolver asks the machine's resolver for *.local (audit B4)",
         "stun-local-http": "RED: same, the ICE resolver always resolves the name itself (audit B4)",
     },
-    "firefox-64": {
-        "fetch-local-socks5": "RED until B4 is decided: *.local goes to the machine's resolver",
-        "stun-local-socks5": "RED until B4 is decided",
-        "stun-local-http": "RED until B4 is decided",
-    },
+    # B4 is closed on this engine (the core declares ``network.trr.builtin-excluded-domains`` = localhost: a ``*.local`` name goes to the DoH through
+    # the proxy): the three ``*-local`` probes are green (run 43488527832: the DoH is asked, no native lookup).
+    "firefox-64": {},
 }
 
 #: The same for the window cases (``WindowCase.id``). On firefox-64 (fix of B3) every case is green, so it has no row. The controls are green everywhere.
@@ -303,7 +312,7 @@ def engine_log(tmp_path, monkeypatch):
 def _launch(binary, proxy=None):
     """The session of the lab: NO proxy unless given (the default context is the machine's own network), the DoH provider of the FakeDoh."""
     return InvisiblePlaywright(seed=42, binary_path=binary, proxy=proxy, headless=True,
-                               extra_prefs={**PREFS, "media.peerconnection.ice.obfuscate_host_addresses": True})
+                               extra_prefs={**PREFS, **LAB_PREFS})
 
 
 def _the_proxy_of(case: Case, doh, gateway):
@@ -321,8 +330,11 @@ def _was_handed(case: Case, proxy, host: str, port: int) -> bool:
 
 
 def _the_work_was_done(case: Case, lab: Lab, doh, proxy) -> Optional[Callable[[], bool]]:
-    """What shows that the probe reached the road it was meant to try, or None when only the control can show it (a UDP probe by IP)."""
+    """What shows that the probe reached the road it was meant to try, or None when only the control can show it (a UDP probe by IP), or when
+    the browser refuses the probe itself (``Case.refused_by_the_browser``)."""
     host, port = lab.host_of(case), lab.witness.port
+    if case.refused_by_the_browser:
+        return None
     if case.proxy == "http":
         if case.tcp:
             return lambda: _was_handed(case, proxy, host, port)

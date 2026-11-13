@@ -151,3 +151,28 @@ def test_the_names_of_the_cases_are_all_in_the_zone_with_the_address_of_the_witn
             assert host == _Witness.address
         else:
             assert host.endswith(".local" if case.by == "local" else ".test") and NONCE in host
+
+
+def test_the_lab_lets_the_doh_answer_with_the_private_address_of_this_host():
+    """The names of a probe are answered with the address of THIS host, an RFC 1918 one on a LAN or a runner (10.1.0.150): the engine's DoH client
+    drops such an answer unless ``network.trr.allow-rfc1918`` is true. Without it every probe by name resolves to nothing and never connects."""
+    assert e2e.LAB_PREFS.get("network.trr.allow-rfc1918") is True
+
+
+def test_only_a_probe_the_browser_refuses_has_no_road_to_show():
+    """``turns:`` by IP is refused by the browser itself ("TLS requires FQDN"): it can show no CONNECT. Every other TCP probe by a SOCKS5 gateway or an
+    HTTP proxy names the road it must have taken."""
+    lab = e2e.Lab(_Witness(), NONCE)
+    refused = [c.id for c in e2e.CASES if c.refused_by_the_browser]
+    assert refused == ["turns_tcp-ip-socks5"]
+    for case in e2e.CASES:
+        done = e2e._the_work_was_done(case, lab, doh=None, proxy=None)
+        if case.tcp and not case.refused_by_the_browser:
+            assert done is not None, case.id
+
+
+def test_the_push_page_says_the_step_it_reached():
+    import _page_work as pw
+    page = pw.CASES["push"]
+    for stage in ("registering", "registered", "ready", "subscription-read"):
+        assert '__pushStage = "%s"' % stage in page, stage
