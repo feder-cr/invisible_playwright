@@ -13,6 +13,8 @@ import time
 ENGINE = sys.argv[1]
 if len(sys.argv) > 3:
     os.environ["HUNT_LC_TRACE"] = sys.argv[3]
+if len(sys.argv) > 4:
+    os.environ["HUNT_PIPE_TRACE"] = sys.argv[4]
 REQS = []
 
 
@@ -30,7 +32,7 @@ for ms in (0, 50):
 
 class H(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
-        REQS.append((time.monotonic(), self.path))
+        REQS.append((time.time(), self.path))
         body = PAGES.get(self.path.split("?")[0], PAGES["/landed"])
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -51,13 +53,13 @@ site = "http://127.0.0.1:%d" % srv.server_address[1]
 def rounds(page, Error):
     for path in ("/r0", "/r50", "/x0", "/x50"):
         for i in range(5):
-            t0 = time.monotonic()
+            t0 = time.time()
             err = None
             try:
                 page.goto("%s%s?n=%d" % (site, path, i), wait_until="networkidle", timeout=15000)
             except Error as e:
                 err = str(e).splitlines()[0][:100]
-            t1 = time.monotonic()
+            t1 = time.time()
             url = page.url
             landed = [t for t, p in REQS if p.startswith("/landed") and t >= t0]
             print("HUNT-ROW " + json.dumps({

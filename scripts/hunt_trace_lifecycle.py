@@ -1,6 +1,6 @@
 """HUNT SCAFFOLDING, NEVER MERGED: patch the installed invisible_core lifecycle to trace what decides networkidle.
 
-Every event the lifecycle applies (Page.* and Network.*) and every networkidle it gives is written as a JSON line, with time.monotonic(),
+Every event the lifecycle applies (Page.* and Network.*) and every networkidle it gives is written as a JSON line, with time.time(),
 to the file named by $HUNT_LC_TRACE. Run once after the install: python scripts/hunt_trace_lifecycle.py
 """
 import importlib.util
@@ -41,7 +41,7 @@ def _hunt_lc(**row):
     path = _o.environ.get("HUNT_LC_TRACE")
     if not path:
         return
-    row["t"] = round(_t.monotonic(), 4)
+    row["t"] = round(_t.time(), 4)
     try:
         with open(path, "a", encoding="utf-8") as fh:
             print(_j.dumps(row, default=str), file=fh)
