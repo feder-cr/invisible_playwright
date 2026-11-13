@@ -314,6 +314,10 @@ def test_cross_origin_iframe_frame_locator_resolves_button(firefox_binary, cross
         page.goto(cross_origin_harness["parent_url"], wait_until="domcontentloaded", timeout=30_000)
         page.wait_for_selector("iframe#ifr_plain", timeout=10_000)
 
+        # count() does not wait (Playwright's own semantics): the iframe ELEMENT is in the parent, but its cross-origin document,
+        # in a process of its own, can load later on a loaded runner (Windows CI of 13/11, run 43383366904: 0 elements). Wait for
+        # the button first, as a script that counts it would.
+        page.frame_locator("iframe#ifr_plain").locator("button#ok").wait_for(timeout=10_000)
         for selector in ("button#ok", "button.btn-primary"):
             cnt = page.frame_locator("iframe#ifr_plain").locator(selector).count()
             assert cnt == 1, f"locator({selector!r}) found {cnt} elements (expected 1)"

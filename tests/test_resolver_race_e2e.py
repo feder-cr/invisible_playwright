@@ -146,7 +146,9 @@ def _back_to_back_contexts(mode, firefox_binary, doh, pages, gateway, trap, watc
         assert _asked_outside(doh, *names) == [], (
             "the DoH was asked for a name that is not one of the proxied contexts' (the default context has no proxy and "
             "must resolve natively): %s" % _asked_outside(doh, *names) + why)
-        assert doh.tls_failures == [], "a context without the FakeDoh certificate exception used the DoH: %s" % doh.tls_failures + why
+        assert doh.certificate_refusals() == [], (
+            "a context without the FakeDoh certificate exception used the DoH (it refused the certificate): %s (every failed "
+            "handshake: %s)" % (doh.certificate_refusals(), doh.tls_failures) + why)
     else:
         # The launch proxy is the proxy of the default context too: its background names go to the DoH through the launch
         # proxy (their handshakes fail BY DESIGN and are counted by the accounting above), so here nothing may go direct or
@@ -188,7 +190,9 @@ def _beside_a_proxied_context(firefox_binary, doh, pages, gateway, trap, watcher
             "the FakeDoh was asked for a name that is not A's (B and the default context have no proxy and must not use the "
             "DoH): %s" % _asked_outside(doh, name_a) + why)
         assert "direct" not in {q.via for q in doh.queries}, "something reached the DoH without A's proxy" + why
-        assert doh.tls_failures == [], "a context without the FakeDoh certificate exception used the DoH: %s" % doh.tls_failures + why
+        assert doh.certificate_refusals() == [], (
+            "a context without the FakeDoh certificate exception used the DoH (it refused the certificate): %s (every failed "
+            "handshake: %s)" % (doh.certificate_refusals(), doh.tls_failures) + why)
         _assert_every_connection_went_through_the_gateway(doh, gw_a)
 
         assert watcher.watched_pids, ("the watcher never saw a browser process (it saw: %s): a watcher that cannot see "

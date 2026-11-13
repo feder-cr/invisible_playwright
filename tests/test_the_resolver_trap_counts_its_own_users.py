@@ -71,7 +71,7 @@ def test_a_question_of_another_user_is_answered_and_listed_not_counted():
         assert _ask(trap, "github.com"), "a question of another user is still answered"
         assert trap.names() == [] and trap.queries == []
         assert [(q.name, a.uid) for q, a in trap.foreign] == [("github.com", 1001)]
-        assert "github.com" in trap.describe() and "not counted" in trap.describe()
+        assert trap.describe() == "nothing [and 1 question(s) of other processes, not counted: github.com from pid ? (uid 1001) ]"
 
 
 def test_a_question_whose_socket_is_gone_counts_as_the_browsers():

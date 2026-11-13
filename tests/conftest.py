@@ -73,6 +73,12 @@ def pytest_configure(config):
     # The run stops at the first refusal of the engine (tests/engine_refusal.py).
     from engine_refusal import StopAtTheFirstRefusal
     config.pluginmanager.register(StopAtTheFirstRefusal(config), "engine-refusal-stop")
+    # What the core did about the GeoIP database during the run, for scripts/ci_lab_geoip.py verify (the CI legs set GEOIP_USED_OUT).
+    if os.environ.get("GEOIP_USED_OUT"):
+        from geoip_used import GeoipUsedRecorder
+        recorder = GeoipUsedRecorder(os.environ["GEOIP_USED_OUT"])
+        recorder.start()
+        config.pluginmanager.register(recorder, "geoip-used")
 
 
 def pytest_runtest_setup(item):

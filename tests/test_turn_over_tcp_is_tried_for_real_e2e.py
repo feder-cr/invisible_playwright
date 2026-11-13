@@ -52,13 +52,14 @@ def _host_ip():
 
 
 class _TurnTcp:
-    """Accepts TCP connections, reads what comes, closes N ms after the accept."""
+    """Accepts TCP connections, reads what comes, closes N ms after the accept. Listens on the one address the browser is told to
+    connect to (`host`), not on every interface of the machine."""
 
-    def __init__(self, n_ms):
+    def __init__(self, n_ms, host):
         self.n_ms, self.accepts, self.bytes_in = n_ms, [], 0
         self._s = socket.socket()
         self._s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self._s.bind(("0.0.0.0", 0))
+        self._s.bind((host, 0))
         self._s.listen(16)
         self.port = self._s.getsockname()[1]
         threading.Thread(target=self._serve, daemon=True).start()
@@ -134,7 +135,7 @@ def test_a_turn_server_over_tcp_is_connected_to_and_waited_for(local_page, monke
     if not binary:
         pytest.fail("no patched binary: set STEALTHFOX_E2E_BINARY", pytrace=False)
     monkeypatch.setenv("STEALTHFOX_WEBRTC_NETWORK", DECLARED)
-    turn = _TurnTcp(N_MS)
+    turn = _TurnTcp(N_MS, _host_ip())
     socks = Socks5TcpOnly() if through_socks5 else None
     kw = {}
     if socks:

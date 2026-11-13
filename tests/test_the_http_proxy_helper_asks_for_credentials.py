@@ -104,6 +104,7 @@ def test_a_connect_with_the_right_credentials_is_accepted_and_the_header_is_reco
         s, status, _h = _connect_raw(proxy, "%s:443" % DOH_BOOTSTRAP, basic(USER, PASSWORD))
         assert status.split()[1] == "200"
         context = ssl.create_default_context()
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
         context.check_hostname = False
         context.verify_mode = ssl.CERT_NONE
         context.set_alpn_protocols(["http/1.1"])

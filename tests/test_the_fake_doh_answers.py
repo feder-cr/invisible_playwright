@@ -47,6 +47,7 @@ def read_response(message: bytes):
 
 def _tls(host_port, *, alpn):
     context = ssl.create_default_context()
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
     context.check_hostname = False
     context.verify_mode = ssl.CERT_NONE
     context.set_alpn_protocols(alpn)
@@ -192,10 +193,12 @@ def test_the_certificate_covers_the_doh_host_and_loopback(doh):
     """A client that VERIFIES (trusting the certificate file) accepts both names the DoH may be reached by."""
     for server_name in (DOH_HOST, "127.0.0.1"):
         context = ssl.create_default_context(cafile=str(doh.certificate_path))
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
         raw = socket.create_connection(("127.0.0.1", doh.port), timeout=10)
         tls = context.wrap_socket(raw, server_hostname=server_name)
         tls.close()
     context = ssl.create_default_context(cafile=str(doh.certificate_path))
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
     raw = socket.create_connection(("127.0.0.1", doh.port), timeout=10)
     with pytest.raises(ssl.SSLCertVerificationError):
         context.wrap_socket(raw, server_hostname="some-other-host.test")
@@ -204,6 +207,7 @@ def test_the_certificate_covers_the_doh_host_and_loopback(doh):
 
 def test_a_client_that_refuses_the_certificate_is_listed_as_a_tls_failure(doh):
     context = ssl.create_default_context()  # verifies, and does not trust the self-signed certificate
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
     raw = socket.create_connection(("127.0.0.1", doh.port), timeout=10)
     with pytest.raises(ssl.SSLError):
         context.wrap_socket(raw, server_hostname=DOH_HOST)
@@ -221,6 +225,7 @@ def _h2_query(doh, method, message, raw=None):
         tls = _tls(("127.0.0.1", doh.port), alpn=["h2", "http/1.1"])
     else:
         context = ssl.create_default_context()
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
         context.check_hostname = False
         context.verify_mode = ssl.CERT_NONE
         context.set_alpn_protocols(["h2", "http/1.1"])
@@ -308,6 +313,7 @@ def _socks_connect(gateway_port, host, port, *, credentials=None, by_name=False)
 
 def _query_through(sock, name, qtype=QTYPE_A):
     context = ssl.create_default_context()
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
     context.check_hostname = False
     context.verify_mode = ssl.CERT_NONE
     context.set_alpn_protocols(["http/1.1"])
@@ -421,6 +427,7 @@ def test_a_killed_gateway_refuses_and_drops_its_open_tunnels(doh):
     s, code = _socks_connect(port, DOH_BOOTSTRAP, 443)
     assert code == 0
     context = ssl.create_default_context()
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
     context.check_hostname = False
     context.verify_mode = ssl.CERT_NONE
     context.set_alpn_protocols(["http/1.1"])

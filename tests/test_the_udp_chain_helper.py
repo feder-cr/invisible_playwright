@@ -57,6 +57,7 @@ def _via(relay_sock, relay, host_ip, port, payload):
 def _http_over_tls(sock, chain, method, target, body=b"", content_type=None, host=DOH_HOST):
     """One HTTP/1.1 request over TLS on a tunnel, trusting the certificate of the chain's DoH."""
     context = ssl.create_default_context(cafile=str(chain.doh.certificate_path))
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
     context.set_alpn_protocols(["http/1.1"])
     tls = context.wrap_socket(sock, server_hostname=host)
     head = "%s %s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\nContent-Length: %d\r\n" % (method, target, host, len(body))
@@ -105,7 +106,7 @@ def test_a_client_walks_the_whole_road_and_the_turn_server_sees_the_gateways_exi
         assert attrs[0x0014] == c.REALM.encode() and attrs[0x0015] == c.NONCE.encode()
         # with the credentials: a success signed with the long-term key
         user = b"challenge-1"
-        key = hashlib.md5(b"challenge-1:" + c.REALM.encode() + b":" + c.PASSWORD.encode()).digest()
+        key = hashlib.md5(b"challenge-1:" + c.REALM.encode() + b":" + c.PASSWORD.encode(), usedforsecurity=False).digest()
         body = (c._attr(0x0019, b"\x11\x00\x00\x00") + c._attr(0x0006, user) + c._attr(0x0014, c.REALM.encode()) +
                 c._attr(0x0015, c.NONCE.encode()))
         req = c._message(0x0003, b"\x02" * 12, body, key)

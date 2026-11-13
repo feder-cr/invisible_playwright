@@ -96,9 +96,11 @@ def _only_the_doh_road_was_used(doh, gw, watcher):
         "a CONNECT carried a name: the browser must resolve with the DoH and connect by address" + why)
     assert "direct" not in {q.via for q in doh.queries}, "something reached the DoH without the proxy of the context" + why
     _assert_every_connection_went_through_the_gateway(doh, gw)
-    # Context-only layout: the default context resolves natively and never uses the DoH, so a failed handshake (the lookup
+    # Context-only layout: the default context resolves natively and never uses the DoH, so a refused certificate (the lookup
     # of a context that does not accept the FakeDoh certificate) is a lookup of the wrong context sent to the DoH.
-    assert doh.tls_failures == [], "a DoH handshake failed: the default context used the DoH: %s" % doh.tls_failures + why
+    assert doh.certificate_refusals() == [], (
+        "a DoH handshake was refused: the default context used the DoH: %s (every failed handshake: %s)"
+        % (doh.certificate_refusals(), doh.tls_failures) + why)
     assert watcher.watched_pids, ("the watcher never saw a browser process (it saw: %s): a watcher that cannot see proves "
                                   "nothing" % watcher.process_names)
     assert _direct_to_the_doh(watcher) == [], (

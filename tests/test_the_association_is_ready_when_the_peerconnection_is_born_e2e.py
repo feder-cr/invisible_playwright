@@ -45,6 +45,7 @@ _PC_JS = """async (stun) => {
 }"""
 
 
+@pytest.mark.wall_clock
 def test_the_first_datagram_does_not_wait_for_a_handshake(local_https_page, monkeypatch):
     binary = _e2e_binary()
     if not binary:

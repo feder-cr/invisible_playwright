@@ -264,7 +264,7 @@ def test_the_public_API_WAITS_for_an_element_that_arrives_late(firefox_binary):
     """⛔ THE POINT OF `wait_for_selector`, and the reason it cannot go through
     the retry loop: that loop disposes what it resolves on every turn, so it
     would hand back a handle it has just released - and a released handle does
-    not raise, it answers wrong. The element below arrives after 800 ms."""
+    not raise, it answers wrong. The element below arrives 3 s after the test schedules it."""
     os.environ[factory.CHOICE_ENV] = factory.JUGGLER
     srv = LocalServer(("127.0.0.1", 0), _serve(PAGE))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -275,9 +275,19 @@ def test_the_public_API_WAITS_for_an_element_that_arrives_late(firefox_binary):
                                  headless=True) as browser:
             page = browser.new_page()
             page.goto(url)
-            assert page.query_selector("#slow") is None, (
+            # The late element is the test's own, scheduled HERE, 3 s from now. The page's #slow comes from a timer started at its
+            # load, and on a Windows runner more than 800 ms can pass between the load and the first read (CI of 13/11, run
+            # 43383366904). Nothing of the page adds #later, so only this timer can. 3 s, not 800 ms: the absent check is two round
+            # trips (the reply of evaluate, then query_selector), and on a Windows runner each took up to 0.4-0.5 s (run 43389137758,
+            # 40 runs: evaluate up to 422 ms, query_selector up to 516 ms), so 800 ms was crossed once in 20 (run 43387760051).
+            page.evaluate("""() => {
+                const box = document.createElement('div');
+                document.body.appendChild(box);
+                setTimeout(() => { box.innerHTML = '<span id=later>arrived</span>'; }, 3000);
+            }""")
+            assert page.query_selector("#later") is None, (
                 "the element was already there: the test proves nothing")
-            handle = page.wait_for_selector("#slow", timeout=8000)
+            handle = page.wait_for_selector("#later", timeout=15000)
             assert handle is not None
             assert handle.text_content() == "arrived"
     finally:

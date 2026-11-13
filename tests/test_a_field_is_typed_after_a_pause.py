@@ -331,6 +331,7 @@ def _seed_whose_first_field_pause_is_longer_than(seconds):
 
 
 @pytest.mark.e2e
+@pytest.mark.wall_clock
 @pytest.mark.parametrize("how", ["fill", "press_sequentially"])
 def test_a_store_that_answers_the_focus_does_not_eat_the_text(firefox_binary, store_url, how):
     """Known-bad, measured on 0.25.8 before this change: the store's write at

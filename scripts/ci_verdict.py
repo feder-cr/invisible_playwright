@@ -307,6 +307,37 @@ def _seal_problems(path, result):
     return []
 
 
+def _geoip_problems(path, pin_path, result):
+    """A leg launched with the GeoIP database of the pin, or it is red.
+
+    ``path`` is the evidence the leg wrote with ``scripts/ci_lab_geoip.py evidence``, run in the very environment pytest was started in
+    (``sudo -E`` included): the value of STEALTHFOX_GEOIP_MMDB, whether it is a file, its sha256. Without the variable the core asks GitHub which
+    database is the latest on every call, from the python of the test (run 43211837926: a resolver trap counted github.com and api.github.com as
+    the browser's), and a leg that reaches a site for its data is not a leg of the gate.
+    """
+    try:
+        evidence = json.loads(Path(path).read_text(encoding="utf-8"))
+        if not isinstance(evidence, dict):
+            raise ValueError("not a JSON object")
+    except (OSError, ValueError) as exc:
+        result["geoip_sha256"] = "unreadable"
+        return ["the GeoIP evidence %s cannot be read: %s: the leg did not say which database it ran with" % (path, exc)]
+    result["geoip_sha256"] = evidence.get("sha256")
+    if not evidence.get("env"):
+        return ["the leg launched without STEALTHFOX_GEOIP_MMDB: the core would ask GitHub for its database on every call (the database of "
+                "the gate is ci/geoip.json, made by scripts/ci_lab_geoip.py)"]
+    if not evidence.get("exists") or not evidence.get("sha256"):
+        return ["STEALTHFOX_GEOIP_MMDB=%s is not a file: the leg ran without a database" % evidence.get("env")]
+    try:
+        pin = json.loads(Path(pin_path).read_text(encoding="utf-8")) if pin_path else None
+        expected = pin["mmdb_sha256"]
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        return ["the pin of the GeoIP database %s cannot be read: %s" % (pin_path, exc)]
+    if evidence["sha256"] != expected:
+        return ["the leg ran with a GeoIP database of sha256 %s, the pin (%s) says %s" % (evidence["sha256"], pin_path, expected)]
+    return []
+
+
 def cmd_judge(ns):
     problems = []
     result = {"suite": ns.suite, "os": ns.os, "commit": commit_sha(ns.commit), "binary_sha256": sha256_of(ns.binary),
@@ -329,6 +360,8 @@ def cmd_judge(ns):
         problems.append("the binary %s does not exist: a result with no hash of the engine is not a result" % ns.binary)
     if ns.seal:
         problems += _seal_problems(ns.seal, result)
+    if ns.geoip:
+        problems += _geoip_problems(ns.geoip, ns.geoip_pin, result)
 
     counts = {"passed": 0, "failed": 0, "skipped": 0, "errors": 0}
     cases = []
@@ -476,6 +509,8 @@ def main(argv=None):
     j.add_argument("--binary")
     j.add_argument("--commit")
     j.add_argument("--seal")
+    j.add_argument("--geoip", help="the evidence of the leg (scripts/ci_lab_geoip.py evidence): a leg launched without the database is red")
+    j.add_argument("--geoip-pin", help="ci/geoip.json: the sha256 of the database the leg has to have run with (main's, when main has it)")
     j.add_argument("--out")
     j.add_argument("--main-required")
     j.add_argument("--main-has-no-list", action="store_true",

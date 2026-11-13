@@ -163,23 +163,35 @@ def test_the_trap_goes_to_the_next_loopback_address_when_the_first_has_its_port_
     of TRAP_ADDRESSES it can bind, says which, and that is the address a resolv.conf is written with (run 43146661635: the
     trap could not bind and eight tests ended in error at setup)."""
     import _leaks
+    from _ports import bind_tcp_and_probe_udp
 
-    holder_tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    class _Listener:
+        """A TCP listener the picker can open and close, and the number it holds."""
+
+        def __init__(self, address, number):
+            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            try:
+                self.sock.bind((address, number))
+            except OSError:
+                self.sock.close()
+                raise
+            self.sock.listen(1)
+            self.server_address = self.sock.getsockname()
+
+        def server_close(self):
+            self.sock.close()
+
+    # The number is one that TCP and UDP both bind (the system's own pick can fall in a block of ports UDP may not bind on Windows: the shared picker).
+    holder_tcp, port = bind_tcp_and_probe_udp("127.0.0.1", _Listener)
     holder_udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
-        holder_tcp.bind(("127.0.0.1", 0))
-        port = holder_tcp.getsockname()[1]
-        try:
-            holder_udp.bind(("127.0.0.1", port))
-        except OSError:
-            raise
-        holder_tcp.listen(1)
+        holder_udp.bind(("127.0.0.1", port))
         # port != 0 is the case of port 53: the addresses are tried in order
         with ResolverTrap(port=port, rewrite_resolv_conf=False) as trap:
             assert trap.address != "127.0.0.1" and trap.address in _leaks.TRAP_ADDRESSES, trap.address
             assert _udp_ask_at(trap.address, port, "leak.test")[3] & 0xF == ds.RCODE_REFUSED
     finally:
-        holder_tcp.close()
+        holder_tcp.server_close()
         holder_udp.close()
 
 

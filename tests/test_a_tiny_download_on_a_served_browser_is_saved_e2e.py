@@ -28,8 +28,10 @@ def _serve():
             pass
 
         def do_GET(self):
-            kind = self.path.strip("/").split("/")[0].split("?")[0]
-            if kind in BODIES:
+            asked = self.path.strip("/").split("/")[0].split("?")[0]
+            # the name that goes into the header is the dict's own key, found by comparison: nothing of the request is written back
+            kind = next((name for name in BODIES if name == asked), None)
+            if kind is not None:
                 body = BODIES[kind]
                 self.send_response(200)
                 self.send_header("content-type", "application/octet-stream")

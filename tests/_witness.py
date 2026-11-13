@@ -10,7 +10,6 @@ saw, so a road that works also gives the page a server-reflexive candidate.
 """
 from __future__ import annotations
 
-import random
 import socket
 import sys
 import struct
@@ -19,11 +18,11 @@ from typing import Dict, Iterable, List, Tuple
 
 _MAGIC = b"\x21\x12\xa4\x42"
 
-#: How many port numbers the witness tries before it gives up, and where it draws them from after the system's own pick.
-TRIES = 200
-#: Below the start of Windows' dynamic range (49152), where its excluded ranges are reserved in blocks of a hundred, and
-#: below Linux's ephemeral range (32768): a number drawn here is not the next of a sequence the system hands out.
-DRAW_FROM = (20000, 32767)
+#: How many port numbers the witness tries before it gives up, and where it draws them from after the system's own pick: the sequence of
+#: tests/_ports.py, which the HTTP/3 server and the resolver trap walk too. Below the start of Windows' dynamic range (49152), where its excluded
+#: ranges are reserved in blocks of a hundred, and below Linux's ephemeral range (32768): a number drawn there is not the next of a sequence the
+#: system hands out.
+from _ports import DRAW_FROM, TRIES, candidates  # noqa: E402
 
 
 class Witness:
@@ -45,9 +44,7 @@ class Witness:
     @staticmethod
     def _bind_both(address: str, port: int):
         refusals: List[str] = []
-        draw = random.Random()
-        for attempt in range(1 if port else TRIES):
-            wanted = port if port else (0 if attempt == 0 else draw.randint(*DRAW_FROM))
+        for wanted in ([port] if port else candidates(TRIES)):
             tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             udp = None
             try:

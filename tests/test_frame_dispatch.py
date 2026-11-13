@@ -33,6 +33,11 @@ def page():
     page.injected = Mock()
     page.actions = Mock()
     page._frames = {}
+    page._told_attached = set()
+    page._frames_lock = __import__("threading").RLock()
+    page._announce_lock = threading.RLock()
+    page._announced = True
+    page._said_before_announcement = []
     page._navigation_requests = {}
     page._announced_closed = False
     Dispatcher.__init__(page, server, context)

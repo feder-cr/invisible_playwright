@@ -3,7 +3,7 @@
 The mouse of the engine is sent through the asynchronous (APZ) route from firefox-62 (a click on an iframe of
 another site needs the hit test; see automation/input), which is also the route of the events of the page and of the
 iframes in its own process. They must not change: their ORDER, whether they are trusted, the pressure, the pointer id
-and type, the buttons and button, and the click count (`detail`). The sequences below are what firefox-61 delivers,
+and type, the buttons and button, and the click count (`detail`). The sequences below are what the engine delivers (a move with a button held carries buttons=1 and pressure 0.5, as Pointer Events and stock Playwright do),
 recorded with the same script (coordinates are left out: they depend on the screen's scale). The test passes on
 firefox-61 and has to pass on the engine with the APZ route.
 
@@ -87,10 +87,10 @@ EXPECTED = {
         ('frame', 'mousemove', True, None, None, None, 0, 0, 0),
         ('frame', 'pointerdown', True, 0.5, 0, 'mouse', 1, 0, 0),
         ('frame', 'mousedown', True, None, None, None, 1, 0, 1),
-        ('frame', 'pointermove', True, 0, 0, 'mouse', 0, -1, 0),
-        ('frame', 'mousemove', True, None, None, None, 0, 0, 0),
-        ('frame', 'pointermove', True, 0, 0, 'mouse', 0, -1, 0),
-        ('frame', 'mousemove', True, None, None, None, 0, 0, 0),
+        ('frame', 'pointermove', True, 0.5, 0, 'mouse', 1, -1, 0),
+        ('frame', 'mousemove', True, None, None, None, 1, 0, 0),
+        ('frame', 'pointermove', True, 0.5, 0, 'mouse', 1, -1, 0),
+        ('frame', 'mousemove', True, None, None, None, 1, 0, 0),
         ('frame', 'pointerup', True, 0, 0, 'mouse', 0, 0, 0),
         ('frame', 'mouseup', True, None, None, None, 0, 0, 1),
         ('frame', 'click', True, 0, 0, 'mouse', 0, 0, 1),

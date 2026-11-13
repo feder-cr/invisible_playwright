@@ -56,9 +56,14 @@ def _open(binary, body):
     srv = LocalServer(("127.0.0.1", 0), _serve(body))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     c = conn.launch(binary, profile_dir, headless=True, env=plan.env)
+    # ⛔ THE PAGE'S LISTENERS ARE BORN ON THE ATTACH, on the reader thread, before the next event of the session is delivered:
+    # the connection hands each event to the listeners of that moment (dispatch_event copies the list), so a Lifecycle built
+    # later from this thread missed the page's first frameAttached and Page.ready when they came in between, and waited for
+    # ever (Windows CI of 13/11, run 43373058301 part 2: "the engine never said Page.ready (frames seen: [])").
     sessions: dict = {}
     c.add_listener(lambda m, p, s: (
-        sessions.__setitem__(p["targetInfo"]["targetId"], p["sessionId"])
+        sessions.__setitem__(p["targetInfo"]["targetId"], (p["sessionId"], Lifecycle(c, p["sessionId"]),
+                                                           ini.InjectedScript(c, p["sessionId"])))
         if m == "Browser.attachedToTarget" else None))
     c.send("Browser.enable", {"attachToDefaultContext": True})
     ctx = c.send("Browser.createBrowserContext", {"removeOnDetach": True})
@@ -67,11 +72,11 @@ def _open(binary, body):
     deadline = time.time() + 20
     while page["targetId"] not in sessions and time.time() < deadline:
         time.sleep(0.02)
-    sess = sessions[page["targetId"]]
-    lifecycle = Lifecycle(c, sess)
-    inj = ini.InjectedScript(c, sess)
+    sess, lifecycle, inj = sessions[page["targetId"]]
     inj.install()
-    time.sleep(0.4)
+    # Page.ready, not a fixed 0.4 s: the Windows census lost that race (run 43307193708).
+    lifecycle.wait_for_page_ready(30)
+    lifecycle.wait_for_main_frame(30)
     lifecycle.goto("http://127.0.0.1:%d/" % srv.server_address[1],
                    until="load", timeout=30)
 

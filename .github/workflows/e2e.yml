@@ -6,8 +6,7 @@
 # launched Firefox in true HEADLESS mode, which is content-process unstable on
 # the hosted runners (eval-CSP / context-destroyed). The stealth wrapper instead
 # launches Firefox HEADED on a real display; under `xvfb-run` (a virtual X
-# server) that's exactly what we get on a headless CI box - stable, and the same
-# thing webrtc-e2e.yml already relies on.
+# server) that's exactly what we get on a headless CI box - stable.
 #
 # Secret-free, so it's safe in public CI: the binary is the PUBLIC firefox-9
 # release (no token), and the webrtc e2e fake a local TCP-only SOCKS. The proxy
@@ -34,6 +33,15 @@ on:
       - 'docs/**'
       - 'LICENSE'
   workflow_dispatch:
+    inputs:
+      only:
+        description: "Which job. `windows-control-a` runs only the Windows job of the keyboard shortcut (after the core of a release is on the index and its engine is published); `all` runs the whole workflow."
+        required: false
+        default: "all"
+        type: choice
+        options:
+          - all
+          - windows-control-a
 
 permissions:
   contents: read
@@ -75,7 +83,7 @@ jobs:
   e2e:
     name: e2e (linux, xvfb)
     needs: core-on-index
-    if: needs.core-on-index.outputs.available == 'true'
+    if: needs.core-on-index.outputs.available == 'true' && inputs.only != 'windows-control-a'
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
@@ -116,6 +124,13 @@ jobs:
         # The generator moved into the core with the module it writes (0.30.0),
         # so the check runs against the core this package installs.
         run: python -m invisible_core.juggler._gen_protocol --check --binary "$(dirname "$FF")"
+      # The GeoIP database is made by the repository (scripts/ci_lab_geoip.py: the same bytes on every run, the sha256 in ci/geoip.json), never a
+      # site and never a licensed file: without STEALTHFOX_GEOIP_MMDB the core asks GitHub which database is the latest on every call
+      # (run 43211837926). The variable reaches every later step of the job.
+      - name: The GeoIP database (made by the repository, same bytes every run)
+        shell: bash
+        run: python scripts/ci_lab_geoip.py build
+
       - name: Run the full e2e suite under a virtual display, without the root ones
         # PYTHONUNBUFFERED, and it is not a nicety. Without it Python block-buffers
         # stdout when it is a pipe, and this step printed NOTHING for 39 minutes
@@ -134,9 +149,11 @@ jobs:
           INVPW_TEST_WATCHDOG_FILE: ${{ runner.temp }}/e2e-watchdog.log
           ROOT_FILES: tests/test_a_proxy_that_cannot_carry_udp_leaks_nothing_direct_e2e.py
           ROOT_NODES: tests/test_the_whole_udp_chain_by_name_e2e.py::test_a_turn_srflx_by_name_arrives_through_the_relay_before_the_tick
-        # The root ones are left out by name and run in the step below, as root: here, as the runner user, they errored.
+          SANDBOX_FILES: tests/test_the_socket_process_is_sandboxed_e2e.py
+        # The root ones are left out by name and run in the step below, as root: here, as the runner user, they errored. The sandbox one is left out
+        # by name too and runs in its own step after them: it is red on a runner whose AppArmor refuses user namespaces to a normal user.
         run: |
-          IGNORE=(); for f in $ROOT_FILES; do IGNORE+=("--ignore=$f"); done
+          IGNORE=(); for f in $ROOT_FILES $SANDBOX_FILES; do IGNORE+=("--ignore=$f"); done
           DESELECT=(); for n in $ROOT_NODES; do DESELECT+=("--deselect=$n"); done
           xvfb-run -a python -u scripts/run_e2e.py "$FF" "${IGNORE[@]}" "${DESELECT[@]}"
 
@@ -175,12 +192,47 @@ jobs:
           if counts["tests"] != int(os.environ["ROOT_TESTS"]) or counts["failures"] or counts["errors"] or counts["skipped"]:
               sys.exit("the root e2e must be exactly %s tests, all passed: %s" % (os.environ["ROOT_TESTS"], counts))
           PY
+      # THE SANDBOX E2E (wrapper.e2e.udp.sandbox), as the gate runs its first file: the browser WITH its sandbox, run by the runner user. On this runner AppArmor
+      # refuses user namespaces to a normal user (kernel.apparmor_restrict_unprivileged_userns=1), so the browser of every other step starts WITHOUT the sandbox
+      # of its socket and content processes, and tests/test_the_socket_process_is_sandboxed_e2e.py (which fails unless both have a seccomp filter) can only
+      # be green after the restriction is turned off. It is left out of the run above by name (SANDBOX_FILES) so that it cannot fail on a runner without the
+      # sysctl, and it runs here, after the run and the root step (whatever the sysctl changes cannot reach a launch of the run), as the runner user. Nothing
+      # is skipped silently: the step reads its own junit and refuses anything but exactly that many tests, all passed.
+      # tests/test_the_sandbox_e2e_runs_where_user_namespaces_are_on.py holds this step, the exclusion above and the order.
+      - name: The sandbox e2e (wrapper.e2e.udp.sandbox), with unprivileged user namespaces on
+        if: success() || failure()
+        env:
+          PYTHONUNBUFFERED: "1"
+          SANDBOX_FILES: tests/test_the_socket_process_is_sandboxed_e2e.py
+          SANDBOX_TESTS: "1"
+        run: |
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          JUNIT="${RUNNER_TEMP}/sandbox-e2e.xml"
+          xvfb-run -a env -u PYTEST_ADDOPTS INVPW_BINARY_PATH="$FF" STEALTHFOX_E2E_BINARY="$FF" python -m pytest $SANDBOX_FILES -m e2e -o addopts='' -o junit_family=xunit2 -q -p no:cacheprovider -p no:rerunfailures -rs --junitxml="$JUNIT" || true
+          python - <<'PY'
+          import os, sys, xml.etree.ElementTree as ET
+          root = ET.parse(os.path.join(os.environ["RUNNER_TEMP"], "sandbox-e2e.xml")).getroot()
+          suite = root if root.tag == "testsuite" else root.find("testsuite")
+          counts = {k: int(suite.get(k, 0)) for k in ("tests", "failures", "errors", "skipped")}
+          print("sandbox e2e:", counts)
+          if counts["tests"] != int(os.environ["SANDBOX_TESTS"]) or counts["failures"] or counts["errors"] or counts["skipped"]:
+              sys.exit("the sandbox e2e must be exactly %s tests, all passed: %s" % (os.environ["SANDBOX_TESTS"], counts))
+          PY
       - name: What the root step left behind (diagnostic, decides nothing)
         if: always()
         run: |
           echo "-- files owned by root under the runner's home and /tmp"; sudo find /home/runner /tmp -maxdepth 3 -user root 2>/dev/null | head -40 || true
           echo "-- /etc/resolv.conf"; cat /etc/resolv.conf || true
           echo "-- lo"; ip -4 addr show lo || true
+
+      # The leg ran with the pinned database, and the core never went past it to GitHub (tests/geoip_used.py wrote what it did).
+      - name: The leg ran with the pinned GeoIP database
+        if: always()
+        shell: bash
+        run: |
+          python scripts/ci_lab_geoip.py evidence --out "$(dirname "$GEOIP_USED_OUT")/geoip-evidence.json" > /dev/null
+          python scripts/ci_lab_geoip.py verify --evidence "$(dirname "$GEOIP_USED_OUT")/geoip-evidence.json" --used "$GEOIP_USED_OUT"
+
 
       # Runs ONLY if the full run above fails, and before 2026-08-13 it could not
       # exist: the hang was killed by the 40-minute ceiling, so the job came out
@@ -216,6 +268,114 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: e2e-watchdog-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/e2e-watchdog.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  # ``Control+A`` selects all in a field, on the PUBLISHED engine and the core this package pins, on Windows, where the keyboard of a real
+  # user is: the shortcut letter used to reach the browser as Control+Shift+A (invisible-core 63.66.0 fixes it). The e2e is red on the
+  # keyboard that held Shift for the capital A (tests/test_control_a_selects_all_in_a_field_e2e.py: 5 ways to press it x an <input> and a
+  # <textarea>, in-process and served to the stock Playwright client). Same gate as the Linux job: it is SKIPPED, with the reason in the
+  # summary, until the core is on the index, and it runs unchanged after; `workflow_dispatch` with `only: windows-control-a` runs it alone.
+  e2e-windows-control-a:
+    name: e2e (windows, Control+A)
+    needs: core-on-index
+    if: needs.core-on-index.outputs.available == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 20
+    # `run:` blocks are PowerShell on Windows unless said otherwise (e2e-hunt.yml had a ParserError on its first launch there).
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with: { fetch-depth: 1 }
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: { python-version: '3.11' }
+      - name: Install wrapper + test deps (the stock client is in the dev extra)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ".[dev]"
+      - name: Fetch the published firefox binary
+        run: echo "FF=$(python -m invisible_playwright fetch | tail -1)" >> "$GITHUB_ENV"
+      - name: The keyboard shortcut selects all (the browser opens on the runner's desktop, as in e2e-hunt.yml)
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: INVPW_BINARY_PATH="$FF" python -u -m pytest -m e2e -p no:cacheprovider -v tests/test_control_a_selects_all_in_a_field_e2e.py
+
+  # THE SAME e2e ON WINDOWS (Federico, 12/11: every test of the product runs on Linux AND Windows; where Windows behaves
+  # differently the test adapts to the system). Before this, 562 of the 808 e2e had never run on Windows in any round. The census
+  # of 12/11 (run 43307193708) took ~50 minutes in one job, so the files are split in four parts (the sorted list, every fourth
+  # file: a split that does not move when a file is added elsewhere). Left out, by name, are the suites ci/required-suites.json
+  # declares `linux_only` (the reason is on the row); tests/test_every_suite_runs_on_linux_and_windows.py holds both together.
+  e2e-windows:
+    name: e2e (windows, part ${{ matrix.part }})
+    needs: core-on-index
+    if: needs.core-on-index.outputs.available == 'true' && inputs.only != 'windows-control-a'
+    runs-on: windows-2022
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [1, 2, 3, 4]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with: { fetch-depth: 1 }
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: { python-version: '3.11' }
+      - name: Install wrapper + test deps (+ Playwright ONLY as a system tool)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ".[dev]"
+          python -m pip install "playwright==$(cat scripts/playwright_pin.txt)"
+      - name: Fetch the published firefox binary
+        run: echo "FF=$(cd "$RUNNER_TEMP" && python -m invisible_playwright fetch | tail -1)" >> "$GITHUB_ENV"
+      # The GeoIP database made by the repository, as on the Linux run (no download, the same bytes every run).
+      - name: The GeoIP database (made by the repository, same bytes every run)
+        run: python scripts/ci_lab_geoip.py build
+      - name: The files of this part, without the linux_only suites
+        run: |
+          set -e
+          python -m pytest --collect-only -q -m e2e -o addopts= -p no:cacheprovider 2>/dev/null | grep "::" | cut -d: -f1 | sort -u > "$RUNNER_TEMP/e2e_files.txt"
+          python - "${{ matrix.part }}" "$RUNNER_TEMP" <<'PY'
+          import json, os, sys
+          part, tmp = int(sys.argv[1]), sys.argv[2]
+          rows = json.load(open("ci/required-suites.json", encoding="utf-8"))
+          left_out = [t for r in rows if r.get("linux_only") for t in r["tests"]]
+          files = [l.strip() for l in open(os.path.join(tmp, "e2e_files.txt")) if l.strip()]
+          files = [f for f in files if f not in left_out]
+          mine = [f for i, f in enumerate(files) if i % 4 == part - 1]
+          nodes = [t for t in left_out if "::" in t and t.split("::")[0] in mine]
+          open(os.path.join(tmp, "e2e_args.txt"), "w").write("\n".join(mine + ["--deselect=" + n for n in nodes]) + "\n")
+          print("%d e2e files, %d left out as linux_only, %d in part %d, %d node(s) deselected"
+                % (len(files) + len([t for t in left_out if "::" not in t]), len(left_out), len(mine), part, len(nodes)))
+          PY
+      - name: Run this part of the e2e
+        env:
+          PYTHONUNBUFFERED: "1"
+          INVPW_TEST_WATCHDOG_FILE: ${{ runner.temp }}/e2e-watchdog.log
+        run: |
+          mapfile -t ARGS < <(tr -d '\r' < "$RUNNER_TEMP/e2e_args.txt")
+          python -u scripts/run_e2e.py "$FF" "${ARGS[@]}"
+      - name: The leg ran with the pinned GeoIP database
+        if: always()
+        run: |
+          python scripts/ci_lab_geoip.py evidence --out "$(dirname "$GEOIP_USED_OUT")/geoip-evidence.json" > /dev/null
+          python scripts/ci_lab_geoip.py verify --evidence "$(dirname "$GEOIP_USED_OUT")/geoip-evidence.json" --used "$GEOIP_USED_OUT"
+      - name: Close every Firefox left
+        if: always()
+        shell: pwsh
+        run: |
+          Get-Process firefox -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          "left: " + @(Get-Process firefox -ErrorAction SilentlyContinue).Count
+      - name: Upload the hang evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: e2e-watchdog-windows-${{ matrix.part }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/e2e-watchdog.log
           if-no-files-found: warn
           retention-days: 14

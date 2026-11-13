@@ -9,7 +9,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [0.51.1] - 2026-11-13
 
 ### Changed
+- Pins invisible-core 63.68.0 (core fixes on the same firefox-63 engine: two sessions starting together on Windows no longer fail on the shared font-manifest cache; no MOZ_*, GL or toolkit variable of the host reaches the engine; GitHub is asked for the latest GeoIP database once a day, not on every launch; mouse moves carry the pressed buttons; a CORS preflight does not count for networkidle).
 - The project moved to the oss-invisible GitHub organization: every GitHub link, the issue templates and the package URLs point to github.com/oss-invisible/playwright. The PyPI name and the import name do not change; the old addresses redirect.
+
+### Fixed
+- A popup (a `window.open` or a `target=_blank` link) could be handed to the client at `about:blank`, with the blank page's `load`, when it
+  was opened with no route on the context: the commit of its address, or its `DOMContentLoaded` and `load`, arrived while the page was being
+  handed from its buffer to its dispatcher and was told to nobody (`page.url` stayed `about:blank`, or `wait_for_load_state("load")` timed
+  out). Measured on Windows with the library's client in the same process, `test_popups_reach_the_client_e2e.py` x20 on 4 workers: 3 runs
+  red with the published firefox-62 engine and 11 with firefox-63. The page is now handed over in one step: what the client was not told is
+  said once, in order, and nothing the engine sent in that period is lost.
+- The same hand-over dropped every event that is not a request: a `console` message, a `pageError`, a `dialog` (an `alert()` that opened
+  while the popup was being built blocked its page for good, because no client had been told of it and none could answer it), a `crash`, a file chooser. All
+  of them are given back now, in the order they arrived. The only bound left is the memory of the buffer (512 events): an event beyond it is
+  lost and a `RuntimeWarning` says how many, once per page.
+- The hand-over holds when the engine's reader, the adoption and a close run at the same time: a `load` is told to the client once (not twice,
+  so `page.on("load")` runs once); an event the engine sends while the held ones are being given back waits for them (a response is never handled
+  before its request); a document committed at the same address as the previous one is told; a page closed while it was being adopted is not given
+  frames, and is not announced, after its `__dispose__`; one frame never gets two dispatchers.
+- A popup could still be handed to the client at `about:blank` (or with its navigation pending again, and "Execution context was destroyed" in its
+  first evaluate) when the destination committed while the events the page had missed were being replayed to it: the engine's reader went on
+  delivering the live events to the lifecycle, and the replay then brought older ones after them. The page now subscribes its readers and is
+  handed the missed events in one step, with the delivery of the sessions' events held, so a live event never overtakes the replay.
+  With the three corrections together, on Windows with the library's client in the same process, under load: 680/680 and 256/256 popup cases
+  green (run 43261858525).
+- `Control+A` selects all in an `<input>` and a `<textarea>` on Windows, on the published engine and the core this package pins: a new end-to-end
+  test (five ways to press the shortcut, in-process and served to the stock client), run by `e2e.yml` on Windows, 20/20 green (run 43262320744).
+- Tests only: the e2e tests of the test servers take their ports from one sequence (no two servers draw the same one); the two tests that read a
+  consecutive pair of host ports run alone, after the parallel tests; the sandbox e2e (the browser's seccomp filter) runs in a step of its own that
+  turns unprivileged user namespaces on, and is left out of the normal run; every leg launches with a GeoIP database the repository builds (same
+  bytes every run, no download); the CodeQL alerts of the test code are fixed; the install job waits for the package index through both installers;
+  the raw Juggler tests wait for `Page.ready` and the main frame instead of a fixed time.
 
 ## [0.51.0] - 2026-11-12
 
@@ -61,17 +91,6 @@ comparison run is saved). The result of a `window.open` (`null` or a window) is 
   the popup on both. To get stock's behaviour: open the popup from a click; or pass
   `extra_prefs={"dom.disable_open_during_load": False}` for the session, knowing that a page then sees a browser that differs from a
   retail Firefox.
-
-### Known issues
-- **A popup opened without a route can be announced while it is still on `about:blank`.** A popup opened with no route on the context
-  (a `target=_blank` link, or `window.open` from a click) can be announced to the client while it is still on `about:blank`; its `url`
-  then stays `about:blank`, or its `load` never arrives. Seen on a Windows runner with the library's client in the same process and four
-  workers running the popup tests in parallel (`test_popups_reach_the_client_e2e.py`, 20 runs): with the firefox-63 engine 17 cases of 640
-  in 12 of 20 runs; with the published firefox-62 engine (so also with 0.50.1) 15 cases of 640. Both causes found are in the wrapper: the hand-over of
-  a new page to the client, and the replay of a new page's events while live ones are being delivered. The correction of the first alone,
-  not in this release, lowers the red cases over 20 runs from 15 to 2 with engine 62 and from 17 to 13 with engine 63; the correction of the
-  second is under test. On Linux no run was red (0 of 20). Not measured: a served
-  launch with numbers of its own, other machines, a run without parallel workers, macOS.
 
 ## [0.50.1] - 2026-11-12
 

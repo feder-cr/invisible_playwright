@@ -1012,14 +1012,35 @@ class FrameDispatcher(Dispatcher):
     detached = False
 
     def emit(self, method: str, params: Optional[Dict] = None) -> None:
-        if method == "loadstate" and params and params.get("add") in ("domcontentloaded", "load"):
-            page = self.page
-            with page._announce_lock:
-                if not page._announced:
-                    page._said_before_announcement.append((self, dict(params)))
-                super().emit(method, params)
-            return
+        if method == "loadstate" and params:
+            # ⛔ A LOAD STATE IS TOLD ONCE. The hand-over reconciles the frame with the lifecycle and the page's own listener then hears the
+            # same `DOMContentLoaded`/`load`: whichever comes second finds the state already told and says nothing (a `page.on("load")`
+            # that fired twice). A commit removes the states first, so the next document's are told again.
+            state = params.get("add")
+            told = bool(state) and not params.get("remove") and state in self.told_states
+            if state in ("domcontentloaded", "load"):
+                page = self.page
+                with page._announce_lock:
+                    # ⛔ KEPT FOR THE REPLAY EVEN WHEN THE CLIENT KNOWS IT ALREADY (from the snapshot of the initializer, or from the
+                    # reconciliation): the replay after the announcement is what makes `page.on("load")` run for a popup that loaded
+                    # before the client heard of it, once per frame and state.
+                    if not page._announced and not any(
+                            f is self and p.get("add") == state for f, p in page._said_before_announcement):
+                        page._said_before_announcement.append((self, dict(params)))
+                    if not told:
+                        self._track_states(params)
+                        super().emit(method, params)
+                return
+            if told:
+                return
+            self._track_states(params)
         super().emit(method, params)
+
+    def _track_states(self, params: Dict) -> None:
+        if params.get("add"):
+            self.told_states.add(params["add"])
+        if params.get("remove"):
+            self.told_states.discard(params["remove"])
 
     def detach(self) -> None:
         """The frame left the page: its handles go (their frame is no more), the frame itself stays and refuses."""
@@ -1038,15 +1059,22 @@ class FrameDispatcher(Dispatcher):
     def __init__(self, server, page: "PageDispatcher", frame_id: str,
                  url: str = "about:blank", name: str = "",
                  load_states: Optional[List[str]] = None,
-                 parent_frame: Optional["FrameDispatcher"] = None) -> None:
+                 parent_frame: Optional["FrameDispatcher"] = None,
+                 told_commit: Any = None) -> None:
         self.page = page
         self.frame_id = frame_id
+        #: Which commit of the lifecycle the client was last told (its place in the engine's stream): two documents at the same address
+        #: and with the same name differ only by this (`PageDispatcher._reconcile_frame`).
+        self.told_commit = told_commit
         self.parent_frame = parent_frame
         #: ⛔ Kept here because the INITIALIZER is a snapshot: the client reads
         #: the url from it once, at creation, and afterwards only from
         #: `navigated` events. A frame created before it navigates keeps an
         #: empty url forever unless something updates this.
         self.url = url
+        #: The load states the client has been told this frame has (the initializer's, then each `loadstate`): what the hand-over of the
+        #: page from its buffer to its dispatcher compares the lifecycle's states with (`PageDispatcher._reconcile_frame`).
+        self.told_states = set(load_states or ["commit"])
         #: Same reason, and both navigation events report it: a same-document
         #: navigation carries no name, so it has to repeat the one the frame
         #: already has rather than blank it.
@@ -2785,6 +2813,9 @@ class PageDispatcher(Dispatcher):
         # replay.
         self._held: Optional[List] = []
         self._held_lock = threading.Lock()
+        self._frames_lock = threading.RLock()
+        #: The events that did not fit in the hold (`HELD_CAP`): counted, and said once when the hold ends (`_install_events`).
+        self._held_dropped = 0
         #: ⛔ THE `domcontentloaded` AND `load` OF A POPUP THAT ARE SAID BEFORE IT IS ANNOUNCED. The page is built at once and announced when
         #: the engine says Page.ready, which is also when its document commits, so the document may have loaded before the client hears
         #: of the page: a `page.on("load")` registered in the handler of the `page` event would never fire. Playwright's own page is
@@ -2793,9 +2824,33 @@ class PageDispatcher(Dispatcher):
         self._announce_lock = threading.RLock()
         self._announced = False
         self._said_before_announcement: List = []
-        self.lifecycle = Lifecycle(conn, session)
-        self.injected = InjectedScript(conn, session)
-        conn.add_listener(self._route_juggler_event)
+        # ⛔ SUBSCRIBE AND BE HANDED THE MISSED EVENTS IN ONE STEP, with the events of the sessions held (`events_gate`): an event the
+        # engine's reader delivers between the subscription and the replay would reach the lifecycle BEFORE the older ones the replay
+        # brings, and the lifecycle would end at the older state (a popup at about:blank after its destination committed). Nothing in the
+        # step waits for an event or a reply: the readers are subscribed, the buffer is handed over, the gate opens.
+        try:
+            with context.browser.events_gate():
+                self.lifecycle = Lifecycle(conn, session)
+                self.injected = InjectedScript(conn, session)
+                conn.add_listener(self._route_juggler_event)
+                # ⛔ THE EVENTS THIS PAGE ALREADY MISSED, handed over now that the two things that need them exist. `Page.frameAttached` and
+                # the `Runtime.executionContextCreated` pair are sent by the browser BEFORE the `Browser.newPage` reply that told us which
+                # session to build this object for, so without the replay the lifecycle waits twenty seconds for a main frame that was
+                # announced before it was born.
+                #
+                # ⛔ AND IT DELIBERATELY DOES NOT REACH `_on_juggler_event`, which is not wired yet and cannot be: that handler emits on
+                # `self.channel`, and the channel does not exist until `super().__init__` has run, which needs the main frame this replay
+                # is what delivers. The events that precede a page describe its birth, and the initializer built below carries that - the
+                # main frame is in it by name. (The page's own listener holds them: `_held`.)
+                self.replayed_events = context.browser.replay(session, conn.dispatch_event)
+        except BaseException:
+            conn.remove_listener(self._route_juggler_event)
+            for part in ("lifecycle", "injected"):
+                try:
+                    getattr(self, part).detach()
+                except Exception:
+                    pass
+            raise
         try:
             self._build(server, context, session, conn, opener)
         except BaseException:
@@ -2848,22 +2903,9 @@ class PageDispatcher(Dispatcher):
             context.browser.session_seed, context.browser.motion_budget_s,
             lambda: self.viewport_size,
             draws=context.browser.pointer_draws)
-        # ⛔ THE EVENTS THIS PAGE ALREADY MISSED, handed over now that the two
-        # things that need them exist. `Page.frameAttached` and the
-        # `Runtime.executionContextCreated` pair are sent by the browser BEFORE
-        # the `Browser.newPage` reply that told us which session to build this
-        # object for, so without the replay the lifecycle waits twenty seconds
-        # for a main frame that was announced before it was born.
-        #
-        # ⛔ AND IT DELIBERATELY DOES NOT REACH `_on_juggler_event`, which is
-        # not wired yet and cannot be: that handler emits on `self.channel`,
-        # and the channel does not exist until `super().__init__` has run,
-        # which needs the main frame this replay is what delivers. The events
-        # that precede a page describe its birth, and the initializer built
-        # below carries that - the main frame is in it by name.
-        replayed = context.browser.replay(session, conn.dispatch_event)
-        self.replayed_events = replayed
         self._frames: Dict[str, Any] = {}
+        #: The child frames the client was told of (`frameAttached`), to tell it of the ones born before the hook was in.
+        self._told_attached: set = set()
         self._requests: Dict[str, Any] = {}
         #: navigationId -> the document RequestDispatcher of that navigation.
         #: ⛔ AN INDEX, NOT A SECOND COPY: the response itself keeps living on
@@ -2899,7 +2941,8 @@ class PageDispatcher(Dispatcher):
             server, self, self.main_frame_id,
             url=getattr(known, "url", "") or "",
             name=getattr(known, "name", "") or "",
-            load_states=sorted(getattr(known, "states", []) or []) or None)
+            load_states=sorted(getattr(known, "states", []) or []) or None,
+            told_commit=self._last_commit(known))
         viewport = self.viewport_size
         # `pageNumber` is ours, not Playwright's: the number the page's
         # rhythms are drawn under (`pointer.py` and the actions' nonce read it
@@ -2961,13 +3004,21 @@ class PageDispatcher(Dispatcher):
     def announce(self, context: "BrowserContextDispatcher", replay: bool) -> None:
         """Tell the client of the page (the context's `page` event) and, for a popup, say again the load states it reached before:
         under one lock, so a state said live in between waits for the ones that came first."""
-        with self._announce_lock:
+        # ⛔ NOT A PAGE THAT WAS CLOSED BEFORE ITS ANNOUNCEMENT (the context or the browser closed while it was being adopted): the close
+        # has sent `close` and `__dispose__` for its guid, and a `page` event that names it makes the client throw. The close's lock first,
+        # as in `_deliver`: the close is either over (nothing is announced) or waits for the announcement (and follows it).
+        with self._close_lock, self._announce_lock:
+            if self._announced_closed:
+                self._announced = True
+                self._said_before_announcement = []
+                return
             context.emit("page", {"page": self.channel})
             earlier, self._said_before_announcement = self._said_before_announcement, []
             self._announced = True
             if replay:
                 for frame, params in earlier:
                     if not frame.detached:
+                        frame.told_states.discard(params["add"])      # said again on purpose: the emit would call it a duplicate
                         frame.emit("loadstate", params)
 
     def settle_events(self) -> None:
@@ -2993,12 +3044,17 @@ class PageDispatcher(Dispatcher):
         their page prints nothing.
         """
         # ⛔ Registered on the connection's list, never chained, and already
-        # in `__init__`: what is left here is to stop holding. Only the NETWORK
-        # events held are delivered - the rest describe the page's birth,
-        # which the initializer already carries, and replaying a main frame's
-        # `frameAttached` would announce it twice. Delivered under the lock, so
-        # a live event waits for the held ones and keeps their order: a
-        # response handled before its request is dropped as unknown.
+        # in `__init__`: what is left here is to stop holding. EVERY event held
+        # is delivered, of whatever kind, in the order it arrived: a `console`
+        # message, a `pageError`, a `dialog` (an `alert()` blocks the page until
+        # the client accepts it, and a client never told of it cannot), a
+        # `crash`, a load state, a request. (Until 0.51.1 only the `Network.*`
+        # ones were, and the rest were dropped.) The ones this handler does not
+        # read - `Page.frameAttached` and the other events the lifecycle owns -
+        # reach nothing here, and the lifecycle's own announcements are
+        # reconciled below. A live event waits for the held ones and keeps
+        # their order: a response handled before its request is dropped as
+        # unknown.
         #
         # ⛔ AND EACH EVENT ONCE, AT ITS LAST PLACE. One that arrived after the
         # subscriber was registered but before the replay marked the session
@@ -3006,15 +3062,52 @@ class PageDispatcher(Dispatcher):
         # hands it over a second time, behind events older than it. It is the
         # same params object both times; keeping its last occurrence restores
         # the order the engine sent them in and announces each request once.
-        with self._held_lock:
-            held, self._held = self._held or [], None
+        #
+        # ⛔ THE HOLD ENDS WHEN IT IS EMPTY, NOT WHEN IT IS TAKEN. The held events are delivered in rounds, outside the lock, and
+        # `_held` is cleared only by a round that finds nothing: while a round is being delivered, a live event from the reader still
+        # goes to the hold and waits for its turn. (Clearing it first, a live event went straight to its handler beside the round,
+        # and a response could be handled before the request it answers.)
+        delivered: Dict[int, Any] = {}      # the params objects already delivered, kept alive so their ids are not reused
+
+        def give_back(held: List) -> None:
             last = {id(params): i for i, (_, params) in enumerate(held)}
             for i, (method, params) in enumerate(held):
-                if last[id(params)] == i and method.startswith("Network."):
+                if last[id(params)] == i and id(params) not in delivered:
+                    delivered[id(params)] = params
                     try:
                         self._deliver(method, params)
                     except Exception:
                         pass
+
+        # A round ends when the reader is quiet. After FOUR rounds the rest is given back with the lock held (the old way): a page
+        # that prints in a tight loop while it is born cannot keep the hold open for ever. The handlers do not wait for the reader, so
+        # the lock is only a delay for it.
+        for _ in range(4):
+            with self._held_lock:
+                held = self._held
+                if not held:
+                    self._held = None
+                    break
+                self._held = []
+            give_back(held)
+        else:
+            with self._held_lock:
+                while self._held:
+                    held, self._held = self._held, []
+                    give_back(held)
+                self._held = None
+        if self._held_dropped:
+            warnings.warn(
+                "invisible_playwright: %d event(s) of the page of target %s were lost while it was handed over to its dispatcher: more than "
+                "%d were held (the cap that bounds the memory of a page that never finishes building)"
+                % (self._held_dropped, self.target_id, self.HELD_CAP), RuntimeWarning, stacklevel=2)
+        # ⛔ THE HAND-OVER IS ONE STEP, UNDER THE LIFECYCLE'S LOCK (`_hear_lifecycle`). What the client is told of a frame comes from two
+        # places: the initializer, a snapshot of what the lifecycle knew when the frame dispatcher was made, and the lifecycle's own
+        # announcements through a hook installed here. An event the lifecycle heard AFTER the snapshot and BEFORE the hook was told to
+        # nobody - the commit of a popup's destination left its frame at `about:blank` for good - and the `DOMContentLoaded`/`load` held
+        # at the same time were dropped with every held event that is not a `Network.*` one. Now the hook goes in and what the client was
+        # not told is said in the same step, with the lock held: an event the lifecycle has heard is compared with what the client was
+        # told, and the difference is said; one it has not heard yet waits for the lock and is announced by the hook.
         self._hear_lifecycle()
 
     def _hear_lifecycle(self) -> None:
@@ -3028,8 +3121,76 @@ class PageDispatcher(Dispatcher):
         `expect_navigation(wait_until="networkidle")` - which wait for exactly
         that event - timed out on a loaded, silent page. One definition, two
         consumers: `goto`'s wait and this event.
+
+        The hook is installed and the frames are reconciled with what the client was told in the same step, with the lifecycle's lock held
+        (not while the held events are delivered: their handlers may ask the engine, and the reader thread that answers needs the lock).
         """
-        self.lifecycle.announce = self._on_lifecycle
+        with self.lifecycle._cv:
+            # ⛔ NOT ON A PAGE THAT CLOSED IN THE MEANTIME. The close detaches the lifecycle (no hook) and tells the client the page is gone
+            # (`__dispose__`); the flag is set under the close's lock before it waits for this one. A hook put back now, and a frame
+            # made under a page the client has dropped, is a `__create__` under a parent that no longer exists.
+            if self._announced_closed:
+                return
+            self.lifecycle.announce = self._on_lifecycle
+            self._reconcile_frames()
+
+    @staticmethod
+    def _last_commit(known: Any) -> Any:
+        """The place in the engine's stream of the last document the lifecycle holds for this frame (None: none with an id)."""
+        commits = getattr(known, "_commits", None)
+        return commits[-1][0] if commits else None
+
+    CANON_STATES = ("commit", "domcontentloaded", "load", "networkidle")
+
+    def _forget_said_before_announcement(self, frame: "FrameDispatcher") -> None:
+        """The load states a frame said before the page was announced belong to the document it had then: a commit drops them."""
+        with self._announce_lock:
+            if not self._announced:
+                self._said_before_announcement = [e for e in self._said_before_announcement if e[0] is not frame]
+
+    def _reconcile_frames(self) -> None:
+        """Say to the client what the lifecycle heard between the snapshot of the initializer and the hook: the frames born or gone, the
+        document a frame committed, the load states it reached. Under the lifecycle's lock."""
+        lifecycle = self.lifecycle
+        if self._announced_closed:
+            return
+        for frame_id in list(self._frames):
+            if frame_id not in lifecycle.frames:
+                child = self._frames.pop(frame_id, None)
+                if frame_id in self._told_attached:
+                    self._told_attached.discard(frame_id)
+                    self.emit("frameDetached", {"frame": child.channel})
+                child.detach()
+        for frame_id in sorted(lifecycle.frames, key=lifecycle._depth):
+            if frame_id == self.frame.frame_id:
+                continue
+            child = self.frame_for(frame_id)
+            if frame_id not in self._told_attached:
+                self._told_attached.add(frame_id)
+                self.emit("frameAttached", {"frame": child.channel})
+        for frame_id, known in list(lifecycle.frames.items()):
+            frame = self.frame if frame_id == self.frame.frame_id else self._frames.get(frame_id)
+            if frame is not None:
+                self._reconcile_frame(frame, known)
+
+    def _reconcile_frame(self, frame: "FrameDispatcher", known: Any) -> None:
+        url, name = known.url or "", known.name or ""
+        commit = self._last_commit(known)
+        # A document the client was not told: a different address or name, or the same ones with another commit (a reload, a
+        # navigation to the same address, between the snapshot and the hook).
+        if url and ((url, name) != (frame.url, frame.name) or commit != frame.told_commit):     # no address yet: nothing committed
+            # what a commit says (`_on_lifecycle`), once
+            self._forget_said_before_announcement(frame)
+            for state in self.CANON_STATES:
+                frame.emit("loadstate", {"remove": state})
+            frame.url, frame.name, frame.told_commit = url, name, commit
+            navigation = known._commits[-1][1] if known._commits else None
+            frame.emit("navigated", {"url": url, "name": name, "newDocument": self.navigation_document(navigation)})
+        for state in self.CANON_STATES:
+            if state in known.states and state not in frame.told_states:
+                frame.emit("loadstate", {"add": state})
+            elif state not in known.states and state in frame.told_states and state != "commit":
+                frame.emit("loadstate", {"remove": state})
 
     def _on_lifecycle(self, what: str, frame_id: str,
                       url: Optional[str] = None, *, name: str = "",
@@ -3044,6 +3205,7 @@ class PageDispatcher(Dispatcher):
         # `page.frames` held eight entries for two frames (2026-10-12).
         if what == "frameDetached":
             child = self._frames.pop(frame_id, None)
+            self._told_attached.discard(frame_id)
             if child is not None:
                 self.emit("frameDetached", {"frame": child.channel})
                 child.detach()
@@ -3053,6 +3215,7 @@ class PageDispatcher(Dispatcher):
             # the first time, and this page is built after its main frame was
             # seen (`wait_for_main_frame`); the initializer carries it.
             child = self.frame_for(frame_id)
+            self._told_attached.add(frame_id)
             self.emit("frameAttached", {"frame": child.channel})
             return
         child = self.frame_for(frame_id)
@@ -3093,8 +3256,10 @@ class PageDispatcher(Dispatcher):
             # the page is closed: `_deliver` would not have delivered it.
             if self._announced_closed:
                 return
+            self._forget_said_before_announcement(child)
             for state in ("commit", "domcontentloaded", "load", "networkidle"):
                 child.emit("loadstate", {"remove": state})
+            child.told_commit = self._last_commit(self.lifecycle.frame(frame_id))
             child.url = url or ""
             child.name = name or ""
             child.emit("navigated", {
@@ -3106,7 +3271,9 @@ class PageDispatcher(Dispatcher):
 
     #: Events held while the page is being built. The birth of a page is a
     #: burst of a few dozen; a page that never finishes building must not
-    #: grow this without bound.
+    #: grow this without bound. The ones beyond the cap are lost, and not in
+    #: silence: they are counted and said once, with the count, when the
+    #: hold ends (`_install_events`).
     HELD_CAP = 512
 
     def _route_juggler_event(self, method: str, params: Dict,
@@ -3118,6 +3285,8 @@ class PageDispatcher(Dispatcher):
                 if self._held is not None:
                     if len(self._held) < self.HELD_CAP:
                         self._held.append((method, params))
+                    else:
+                        self._held_dropped += 1
                     return
         self._deliver(method, params)
 
@@ -3438,18 +3607,24 @@ class PageDispatcher(Dispatcher):
         """
         if frame_id == self.frame.frame_id:
             return self.frame
-        existing = self._frames.get(frame_id)
-        if existing is not None and not existing.disposed:
-            return existing
-        frame = self.lifecycle.frame(frame_id)
-        parent_id = getattr(frame, "parent", None)
-        made = FrameDispatcher(
-            self.server, self, frame_id,
-            url=getattr(frame, "url", "") or "",
-            parent_frame=self.frame_for(parent_id) if parent_id else None,
-            load_states=sorted(getattr(frame, "states", []) or []) or ["commit"])
-        self._frames[frame_id] = made
-        return made
+        # ⛔ CHECK AND CREATE IN ONE STEP. The reader thread (a held `eventFired` of a child, a frame the lifecycle announces) and the
+        # adoption thread (the reconciliation of the hand-over) both come here for a frame that is new: without the lock each saw
+        # no dispatcher and made one, two `__create__` for one frame, and the load states went to one of them. Recursive: the parent
+        # is made by the same call.
+        with self._frames_lock:
+            existing = self._frames.get(frame_id)
+            if existing is not None and not existing.disposed:
+                return existing
+            frame = self.lifecycle.frame(frame_id)
+            parent_id = getattr(frame, "parent", None)
+            made = FrameDispatcher(
+                self.server, self, frame_id,
+                url=getattr(frame, "url", "") or "",
+                parent_frame=self.frame_for(parent_id) if parent_id else None,
+                load_states=sorted(getattr(frame, "states", []) or []) or ["commit"],
+                told_commit=self._last_commit(frame))
+            self._frames[frame_id] = made
+            return made
 
     def op_set_interception(self, params: Dict) -> Any:
         """`page.route()`: hold this page's requests until a handler answers.
@@ -4607,6 +4782,11 @@ class BrowserDispatcher(Dispatcher):
     METHODS = {"newContext": "op_new_context", "close": "op_close",
                "newPage": "op_new_page"}
 
+    #: How long the engine's reader waits for the gate of the events before it delivers the event anyway (see `events_gate`).
+    GATE_WAIT_S = 5.0
+    #: How long a page that is being built waits for the gate before it is built without it.
+    PAGE_GATE_WAIT_S = 30.0
+
     def __init__(self, server, browser_type: "BrowserTypeDispatcher",
                  conn: Any, version: str, session_seed: Any = None,
                  motion_budget_s: Any = None,
@@ -4614,6 +4794,58 @@ class BrowserDispatcher(Dispatcher):
                  layout: str = "us", pointer_draws: bool = False,
                  udp_stun_servers: Optional[list] = None) -> None:
         self.conn = conn
+        # ⛔ THE EVENTS OF A SESSION GO THROUGH A GATE. A new page is handed the events it missed (`replay`) by the thread that builds it,
+        # while the engine's reader goes on delivering the live ones to the same subscribers: a popup's destination committed (live) in the
+        # middle of the replay of its first events, and the replay then went on with older ones (the initial about:blank, the
+        # `navigationStarted` of the same navigation) - the lifecycle ended at about:blank, or with the navigation pending again. The
+        # reader takes the gate for each event of a session; the page takes it for the whole of "subscribe, then replay" (`events_gate`).
+        # The gate belongs to the CONNECTION (one wrapper, one gate, whoever builds a dispatcher over it).
+        gate = getattr(conn, "_events_gate", None)
+        if gate is None:
+            gate = threading.RLock()
+            try:
+                conn._events_gate = gate
+            except Exception:
+                pass
+        self._events_gate = gate
+        self._gate_timeouts = 0
+        if not getattr(conn, "_events_gate_installed", False):
+            #: The delivery the reader would have made: an override on the instance if there is one, else the class's method looked up
+            #: at each event (a patch of the class made after this dispatcher was built still applies).
+            own = conn.__dict__.get("dispatch_event")
+            stuck = {"until": 0.0}
+            owner = self
+
+            def raw_dispatch(method, params, session):
+                if own is not None:
+                    return own(method, params, session)
+                return type(conn).dispatch_event(conn, method, params, session)
+
+            def gated_dispatch(method, params, session):
+                if not session:
+                    return raw_dispatch(method, params, session)
+                waiting = time.monotonic() >= stuck["until"]
+                got = gate.acquire(timeout=owner.GATE_WAIT_S) if waiting else gate.acquire(blocking=False)
+                if got:
+                    try:
+                        return raw_dispatch(method, params, session)
+                    finally:
+                        gate.release()
+                # ⛔ WHOEVER HOLDS THE GATE DOES NOT LET GO: the event is delivered all the same (the old, unordered way), and the reader does
+                # not wait again for a while (the bound is on the hold, not on each event). Said once per hold, where the connection records
+                # what its handlers failed at.
+                if waiting:
+                    stuck["until"] = time.monotonic() + 30.0
+                    owner._gate_timeouts += 1
+                    errors = getattr(conn, "handler_errors", None)
+                    if isinstance(errors, list) and len(errors) < 32:
+                        errors.append("events gate: held more than %.1fs, events delivered ungated for 30s" % owner.GATE_WAIT_S)
+                return raw_dispatch(method, params, session)
+            conn.dispatch_event = gated_dispatch
+            try:
+                conn._events_gate_installed = True
+            except Exception:
+                pass
         #: Where this session measures a proxy's UDP exit from (the launch's `udp_stun_servers`, "ip:port"
         #: strings; None = the two public defaults): the launch and every context proxy use the same list.
         self.udp_stun_servers = udp_stun_servers
@@ -4868,6 +5100,22 @@ class BrowserDispatcher(Dispatcher):
                     held = self._buffered.setdefault(session, [])
                     if len(held) < self.BUFFER_CAP:
                         held.append((method, params))
+
+    @contextlib.contextmanager
+    def events_gate(self):
+        """Hold the delivery of the events of every session: the engine's reader waits (at most `GATE_WAIT_S`) at its next event of a
+        session. For a short step that waits for no event and no reply: a page subscribes its readers and is handed the events it missed."""
+        got = self._events_gate.acquire(timeout=self.PAGE_GATE_WAIT_S)
+        if not got:
+            # the reader is stuck inside a handler: the page is built all the same (the old, unordered way), and it is said
+            warnings.warn("invisible_playwright: the engine's events were held for more than %.0f s by a handler; a page is built without "
+                          "the gate of the events (its replay may be overtaken by a live event)" % self.PAGE_GATE_WAIT_S,
+                          RuntimeWarning, stacklevel=3)
+        try:
+            yield
+        finally:
+            if got:
+                self._events_gate.release()
 
     def replay(self, session: str, deliver) -> int:
         """Hand a new consumer the events of its session that it missed.

@@ -14,14 +14,16 @@ from __future__ import annotations
 import asyncio
 import datetime
 import ipaddress
-import random
 import socket
 import socketserver
 import ssl
+import sys
 import tempfile
 import threading
 from pathlib import Path
 from typing import List, Tuple
+
+from _ports import bind_tcp_and_probe_udp
 
 
 def _certificate(address: str, directory: Path):
@@ -48,44 +50,19 @@ def _certificate(address: str, directory: Path):
 #: The one document every path answers, over TCP and over QUIC.
 PAGE = b"<!doctype html><meta charset=utf-8><title>h3</title><p>ok</p>"
 
-# How many port numbers are tried, and where the ones after the system's own pick are drawn from: the same as the witness's.
-from _witness import DRAW_FROM as _WITNESS_DRAW_FROM, TRIES as _WITNESS_TRIES  # noqa: E402
-
-
 class _TcpServer(socketserver.ThreadingTCPServer):
-    allow_reuse_address = True
+    # On Windows SO_REUSEADDR is "share the port": with a number the picker drew (tests/_ports.py) it would bind over a listener that is there.
+    allow_reuse_address = sys.platform != "win32"
     daemon_threads = True
 
 
 def _tcp_server_on_a_port_udp_binds(address: str):
-    """A TCP server on a port number that UDP can bind too, as ``(server, port)``.
-
-    The first try is the system's own pick (port 0); the others are drawn at random below the dynamic range. Windows hands out
-    ephemeral TCP ports in sequence and keeps excluded ranges of a hundred ports for UDP inside the same zone, so asking the
-    system again lands in the same refused range again and again (run 43230437094, ``wrapper.e2e.web`` on Windows: fifty
-    consecutive picks refused, three tests red; the witness had the same defect and the same remedy,
-    ``test_the_witness_picks_a_port_both_sockets_bind.py``)."""
-    draw = random.Random()
-    refusals: List[str] = []
-    for attempt in range(_WITNESS_TRIES):
-        wanted = 0 if attempt == 0 else draw.randint(*_WITNESS_DRAW_FROM)
-        try:
-            tcp = _TcpServer((address, wanted), _TcpHandler)
-        except OSError as exc:
-            refusals.append("%s: %s" % (wanted or "system pick", exc))
-            continue
-        port = tcp.server_address[1]
-        probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        try:
-            probe.bind((address, port))
-            return tcp, port
-        except OSError as exc:
-            refusals.append("%s: %s" % (port, exc))
-            tcp.server_close()
-        finally:
-            probe.close()
-    raise RuntimeError("no port free for both TCP and UDP on %s after %d tries; the last refusals: %s"
-                       % (address, _WITNESS_TRIES, "; ".join(refusals[-3:])))
+    """A TCP server on a port number that UDP can bind too, as ``(server, port)``: the one picker of the harness (tests/_ports.py), which the
+    witness and the resolver trap walk the same sequence of. The first try is the system's own pick (port 0); the others are drawn at random
+    below the dynamic range, because Windows hands out ephemeral TCP ports in sequence and keeps excluded ranges of a hundred ports for UDP
+    inside the same zone (run 43230437094, ``wrapper.e2e.web`` on Windows: fifty consecutive picks refused, three tests red). Every refusal is
+    kept with its code and the last three are in the error."""
+    return bind_tcp_and_probe_udp(address, lambda host, number: _TcpServer((host, number), _TcpHandler), socket_module=socket)
 
 
 class _TcpHandler(socketserver.BaseRequestHandler):
@@ -235,9 +212,20 @@ class H3Server:
             self._quic = self._loop.run_until_complete(
                 serve(address, port, configuration=configuration, create_protocol=Protocol))
             started.set()
-            self._loop.run_forever()
+            try:
+                self._loop.run_forever()
+            finally:
+                # ⛔ THE LOOP IS CLOSED HERE, ON ITS OWN THREAD, after the QUIC server. A loop that is only stopped is closed later by
+                # BaseEventLoop.__del__ on whatever thread the garbage collector runs in, and on Windows the proactor's close then
+                # waits for the UDP receive still pending on it, for ever: the HTTP/3 e2e hung inside a later test's goto or
+                # new_page, the test thread in base_events.__del__ -> proactor close -> _poll (Windows hunt of 13/11, run
+                # 43377799126, 3 runs of 15; PR #486 part 1 twice).
+                self._quic.close()
+                self._loop.run_until_complete(asyncio.sleep(0.05))
+                self._loop.close()
 
-        threading.Thread(target=run, daemon=True).start()
+        self._thread = threading.Thread(target=run, daemon=True)
+        self._thread.start()
         if not started.wait(10):
             raise RuntimeError("the QUIC server did not start")
 
@@ -248,8 +236,9 @@ class H3Server:
     def close(self) -> None:
         self._tcp.shutdown()
         self._tcp.server_close()
-        self._quic.close()
-        self._loop.call_soon_threadsafe(self._loop.stop)
+        if not self._loop.is_closed():
+            self._loop.call_soon_threadsafe(self._loop.stop)
+        self._thread.join(10)
         self._dir.cleanup()
 
     def __enter__(self) -> "H3Server":

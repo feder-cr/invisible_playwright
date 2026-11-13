@@ -335,7 +335,7 @@ def test_linux_xvfb_workarounds_with_socks_proxy(monkeypatch):
 
     assert pw_proxy is not None      # a single path, here too
     # Xvfb workarounds present.
-    assert prefs["gfx.webrender.all"] is False
+    assert "gfx.webrender.all" not in prefs   # core 63.68.0: a pref that does nothing is not declared
     # WebGL2 is not the host adapter's decision: since invisible-core 9d74a77 the
     # engine answers the blocklist from the declared outcomes, and
     # webgl.force-enabled left the core.

@@ -280,6 +280,19 @@ class FakeDoh:
         with self._lock:
             return [a for a in self.answers if a.name == name and (qtype is None or a.qtype == qtype)]
 
+    def certificate_refusals(self) -> List[Tuple[str, str]]:
+        """The failed handshakes in which the client REFUSED the certificate: a TLS alert (unknown CA, bad certificate...).
+
+        Not every failed handshake is one. A client that drops a connection before the handshake ends (a speculative or a
+        duplicate DoH connection the browser abandons) fails it too, and says nothing about the certificate: on Windows as
+        ConnectionAbortedError [WinError 10053], elsewhere as a reset or an end of file. Only a refusal means that a lookup
+        of a context without the certificate exception reached the DoH. Windows census of 12/11 (run 43333574229): a
+        ConnectionAbortedError through the gateway of a context that HAS the exception was read as such a lookup.
+        """
+        with self._lock:
+            return [(via, error) for via, error in self.tls_failures
+                    if "ALERT" in error.upper() or "CERTIFICATE" in error.upper()]
+
     def seen_names(self) -> List[str]:
         with self._lock:
             return sorted({q.name for q in self.queries})
