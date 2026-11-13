@@ -44,7 +44,8 @@ def problems(text: str, suite: dict) -> list:
     nodes = [t for t in suite["tests"] if "::" in t]
     steps = _steps(text)
     root = [body for name, body in steps if "root e2e" in name]
-    runner = [body for name, body in steps if "scripts/run_e2e.py" in body]
+    # the Linux run (xvfb): the Windows parts of e2e.yml leave the linux_only suites out by reading ci/required-suites.json
+    runner = [body for name, body in steps if "scripts/run_e2e.py" in body and "xvfb-run" in body]
     if len(root) != 1:
         return ["there is no (or more than one) step for the root e2e: %d" % len(root)]
     if len(runner) != 1:

@@ -219,3 +219,72 @@ jobs:
           path: ${{ runner.temp }}/e2e-watchdog.log
           if-no-files-found: warn
           retention-days: 14
+
+  # THE SAME e2e ON WINDOWS (Federico, 12/11: every test of the product runs on Linux AND Windows; where Windows behaves
+  # differently the test adapts to the system). Before this, 562 of the 808 e2e had never run on Windows in any round. The census
+  # of 12/11 (run 43307193708) took ~50 minutes in one job, so the files are split in four parts (the sorted list, every fourth
+  # file: a split that does not move when a file is added elsewhere). Left out, by name, are the suites ci/required-suites.json
+  # declares `linux_only` (the reason is on the row); tests/test_every_suite_runs_on_linux_and_windows.py holds both together.
+  e2e-windows:
+    name: e2e (windows, part ${{ matrix.part }})
+    needs: core-on-index
+    if: needs.core-on-index.outputs.available == 'true'
+    runs-on: windows-2022
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [1, 2, 3, 4]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with: { fetch-depth: 1 }
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: { python-version: '3.11' }
+      - name: Install wrapper + test deps (+ Playwright ONLY as a system tool)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ".[dev]"
+          python -m pip install "playwright==$(cat scripts/playwright_pin.txt)"
+      - name: Fetch the published firefox binary
+        run: echo "FF=$(cd "$RUNNER_TEMP" && python -m invisible_playwright fetch | tail -1)" >> "$GITHUB_ENV"
+      - name: The files of this part, without the linux_only suites
+        run: |
+          set -e
+          python -m pytest --collect-only -q -m e2e -o addopts= -p no:cacheprovider 2>/dev/null | grep "::" | cut -d: -f1 | sort -u > "$RUNNER_TEMP/e2e_files.txt"
+          python - "${{ matrix.part }}" "$RUNNER_TEMP" <<'PY'
+          import json, os, sys
+          part, tmp = int(sys.argv[1]), sys.argv[2]
+          rows = json.load(open("ci/required-suites.json", encoding="utf-8"))
+          left_out = [t for r in rows if r.get("linux_only") for t in r["tests"]]
+          files = [l.strip() for l in open(os.path.join(tmp, "e2e_files.txt")) if l.strip()]
+          files = [f for f in files if f not in left_out]
+          mine = [f for i, f in enumerate(files) if i % 4 == part - 1]
+          nodes = [t for t in left_out if "::" in t and t.split("::")[0] in mine]
+          open(os.path.join(tmp, "e2e_args.txt"), "w").write("\n".join(mine + ["--deselect=" + n for n in nodes]) + "\n")
+          print("%d e2e files, %d left out as linux_only, %d in part %d, %d node(s) deselected"
+                % (len(files) + len([t for t in left_out if "::" not in t]), len(left_out), len(mine), part, len(nodes)))
+          PY
+      - name: Run this part of the e2e
+        env:
+          PYTHONUNBUFFERED: "1"
+          INVPW_TEST_WATCHDOG_FILE: ${{ runner.temp }}/e2e-watchdog.log
+        run: |
+          mapfile -t ARGS < <(tr -d '\r' < "$RUNNER_TEMP/e2e_args.txt")
+          python -u scripts/run_e2e.py "$FF" "${ARGS[@]}"
+      - name: Close every Firefox left
+        if: always()
+        shell: pwsh
+        run: |
+          Get-Process firefox -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          "left: " + @(Get-Process firefox -ErrorAction SilentlyContinue).Count
+      - name: Upload the hang evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: e2e-watchdog-windows-${{ matrix.part }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/e2e-watchdog.log
+          if-no-files-found: warn
+          retention-days: 14
