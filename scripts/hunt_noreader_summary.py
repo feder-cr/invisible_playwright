@@ -1,110 +1,158 @@
-"""HUNT SCAFFOLDING, NEVER MERGED: the step summary of windows-flakes-noreader-hunt.yml for one OS.
+"""HUNT SCAFFOLDING, NEVER MERGED: the step summary of windows-flakes-noreader-hunt.yml.
 
-Usage: python scripts/hunt_noreader_summary.py <os label> <evidence dir>
+Usage: python scripts/hunt_noreader_summary.py <label> <evidence dir>
 
-Reads evidence/netidle_<arm>_<round>_<proc>.log (HUNT-ROW json lines of scripts/hunt_netidle.py) and evidence/typing_<arm>_<i>.xml (junit of
-the typing test) and prints markdown: per arm the rows that were not on /landed when goto returned, out of the rows made, and the pass counts
-of the typing test per variant.
+Per arm (old, new) and per process it reads evidence/netidle_<arm>_<round>_<proc>.log (HUNT-ROW json lines of scripts/hunt_netidle.py),
+evidence/pipe_<arm>_<round>_<proc>.txt (the time, seconds, the core's pipe reader read a chunk with the /landed request) and
+evidence/lc_<arm>_<round>_<proc>.jsonl (the lifecycle's events, Network.requestWillBeSent among them). For every row that has a /landed
+request on the server it takes the nearest pipe stamp and then the nearest lifecycle stamp of /landed, and prints markdown:
+  - per arm the misses (not on /landed when goto returned) split into "defect" (the server got /landed BEFORE goto returned) and
+    "not yet asked" (the page had not asked for /landed yet), with server->pipe and pipe->lifecycle in ms for each defect miss;
+  - per arm p50 / p95 / max of server->pipe and pipe->lifecycle over every row of every round.
 """
 import glob
 import json
 import os
-import re
 import sys
-import xml.etree.ElementTree as ET
 
-ARMS = ("old", "new", "stock")
-TEST = "test_a_store_that_answers_the_focus_does_not_eat_the_text"
+ARMS = ("old", "new")
+NEAR = 3.0  # seconds: a stamp farther than this from the request it is matched to is not its stamp
+
+
+def read_rows(log):
+    rows = []
+    with open(log, errors="replace") as f:
+        for line in f:
+            if line.startswith("HUNT-ROW "):
+                try:
+                    rows.append(json.loads(line[len("HUNT-ROW "):]))
+                except ValueError:
+                    pass
+    return rows
+
+
+def read_pipe(path):
+    out = []
+    if os.path.exists(path):
+        with open(path, errors="replace") as f:
+            for line in f:
+                try:
+                    out.append(float(line.strip()))
+                except ValueError:
+                    pass
+    return out
+
+
+def read_lc(path):
+    """Times of the lifecycle's Network.requestWillBeSent events of /landed."""
+    out = []
+    if os.path.exists(path):
+        with open(path, errors="replace") as f:
+            for line in f:
+                try:
+                    r = json.loads(line)
+                except ValueError:
+                    continue
+                if str(r.get("ev", "")).endswith("requestWillBeSent") and "/landed" in str(r.get("url") or ""):
+                    out.append(r["t"])
+    return out
+
+
+def nearest(stamps, at):
+    best = None
+    for s in stamps:
+        if abs(s - at) <= NEAR and (best is None or abs(s - at) < abs(best - at)):
+            best = s
+    return best
+
+
+def pct(vals, q):
+    v = sorted(vals)
+    if not v:
+        return None
+    return v[min(len(v) - 1, int(round(q * (len(v) - 1))))]
+
+
+def fmt(x):
+    return "-" if x is None else "%.1f" % x
+
+
+def collect(ev, arm):
+    """Every row of the arm, with s2p (server -> pipe) and p2l (pipe -> lifecycle) in ms, None when a stamp is missing, and its miss kind."""
+    out = []
+    dead = 0
+    logs = sorted(glob.glob(os.path.join(ev, "netidle_%s_*.log" % arm)))
+    for log in logs:
+        rows = read_rows(log)
+        if not rows:
+            dead += 1
+        tag = os.path.basename(log)[len("netidle_"):-len(".log")]
+        pipes = read_pipe(os.path.join(ev, "pipe_%s.txt" % tag))
+        lcs = read_lc(os.path.join(ev, "lc_%s.jsonl" % tag))
+        for r in rows:
+            srv = r.get("landed_t")
+            r["tag"] = tag
+            r["s2p"] = r["p2l"] = None
+            if srv is not None:
+                p = nearest(pipes, srv)
+                if p is not None:
+                    r["s2p"] = (p - srv) * 1000
+                    l = nearest(lcs, p)
+                    if l is not None:
+                        r["p2l"] = (l - p) * 1000
+            r["miss"] = not r["landed_at_return"]
+            r["kind"] = None
+            if r["miss"]:
+                r["kind"] = "defect" if (srv is not None and srv < r["t1"]) else "not yet asked"
+            out.append(r)
+    return out, dead, len(logs)
 
 
 def netidle(ev):
+    data = {arm: collect(ev, arm) for arm in ARMS}
     print("### network idle rows: misses (not on /landed when goto returned) out of the rows made")
     print()
-    print("| arm | misses | rows | goto errors | processes with no row | misses by path |")
-    print("|---|---|---|---|---|---|")
+    print("A miss is a **defect** when the server got /landed before goto returned, **not yet asked** when the page had not asked for it yet.")
+    print()
+    print("| arm | misses | defect | not yet asked | rows | goto errors | processes with no row | misses by path |")
+    print("|---|---|---|---|---|---|---|---|")
     for arm in ARMS:
-        logs = sorted(glob.glob(os.path.join(ev, "netidle_%s_*.log" % arm)))
-        rows, dead = [], 0
-        for log in logs:
-            got = []
-            with open(log, errors="replace") as f:
-                for line in f:
-                    if line.startswith("HUNT-ROW "):
-                        got.append(json.loads(line[len("HUNT-ROW "):]))
-            if not got:
-                dead += 1
-            rows += got
-        miss = [r for r in rows if not r["landed_at_return"]]
-        errs = [r for r in rows if r["error"] is not None]
+        rows, dead, nlogs = data[arm]
+        miss = [r for r in rows if r["miss"]]
         by = {}
         for r in miss:
             by[r["path"]] = by.get(r["path"], 0) + 1
-        print("| %s | %d | %d | %d | %d of %d | %s |" % (arm, len(miss), len(rows), len(errs), dead, len(logs),
-                                                        ", ".join("%s %d" % kv for kv in sorted(by.items())) or "-"))
+        print("| %s | %d | %d | %d | %d | %d | %d of %d | %s |" % (
+            arm, len(miss), sum(r["kind"] == "defect" for r in miss), sum(r["kind"] == "not yet asked" for r in miss), len(rows),
+            sum(r["error"] is not None for r in rows), dead, nlogs, ", ".join("%s %d" % kv for kv in sorted(by.items())) or "-"))
     print()
-    print("Expected 400 rows per arm (4 processes x 5 rounds x 20 rows).")
+    print("Expected 1200 rows per arm (4 processes x 15 rounds x 20 rows).")
 
-
-def typing(ev):
     print()
-    print("### typing test, 10 runs of the file under -n 4 --dist loadfile with the two load files")
-    print()
-    print("| arm | variant | passed | failed | skipped | runs that gave no result |")
-    print("|---|---|---|---|---|---|")
-    notes = []
-    for arm in ("old", "new"):
-        files = sorted(glob.glob(os.path.join(ev, "typing_%s_*.xml" % arm)))
-        count = {}
-        seen = 0
-        for path in files:
-            try:
-                root = ET.parse(path).getroot()
-            except Exception as exc:
-                notes.append("%s: unreadable junit %s (%s)" % (arm, os.path.basename(path), exc))
-                continue
-            found = False
-            for case in root.iter("testcase"):
-                if TEST not in case.get("name", ""):
-                    continue
-                found = True
-                variant = re.search(r"\[(.*)\]", case.get("name")).group(1)
-                c = count.setdefault(variant, {"pass": 0, "fail": 0, "skip": 0})
-                if case.find("failure") is not None or case.find("error") is not None:
-                    c["fail"] += 1
-                    kid = case.find("failure") if case.find("failure") is not None else case.find("error")
-                    notes.append("%s %s (%s): %s" % (arm, variant, os.path.basename(path), (kid.get("message") or "")[:200]))
-                elif case.find("skipped") is not None:
-                    c["skip"] += 1
-                else:
-                    c["pass"] += 1
-            seen += found
-        empty = 10 - seen
-        for variant in sorted(count) or ["-"]:
-            c = count.get(variant, {"pass": 0, "fail": 0, "skip": 0})
-            print("| %s | %s | %d of 10 | %d | %d | %d |" % (arm, variant, c["pass"], c["fail"], c["skip"], empty))
-    if notes:
+    print("### defect misses: server -> pipe and pipe -> lifecycle, ms")
+    for arm in ARMS:
+        defects = [r for r in data[arm][0] if r["kind"] == "defect"]
         print()
-        print("```")
-        print("\n".join(notes))
-        print("```")
+        print("**%s**: %d defect misses" % (arm, len(defects)))
+        if defects:
+            print()
+            print("| process | path | goto ms | server -> pipe | pipe -> lifecycle |")
+            print("|---|---|---|---|---|")
+            for r in defects:
+                print("| %s | %s #%d | %d | %s | %s |" % (r["tag"], r["path"], r["round"], r["goto_ms"], fmt(r["s2p"]), fmt(r["p2l"])))
 
-
-def load_files(ev):
     print()
-    print("### whole pytest runs (typing file plus the two load files), tests failed in the load files")
-    for arm in ("old", "new"):
-        bad = []
-        for path in sorted(glob.glob(os.path.join(ev, "typing_%s_*.xml" % arm))):
-            try:
-                root = ET.parse(path).getroot()
-            except Exception:
-                continue
-            for case in root.iter("testcase"):
-                if TEST in case.get("name", ""):
-                    continue
-                if case.find("failure") is not None or case.find("error") is not None:
-                    bad.append(case.get("classname", "") + "::" + case.get("name", ""))
-        print("- %s: %d failed (%s)" % (arm, len(bad), ", ".join(sorted(set(bad))[:6]) or "none"))
+    print("### server -> pipe and pipe -> lifecycle over every row of every round, ms")
+    print()
+    print("| arm | step | rows with both stamps | p50 | p95 | max |")
+    print("|---|---|---|---|---|---|")
+    for arm in ARMS:
+        rows = data[arm][0]
+        for name, key in (("server -> pipe", "s2p"), ("pipe -> lifecycle", "p2l")):
+            vals = [r[key] for r in rows if r[key] is not None]
+            print("| %s | %s | %d | %s | %s | %s |" % (arm, name, len(vals), fmt(pct(vals, 0.5)), fmt(pct(vals, 0.95)), fmt(max(vals) if vals else None)))
+    print()
+    print("Rows without a /landed request on the server, or whose pipe or lifecycle stamp is missing, are left out of the percentiles.")
 
 
 if __name__ == "__main__":
@@ -112,5 +160,3 @@ if __name__ == "__main__":
     print("## %s" % label)
     print()
     netidle(evidence)
-    typing(evidence)
-    load_files(evidence)
