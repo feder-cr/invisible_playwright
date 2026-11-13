@@ -1,0 +1,81 @@
+# windows-h3-hunt.yml - hunt scaffolding, never merged. Runs only on a push to a `hunt/windows-h3**` branch.
+#
+# PR #486 (0.51.1), run 43373058301, e2e windows part 1: test_http3_through_the_proxy_e2e[socks5_unmeasured] stood inside
+# context.new_page for more than 7 minutes and was killed by the timeout (two identical stacks at 150 s: the client waiting for the
+# reply of newPage, no server thread at work). The file fifteen times on Windows, as run_e2e.py runs it (4 workers), on
+# release/0.51.1 58f937a with a trace: every call the in-process transport takes and answers (CALL / REPLY / REPLY_ERROR), the steps
+# of op_new_page, the engine's events per session and the test of each row. The first suspect is the events gate and the locks of
+# the popup hand-over new in 0.51.1 (87a4e3b and after).
+name: windows h3 hunt
+
+on:
+  push:
+    branches: ['hunt/windows-h3**']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-h3-hunt-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GITHUB_TOKEN: ${{ github.token }}
+
+jobs:
+  hunt:
+    name: windows h3 x15
+    runs-on: windows-2022
+    timeout-minutes: 120
+    strategy:
+      max-parallel: 1
+      matrix:
+        os: [windows-2022]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: { python-version: '3.11' }
+      - name: Install
+        run: |
+          set -e
+          python -m pip install --quiet --upgrade pip
+          python -m pip install --quiet ".[dev]"
+          python -m pip install --quiet "playwright==$(cat scripts/playwright_pin.txt)"
+          echo "FF=$(cd "$RUNNER_TEMP" && python -m invisible_playwright fetch | tail -1)" >> "$GITHUB_ENV"
+          python scripts/ci_lab_geoip.py build
+      - name: The HTTP/3 file fifteen times, with the trace
+        env:
+          PYTHONUNBUFFERED: "1"
+          INVPW_TEST_WATCHDOG_FILE: ${{ github.workspace }}/evidence/e2e-watchdog.log
+        run: |
+          set +e
+          mkdir -p evidence
+          export INVPW_BINARY_PATH="$FF" STEALTHFOX_E2E_BINARY="$FF"
+          for n in $(seq -w 1 15); do
+            export INVPW_HUNT_POPUP_TRACE="$PWD/evidence/trace_$n.jsonl"
+            python -u scripts/run_e2e.py "$FF" tests/test_http3_through_the_proxy_e2e.py -rA --tb=short --timeout 200 > "evidence/run_$n.log" 2>&1
+            echo "run $n: $(grep -aE '^=+ .*(passed|failed|error).* =+$' evidence/run_$n.log | head -1)"
+          done
+          {
+            echo "## HTTP/3 file x15 on Windows (release/0.51.1 58f937a + trace)"
+            echo '```'
+            grep -ahE "^(FAILED|ERROR) " evidence/run_*.log | cut -c1-200 | sort | uniq -c | sort -rn || true
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Close every Firefox left
+        if: always()
+        shell: pwsh
+        run: |
+          Get-Process firefox -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          "left: " + @(Get-Process firefox -ErrorAction SilentlyContinue).Count
+      - name: Upload the evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-h3-${{ github.run_id }}
+          path: evidence
+          if-no-files-found: warn
+          retention-days: 14

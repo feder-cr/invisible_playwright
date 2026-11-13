@@ -495,3 +495,34 @@ def browser(request, firefox_binary):
                 b.close()
     finally:
         server.close()
+
+
+
+# --- hunt scaffolding (never merged): every test's start and end in the popup trace, to tie each popup to its test --------
+import json as _hunt_json
+import os as _hunt_os
+import time as _hunt_time
+
+
+@pytest.fixture(autouse=True)
+def _hunt_mark_the_test(request):
+    path = _hunt_os.environ.get("INVPW_HUNT_POPUP_TRACE")
+
+    def mark(what, **extra):
+        if path:
+            with open(path, "a", encoding="utf-8") as fh:
+                fh.write(_hunt_json.dumps(dict({"t": round(_hunt_time.time(), 4), "pid": _hunt_os.getpid(), "method": what,
+                                                "test": request.node.nodeid}, **extra)) + "\n")
+
+    mark("TEST_START")
+    yield
+    rep = getattr(request.node, "_hunt_call_report", None)
+    mark("TEST_END", outcome=getattr(rep, "outcome", "unknown"))
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    outcome = yield
+    rep = outcome.get_result()
+    if rep.when == "call":
+        item._hunt_call_report = rep

@@ -1012,6 +1012,13 @@ class FrameDispatcher(Dispatcher):
     detached = False
 
     def emit(self, method: str, params: Optional[Dict] = None) -> None:
+        if _HUNT_TRACE_PATH and method in ("navigated", "loadstate"):
+            try:
+                _hunt_trace(session=getattr(self.page, "session", None), method="EMIT " + method, frame=self.frame_id,
+                            url=(params or {}).get("url"), name=json.dumps(params or {})[:120],
+                            announced=getattr(self.page, "_announced", None))
+            except Exception:
+                pass
         if method == "loadstate" and params:
             # ⛔ A LOAD STATE IS TOLD ONCE. The hand-over reconciles the frame with the lifecycle and the page's own listener then hears the
             # same `DOMContentLoaded`/`load`: whichever comes second finds the state already told and says nothing (a `page.on("load")`
@@ -1083,6 +1090,11 @@ class FrameDispatcher(Dispatcher):
                          {"url": url, "name": name,
                           "parentFrame": parent_frame.channel if parent_frame else None,
                           "loadStates": load_states or ["commit"]})
+        try:
+            _hunt_trace(session=getattr(page, "session", None), method="FRAME_CREATED", frame=frame_id, url=url,
+                        name=",".join(load_states or ["commit"]), main=parent_frame is None)
+        except Exception:
+            pass
 
     # ── the engines, which belong to the page ───────────────────────────────
     #
@@ -2633,6 +2645,24 @@ class RouteDispatcher(Dispatcher):
 
 
 # ── page ────────────────────────────────────────────────────────────────────
+
+# --- hunt scaffolding (never merged): the birth of every page, per session -----------------------------------------
+_HUNT_TRACE_PATH = os.environ.get("INVPW_HUNT_POPUP_TRACE") or ""
+_HUNT_TRACE_LOCK = threading.Lock()
+
+
+def _hunt_trace(**row) -> None:
+    if not _HUNT_TRACE_PATH:
+        return
+    row["t"] = round(time.time(), 4)
+    row["pid"] = os.getpid()
+    try:
+        with _HUNT_TRACE_LOCK, open(_HUNT_TRACE_PATH, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row) + "\n")
+    except Exception:
+        pass
+
+
 class _Adoption:
     """ONE ENGINE TARGET ON ITS WAY TO THE CLIENT: the single record of where it is, and the only thing an event about it may change.
 
@@ -4638,11 +4668,19 @@ class BrowserContextDispatcher(Dispatcher):
         # of a real audit, each one loading normally when repeated). The
         # reply still ends in one of two ways: the engine answers, or the pipe
         # closes and the connection raises TargetClosedError at once.
+        _hunt_trace(method="NEWPAGE asked", target=None, url=self.context_id)
         with browser._asking(self.context_id) as answered:
             result = self.conn.send("Browser.newPage",
                                     _address(self.context_id, {}), timeout=None)
+            _hunt_trace(method="NEWPAGE engine answered", target=result.get("targetId"))
             answered(result["targetId"], number)
-        page = browser._wait_for_page(result["targetId"], timeout=60.0)
+        _hunt_trace(method="NEWPAGE waiting for the page", target=result.get("targetId"))
+        try:
+            page = browser._wait_for_page(result["targetId"], timeout=60.0)
+        except Exception as exc:
+            _hunt_trace(method="NEWPAGE wait failed", target=result.get("targetId"), error=str(exc)[:200])
+            raise
+        _hunt_trace(method="NEWPAGE got the page", target=result.get("targetId"))
         return {"page": page.channel}
 
     # ── cookies, permissions, geolocation ───────────────────────────────────
@@ -5064,6 +5102,11 @@ class BrowserDispatcher(Dispatcher):
                 self._pages_ready.wait(left)
 
     def _route_browser_event(self, method: str, params: Dict, session) -> None:
+        if _HUNT_TRACE_PATH and (method in _Adoption.TRACED or method in ("Page.eventFired", "Browser.attachedToTarget", "Page.linkClicked")):
+            info = params.get("targetInfo") or {}
+            _hunt_trace(session=session or params.get("sessionId"), method=method, frame=params.get("frameId"),
+                        url=params.get("url") or info.get("url"), nav=params.get("navigationId"), name=params.get("name"),
+                        target=info.get("targetId"), opener=info.get("openerId"), error=params.get("errorText"))
         if session and method in _Adoption.TRACED:
             with self._targets_lock:
                 for adoption in self._adoptions.values():
@@ -5217,6 +5260,12 @@ class BrowserDispatcher(Dispatcher):
         point (the close is announced right after the page, so the client always sees the page before its close) and the downloads that
         waited for the page to be announced."""
         page.announce(context, replay=not adoption.requested)
+        try:
+            _hunt_trace(session=adoption.session, method="ANNOUNCED", target=adoption.target_id,
+                        url=getattr(page, "url", None) if not callable(getattr(page, "url", None)) else None,
+                        requested=adoption.requested, trace=adoption.trace)
+        except Exception:
+            pass
         with self._targets_lock:
             adoption.state = "announced"
             adoption.note("announced" + (" (gone)" if adoption.gone else ""))

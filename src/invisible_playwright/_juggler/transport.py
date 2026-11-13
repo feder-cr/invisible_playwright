@@ -152,11 +152,14 @@ class InProcessTransport(Transport):
             if item is None:
                 return
             message = item
+            _hunt_t(method="CALL", id=message.get("id"), call=message.get("method"), guid=message.get("guid"))
             try:
                 result = self._server.handle(message)
             except Exception as failure:
+                _hunt_t(method="REPLY_ERROR", id=message.get("id"), call=message.get("method"), error=str(failure)[:200])
                 self.reply_error(message.get("id"), failure)
             else:
+                _hunt_t(method="REPLY", id=message.get("id"), call=message.get("method"))
                 self.reply(message.get("id"), result)
 
     # ── what the server calls back ──────────────────────────────────────────
@@ -288,3 +291,18 @@ def make_transport(loop: asyncio.AbstractEventLoop) -> "InProcessTransport":
     if (os.environ.get(WIRE_ENV) or "").strip().lower() == "json":
         return JsonWireTransport(loop, JugglerServer())
     return InProcessTransport(loop, JugglerServer())
+
+
+def _hunt_t(**row):
+    import json as _j, os as _o, threading as _th, time as _t
+    path = _o.environ.get("INVPW_HUNT_POPUP_TRACE")
+    if not path:
+        return
+    row["t"] = round(_t.time(), 4)
+    row["pid"] = _o.getpid()
+    row["thread"] = _th.current_thread().name
+    try:
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(_j.dumps(row) + "\n")
+    except Exception:
+        pass
