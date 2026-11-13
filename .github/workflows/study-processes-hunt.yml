@@ -1,0 +1,78 @@
+# study-processes-hunt.yml - hunt scaffolding, never merged. Runs only on a push to a `hunt/study-processes**` branch.
+#
+# The studies of row 6 of the night plan (13/11) and the Windows sandbox twin: the retail Firefox 159.0 (from archive.mozilla.org)
+# and this browser (the published engine through the package) on the same local page, one after the other, on Windows and on Linux:
+# the memory of every process by kind, the sandbox of every process (Windows token, Linux seccomp), the names each resolved
+# (MOZ_LOG nsHostResolver) and the files of the profile's datareporting/. scripts/study_processes.py; the numbers go to the study
+# repository with their run.
+name: study processes hunt
+
+on:
+  push:
+    branches: ['hunt/study-processes**']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: study-processes-hunt-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GITHUB_TOKEN: ${{ github.token }}
+
+jobs:
+  study:
+    name: study (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        os: [windows-2022, ubuntu-24.04]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: { python-version: '3.11' }
+      - name: Install the wrapper, the published engine, the retail Firefox 159.0
+        run: |
+          set -e
+          python -m pip install --quiet --upgrade pip
+          python -m pip install --quiet ".[dev]" psutil
+          echo "OURS=$(cd "$RUNNER_TEMP" && python -m invisible_playwright fetch | tail -1)" >> "$GITHUB_ENV"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            curl -sSL -o "$RUNNER_TEMP/setup.exe" "https://archive.mozilla.org/pub/firefox/releases/159.0/win64/en-US/Firefox%20Setup%20159.0.exe"
+            "$RUNNER_TEMP/setup.exe" /S "/InstallDirectoryPath=C:\retail159"
+            for i in $(seq 1 60); do [ -f /c/retail159/firefox.exe ] && break; sleep 2; done
+            echo "RETAIL=C:\retail159\firefox.exe" >> "$GITHUB_ENV"
+          else
+            sudo apt-get update -qq && sudo apt-get install -y -qq xvfb >/dev/null
+            python -m pip install --quiet "playwright==$(cat scripts/playwright_pin.txt)" && sudo "$(which python)" -m playwright install-deps firefox >/dev/null
+            curl -sSL "https://archive.mozilla.org/pub/firefox/releases/159.0/linux-x86_64/en-US/firefox-159.0.tar.xz" | tar -xJ -C "$RUNNER_TEMP"
+            echo "RETAIL=$RUNNER_TEMP/firefox/firefox" >> "$GITHUB_ENV"
+          fi
+          sha256sum "$RUNNER_TEMP"/setup.exe 2>/dev/null || true
+      - name: The study
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then PRE="xvfb-run -a"; else PRE=""; fi
+          $PRE python scripts/study_processes.py --retail "$RETAIL" --ours "$OURS" --out evidence --seconds 30 | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Close every Firefox left
+        if: always()
+        shell: pwsh
+        run: |
+          Get-Process firefox -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          "left: " + @(Get-Process firefox -ErrorAction SilentlyContinue).Count
+      - name: Upload the evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: study-processes-${{ matrix.os }}-${{ github.run_id }}
+          path: evidence
+          if-no-files-found: warn
+          retention-days: 30
