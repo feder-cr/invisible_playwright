@@ -59,6 +59,13 @@ jobs:
             done
             echo "round $n done"
           done
+          # the typing per key under the same stamps: is the slip of the keys the same wait (ours only, four at once x5)
+          for n in 1 2 3 4 5; do
+            for c in 1 2 3 4; do
+              HUNT_LOCK_MAX="$PWD/evidence/lockmax_typing_${n}_$c.jsonl" HUNT_INSIDE_TRACE="$PWD/evidence/inside_typing_${n}_$c.jsonl" python -u scripts/hunt_typing.py ours "$FF" > "evidence/typing_${n}_$c.log" 2>&1 &
+            done
+            wait
+          done
           # the control: no line per event, only the longest hold of the lifecycle's lock per holder, written at exit
           for n in 1 2 3 4 5; do
             for c in 1 2 3 4; do
@@ -72,7 +79,7 @@ jobs:
             cat evidence/*.log | grep -a "^HUNT-ROW" | sed 's/^HUNT-ROW //' | python -c "import sys,json,collections; c=collections.Counter(); [c.update([(r['engine'], r['path'], r['landed_at_return'], r['error'] is not None)]) for r in map(json.loads, sys.stdin)]; [print(k, v) for k, v in sorted(c.items())]"
             echo "## rows not on /landed at return, with the /landed request time"
             cat evidence/*.log | grep -a "^HUNT-ROW" | grep -a '"landed_at_return": false' | cut -c1-260
-            for kind in traced control; do
+            for kind in traced typing control; do
               echo "## longest hold of the lifecycle lock per holder ($kind)"
               cat evidence/lockmax_${kind}_*.jsonl | python -c "
           import json,sys,collections
@@ -83,6 +90,22 @@ jobs:
               v.sort(); print('%-70s max %5d  p95-of-runs %5d  holds %d' % (k, v[-1], v[min(len(v)-1,int(len(v)*.95))], n[k]))
           "
             done
+            echo "## slow listeners and announces inside our process (traced passes): count, p95, max per name"
+            cat evidence/inside_*.jsonl | python -c "
+          import json,sys,collections
+          m=collections.defaultdict(list)
+          for l in sys.stdin:
+              r=json.loads(l); m[(r['kind'], r.get('fn'))].append(r['ms'])
+          for k,v in sorted(m.items(), key=lambda kv:-sum(kv[1]))[:15]:
+              v.sort(); print('%-34s %-60s n %4d p95 %5d max %5d sum %6d' % (k[0], str(k[1])[:60], len(v), v[min(len(v)-1,int(len(v)*.95))], v[-1], sum(v)))
+          "
+            echo "## typing slip (ours, four at once, traced)"
+            cat evidence/typing_*.log | grep -a "^HUNT-TYPING" | sed 's/^HUNT-TYPING //' | python -c "
+          import json,sys
+          r=[json.loads(l) for l in sys.stdin]
+          e=sorted(x['sent_ms'][-1]-x['planned_ms'][-1] for x in r if len(x['sent_ms'])==len(x['planned_ms']))
+          print('runs', len(r), 'sent slip at last key p50', e[len(e)//2] if e else None, 'max', e[-1] if e else None)
+          "
             echo "## control rows not on /landed"
             cat evidence/control_*.log | grep -a "^HUNT-ROW" | grep -ac '"landed_at_return": false'
             grep -ahE "Traceback|Error" evidence/*.log | sort | uniq -c | head -20
