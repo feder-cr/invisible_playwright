@@ -6,12 +6,12 @@ It copies scripts/hunt_locks_runtime.py into the core as invisible_core/_hunt_lo
 is not there once):
   core connection.py   Connection.dispatch_event (each listener timed), Connection._deliver (wall against CPU), the locks of the
                        connection, and the chunk hook in _read_loop;
-  core lifecycle.py    Lifecycle._cv; the file write of the lifecycle stamp is timed (it runs on the reader, under _cv);
+  core lifecycle.py    Lifecycle._cv;
   core injected.py     InjectedScript._contexts_changed;
   core instance.py     Browser._sessions_ready, _buffer_lock;
   wrapper server.py    the events gate (who holds it, how long gated_dispatch waits), PageDispatcher._close_lock / _held_lock /
                        _frames_lock / _announce_lock, BrowserDispatcher._sessions_ready / _buffer_lock / _targets_lock / _pages_ready.
-Rows go to $HUNT_LOCKS_TRACE, one JSON file per process (see the head of hunt_locks_runtime.py).
+Rows go to $HUNT_LOCKS_TRACE, one JSON file per process, written once at exit (see the head of hunt_locks_runtime.py).
 """
 import importlib.util
 import io
@@ -48,7 +48,7 @@ print("copied the runtime to", os.path.join(core_dir, "_hunt_locks.py"))
 
 # ── core: connection ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
 s = read(conn_path)
-assert "HUNT_PIPE_TRACE" in s, "run scripts/hunt_trace_pipes.py first"
+assert "_HUNT_PIPE.append" in s, "run scripts/hunt_trace_pipes.py first"
 s = once(s, """                if not chunk:
                     break
                 if b"requestWillBeSent" in chunk and b"/landed" in chunk and os.environ.get("HUNT_PIPE_TRACE"):
@@ -57,8 +57,8 @@ s = once(s, """                if not chunk:
                 _hunt_t0 = _hunt_h.chunk_begin()
                 if b"requestWillBeSent" in chunk and b"/landed" in chunk and os.environ.get("HUNT_PIPE_TRACE"):
 """, "core _read_loop (before the stamp)")
-s = once(s, """                        print("%.4f" % _ht.time(), file=_hf)
-""", """                        print("%.4f" % _ht.time(), file=_hf)
+s = once(s, """                    _HUNT_PIPE.append(_ht.time())
+""", """                    _HUNT_PIPE.append(_ht.time())
                 _hunt_h.on_chunk(chunk, _hunt_t0)
 """, "core _read_loop (after the stamp)")
 for needle in ("for fn in subscribers:", "fn(method, params, session)", "with self._listeners_lock:", "self.delivered += 1"):
@@ -70,8 +70,8 @@ print("patched", conn_path)
 # ── core: lifecycle, injected, instance ─────────────────────────────────────────────────────────────────────────────────────────────
 path = origin("invisible_core.juggler.lifecycle")
 s = read(path)
-assert "def _hunt_lc(" in s, "run scripts/hunt_trace_lifecycle.py first"
-s = s.rstrip(chr(10)) + IMPORT + '_hunt_h.hook_class(Lifecycle, ["_cv"], "Lifecycle.")\n_hunt_lc = _hunt_h.timed_fn(_hunt_lc, "hunt_lc_write")\n'
+assert "_HUNT_LC = []" in s, "run scripts/hunt_trace_lifecycle.py first"
+s = s.rstrip(chr(10)) + IMPORT + '_hunt_h.hook_class(Lifecycle, ["_cv"], "Lifecycle.")\n'
 write(path, s)
 print("patched", path)
 

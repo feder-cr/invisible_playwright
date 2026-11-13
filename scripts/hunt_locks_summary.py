@@ -12,8 +12,13 @@ For every /landed whose pipe -> lifecycle is over the threshold it cuts the inte
   (b) the wait of gated_dispatch on the events gate (with the holder it saw when it began to wait),
   (c) the waits of the reader on every lock / condition that was timed (rows of 5 ms or more),
   (d) per message, wall against CPU: wall - cpu - lock waits - gate = off the CPU (the GIL, or the OS not running the thread),
-  and the rest: time outside any _deliver (buffer, split, the stamp's own file write) and inside a message but outside a listener (decode).
+  and the rest: time outside any _deliver (buffer, split) and inside a message but outside a listener (decode).
 Then the totals per item over every process, and the longest stalls of the reader whether or not they sit in a delayed interval.
+The stamps and rows are lists in memory written once at process exit, so a process that did not exit normally has no stamp file.
+
+FIRST of all, the CONTROL: evidence/control_<arm>_<round>_<proc>.log (arms old and new, run with no patcher at all) gives, per arm, the
+misses of networkidle (not on /landed when goto returned) split into "defect" (the server got /landed BEFORE goto returned) and
+"not yet asked" (the page had not asked for it yet), from the server times in the HUNT-ROW lines only.
 """
 import glob
 import json
@@ -143,9 +148,51 @@ def collect():
     return out
 
 
+def miss_counts(prefix, arm):
+    """(rows, misses, defect, not yet asked, goto errors, processes with no row, processes, misses by path) of control_<arm>_*.log."""
+    rows = []
+    dead = 0
+    logs = sorted(glob.glob(os.path.join(EV, "%s_%s_*.log" % (prefix, arm))))
+    for log in logs:
+        got = base.read_rows(log)
+        if not got:
+            dead += 1
+        rows.extend(got)
+    miss = [r for r in rows if not r["landed_at_return"]]
+    defect = [r for r in miss if r.get("landed_t") is not None and r["landed_t"] < r["t1"]]
+    by = {}
+    for r in miss:
+        by[r["path"]] = by.get(r["path"], 0) + 1
+    return len(rows), len(miss), len(defect), len(miss) - len(defect), sum(r["error"] is not None for r in rows), dead, len(logs), by
+
+
+def control():
+    print("### CONTROL, no patcher at all: networkidle misses, old against new")
+    print()
+    print("Fifteen rounds x four processes per arm, the order of the arms alternating, from the HUNT-ROW lines of `hunt_netidle.py` only. A miss is "
+          "a row that was not on /landed when goto returned: a **defect** when the server got /landed before goto returned, **not yet asked** when "
+          "the page had not asked for it yet.")
+    print()
+    print("| arm | misses | defect | not yet asked | rows | goto errors | processes with no row | misses by path |")
+    print("|---|---|---|---|---|---|---|---|")
+    for arm in ("old", "new"):
+        n, m, d, ny, err, dead, nlogs, by = miss_counts("control", arm)
+        print("| %s | %d | %d | %d | %d | %d | %d of %d | %s |" % (
+            arm, m, d, ny, n, err, dead, nlogs, ", ".join("%s %d" % kv for kv in sorted(by.items())) or "-"))
+    n, m, d, ny, err, dead, nlogs, by = miss_counts("netidle", ARM)
+    print("| %s, stamped (the patched pass, for comparison only) | %d | %d | %d | %d | %d | %d of %d | %s |" % (
+        ARM, m, d, ny, n, err, dead, nlogs, ", ".join("%s %d" % kv for kv in sorted(by.items())) or "-"))
+    print()
+    print("Expected 1200 rows per arm (4 processes x 15 rounds x 20 rows).")
+    print()
+
+
 def main(label, threshold):
     procs = collect()
     print("## %s" % label)
+    print()
+    control()
+    print("## The stamped pass: where the time goes between the pipe and the lifecycle")
     print()
     n_rows = n_landed = n_both = 0
     delayed = []
@@ -256,7 +303,7 @@ def main(label, threshold):
     print("### totals per item, every process of the arm, every message the reader handled (ms)")
     print()
     print("`lock:` = a wait to take it, `wait:` = a Condition.wait on the reader (a pause the code asked for), `lst:` = a listener call (it holds the lock "
-          "waits and the gate wait inside it), `gate` = gated_dispatch's wait, `hunt_*` = the instrumentation's own file writes.")
+          "waits and the gate wait inside it), `gate` = gated_dispatch's wait, `hunt_pipe_stamp` = the pipe stamp's append to a list in memory.")
     print()
     print("| item | n | sum | mean | max | rows of the wait kind (5 ms+; gate, io 1 ms+) |")
     print("|---|---|---|---|---|---|")
@@ -310,8 +357,8 @@ def main(label, threshold):
             print("| %s | %s | %d | %.0f | %.0f | %s |" % (op, name, d["n"], d["ms"], d["max"],
                                                           ", ".join("%s x%d" % (h, c) for h, c in sorted(d["holders"].items(), key=lambda kv: -kv[1])[:3])))
     print()
-    print("The instrumentation runs on the reader too (file writes of the lifecycle stamp and the pipe stamp are the `hunt_*` items above): "
-          "what it costs is in the same table, so a delay it causes can be told from one it only shows.")
+    print("The instrumentation runs on the reader too, but it only appends to lists in memory (nothing is opened or written until the process exits); "
+          "compare the stamped pass's misses with the control's above to see whether it changes the result.")
 
 
 if __name__ == "__main__":

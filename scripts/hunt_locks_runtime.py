@@ -7,7 +7,8 @@ the lifecycle:
   (c) every lock / condition the reader takes or waits on; a wait of 5 ms or more is a row k=lock (name, ms, holder, where it was taken),
   (d) per message: wall against CPU time of the thread (row k=msg), so wall - cpu - lock waits - gate = time off the CPU (GIL, preemption).
 
-One JSON line per row, to $HUNT_LOCKS_TRACE (one file per process); the rows of everything small are not written but are counted in a
+One JSON line per row, to $HUNT_LOCKS_TRACE (one file per process), WRITTEN ONCE, at process exit (atexit): during the run every row is only
+appended to a list in memory, there is no file open, no write and no thread of the hunt's own on the run. The rows of everything small are not written but are counted in a
 {"k": "totals"} row written at the end (and the rows of the messages of a chunk that carries /landed are all written). Times in rows are
 time.time() of the END of the span, "ms" its length (time.perf_counter()), so a row is [t - ms/1000, t] on the wall clock of the other stamps.
 Nothing here may break the engine: every hook swallows its own failure.
@@ -30,7 +31,7 @@ _TL = threading.local()
 ROWS: list = []
 TOTALS: dict = {}     # item -> [n, sum ms, max ms]
 MSGS = {"n": 0, "wall_ms": 0.0, "cpu_ts_ms": 0.0, "cpu_cyc_ms": 0.0, "chunks": 0, "bytes": 0}
-_state = {"flusher": False, "cyc_per_s": None, "pid": os.getpid()}
+_state = {"started": False, "cyc_per_s": None, "pid": os.getpid()}
 
 
 # ── cpu time of the calling thread ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -104,7 +105,8 @@ def _count(item, ms):
             t[2] = ms
 
 
-def flush(final=False):
+def flush(final=True):
+    """Once, at exit: every row, then the totals."""
     path = _path()
     if not path:
         return
@@ -123,21 +125,14 @@ def flush(final=False):
         pass
 
 
-def _flusher():
-    while True:
-        time.sleep(1.0)
-        flush()
-
-
-def _start_flusher():
-    """From the thread that builds a Connection, never from the reader."""
-    if _state["flusher"] or not _path():
+def _start():
+    """From the thread that builds a Connection, never from the reader: the CPU calibration, and the one write at exit."""
+    if _state["started"] or not _path():
         return
-    _state["flusher"] = True
+    _state["started"] = True
     try:
         _state["cyc_per_s"] = _calibrate()
-        threading.Thread(target=_flusher, daemon=True, name="hunt-flusher").start()
-        atexit.register(lambda: flush(final=True))
+        atexit.register(flush)
     except Exception:
         pass
 
@@ -480,7 +475,7 @@ def hook_connection(cls):
                 if v is not None and not isinstance(v, Timed):
                     self.__dict__[n] = Timed(v, "Connection." + n)
             READERS.add(self._reader.ident)
-            _start_flusher()
+            _start()
         except Exception:
             pass
     __init__._hunt_wrapped = True

@@ -1,7 +1,8 @@
 """HUNT SCAFFOLDING, NEVER MERGED: patch the installed invisible_core lifecycle to trace what decides networkidle.
 
 Every event the lifecycle applies (Page.* and Network.*) and every networkidle it gives is written as a JSON line, with time.time(),
-to the file named by $HUNT_LC_TRACE. Run once after the install: python scripts/hunt_trace_lifecycle.py
+to a list in memory, written ONCE at process exit (atexit) to the file named by $HUNT_LC_TRACE (no file is opened or written on the reader
+during the run). Run once after the install: python scripts/hunt_trace_lifecycle.py
 """
 import importlib.util
 import io
@@ -36,17 +37,30 @@ s = s.replace(old, new, 1)
 s = s.rstrip(chr(10)) + '''
 
 
+_HUNT_LC = []
+
+
 def _hunt_lc(**row):
-    import json as _j, os as _o, time as _t
-    path = _o.environ.get("HUNT_LC_TRACE")
-    if not path:
+    import os as _o, time as _t
+    if not _o.environ.get("HUNT_LC_TRACE"):
         return
     row["t"] = round(_t.time(), 4)
-    try:
-        with open(path, "a", encoding="utf-8") as fh:
-            print(_j.dumps(row, default=str), file=fh)
-    except Exception:
-        pass
+    _HUNT_LC.append(row)
+
+
+def _hunt_lc_dump():
+    import json as _j, os as _o
+    path = _o.environ.get("HUNT_LC_TRACE")
+    if path and _HUNT_LC:
+        try:
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write("".join(_j.dumps(r, default=str) + chr(10) for r in _HUNT_LC))
+        except Exception:
+            pass
+
+
+import atexit as _hunt_atexit
+_hunt_atexit.register(_hunt_lc_dump)
 '''
 io.open(path, "w", encoding="utf-8", newline=chr(10)).write(s)
 print("patched", path)
