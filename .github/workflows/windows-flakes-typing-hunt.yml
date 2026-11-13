@@ -1,7 +1,9 @@
 # windows-flakes-typing-hunt.yml - hunt scaffolding, never merged. Runs only on a push to a `hunt/windows-flakes-typing**` branch.
-# Typing on absolute deadlines: three arms (core 63.68.0 from PyPI, core from git branch fix/typing-on-absolute-deadlines, stock Playwright),
-# each x20 alone and x20 under four concurrent processes, per key planned / sent / seen by the page (keydown and keyup); and the e2e test
-# test_a_store_that_answers_the_focus_does_not_eat_the_text x20 under `-n 4 --dist loadfile` for both core arms. Every command is under `timeout 300`.
+# Typing on absolute deadlines: four arms (pypi = core 63.68.0 from PyPI; git = core from branch fix/typing-on-absolute-deadlines; both = that
+# core with origin/fix/no-thread-started-on-the-reader merged into it, plus the wrapper from oss-invisible/playwright@fix/no-thread-started-on-the-reader,
+# in its own venv; stock = stock Playwright), each x20 alone and x20 under four concurrent processes, per key planned / sent / seen by the page
+# (keydown and keyup, on two clocks: performance.now() in the handler and event.timeStamp); and the e2e test
+# test_a_store_that_answers_the_focus_does_not_eat_the_text x20 under `-n 4 --dist loadfile` for the three core arms. Every command is under `timeout 300`.
 name: windows flakes typing hunt
 
 on:
@@ -19,6 +21,10 @@ env:
   GITHUB_TOKEN: ${{ github.token }}
   CORE_GIT: "git+https://github.com/oss-invisible/core@fix/typing-on-absolute-deadlines"
   CORE_PYPI: "invisible-core==63.68.0"
+  CORE_REPO: "https://github.com/oss-invisible/core"
+  CORE_TYPING_BRANCH: "fix/typing-on-absolute-deadlines"
+  READER_BRANCH: "fix/no-thread-started-on-the-reader"
+  WRAPPER_GIT: "git+https://github.com/oss-invisible/playwright@fix/no-thread-started-on-the-reader"
   # Three e2e files that load the machine while the typing test runs (one per xdist worker with `--dist loadfile`).
   LOAD_FILES: "tests/test_a_click_waits_for_the_navigation_it_plans_e2e.py tests/test_a_mouse_click_makes_one_mousemove_on_its_point_e2e.py tests/test_a_pointer_event_is_handled_before_the_call_returns_e2e.py"
   TYPING_TEST: "tests/test_a_field_is_typed_after_a_pause.py::test_a_store_that_answers_the_focus_does_not_eat_the_text"
@@ -102,12 +108,54 @@ jobs:
               --junitxml="evidence/test_git_$n.xml" > "evidence/test_git_$n.log" 2>&1
             echo "git run $n exit $?"
           done
+      - name: Arm both, the core with the reader fix merged in, and the wrapper from its branch, in a venv of their own
+        run: |
+          set -eo pipefail
+          T="$(cygpath -m "$RUNNER_TEMP" 2>/dev/null || echo "$RUNNER_TEMP")"
+          git clone --quiet "$CORE_REPO" "$T/core_both"
+          (
+            cd "$T/core_both"
+            git checkout --quiet "$CORE_TYPING_BRANCH"
+            echo "core typing head: $(git rev-parse HEAD)  ($CORE_TYPING_BRANCH)"
+            echo "core reader head: $(git rev-parse "origin/$READER_BRANCH")  ($READER_BRANCH)"
+            if ! git -c user.name=hunt -c user.email=hunt@invalid merge --no-edit "origin/$READER_BRANCH"; then
+              echo "MERGE CONFLICT: $READER_BRANCH does not merge into $CORE_TYPING_BRANCH"; git status --short; exit 1
+            fi
+            echo "core merged head: $(git rev-parse HEAD)"
+          ) | tee evidence/heads_both.txt
+          echo "wrapper head: $(git ls-remote "${WRAPPER_GIT#git+}" 2>/dev/null | head -1 | cut -f1) ($READER_BRANCH)" | tee -a evidence/heads_both.txt
+          # a venv of its own: the main environment keeps the hunt's own wrapper for every other arm
+          python -m venv "$T/venv_both"
+          if [ -x "$T/venv_both/Scripts/python.exe" ]; then BP="$T/venv_both/Scripts/python.exe"; else BP="$T/venv_both/bin/python"; fi
+          echo "BOTH_PY=$BP" >> "$GITHUB_ENV"
+          timeout 300 "$BP" -m pip install --quiet --upgrade pip
+          timeout 300 "$BP" -m pip install --quiet ".[dev]"
+          timeout 300 "$BP" -m pip install --quiet "playwright==$(cat scripts/playwright_pin.txt)"
+          timeout 300 "$BP" -m pip install --quiet --force-reinstall --no-deps "$WRAPPER_GIT"
+          timeout 300 "$BP" -m pip install --quiet --force-reinstall --no-deps "$T/core_both"
+          timeout 300 "$BP" scripts/hunt_typing_core.py | tee evidence/core_both.txt
+          grep -q "(_due): True" evidence/core_both.txt || { echo "the merged core's keyboard is not the one installed"; exit 1; }
+      - name: Arm both, typing per key, alone x20 and four at once x20
+        run: |
+          set +e
+          export HUNT_ARM=both
+          for n in 1 2 3 4; do timeout 300 "$BOTH_PY" -u scripts/hunt_typing.py ours "$FF" >> "evidence/alone_both.log" 2>&1; done
+          for c in 1 2 3 4; do timeout 300 "$BOTH_PY" -u scripts/hunt_typing.py ours "$FF" > "evidence/loaded_both_$c.log" 2>&1 & done
+          wait
+      - name: Test, both, x20 under -n 4 --dist loadfile with three other e2e files
+        run: |
+          set +e
+          # `-o pythonpath=` empties the checkout's pythonpath = src, so the venv's wrapper (the branch's) is the one the test imports
+          for n in $(seq 1 20); do
+            INVPW_BINARY_PATH="$FF" STEALTHFOX_E2E_BINARY="$FF" timeout 300 "$BOTH_PY" -m pytest "$TYPING_TEST" $LOAD_FILES -n 4 --dist loadfile               -m e2e -o addopts='' -o pythonpath= -o junit_family=xunit2 -q -p no:cacheprovider -p no:rerunfailures -rs               --junitxml="evidence/test_both_$n.xml" > "evidence/test_both_$n.log" 2>&1
+            echo "both run $n exit $?"
+          done
       - name: Summary
         if: always()
         run: |
           set +e
           {
-            sed 's/^/    /' evidence/core_pypi.txt evidence/core_git.txt 2>/dev/null
+            sed 's/^/    /' evidence/core_pypi.txt evidence/core_git.txt evidence/heads_both.txt evidence/core_both.txt 2>/dev/null
             timeout 300 python scripts/hunt_typing_summary.py evidence "$RUNNER_OS"
             echo
             echo '```'
