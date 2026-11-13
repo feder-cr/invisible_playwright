@@ -218,6 +218,6 @@ confirming the request looks real before you blame the wait.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. It makes the request look
 like a real browser; the clean exit and the human pacing are still yours to bring.*

@@ -165,7 +165,7 @@ draws on.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. The TLS stack is untouched on purpose; a broken
 handshake is the network or the server, not something a fingerprint patch could reach
 either way.*

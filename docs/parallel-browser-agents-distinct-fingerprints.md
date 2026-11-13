@@ -224,6 +224,6 @@ separate seeds, no shared in-memory state, and it uses multiple cores.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The fingerprints being
 distinct was never the hard part; remembering that one exit IP undoes all of it was.*

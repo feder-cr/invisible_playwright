@@ -198,6 +198,6 @@ for what inventory polling earns you.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. Treating an absent variant as a zero is the error that produced a week of
 sellouts that never happened.*

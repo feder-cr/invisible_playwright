@@ -219,7 +219,7 @@ that runs before the sensor script ever loads.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright).
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright).
 The cookie names, header names and API paths above are quoted from PerimeterX's
 own SDK source, not paraphrased from a bypass forum, because a vendor's own
 constants file does not go stale the way a screenshot of a block page does.*

@@ -353,7 +353,7 @@ for turning the printed total into a number.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The free-shipping threshold
 is the one that cost real time: a rate table was built from one basket value per
 destination, and half the rows were zeros that only meant the test basket sat above a line

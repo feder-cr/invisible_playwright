@@ -129,7 +129,7 @@ for the flag's full mechanism.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright, not Selenium. The
 architectural argument here - fix it at the engine, not with a JavaScript patch
 - is the same rule this project follows for its own patches.*

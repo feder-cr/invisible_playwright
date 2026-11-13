@@ -446,7 +446,7 @@ rail that fetches rather than wraps.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The clone read is the one
 that cost a run here: the first three slides landed in the output twice, a text dedupe went
 in to clean that up, and it quietly merged two different slides sharing a caption, so the

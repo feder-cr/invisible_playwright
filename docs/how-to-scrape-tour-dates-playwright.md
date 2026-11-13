@@ -326,7 +326,7 @@ for running the re-check on a recurring cadence instead of by hand.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The first version
 of this scraper keyed rows on artist, venue and date; a postponed show swapped
 its date field on the same page and the row silently dropped out of a series

@@ -187,6 +187,6 @@ the tool-agnostic version of this same argument.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright).
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright).
 The Windows `TZ` behaviour above is something we found the slow way, after concluding
 several times that the setting was being ignored.*

@@ -207,6 +207,6 @@ and [can websites detect Playwright](can-websites-detect-playwright.md).
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The engine changes what the
 page can measure about the browser; the address and the pacing are still yours to bring.*

@@ -110,7 +110,7 @@ and [WebRTC leak with a proxy](webrtc-leak-proxy.md).
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The table above
 exists because "the proxy isn't working" and "the site is blocking me" get
 treated as the same sentence far more often than they are the same problem.*

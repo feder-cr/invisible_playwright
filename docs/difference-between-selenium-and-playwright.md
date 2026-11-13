@@ -95,7 +95,7 @@ because shaping is the same in-tree library on both. None of that is Selenium
 or Playwright; it is what the engine and the machine underneath either of them
 report. Choosing between the two frameworks does not move any of those 58
 families. This project exists because of that gap:
-[invisible_playwright](https://github.com/feder-cr/invisible_playwright) is
+[invisible_playwright](https://github.com/oss-invisible/playwright) is
 Playwright's own API, unchanged, driving a Firefox patched at the C++ source
 rather than the stock build - same protocol and auto-waiting Playwright always
 had, different browser underneath. It does not touch Selenium's side of this
@@ -151,7 +151,7 @@ for the engine question once you have picked a framework.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. This page compares
 frameworks, not engines - the engine question is a separate page, linked above,
 because conflating them is the most common mistake in this comparison.*

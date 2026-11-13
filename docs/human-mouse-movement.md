@@ -94,7 +94,7 @@ part of this subject.
 single driver move leaves two events and no path; a driver move with forty steps leaves
 an evenly spaced line with three distinct movementX values; the patched engine's path is
 unevenly spaced with twenty-six. All three report isTrusted
-true.](https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/img/mouse-path-driver-vs-engine.png)
+true.](https://raw.githubusercontent.com/oss-invisible/playwright/main/docs/img/mouse-path-driver-vs-engine.png)
 
 One page served from `127.0.0.1`, one target, three ways of reaching it. The page draws
 a dot per `pointermove` and prints the fields it actually received, so the picture and
@@ -206,6 +206,6 @@ same layering argument applied to the fingerprint instead of the pointer.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. The event fields are set in the engine, which is
 why they are not a library.*

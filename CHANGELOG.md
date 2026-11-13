@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.51.1] - 2026-11-13
+
+### Changed
+- The project moved to the oss-invisible GitHub organization: every GitHub link, the issue templates and the package URLs point to github.com/oss-invisible/playwright. The PyPI name and the import name do not change; the old addresses redirect.
+
 ## [0.51.0] - 2026-11-12
 
 ### Changed
@@ -21,7 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Every context carries the position the core declares for the session (the geolocation override of the context).
 - The package's launcher and server refuse the two prefs that govern the launch counter, `invisible_firefox.usage_ping.enabled` and
   `invisible_firefox.usage_ping.url`, in `extra_prefs` (and in the `firefoxUserPrefs` of a served launch). The engine counts launches with
-  an anonymous GET to the `usage-counter` release of the engine's repository (`feder-cr/firefox_antidetect_patch`).
+  an anonymous GET to the `usage-counter` release of the engine's repository (`oss-invisible/firefox_antidetect_patch`).
 
 ### Added
 - `preload_newtab=False` turns off the preloaded New Tab page, on request only (`InvisiblePlaywright`,
@@ -1236,7 +1241,7 @@ browser reads that decision.
   `new_context` failed with `NS_ERROR_NOT_AVAILABLE`.
 - **A routed request carries its body.** `request.post_data`,
   `post_data_json` and `post_data_buffer` were None for every POST, in a route
-  handler and on the `request` event alike (feder-cr/invisible_core#90). The
+  handler and on the `request` event alike (oss-invisible/core#90). The
   body is there whenever a route is set on the page or its context; without a
   route it stays None, which keeps the engine from copying every POST body.
 - **`go_back()` goes back over a page the script left without a gesture**,
@@ -2846,10 +2851,10 @@ browser reads that decision.
 ## [0.3.1] - 2026-07-13
 
 ### Fixed
-- [#48](https://github.com/feder-cr/invisible_playwright/issues/48): Playwright 1.61 adds an `isMobile` field to the `Browser.setDefaultViewport` Juggler command that the FF150 binary does not accept, which kills the session. The range narrows from `>=1.40,<1.61` to the CI-tested 1.55.x (`>=1.55,<1.56`, single-sourced from `scripts/playwright_pin.txt`) so a fresh install always gets a compatible client. Widened again in 0.3.2, once `firefox-18` rebased onto Firefox 151.
+- [#48](https://github.com/oss-invisible/playwright/issues/48): Playwright 1.61 adds an `isMobile` field to the `Browser.setDefaultViewport` Juggler command that the FF150 binary does not accept, which kills the session. The range narrows from `>=1.40,<1.61` to the CI-tested 1.55.x (`>=1.55,<1.56`, single-sourced from `scripts/playwright_pin.txt`) so a fresh install always gets a compatible client. Widened again in 0.3.2, once `firefox-18` rebased onto Firefox 151.
 
 ### Changed
-- The patched-Firefox source repo is now `feder-cr/firefox_antidetect_patch` (it was `feder-cr/invisible_firefox`, a name the profile manager took over). Release notes, CI references and the release URLs the download tests mock all point at the new name; the binaries themselves are unchanged.
+- The patched-Firefox source repo is now `oss-invisible/firefox_antidetect_patch` (it was `feder-cr/invisible_firefox`, a name the profile manager took over). Release notes, CI references and the release URLs the download tests mock all point at the new name; the binaries themselves are unchanged.
 - The wrapper no longer injects the font-list / system-UI environment variables at launch: the binary ships its own font bundle and is self-contained on that front. The integration tests were adapted and the font-sampling tests dropped.
 
 ### Added
@@ -2899,7 +2904,7 @@ browser reads that decision.
 ## [0.1.8] - 2026-05-23
 
 ### Fixed
-- [#20](https://github.com/feder-cr/invisible_playwright/issues/20): cross-origin iframes were unreachable from Playwright. `element_handle.content_frame()` returned `None`, `frame.evaluate()` threw cross-origin SOP errors, and `frame_locator(...).click()` timed out even with `force=True`. Root cause: FF150 defaults `fission.webContentIsolationStrategy=1` (`IsolateEverything`), which site-isolates every cross-origin iframe into a separate `webIsolated` content process even when `fission.autostart=False`. The parent's Juggler FrameTree then has a Frame placeholder with no docShell and no URL - every protocol op that needs to enter the iframe fails. Fix: pin `fission.webContentIsolationStrategy=0` (`IsolateNothing`) in the baseline prefs. The setting can be flipped back per session via `extra_prefs={"fission.webContentIsolationStrategy": 1}`.
+- [#20](https://github.com/oss-invisible/playwright/issues/20): cross-origin iframes were unreachable from Playwright. `element_handle.content_frame()` returned `None`, `frame.evaluate()` threw cross-origin SOP errors, and `frame_locator(...).click()` timed out even with `force=True`. Root cause: FF150 defaults `fission.webContentIsolationStrategy=1` (`IsolateEverything`), which site-isolates every cross-origin iframe into a separate `webIsolated` content process even when `fission.autostart=False`. The parent's Juggler FrameTree then has a Frame placeholder with no docShell and no URL - every protocol op that needs to enter the iframe fails. Fix: pin `fission.webContentIsolationStrategy=0` (`IsolateNothing`) in the baseline prefs. The setting can be flipped back per session via `extra_prefs={"fission.webContentIsolationStrategy": 1}`.
 
 ### Added
 - `tests/test_cross_origin_iframe.py`: 4 unit + 5 e2e regression sentinels for cross-origin iframe interaction. The e2e layer runs entirely offline against two local HTTP servers on `127.0.0.1` (two ports = two SOP origins) and covers `page.frames` URL tracking, `content_frame()`, `frame.evaluate()`, `frame_locator(...).locator(...)`, and end-to-end `dispatch_event("click")` for plain, sandboxed and titled iframes. A future FF upgrade or fingerprint A/B that flips the pref back to `1` will fail the suite before shipping.
@@ -2910,7 +2915,7 @@ browser reads that decision.
 ## [0.1.7] - 2026-05-21
 
 ### Fixed
-- [#18](https://github.com/feder-cr/invisible_playwright/issues/18): Tab crash when running with `headless=True` on Windows on pages that trigger cross-process navigation. Two separate bugs that only manifested together: (1) the Chromium content sandbox at default level 6 puts content processes on `kAlternateWinstation`, but the wrapper hides the browser window on its own alt-desktop (`CreateDesktop` for headless on Windows). Mismatched desktops → cross-process navigations couldn't reparent windows → content process exits cleanly and Playwright fires `page.on('crash')`. (2) The canvas2d `getImageData` stealth spoof wrote to a read-only mapped `DataSourceSurface`. On GPU-backed canvases that memory is write-protected → segfault during the final `getImageData` at page unload. Wrapper now sets `security.sandbox.content.level=4` in the alt-desktop workaround set, and `firefox-7` ships the source fix that moves the noise to the JS array's writable backing buffer.
+- [#18](https://github.com/oss-invisible/playwright/issues/18): Tab crash when running with `headless=True` on Windows on pages that trigger cross-process navigation. Two separate bugs that only manifested together: (1) the Chromium content sandbox at default level 6 puts content processes on `kAlternateWinstation`, but the wrapper hides the browser window on its own alt-desktop (`CreateDesktop` for headless on Windows). Mismatched desktops → cross-process navigations couldn't reparent windows → content process exits cleanly and Playwright fires `page.on('crash')`. (2) The canvas2d `getImageData` stealth spoof wrote to a read-only mapped `DataSourceSurface`. On GPU-backed canvases that memory is write-protected → segfault during the final `getImageData` at page unload. Wrapper now sets `security.sandbox.content.level=4` in the alt-desktop workaround set, and `firefox-7` ships the source fix that moves the noise to the JS array's writable backing buffer.
 
 ### Changed
 - `BINARY_VERSION` bumped from `firefox-5` to `firefox-7`. `firefox-6` was rolled back when its partial fix turned out to be wrong (the iframe-burst hypothesis was a dead end; bisection in the evening found the real two-bug cause documented above).
@@ -2929,12 +2934,12 @@ browser reads that decision.
 ## [0.1.5] - 2026-05-20
 
 ### Fixed
-- [#15](https://github.com/feder-cr/invisible_playwright/pull/15): `python -m invisible_playwright fetch` raised `RuntimeError: no SHA256 for firefox-150.0.1-stealth-linux-x86_64.tar.gz in checksums.txt` for every user because the parser kept the `*` binary-mode prefix that `sha256sum` writes in front of filenames. Now `.lstrip("*")` is applied to the key. Reporter + patch: [@LostBoxArt](https://github.com/LostBoxArt). Unrelated to the `firefox-N` binary; existing caches still work, only first-time fetches were broken.
+- [#15](https://github.com/oss-invisible/playwright/pull/15): `python -m invisible_playwright fetch` raised `RuntimeError: no SHA256 for firefox-150.0.1-stealth-linux-x86_64.tar.gz in checksums.txt` for every user because the parser kept the `*` binary-mode prefix that `sha256sum` writes in front of filenames. Now `.lstrip("*")` is applied to the key. Reporter + patch: [@LostBoxArt](https://github.com/LostBoxArt). Unrelated to the `firefox-N` binary; existing caches still work, only first-time fetches were broken.
 
 ## [0.1.4] - 2026-05-20
 
 ### Fixed
-- [#13](https://github.com/feder-cr/invisible_playwright/issues/13): every page that threw an uncaught JS error (e.g. bunny.net) crashed the Playwright client with `TypeError: Cannot read properties of undefined (reading 'url')`. Root cause: upstream Playwright Juggler added a required `location` field to the `Page.uncaughtError` event in the 2026-05-07 roll ([microsoft/playwright@c8604ec](https://github.com/microsoft/playwright/commit/c8604ecd97)); our fork was carrying the pre-roll schema in every `firefox-N` build. Fix matches upstream - Runtime.js builds the `errorLocation`, PageAgent.js forwards it on both worker and runtime error paths, Protocol.js declares the schema field. Reporter: [@dionorgua](https://github.com/dionorgua).
+- [#13](https://github.com/oss-invisible/playwright/issues/13): every page that threw an uncaught JS error (e.g. bunny.net) crashed the Playwright client with `TypeError: Cannot read properties of undefined (reading 'url')`. Root cause: upstream Playwright Juggler added a required `location` field to the `Page.uncaughtError` event in the 2026-05-07 roll ([microsoft/playwright@c8604ec](https://github.com/microsoft/playwright/commit/c8604ecd97)); our fork was carrying the pre-roll schema in every `firefox-N` build. Fix matches upstream - Runtime.js builds the `errorLocation`, PageAgent.js forwards it on both worker and runtime error paths, Protocol.js declares the schema field. Reporter: [@dionorgua](https://github.com/dionorgua).
 
 ### Changed
 - `BINARY_VERSION` bumped from `firefox-3` to `firefox-4`. JS-only change inside `chrome/juggler/`; `xul.dll` and `firefox.exe` are byte-identical to `firefox-3`.
@@ -2942,7 +2947,7 @@ browser reads that decision.
 ## [0.1.3] - 2026-05-19
 
 ### Changed
-- `BINARY_VERSION` bumped from `firefox-2` to `firefox-3`. The new archives on both Windows and Linux are built from a clean clone of [feder-cr/firefox_antidetect_patch#stealth/150](https://github.com/feder-cr/firefox_antidetect_patch/tree/stealth/150) - the consolidated source-of-truth fork (renamed from `feder-cr/firefox`; the companion `feder-cr/firefox-stealth` patches repo was deleted, all patches now live as commits on top of `mozilla-firefox/firefox`).
+- `BINARY_VERSION` bumped from `firefox-2` to `firefox-3`. The new archives on both Windows and Linux are built from a clean clone of [oss-invisible/firefox_antidetect_patch#stealth/150](https://github.com/oss-invisible/firefox_antidetect_patch/tree/stealth/150) - the consolidated source-of-truth fork (renamed from `feder-cr/firefox`; the companion `feder-cr/firefox-stealth` patches repo was deleted, all patches now live as commits on top of `mozilla-firefox/firefox`).
 - The patched Firefox archive now ships the **proper C++ implementation** of `windowUtils.jugglerSendMouseEvent`, replacing the JS shim from 0.1.2.
 
 ### C++ fixes landed in this release
@@ -2953,7 +2958,7 @@ browser reads that decision.
 - **C7 (partial)**: storage stub for `nsIDocShell.languageOverride`. Workaround `InvisiblePlaywright(locale="")` recommended until full BC FIELD port lands.
 
 ### Verified
-- Both archives built from same source: feder-cr/firefox_antidetect_patch commit `68906f1f9c55`.
+- Both archives built from same source: oss-invisible/firefox_antidetect_patch commit `68906f1f9c55`.
 - Windows + Linux smoke suite green: launch, `ctx.new_page()`, `page.mouse.{move,down,up,click,wheel}`, `navigator.webdriver=false`, sannysoft 32/33 PASS.
 - SHA256 published in `checksums.txt` on the `firefox-3` release.
 
@@ -2972,7 +2977,7 @@ browser reads that decision.
 ## [0.1.1] - 2026-05-18
 
 ### Fixed
-- **Critical**: every `page.mouse.*`, `page.click(selector)`, `locator.click()`, `page.hover()`, `mouse.wheel()` failed on the patched Firefox 150 binary with `win.windowUtils.jugglerSendMouseEvent is not a function`. The Juggler JS was porting calls to a Playwright-specific C++ method that was never landed in the FF146→FF150 port; replaced with the Mozilla chrome-scope `win.synthesizeMouseEvent` helper which is present in FF150. Six call sites patched across `juggler/protocol/PageHandler.js` and `juggler/content/PageAgent.js`. Reporter: [@trob9](https://github.com/trob9) - [#9](https://github.com/feder-cr/invisible_playwright/issues/9).
+- **Critical**: every `page.mouse.*`, `page.click(selector)`, `locator.click()`, `page.hover()`, `mouse.wheel()` failed on the patched Firefox 150 binary with `win.windowUtils.jugglerSendMouseEvent is not a function`. The Juggler JS was porting calls to a Playwright-specific C++ method that was never landed in the FF146→FF150 port; replaced with the Mozilla chrome-scope `win.synthesizeMouseEvent` helper which is present in FF150. Six call sites patched across `juggler/protocol/PageHandler.js` and `juggler/content/PageAgent.js`. Reporter: [@trob9](https://github.com/trob9) - [#9](https://github.com/oss-invisible/playwright/issues/9).
 - `_linkedBrowser.scrollRectIntoViewIfNeeded()` is now guarded at both call sites in `PageHandler.js` (`dispatchMouseEvent` and `dispatchWheelEvent`) - the method is not present on the shipped FF150 `<browser>` element, so the unguarded call threw before the mouse event was dispatched.
 
 ### Added
@@ -2996,7 +3001,7 @@ browser reads that decision.
 - SOCKS5 / SOCKS4 / HTTP / HTTPS proxy support with auth.
 - Linux x86_64 and Windows x86_64 binary support.
 
-[0.4.3]: https://github.com/feder-cr/invisible_playwright/releases/tag/v0.4.3
+[0.4.3]: https://github.com/oss-invisible/playwright/releases/tag/v0.4.3
 > The two oldest entries point at a COMMIT, not a tag: 0.1.0 and 0.1.1
 > predate arriving on PyPI (the index starts at 0.3.5) and never had
 > a tag. Creating one today is not harmless: `publish.yml` triggers
@@ -3004,8 +3009,8 @@ browser reads that decision.
 > does not short-circuit, so a new tag could kick off a publish
 > attempt. The commit is the same information without that risk.
 
-[0.1.1]: https://github.com/feder-cr/invisible_playwright/compare/7a983e99c53fa1ec1a443651a4dd9de42258dc61...589c848e07a67c459969a2ddfb79851f48b10eff
-[0.1.0]: https://github.com/feder-cr/invisible_playwright/commit/7a983e99c53fa1ec1a443651a4dd9de42258dc61
-[0.4.4]: https://github.com/feder-cr/invisible_playwright/releases/tag/v0.4.4
-[0.4.5]: https://github.com/feder-cr/invisible_playwright/releases/tag/v0.4.5
-[0.4.6]: https://github.com/feder-cr/invisible_playwright/releases/tag/v0.4.6
+[0.1.1]: https://github.com/oss-invisible/playwright/compare/7a983e99c53fa1ec1a443651a4dd9de42258dc61...589c848e07a67c459969a2ddfb79851f48b10eff
+[0.1.0]: https://github.com/oss-invisible/playwright/commit/7a983e99c53fa1ec1a443651a4dd9de42258dc61
+[0.4.4]: https://github.com/oss-invisible/playwright/releases/tag/v0.4.4
+[0.4.5]: https://github.com/oss-invisible/playwright/releases/tag/v0.4.5
+[0.4.6]: https://github.com/oss-invisible/playwright/releases/tag/v0.4.6

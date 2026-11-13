@@ -403,7 +403,7 @@ percentile table without losing rows.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. An early version of this
 pipeline stored a visitor-submitted figure, an employer-listed range, and a wage-survey
 percentile in the same unlabeled column, and a report built on top of it averaged all

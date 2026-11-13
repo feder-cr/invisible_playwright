@@ -190,10 +190,10 @@ supply a clean IP, human pacing, and session reuse for the layers a browser cann
 [rate limiting your scraper so volume stops being the signal](how-to-rate-limit-your-scraper-playwright.md).
 If the traffic is produced by an AI agent rather than a script, the pacing and
 retry layers have their own failure modes, mapped on the invisible_playwright_mcp wiki:
-[why does my AI agent get blocked?](https://github.com/feder-cr/invisible_playwright_mcp/wiki/why-does-my-ai-agent-get-blocked)
+[why does my AI agent get blocked?](https://github.com/oss-invisible/playwright_mcp/wiki/why-does-my-ai-agent-get-blocked)
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The four-layer split is the
 model I reach for every time a clean browser still gets the wrong page.*

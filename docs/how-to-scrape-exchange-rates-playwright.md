@@ -342,7 +342,7 @@ layers that each need a different reader.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The first version of this
 stored one number per poll with no side and no amount, and weeks later I could not tell
 which rows were bids, which were asks and which were a weekend repeating itself.*

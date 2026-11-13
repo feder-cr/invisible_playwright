@@ -248,7 +248,7 @@ identity and exit choices that decide whether any of this reaches the XML at all
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The recrawl trick is only as
 good as the site's lastmod, and the browser-context fetch is what gets you the file to trick
 with in the first place.*

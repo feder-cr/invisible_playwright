@@ -29,7 +29,7 @@ correct, and what to do instead.
 ![One panel listing three values read from the patched engine, headless: the full user
 agent string for Firefox 151.0 on Windows, navigator.platform Win32, and navigator.oscpu
 Windows NT 10.0 with Win64 and x64. A note says the bundled Firefox returned the same
-values.](https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/img/playwright-user-agent-values.png)
+values.](https://raw.githubusercontent.com/oss-invisible/playwright/main/docs/img/playwright-user-agent-values.png)
 
 The three strings that have to agree, read from one page served from `127.0.0.1`. The
 bundled Firefox returned the same three, so this panel is a reference rather than a
@@ -190,6 +190,6 @@ the most common tool for doing exactly what this page argues against.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. Every page in this set that says "do not set the user
 agent" says it for the reason on this page.*

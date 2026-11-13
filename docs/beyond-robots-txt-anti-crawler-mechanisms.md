@@ -204,7 +204,7 @@ challenge layer that sits beside, not instead of, everything on this page.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. It answers the
 browser-identity layer honestly; it does not touch a rate limit, an IP block, a
 honeypot your own code walks into, or a site's decision to block a traffic category

@@ -12,7 +12,7 @@ nav_order: 17
 This page moved to the invisible_playwright_mcp wiki, where the agent-experience content now
 lives:
 
-**[Agent retry loops trip rate limits, not fingerprints](https://github.com/feder-cr/invisible_playwright_mcp/wiki/agent-retry-loops-rate-limits)**
+**[Agent retry loops trip rate limits, not fingerprints](https://github.com/oss-invisible/playwright_mcp/wiki/agent-retry-loops-rate-limits)**
 
 The one-paragraph version: an agent that retries and re-plans multiplies its
 requests, and volume is scored server-side against your address and account.

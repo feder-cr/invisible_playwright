@@ -248,7 +248,7 @@ when the problem is the page rather than the capture.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. This bug shipped,
 was caught by opening a PNG, and was closed by keying on a boundary the engine
 already draws.*

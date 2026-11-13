@@ -29,7 +29,7 @@ Verified 2026-07-27 by reading each binding's own launch options.
 
 ## Step one: get the two values
 
-Run the commands below in a uv project; [the README's install steps](https://github.com/feder-cr/invisible_playwright#install) create one.
+Run the commands below in a uv project; [the README's install steps](https://github.com/oss-invisible/playwright#install) create one.
 
 The binary has a CLI:
 

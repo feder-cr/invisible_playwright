@@ -267,6 +267,6 @@ for the dropped page you will eventually hit.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The two-cursor rule and the
 detach-the-outer-list rule are both mistakes this crawler made first.*

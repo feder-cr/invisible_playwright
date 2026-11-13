@@ -281,6 +281,6 @@ loop, and the [Quickstart](quickstart.md) for the two-line switch from plain Pla
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The rating parser and the
 expand loop are both mistakes I shipped the naive version of first.*

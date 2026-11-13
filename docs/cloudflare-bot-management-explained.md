@@ -233,7 +233,7 @@ each other.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level and driven by stock Playwright. Bot Management's actual
 score never reaches the client that earned it; what this page can speak to is the half of
 the pipeline a real browser engine touches, and it stops exactly where that half stops.*

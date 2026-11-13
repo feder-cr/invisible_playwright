@@ -179,7 +179,7 @@ consistency argument in its clearest form; and
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The excluded deprecated
 cookie is a real line in our source, with a comment explaining why, because we did
 include it once.*

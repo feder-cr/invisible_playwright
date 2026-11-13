@@ -81,7 +81,7 @@ Nothing about Enterprise's extra machinery changes what a browser engine can hon
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright), a Firefox
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright), a Firefox
 patched at the C++ level driven by stock Playwright. Enterprise's extra machinery is billing and
 explainability on top of a score this project already writes about on the v3 page; nothing here
 should be read as a claim that engine realness moves an Account Defender verdict, which depends on

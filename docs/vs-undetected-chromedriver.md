@@ -196,7 +196,7 @@ datacenter IP still loses. The browser supplies the disguise; you supply the exi
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The layer distinction on
 this page is the one people most often get wrong, and it costs them a week of debugging
 the driver when the giveaway was the machine.*

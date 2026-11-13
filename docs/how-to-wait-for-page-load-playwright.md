@@ -264,7 +264,7 @@ for where a uniform-timing tell sits in the overall order.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The waits on this page are
 the ones its own test suites settled on after a fixed-sleep version under-collected on a
 slower connection.*

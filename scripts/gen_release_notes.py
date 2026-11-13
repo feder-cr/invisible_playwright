@@ -3,7 +3,7 @@
 firefox_antidetect_patch commits that went into it.
 
 The release tag (firefox-N) lives on the wrapper, but the binary's changes live
-on the SOURCE repo (feder-cr/firefox_antidetect_patch). We never deep-clone that history
+on the SOURCE repo (oss-invisible/firefox_antidetect_patch). We never deep-clone that history
 (it's a full Firefox fork); instead we use GitHub's compare API to list the
 commits between the PREVIOUS release's source commit and this one, and turn their
 subject lines into a short human-readable "What changed" list.
@@ -20,7 +20,7 @@ subjects as plain bullets. Quality rides on writing good commit subjects.
 
 Usage:
     python scripts/gen_release_notes.py --tag firefox-10 --current <sha> \
-        [--prev-sha <sha>] [--source-repo feder-cr/firefox_antidetect_patch] \
+        [--prev-sha <sha>] [--source-repo oss-invisible/firefox_antidetect_patch] \
         [--firefox-version 151.0]
     # reads GITHUB_TOKEN from the env for the compare API (optional for public).
 """
@@ -42,7 +42,7 @@ _SKIP = re.compile(r"^(docs|chore|ci|test|style|build)(\(|:)", re.I)
 #: install block that nothing kept in step with it. A command written in two
 #: places is two commands the day one of them changes; the release points at the
 #: one the README keeps.
-INSTALL_DOC = "https://github.com/feder-cr/invisible_playwright#install"
+INSTALL_DOC = "https://github.com/oss-invisible/playwright#install"
 
 
 def _api(url: str, token: str | None) -> dict:
@@ -126,7 +126,7 @@ def main() -> int:
     ap.add_argument("--tag", required=True, help="release tag, e.g. firefox-10")
     ap.add_argument("--current", required=True, help="firefox_antidetect_patch SHA this build was built from")
     ap.add_argument("--prev-sha", default="", help="previous release's source SHA (omit for none)")
-    ap.add_argument("--source-repo", default="feder-cr/firefox_antidetect_patch")
+    ap.add_argument("--source-repo", default="oss-invisible/firefox_antidetect_patch")
     ap.add_argument("--firefox-version", default="",
                     help="upstream Firefox version of this build; read from the "
                          "seal via invisible_core when omitted")

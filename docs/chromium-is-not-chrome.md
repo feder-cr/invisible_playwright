@@ -254,6 +254,6 @@ in both directions.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. This is the argument for the engine choice that we
 find most convincing, and it is the one most comparisons leave out.*

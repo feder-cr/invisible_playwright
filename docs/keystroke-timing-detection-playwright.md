@@ -248,6 +248,6 @@ for the event-integrity layer, and [the behavioural pacing an AI agent has to ad
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The engine gives you a
 real keyboard; the rhythm is still yours to type.*

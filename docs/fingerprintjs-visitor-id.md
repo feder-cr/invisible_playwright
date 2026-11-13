@@ -173,7 +173,7 @@ since `fonts` and `font_preferences` are two of the forty-one.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright).
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright).
 Both the open-source library and the commercial one are release gates for this
 project, and the difference between them cost us enough time to be worth spelling
 out.*

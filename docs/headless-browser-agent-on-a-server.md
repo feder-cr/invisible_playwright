@@ -214,6 +214,6 @@ what gets an agent caught; behaviour, rate limits and IP reputation are still yo
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The two-axis mistake in the
 first section is one I made moving my own jobs off a laptop.*

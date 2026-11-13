@@ -102,7 +102,7 @@ Firefox one dressed up as a phone.
 
 ![Two panels listing two values. The bundled Firefox reports a 1366 by 768 screen, the
 patched engine reports 1920 by 1080. The device pixel ratio is 1 in
-both.](https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/img/playwright-firefox-mobile-emulation-values.png)
+both.](https://raw.githubusercontent.com/oss-invisible/playwright/main/docs/img/playwright-firefox-mobile-emulation-values.png)
 
 Two values, one page served from `127.0.0.1`. The screen differs and the device pixel
 ratio does not: both report `1`.
@@ -231,7 +231,7 @@ deliberate choice, so the fingerprint cannot be broken by a client-side viewport
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The screen-ownership rule
 here exists because the alternative, a client that can overwrite one fingerprint field,
 is how a coherent identity comes apart.*

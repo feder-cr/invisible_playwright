@@ -324,7 +324,7 @@ for forcing a single field while leaving the rest seed-derived.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The metadata-first
 order and the "continue reading" trap are both mistakes that shipped incomplete text
 before I fixed them.*

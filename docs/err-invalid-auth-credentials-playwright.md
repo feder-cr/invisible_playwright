@@ -180,6 +180,6 @@ option this page distinguishes from proxy credentials.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. Both credential options pass straight to the engine;
 a rejected exchange is the challenger's answer, not a spoof this project could add.*

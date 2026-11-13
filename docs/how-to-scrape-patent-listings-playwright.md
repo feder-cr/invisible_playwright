@@ -374,7 +374,7 @@ for the family-tab request pattern used above.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. A legal-status
 column scraped once and reused for months read "active" on a family member
 that had lapsed nearly a year earlier, because nothing in the row recorded

@@ -235,6 +235,6 @@ when the IP or the behaviour is the real problem.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The QUIC layer is real and
 young; the honest caveat below the demo is the part that keeps this useful.*

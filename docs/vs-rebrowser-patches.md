@@ -126,6 +126,6 @@ its own remaining gaps.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level, on two unrelated projects finding the same
 answer to the same leak from opposite directions.*

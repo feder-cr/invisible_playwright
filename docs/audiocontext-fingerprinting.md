@@ -222,7 +222,7 @@ surfaces, and [how CreepJS decides you are lying](creepjs-explained.md).
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. The two scores above are our own A/B, on one
 machine and one identity, with the audio noise as the only variable. The feature they
 killed was one we wrote.*

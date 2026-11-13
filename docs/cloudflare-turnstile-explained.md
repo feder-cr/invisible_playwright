@@ -248,7 +248,7 @@ detail.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level and driven by stock Playwright. This page describes
 a mechanism, not a workaround: the product does not solve captchas or click Turnstile's
 interactive tier for you, and any tool that claims to defeat Cloudflare wholesale is

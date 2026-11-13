@@ -111,6 +111,6 @@ another popular package in this space whose real status is easy to miss.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level, where the user agent string is the engine's own
 and never comes from a database at all.*

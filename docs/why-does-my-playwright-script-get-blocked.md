@@ -184,6 +184,6 @@ for the machine tells that surface in the cloud.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. It fixes the layer it can
 prove it fixes, and says plainly which three it leaves to you.*

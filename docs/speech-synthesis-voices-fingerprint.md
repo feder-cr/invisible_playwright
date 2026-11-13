@@ -212,7 +212,7 @@ for the compare-against-stock method used above.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The voice list is
 one of the surfaces that is right for free when the OS is real, and impossible to
 keep right by hand when it is not.*

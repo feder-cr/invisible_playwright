@@ -328,7 +328,7 @@ for parsing the fields that sit next to vintage on the same row.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The row key on an
 early version of this pattern was name and producer alone, and it ran for months
 before anyone noticed a later vintage had been silently overwriting an earlier

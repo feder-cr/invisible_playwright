@@ -345,7 +345,7 @@ for the sibling problem on video pages that carry captions instead of an audio t
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The first version of this
 scraper joined every cue into one string before storing it, and the day someone asked
 "what minute does she mention the merger" there was no way to answer without re-parsing

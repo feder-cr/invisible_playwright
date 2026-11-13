@@ -354,7 +354,7 @@ incremental run the reconcile step sits inside.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The first version keyed rows on
 name plus city, and it merged two registrants who shared a surname in one town. Nobody caught
 it until a single letter partition returned more cards than the whole table had rows.*

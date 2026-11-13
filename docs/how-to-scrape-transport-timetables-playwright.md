@@ -358,7 +358,7 @@ for re-running a sweep.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The 24-hour clock is the one
 that shipped wrong here: a night service parsed with `%H:%M` was written back as 00:15 on
 the same service day, so the last departure of Saturday night sorted ahead of the first one

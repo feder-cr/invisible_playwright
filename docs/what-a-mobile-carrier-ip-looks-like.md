@@ -214,7 +214,7 @@ machine, not the address, is what a fingerprint identifies.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. It looks like a real desktop
 browser, which is why it passes most checks; the exit and the pacing are still yours to
 get right.*

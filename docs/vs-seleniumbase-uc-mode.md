@@ -248,7 +248,7 @@ for the comparison method to settle it yourself.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. UC Mode's disconnect trick is
 a smart answer to the driver-channel question, and a reminder that the engine and the machine
 are a different question entirely.*

@@ -214,7 +214,7 @@ order to work the rest in.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The bundled build is
 correct for testing your own pages; it is only a tell when the page in front of it is
 trying to notice.*

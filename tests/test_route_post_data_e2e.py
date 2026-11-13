@@ -4,7 +4,7 @@ The known-bad input, measured on 2026-10-03: `request.post_data` was None for
 every POST, including a page `fetch()` with a JSON body, both inside a context
 route handler and on the `request` event fired for the same request. The
 engine's `NetworkObserver.js` sent `postData: undefined` for every request
-(feder-cr/invisible_core#90), so a route guard could check a POST's URL and
+(oss-invisible/core#90), so a route guard could check a POST's URL and
 never its body. From 2026-10-03 the engine read the body while interception
 was on for the page or its context; from firefox-49 it reads it always, as
 Playwright's does, so `request.post_data` holds without a route too.

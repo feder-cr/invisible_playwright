@@ -280,6 +280,6 @@ and [codec fingerprinting](codec-fingerprinting.md).
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The listing scrapes cleanly;
 the stream is a different problem, and this page says so on purpose.*

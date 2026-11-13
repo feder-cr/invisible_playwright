@@ -214,6 +214,6 @@ a geometry mismatch.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The rects are Windows rects
 because Windows drew them, not because we wrote them down.*

@@ -141,6 +141,6 @@ fingerprinting surface](measuretext-textmetrics-fingerprinting.md).
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. A canvas hash was never
 really about the canvas; it was always about everything underneath it.*

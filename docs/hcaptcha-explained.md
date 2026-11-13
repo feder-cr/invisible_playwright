@@ -237,7 +237,7 @@ non-interactive counterpart of the same fingerprint-versus-human-gate split.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level and driven by stock Playwright. This page explains a
 mechanism and a business model, not a workaround: the product does not solve captchas,
 and a claim that any tool defeats hCaptcha's puzzle step is a different promise than

@@ -163,6 +163,6 @@ which is this same gap on a bigger host.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. The font set travels with the engine here, which is
 the only reason a container and a desktop can agree.*

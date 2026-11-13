@@ -80,17 +80,17 @@ def test_a_second_run_the_same_day_keeps_the_first_value(tmp_path):
 
 def test_a_run_writes_history_daily_and_badges(tmp_path):
     def api(path):
-        if path.startswith("/repos/feder-cr/firefox_antidetect_patch/releases?"):
+        if path.startswith("/repos/oss-invisible/firefox_antidetect_patch/releases?"):
             if path.endswith("&page=1"):
                 return [{"tag_name": "firefox-56", "assets": [
                     {"name": "x.tar.gz", "download_count": 3},
                     {"name": "checksums.txt", "download_count": 9}]}]
             return []
-        if path == "/repos/feder-cr/firefox_antidetect_patch/releases/tags/usage-counter":
+        if path == "/repos/oss-invisible/firefox_antidetect_patch/releases/tags/usage-counter":
             return {"assets": [{"download_count": 2_758_110}]}
-        if path == "/repos/feder-cr/invisible_playwright/releases/tags/usage-counter":
+        if path == "/repos/oss-invisible/playwright/releases/tags/usage-counter":
             return {"assets": [{"download_count": 937_317}]}
-        if path == "/repos/feder-cr/invisible_playwright":
+        if path == "/repos/oss-invisible/playwright":
             return {"stargazers_count": 2554}
         raise AssertionError(path)
 

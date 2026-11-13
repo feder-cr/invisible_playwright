@@ -213,7 +213,7 @@ for the handshake half of layer three.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. It closes the fingerprint
 and driver layers so you can spend your attention on the two it honestly cannot: the IP
 and the pacing.*

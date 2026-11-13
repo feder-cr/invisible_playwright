@@ -241,6 +241,6 @@ for picking the right wait signal in a dynamic page.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. None of this is a stealth
 feature. It is just one fewer class of bug to carry over from a Selenium codebase.*

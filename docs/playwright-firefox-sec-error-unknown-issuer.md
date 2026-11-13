@@ -203,7 +203,7 @@ for the rest of what changes about running this project inside a container.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. Certificate trust is NSS's job, untouched by
 this project's patching; a Docker image that fixes curl and still fails Firefox is
 reading two different trust stores, not fighting two different bugs.*

@@ -155,7 +155,7 @@ for when it is the proxy's own name, not the destination's, that will not resolv
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. DNS resolution happens below any fingerprint
 this project touches; when a SOCKS5 proxy is involved, `network.proxy.socks_remote_dns`
 decides which network's resolver actually gets asked.*

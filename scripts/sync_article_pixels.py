@@ -253,7 +253,7 @@ def sync(wiki_dir: str | Path, repo: str, token: str) -> int:
 def selftest() -> int:
     """Known-bad inputs. A check that has only ever passed is not a check."""
     import tempfile
-    repo = "feder-cr/invisible_playwright"
+    repo = "oss-invisible/playwright"
     good = pixel_tag(repo, "a-page")
     cases = [
         ("a page with its own pixel passes",

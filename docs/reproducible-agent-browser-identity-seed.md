@@ -210,6 +210,6 @@ and [what stealth does and does not fit for AI browser agents](ai-browser-agents
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The seed is the browser;
 the proxy and the pacing are still yours.*

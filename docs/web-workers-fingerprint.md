@@ -208,6 +208,6 @@ whose worker check is this idea applied to one value.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. The two-line worker comparison is the test we would
 run first on anything claiming to be undetectable, including ours.*

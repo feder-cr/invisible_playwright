@@ -322,7 +322,7 @@ for carrying cookies and storage across runs alongside the seed.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The high-water mark, the
 overlap window and the varied schedule are all things a full-feed re-scrape taught me to
 stop skipping.*

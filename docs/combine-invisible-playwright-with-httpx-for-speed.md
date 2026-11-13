@@ -205,7 +205,7 @@ for reading the JSON the page already fetches.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The browser is for the
 fingerprint-gated fetches, httpx is for the unguarded bulk, and telling them apart is the
 whole job.*

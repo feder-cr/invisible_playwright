@@ -310,7 +310,7 @@ on a real signal.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. An early version of a
 score validator here rejected a decrease as a parsing bug; the decrease was a goal
 overturned by video review, and the fix was reading the state field, not tightening the

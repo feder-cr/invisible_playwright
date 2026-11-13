@@ -209,7 +209,7 @@ which is the one profile you should never reuse.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. The permission trap is recorded in our own notes as a
 gap with no patch, which is why this page tells you to audit for it rather than promising
 it is handled.*

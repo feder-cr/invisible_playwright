@@ -220,6 +220,6 @@ for the other automation-origin tell in the same family.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The trust bit is the one
 input signal that is cheap to check and impossible to fake from the page.*

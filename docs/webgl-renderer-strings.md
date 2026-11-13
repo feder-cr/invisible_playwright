@@ -188,6 +188,6 @@ shader model plausible for its generation, and consistent with the platform you 
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. The share above is our own measurement, of our own
 mistake.*

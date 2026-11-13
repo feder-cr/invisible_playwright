@@ -221,7 +221,7 @@ wider loop this fits into.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. It looks like a real
 browser because in the ways a detector inspects, it is one; the clean exit and the paced
 loop are still yours to bring.*

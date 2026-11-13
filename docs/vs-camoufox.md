@@ -227,6 +227,6 @@ for how to settle this yourself.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. Camoufox got here first and the section where it
 covers more is the one we would want a comparison of ours to include.*

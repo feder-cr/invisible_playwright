@@ -18,7 +18,7 @@ uv add invisible-playwright
 uv run invisible-playwright fetch      # one-time ~238 MB download (~544 MB unpacked), sha256-verified
 ```
 
-If you do not have a uv project yet, [the README's install steps](https://github.com/feder-cr/invisible_playwright#install) create one.
+If you do not have a uv project yet, [the README's install steps](https://github.com/oss-invisible/playwright#install) create one.
 
 `uv add` gets you the wrapper and its API. `fetch` downloads the patched Firefox
 binary itself, verifies it against a sha256 shipped inside `invisible-core`, and caches

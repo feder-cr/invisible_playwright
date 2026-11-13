@@ -412,7 +412,7 @@ prose around the recipe when you do want it.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The yield bug is the one
 that actually shipped here: a scaler took the first integer it found, read "1 loaf, 12
 slices" as one serving, and wrote per-serving quantities twelve times too large across a

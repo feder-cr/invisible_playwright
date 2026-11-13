@@ -261,6 +261,6 @@ IP-and-behaviour half a fixture cannot reach.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The fixtures prove the
 browser looks real; the clean exit and the human pacing are still yours to supply.*

@@ -175,7 +175,7 @@ by a navigation racing your own code rather than being refused outright.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. Navigation dispatch is
 Playwright's own client code, so this is a driver-mechanics problem to diagnose, not a
 fingerprint one.*

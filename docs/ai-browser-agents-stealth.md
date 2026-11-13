@@ -274,6 +274,6 @@ identity.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. This page exists because eight separate articles all
 concluding "does not fit" would have been worse for you than one that says why.*

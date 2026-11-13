@@ -287,6 +287,6 @@ that most often flags a listing scraper.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The empty price table and
 the off-by-hours timestamp are both mistakes I made before writing them down.*

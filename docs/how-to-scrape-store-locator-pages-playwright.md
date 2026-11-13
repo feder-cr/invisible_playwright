@@ -245,6 +245,6 @@ for reading the radius call rather than the cards.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The postcode list was the first seed tried, and it is the reason the rural
 branches went missing for a whole run before anyone noticed.*

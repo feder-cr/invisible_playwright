@@ -256,6 +256,6 @@ row you want to write out.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The duplicate-on-a-live-list
 problem above is one I shipped a scraper without handling first.*

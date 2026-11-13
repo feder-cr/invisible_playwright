@@ -81,7 +81,7 @@ browser build underneath, however you drive it:
 - **On Chromium**, Patchright patches Playwright's own Chromium driver to
   remove the CDP-level and WebDriver-level tells at the source rather than
   papering over them from JavaScript.
-- **On Firefox**, this project - [invisible_playwright](https://github.com/feder-cr/invisible_playwright) -
+- **On Firefox**, this project - [invisible_playwright](https://github.com/oss-invisible/playwright) -
   is the same idea taken further: a Firefox patched at the C++ source, with
   Playwright's own unmodified API on top, so the code you write is standard
   Playwright and the browser underneath is not a stock automation build.
@@ -127,7 +127,7 @@ for when you do not need a browser at all.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The framework
 question and the browser-identity question are kept separate on purpose,
 because most "I switched frameworks and I'm still blocked" reports are the

@@ -212,6 +212,6 @@ and [the checklist for being detected on one site](playwright-detected-as-bot.md
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The flag reads false
 because the browser's own code returns false, not because a script overwrote it.*

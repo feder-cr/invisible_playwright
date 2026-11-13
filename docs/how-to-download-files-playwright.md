@@ -260,6 +260,6 @@ and timezone handling every session shares.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The download is the
 easy part; keeping it on the browser's own exit is the point.*

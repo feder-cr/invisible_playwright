@@ -214,6 +214,6 @@ for the one seam an upgrade can affect.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The two-line launch is the
 whole surface area; everything else in this page is what sits behind that line.*

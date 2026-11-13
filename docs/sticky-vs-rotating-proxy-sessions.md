@@ -213,7 +213,7 @@ sticky IP does not answer.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. It looks like a real
 browser driven by a real person, which is why it passes most checks - and why the
 clean proxy and the human pacing are still yours to bring.*

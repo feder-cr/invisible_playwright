@@ -225,7 +225,7 @@ for turning the loose date and duration text into comparable values.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. An early version of this
 parser matched "battery" against the first duration on the page, a promotional footnote,
 and overwrote the real battery figure on every row until the guard against re-matching

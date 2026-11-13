@@ -300,7 +300,7 @@ for the behavioural tells a slider drag can create.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The dedupe count in the last
 section is from real sweeps: overlapping facets routinely produce two to three raw rows per
 distinct vehicle, and being a real browser does not change that.*

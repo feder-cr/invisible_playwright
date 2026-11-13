@@ -179,6 +179,6 @@ layer an extension lives at has a ceiling.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. This page exists because someone asked in our
 discussions and got an answer about a different kind of extension entirely.*

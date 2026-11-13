@@ -205,7 +205,7 @@ the layer that no amount of cookie clearing or JavaScript ever reaches.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. Every session gets a
 distinct, self-consistent fingerprint from its seed, which is the thing a cookie clear
 was always trying and failing to be.*

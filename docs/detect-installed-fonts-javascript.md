@@ -66,7 +66,7 @@ families against two different fallbacks. Segoe UI, Calibri, Cambria and Tahoma 
 present against both fallbacks. Consolas reads absent against the monospace fallback
 and present against the serif one. An invented control family reads absent
 everywhere. All three browsers return the same
-answer.](https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/img/font-presence-probe-three-arms.png)
+answer.](https://raw.githubusercontent.com/oss-invisible/playwright/main/docs/img/font-presence-probe-three-arms.png)
 
 Run that exact function over ten families with `monospace` as the fallback, on Windows,
 and Consolas comes back **absent**. Consolas is installed. It is also what `monospace`
@@ -293,7 +293,7 @@ and [why headless browsers render a different font set](headless-fonts-differ.md
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The font set is the
 same on every host by construction, which is the only reason this probe answers
 the same way whether the process runs on a laptop or a container.*

@@ -195,6 +195,6 @@ for where to go once the trace shows a challenge instead of a page.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. A trace shows you the page;
 it cannot show you the address you arrived from.*

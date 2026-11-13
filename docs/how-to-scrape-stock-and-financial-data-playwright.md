@@ -283,6 +283,6 @@ for the order to debug a session that starts failing mid-capture.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The three-layers-in-one-page
 mistake is one I made before I learned to watch the network tab instead of the DOM.*

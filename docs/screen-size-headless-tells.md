@@ -56,7 +56,7 @@ The related traps:
 colour depth. The bundled Firefox headless reports a 1366 by 768 screen at two
 different viewports without the screen changing. The patched engine reports a declared
 1920 by 1080 display. All three report a 48 pixel gap between height and
-availHeight.](https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/img/screen-values-three-arms.png)
+availHeight.](https://raw.githubusercontent.com/oss-invisible/playwright/main/docs/img/screen-values-three-arms.png)
 
 Before applying the check above, it is worth knowing what it returns today. One
 Windows machine, one page served from `127.0.0.1`, three headless sessions shown, and a
@@ -216,6 +216,6 @@ all three sit at step three.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. The available height is derived from the full
 height here, which is the sort of thing you only get right once you have got it wrong.*

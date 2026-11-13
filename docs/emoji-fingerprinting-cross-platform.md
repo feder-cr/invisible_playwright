@@ -240,7 +240,7 @@ deploy on. A blank or changing emoji is a failure, not a pass.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The emoji came back
 identical on a Linux server with no Windows fonts, which is the whole reason this
 page exists.*

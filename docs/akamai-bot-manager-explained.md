@@ -246,7 +246,7 @@ for where a JavaScript-collected fingerprint sits among the other layers.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. The Camoufox issue above is someone else's bug
 tracker and someone else's engine build; it is quoted here because it is the clearest
 public evidence that this whole approach narrows a gap rather than closing one, and that

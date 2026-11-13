@@ -205,7 +205,7 @@ the fetch, the parser handles the extraction.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The parser-versus-engine
 line is the whole point: they solve different problems, and only one of them decides
 whether the fetch looked human.*

@@ -377,7 +377,7 @@ how a capture ends.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The connection id is the
 field that was missing the first time: a six-hour capture crossed two silent reconnects,
 looked complete, and held three overlapping sequence ranges nobody saw until it was

@@ -230,6 +230,6 @@ class is a separate problem from the browser string.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. It makes the browser look
 like a real person's; the exit address is still yours to choose well.*

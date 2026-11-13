@@ -135,6 +135,6 @@ and cannot change about browser-use's own detection surface](browser-use-detecti
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright).
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright).
 browser-use solves a real problem, deciding what to do on a page, that this project never
 attempts.*

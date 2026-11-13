@@ -137,7 +137,7 @@ instead of staying bounded.
 
 ![Two panels listing three values. The canvas pixel hash differs between the bundled
 Firefox and the patched engine. The measureText width is 115.65 px in both, and both
-report that the screen and the viewport differ.](https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/img/canvas-fingerprint-noise-values.png)
+report that the screen and the viewport differ.](https://raw.githubusercontent.com/oss-invisible/playwright/main/docs/img/canvas-fingerprint-noise-values.png)
 
 One page served from `127.0.0.1`, three values, two browsers. The canvas pixel hash
 moves and the text width does not: `measureText` returns `115.65 px` in both.
@@ -224,6 +224,6 @@ canvas-in-iframe rows are a consistency test rather than a fingerprint test, and
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. The solid-fill guard exists because we shipped
 without it.*

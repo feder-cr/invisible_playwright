@@ -274,7 +274,7 @@ for spacing the searches without creating a new tell.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The rule that a rate scan
 lives or dies on one coherent identity is something the search loops taught us, not a
 slogan.*

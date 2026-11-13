@@ -211,7 +211,7 @@ benign navigation-timing error that a crash listener helps you avoid confusing t
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. Memory management and
 crash handling are inherited from Firefox unchanged; nothing here is a stealth feature,
 and this page does not claim otherwise.*

@@ -251,6 +251,6 @@ handle.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The clipboard opens for it
 because the gesture is genuinely trusted, not because a value was faked.*

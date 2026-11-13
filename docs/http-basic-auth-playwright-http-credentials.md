@@ -202,7 +202,7 @@ for what actually decides whether a protected site trusts the session.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. http_credentials is
 plain Playwright; the realness is the engine underneath, and neither one is a substitute
 for a clean exit.*

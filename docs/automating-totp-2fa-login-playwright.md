@@ -266,7 +266,7 @@ session-reuse pattern this flow feeds into once the 2FA step is past.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. Generating a code from a secret you already
 hold is arithmetic, not automation trickery; the browser's realness has nothing to
 do with whether the math is correct, and the whole flow is worthless without a

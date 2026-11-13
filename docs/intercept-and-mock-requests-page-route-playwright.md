@@ -218,7 +218,7 @@ for the compare-against-stock method to check any change like this.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. page.route is upstream
 Playwright; the caveat about forged responses is ours, learned from watching what a real
 browser's traffic actually looks like.*

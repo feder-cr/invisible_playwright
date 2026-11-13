@@ -253,6 +253,6 @@ for the version-alignment gate behind cause 2.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. All three causes above are
 failures this project shipped, diagnosed, and gated against, not hypotheticals.*

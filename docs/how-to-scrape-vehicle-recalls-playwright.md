@@ -442,7 +442,7 @@ revision history the upsert above produces.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. An early version of this keyed
 rows on the model name and the single date the page printed, so a widened VIN range came back
 as a second recall and the same defect was counted twice for a month before anyone noticed.*

@@ -168,7 +168,7 @@ it is the destination's name, not the proxy's, that fails to resolve.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. The proxy address is handed straight to the
 engine; failing to reach it is the network answering before the browser's identity
 layer is ever involved.*

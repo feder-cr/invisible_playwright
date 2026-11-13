@@ -50,7 +50,7 @@ the opponent always gets to look at what you changed.
 ![Two panels listing two values. navigator.webdriver differs between the bundled
 Firefox and the patched engine, true against false. Function.prototype.toString called
 on a native function returns the identical native-code string in
-both.](https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/img/vs-playwright-stealth-values.png)
+both.](https://raw.githubusercontent.com/oss-invisible/playwright/main/docs/img/vs-playwright-stealth-values.png)
 
 Two values, read from one page served from `127.0.0.1`.
 
@@ -150,6 +150,6 @@ injection layer with a considerably more sophisticated generation model behind i
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. playwright-stealth solves the layer it says it solves,
 and does not claim the one this project exists for.*

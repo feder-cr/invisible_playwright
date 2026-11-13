@@ -105,7 +105,7 @@ which it was something else.
 ![Two panels listing three values. The bundled Firefox reports navigator.webdriver
 true, the patched engine reports false. Function.prototype.toString called on a native
 function returns the identical native-code string in both, and navigator.platform is
-Win32 in both.](https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/img/navigator-webdriver-explained-values.png)
+Win32 in both.](https://raw.githubusercontent.com/oss-invisible/playwright/main/docs/img/navigator-webdriver-explained-values.png)
 
 Three values, one page served from `127.0.0.1`, two browsers.
 

@@ -187,7 +187,7 @@ container with nothing installed.
 
 ![Two panels listing two values. The bundled Firefox headless reports a 1366 by 768
 screen with 1366 by 720 available. The patched engine reports 1920 by 1080 with 1920 by
-1032 available. Both of the two values differ.](https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/img/how-to-scrape-headless-blocked-values.png)
+1032 available. Both of the two values differ.](https://raw.githubusercontent.com/oss-invisible/playwright/main/docs/img/how-to-scrape-headless-blocked-values.png)
 
 Both values differ, and the shape of the difference is the thing to notice. The bundled
 Firefox headless reports `1366x768`, a laptop resolution it uses whatever viewport you
@@ -312,7 +312,7 @@ comparison method used throughout this page.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The Windows hiding bug
 described above shipped for several releases before anyone noticed, because the test
 suite validating it used a different mechanism than the one it was meant to check.*

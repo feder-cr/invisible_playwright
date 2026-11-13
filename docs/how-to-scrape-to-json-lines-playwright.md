@@ -267,6 +267,6 @@ timezone on a long crawl.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The array-versus-JSON-Lines
 lesson cost a partial crawl before it cost a paragraph.*

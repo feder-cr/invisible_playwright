@@ -223,6 +223,6 @@ for working a real block in the right order.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The dual-mode split is not a
 knock on DrissionPage; it is what happens when one object carries two identities.*

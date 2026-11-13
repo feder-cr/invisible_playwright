@@ -281,7 +281,7 @@ for the same total-budget thinking applied to a poll loop instead of a request r
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. The code arriving is the easy part; keeping the
 browser that asked for it and the one that spends it as the same machine is the part
 worth writing down.*

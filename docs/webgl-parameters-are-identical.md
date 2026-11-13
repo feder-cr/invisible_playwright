@@ -187,6 +187,6 @@ for the part that no parameter can fix.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. The randomised-parameters version described above was
 ours, and removing it was the fix.*

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "invisible_playwright"
-version = "0.51.0"
+version = "0.51.1"
 description = "Playwright wrapper for a patched Firefox with deterministic stealth profile."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -186,11 +186,11 @@ norecursedirs = ["playwright-upstream"]
 invisible-playwright = "invisible_playwright.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/feder-cr/invisible_playwright"
-Repository = "https://github.com/feder-cr/invisible_playwright"
-Issues = "https://github.com/feder-cr/invisible_playwright/issues"
-Changelog = "https://github.com/feder-cr/invisible_playwright/blob/main/CHANGELOG.md"
-Documentation = "https://github.com/feder-cr/invisible_playwright#readme"
+Homepage = "https://github.com/oss-invisible/playwright"
+Repository = "https://github.com/oss-invisible/playwright"
+Issues = "https://github.com/oss-invisible/playwright/issues"
+Changelog = "https://github.com/oss-invisible/playwright/blob/main/CHANGELOG.md"
+Documentation = "https://github.com/oss-invisible/playwright#readme"
 
 # No [tool.hatch.metadata] allow-direct-references opt-in: there is no direct
 # reference left in [project].dependencies, and leaving the switch on is what

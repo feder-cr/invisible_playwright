@@ -240,7 +240,7 @@ network can contradict the browser.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The wrapper aligns the
 timezone with your exit for you; the granted coordinates are the one location signal you
 still have to place on purpose.*

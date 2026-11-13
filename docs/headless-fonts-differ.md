@@ -66,7 +66,7 @@ fontconfig caches were built at different times.
 mode, the same build in headless mode where 3.05% of the pixels differ, an amplified
 difference map showing that the differing pixels are whole rows of text rather than
 stray edges, and the patched engine, which returns an identical frame in both
-modes.](https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/img/headless-fonts-headful-vs-headless.png)
+modes.](https://raw.githubusercontent.com/oss-invisible/playwright/main/docs/img/headless-fonts-headful-vs-headless.png)
 
 The three causes above are usually argued from Linux and fontconfig. They show up on
 Windows too, and the difference is measurable on one machine with nothing installed
@@ -220,7 +220,7 @@ are not on. It says nothing about automation and everything about where you run.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level that bundles its own fonts on Windows, Linux and
 macOS. The font files were never the hard part: this project's own Linux build once kept
 reading hinting and antialiasing from the host's fontconfig after the fonts themselves

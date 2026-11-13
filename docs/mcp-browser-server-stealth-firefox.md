@@ -231,7 +231,7 @@ for handing a launched browser to an agent framework, and the
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The executablePath seam
 is real and useful; the honest half of the page is that the seam is the engine, not
 the profile.*

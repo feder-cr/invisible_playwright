@@ -143,6 +143,6 @@ somewhere the existing gates never looked.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 on a build that passed every gate it had and still couldn't be driven, because none
 of those gates had ever actually tried.*

@@ -348,7 +348,7 @@ for the series that needs it.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. A selector that broke
 every third run got blamed on the proxy for a day before the cookie turned out to be
 handing out a different arm on every clean context.*

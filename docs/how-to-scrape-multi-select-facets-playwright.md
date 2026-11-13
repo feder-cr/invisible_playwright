@@ -348,7 +348,7 @@ for the general "hidden or absent" test the show-more case is one instance of.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. Reading the counts as soon as
 the URL changed is the mistake this page corrects: the address bar updates inside the click
 handler and the numbers repaint after the response, so a whole facet table came back shifted

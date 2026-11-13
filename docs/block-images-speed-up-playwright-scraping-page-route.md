@@ -218,6 +218,6 @@ human is worth more than the seconds you save.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The speed is stock
 Playwright; the tell is the part the speed guides leave out.*

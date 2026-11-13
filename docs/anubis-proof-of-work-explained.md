@@ -77,7 +77,7 @@ This is the one detector in this whole corpus where the honest answer is: engine
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright), a Firefox
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright), a Firefox
 patched at the C++ level. Anubis is the one detector here this project can actually read the source of, and
 the honest conclusion is that engine-level realness has almost nothing to do with passing it: the puzzle
 tests JavaScript execution speed, not fingerprint fidelity, and any real browser clears it the same way.*

@@ -177,7 +177,7 @@ for a connection that was interrupted mid-flight rather than never answered at a
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. The browser's own connect timeout is not a Playwright
 setting and this project does not extend or shorten it; a silent connection attempt is
 the network answering nothing, which no fingerprint work reaches.*

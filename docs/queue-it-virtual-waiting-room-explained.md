@@ -144,5 +144,5 @@ is not the fingerprint](why-blocked-with-a-clean-fingerprint.md).
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright).
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright).
 A capacity queue is not a challenge worth solving faster than anyone else: wait.*

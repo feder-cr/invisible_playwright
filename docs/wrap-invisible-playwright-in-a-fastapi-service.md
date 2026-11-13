@@ -279,6 +279,6 @@ and [how to test whether the result is actually detected](how-to-test-bot-detect
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The service shape
 is easy; the single-IP cost is the part people ship without noticing.*

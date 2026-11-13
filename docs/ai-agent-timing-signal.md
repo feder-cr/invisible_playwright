@@ -12,7 +12,7 @@ nav_order: 10
 This page moved to the invisible_playwright_mcp wiki, where the agent-experience content now
 lives:
 
-**[The timing signal AI agents give off](https://github.com/feder-cr/invisible_playwright_mcp/wiki/ai-agent-timing-signal)**
+**[The timing signal AI agents give off](https://github.com/oss-invisible/playwright_mcp/wiki/ai-agent-timing-signal)**
 
 The short version it still owes you here: a think-act loop pauses for model
 latency, and that pause repeats with a regularity no human produces. The

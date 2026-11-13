@@ -32,7 +32,7 @@ uv run invisible-playwright fetch > .browser-path
 uv run python -c "import json;from invisible_playwright import get_default_stealth_prefs;print(json.dumps(get_default_stealth_prefs(seed=1, humanize=True)))" > prefs.json
 ```
 
-Run them in a uv project; [the README's install steps](https://github.com/feder-cr/invisible_playwright#install) create one.
+Run them in a uv project; [the README's install steps](https://github.com/oss-invisible/playwright#install) create one.
 
 Yes, a Python dependency in a Node project. That is the real cost of this route,
 and if it is unacceptable, the answer is a Chromium-based tool rather than a

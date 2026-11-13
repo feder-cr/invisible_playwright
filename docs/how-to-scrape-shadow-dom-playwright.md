@@ -233,7 +233,7 @@ and [how to test whether the browser itself is detected](how-to-test-bot-detecti
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The `seed=42` in every
 example is the same identity each run, which is how a component-loading failure gets
 debugged instead of guessed at.*

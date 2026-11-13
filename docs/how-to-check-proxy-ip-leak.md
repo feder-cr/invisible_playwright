@@ -256,7 +256,7 @@ compare-against-a-real-browser method these checks sit inside.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The negative-only WebRTC gate
 described here is a mistake this project made and then fixed, which is why the rule is
 written in the positive form.*

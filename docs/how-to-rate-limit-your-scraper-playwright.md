@@ -256,6 +256,6 @@ model latency, which is the same behaviour layer seen from the other side.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The velocity flag at the
 centre of this page was one our own harness produced before we spaced the runs out.*

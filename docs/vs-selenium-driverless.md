@@ -185,7 +185,7 @@ and Chromium](firefox-vs-chromium-antidetect.md).
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. It passes most detection
 because it is built to look like a real browser driven by a real person, and it still needs
 a clean exit and human pacing from you.*

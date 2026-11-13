@@ -240,7 +240,7 @@ for how this compares to the JS-level signals the rest of this corpus documents.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level. This page exists because "does a patched browser
 beat Private Access Tokens" is a question with an honest, boring answer: on the desktop
 platforms this project targets, there is currently no attestation layer there to beat,

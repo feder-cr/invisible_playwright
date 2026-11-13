@@ -327,6 +327,6 @@ for panels that fetch on first expand.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. Expanding every panel first and reading afterwards is the approach that failed
 silently on the accordions that unmount the panel you just left.*

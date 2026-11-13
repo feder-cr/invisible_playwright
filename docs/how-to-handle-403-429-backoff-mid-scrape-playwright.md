@@ -256,7 +256,7 @@ and [the broader checklist for scraping without getting blocked](how-to-scrape-w
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The habit of reading the
 status off the response event instead of only the goto() return value is one that cost a
 crawl a full afternoon of silent partial data first.*

@@ -265,7 +265,7 @@ for the method to run before you trust any of the above.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level and driven by stock Playwright. The Widevine check
 above is one we run against our own binary before every release, not just a claim
 about someone else's.*

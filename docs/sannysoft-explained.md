@@ -200,6 +200,6 @@ and [how to test your own setup against bot detection](how-to-test-bot-detection
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright).
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright).
 sannysoft is a release gate here. The element ids above were read off the page, not
 remembered.*

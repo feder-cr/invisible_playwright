@@ -115,7 +115,7 @@ for what changes once you're already on Playwright and asking the next question.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level, built on the same driver this maintainer points
 toward - for the engine-coverage reason above, not for anything about detection on
 its own.*

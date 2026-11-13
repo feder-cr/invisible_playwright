@@ -260,7 +260,7 @@ span many pages.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The tree walk and the
 quote-stripping are stock Playwright; the one seeded identity across a broad crawl is the
 part the wrapper adds.*

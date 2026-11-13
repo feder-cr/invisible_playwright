@@ -343,7 +343,7 @@ that gets safely overwritten on the next pass.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. An early version of this
 pipeline treated every completed trial with no results tab as abandoned and dropped it
 from the dataset, right up until one of those exact identifiers turned up eighteen months

@@ -221,6 +221,6 @@ break](persistent-profiles.md) for when a saved file is not enough.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The cookie and the machine
 that minted it are a pair; this page is mostly about keeping them together.*

@@ -169,6 +169,6 @@ the error your automation sees when the process it was driving disappears out fr
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level, on a leak whose real fix only showed up after the
 first, plausible-looking one was measured and found to be fixing nothing.*

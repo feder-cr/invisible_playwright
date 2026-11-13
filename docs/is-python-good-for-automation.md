@@ -84,7 +84,7 @@ with sync_playwright() as p:
 ```
 
 That code, unchanged, is also exactly what
-[invisible_playwright](https://github.com/feder-cr/invisible_playwright) runs
+[invisible_playwright](https://github.com/oss-invisible/playwright) runs
 underneath - Playwright's own API, with a Firefox patched at the C++ source in
 place of the [stock automation build](chromium-is-not-chrome.md), for the
 specific case where the site on the other end is actively checking whether
@@ -128,7 +128,7 @@ and [Python web scraping blocked? The TLS fingerprint reason](web-scraping-tls-f
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Python-and-Playwright project itself. The page tries to answer the question
 as asked - broadly, about automation in general - before narrowing to the one
 case this project actually addresses.*

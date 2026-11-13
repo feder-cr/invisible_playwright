@@ -274,7 +274,7 @@ what holds up once the request volume climbs.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. The one seed across a
 whole frontier is the point: page 500 looks like page 1, because a real visitor is one
 machine.*

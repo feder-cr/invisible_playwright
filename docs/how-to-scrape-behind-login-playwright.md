@@ -230,6 +230,6 @@ for the layers this page does not cover.
 
 ---
 
-*From the notes of [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*From the notes of [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level, driven by stock Playwright. The login form is the
 one place on most sites where automating it at all is the expensive choice.*

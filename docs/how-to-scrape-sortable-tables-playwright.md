@@ -334,7 +334,7 @@ for the sibling case where rows are recycled DOM nodes instead of a stable set.
 
 ---
 
-*Written while maintaining [invisible_playwright](https://github.com/feder-cr/invisible_playwright),
+*Written while maintaining [invisible_playwright](https://github.com/oss-invisible/playwright),
 a Firefox patched at the C++ level driven by stock Playwright. An early version of a
 table scraper here paired names and prices by row index across a re-sort, and it shipped
 for two weeks before anyone noticed every listing above the median price had the wrong
