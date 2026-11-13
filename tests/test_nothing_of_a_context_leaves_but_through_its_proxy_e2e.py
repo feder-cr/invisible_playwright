@@ -36,6 +36,13 @@ refuse to build a PeerConnection, or build one that never gathers: that passes t
 prints which one happened (``DEAD-WINDOW`` line) and records it as the property ``dead_window_outcome``. ``EXPECTED_WINDOW`` says what each case does
 on firefox-63 (red: the direct UDP/TCP is heard by the witness, the names are looked up natively or in user context 0) and on firefox-64 (green).
 
+Two contexts alive at once. Two contexts of ONE browser, each with its OWN proxy and its OWN FakeDoh (a different zone: the name of the other context is
+unknown to it), each with a PeerConnection whose TURN server is given by a DIFFERENT name over TCP (the name of A at the port of witness A, the name of
+B at the port of witness B, both witnesses at the address of this host: the PORT of a CONNECT says which context's TURN it was). Each name must reach
+only the DoH of its own context through its own proxy, no name the machine's resolver, each TURN CONNECT only the proxy of its context, and nothing the
+witnesses direct. Behind SOCKS5 it is RED on firefox-63 (the TURN names are resolved by the machine, as ``turn_tcp-name-socks5``) and green on
+firefox-64; behind an HTTP proxy the name goes to the proxy in the CONNECT and the case is green on both (as ``turn_tcp-name-http``). ``EXPECTED_TWO``.
+
 The Windows sink is ``_egress_sink.native_lookup_names``; it needs no change here.
 """
 from __future__ import annotations
@@ -141,6 +148,13 @@ EXPECTED_WINDOW: Dict[str, Dict[str, str]] = {
     "firefox-64": {},
 }
 
+#: Two contexts alive at once, each with its own proxy and its own DoH, a TURN server by a different name in each (``test_two_contexts_...``).
+EXPECTED_TWO: Dict[str, Dict[str, str]] = {
+    "firefox-63": {"socks5": "RED: the TURN name is looked up in user context 0 (same road as turn_tcp-name-socks5): the machine's resolver is asked, no DoH "
+                             "of either context hears it, and no CONNECT of the TURN reaches either gateway"},
+    "firefox-64": {},
+}
+
 _FETCH_JS = """async ([host, port, waitMs]) => {
   fetch('http://' + host + ':' + port + '/f', {mode: 'no-cors'}).catch(() => {});
   await new Promise((resolve) => setTimeout(resolve, waitMs));
@@ -171,6 +185,14 @@ PROBE_JS = {
     "turns_tcp": _ice_js("'turns:' + host + ':' + port + '?transport=tcp'"),
 }
 
+
+#: A PeerConnection with a TURN server over TCP by name that STAYS OPEN (two contexts must each hold one at the same time): it returns when the offer is set.
+_TURN_KEPT_JS = """async ([host, port]) => {
+  const pc = new RTCPeerConnection({iceServers: [{urls: ['turn:' + host + ':' + port + '?transport=tcp'], username: 'u', credential: 'p'}]});
+  window.__pc = pc;
+  pc.createDataChannel('d');
+  await pc.setLocalDescription(await pc.createOffer());
+}"""
 
 #: Step 1 of the popup variant: a button whose handler opens the popup and closes it at once. It is CLICKED (a real click holds the user gesture; a
 #: ``window.open`` from an ``evaluate`` has none and the popup blocker answers null, which would test the blocker).
@@ -451,3 +473,78 @@ def test_the_same_peerconnection_of_an_attached_iframe_leaves_only_through_the_p
     the context (green on firefox-63 and on firefox-64): the lab sees the PeerConnection of a sub-window."""
     proxy, outcome, reached = _run_window_case(case, firefox_binary, lab, doh, pages, gateway, watcher)
     _check_window_case(case, outcome, proxy, reached, lab, doh, trap, watcher, engine_log, record_property)
+
+
+# ------------------------------------------------------------------------------------- two contexts alive at once, a TURN name each
+@pytest.mark.parametrize("scheme", ["socks5", "http"])
+def test_two_contexts_each_resolve_their_turn_name_through_their_own_proxy(
+        scheme, firefox_binary, lab, doh, pages, gateway, trap, watcher, engine_log):
+    """Context A (proxy A, DoH A, TURN ``turn-ctx-a-<nonce>.test`` at witness A's port) and context B (proxy B, DoH B, TURN ``turn-ctx-b-...`` at
+    witness B's port), alive together in one browser, each with a PeerConnection kept open. Each name is asked only of the DoH of its own context
+    through its own proxy (SOCKS5), each TURN CONNECT goes through the proxy of its context and never through the other, no name reaches the
+    machine's resolver, nothing reaches either witness direct. RED on firefox-63 behind SOCKS5, green on firefox-64 (see ``EXPECTED_TWO``)."""
+    import h2  # noqa: F401 - the dev extra installs it: a missing one is a failure, never a skip
+
+    address = lab.witness.address
+    witness_b = Witness(address)               # the same address, another port: the port of a CONNECT says which context it came from
+    try:
+        name_a, name_b = ("turn-ctx-%s-%s.test" % (tag, lab.nonce) for tag in ("a", "b"))
+        port_a, port_b = lab.witness.port, witness_b.port
+        doh.names[name_a] = address            # DoH A knows its own name only ...
+        doh_b = FakeDoh({**ZONE, name_b: address})   # ... and DoH B its own (and its own certificate)
+        try:
+            if scheme == "http":
+                proxy_a, proxy_b = HttpProxy("http-a", doh), HttpProxy("http-b", doh_b)
+            else:
+                from _doh_servers import DohGateway
+                proxy_a, proxy_b = gateway("gw-a"), DohGateway("gw-b", doh_b)
+            try:
+                def handed(proxy, name, port):
+                    if scheme == "http":
+                        return any(x.host == name and x.port == port for x in proxy.seen)
+                    return (address, port) in proxy.connects
+
+                with _launch(firefox_binary) as browser:
+                    context_a, page_a = _page_in(browser, proxy=proxy_a.proxy)
+                    context_b, page_b = _page_in(browser, proxy=proxy_b.proxy)
+                    page_a.goto(pages.url("page-a.test"), wait_until="load", timeout=30000)
+                    page_b.goto(pages.url("page-a.test"), wait_until="load", timeout=30000)
+                    page_a.evaluate(_TURN_KEPT_JS, [name_a, port_a])
+                    page_b.evaluate(_TURN_KEPT_JS, [name_b, port_b])       # both contexts, and both PeerConnections, alive now
+                    reached_a = ds.wait_until(lambda: handed(proxy_a, name_a, port_a), EVIDENCE_SECONDS)
+                    reached_b = ds.wait_until(lambda: handed(proxy_b, name_b, port_b), EVIDENCE_SECONDS)
+                    context_a.close()
+                    context_b.close()
+                watcher.stop()
+
+                sink = EgressSink(lab.witness, watcher, engine_log, lab.nonce, trap)      # the witness of A; the watcher and the log see both names
+                why = (_why(doh, proxy_a) + "\n  --- context B ---" + _why(doh_b, proxy_b)
+                       + "\n  scheme %s: A is %s:%d, B is %s:%d, witnesses at %s" % (scheme, name_a, port_a, name_b, port_b, address))
+                assert sink.blind_problems() == [], "the sink cannot be trusted: %s" % sink.blind_problems() + why
+                assert sink.leak_problems() == [], "; ".join(sink.leak_problems()) + why
+                assert witness_b.heard() == {"tcp": [], "udp": []}, "the witness of context B was reached direct: %s" % witness_b.heard() + why
+
+                # each TURN went through the proxy of its context, and only that one
+                assert reached_a, "the proxy of context A was never handed the TURN %s:%d" % (name_a, port_a) + why
+                assert reached_b, "the proxy of context B was never handed the TURN %s:%d" % (name_b, port_b) + why
+                assert not handed(proxy_b, name_a, port_a), "the TURN of context A went through the proxy of context B" + why
+                assert not handed(proxy_a, name_b, port_b), "the TURN of context B went through the proxy of context A" + why
+                if scheme == "socks5":
+                    for proxy in (proxy_a, proxy_b):
+                        named = named_connects(proxy.connects, _is_address, allowed_names=[ds.DOH_HOST])
+                        assert named == [], "%s was sent a NAME in a CONNECT: %s (resolve with the DoH, connect by address)" % (proxy.name, named) + why
+                    # each name was asked of the DoH of its own context, by the gateway of that context, and of no other
+                    assert doh.vias_of(name_a, QTYPE_A) == {proxy_a.name}, "%s: %s" % (name_a, sorted(doh.vias_of(name_a, QTYPE_A))) + why
+                    assert doh_b.vias_of(name_b, QTYPE_A) == {proxy_b.name}, "%s: %s" % (name_b, sorted(doh_b.vias_of(name_b, QTYPE_A))) + why
+                    assert not doh.queries_for(name_b), "the name of context B was asked of the DoH of context A" + why
+                    assert not doh_b.queries_for(name_a), "the name of context A was asked of the DoH of context B" + why
+                for server in (doh, doh_b):
+                    assert "direct" not in {q.via for q in server.queries}, "something reached a DoH without the proxy" + why
+            finally:
+                proxy_b.close()                # the proxy of A is closed by the `gateway` fixture (SOCKS5) or here (HTTP)
+                if scheme == "http":
+                    proxy_a.close()
+        finally:
+            doh_b.close()
+    finally:
+        witness_b.close()
