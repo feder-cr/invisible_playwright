@@ -109,13 +109,21 @@ def _snapshot(exe):
     """Every process whose executable sits in the folder of `exe` (the retail's launcher process on Windows starts the browser
     again and exits, so its own pid has no tree)."""
     folder = os.path.normcase(os.path.dirname(os.path.abspath(exe)))
-    procs = []
-    for p in psutil.process_iter(["exe"]):
+    procs, denied = [], 0
+    for p in psutil.process_iter(["exe", "name", "cmdline"]):
         try:
-            if p.info["exe"] and os.path.normcase(os.path.dirname(p.info["exe"])) == folder:
+            path = p.info["exe"]
+            if path and os.path.normcase(os.path.dirname(path)) == folder:
                 procs.append(p)
+            elif not path and (p.info["name"] or "").lower() == os.path.basename(exe).lower():
+                # a token that may not read the image path (a Basic User token): the name, and the folder in the command line
+                cmd = " ".join(p.info["cmdline"] or [])
+                if not cmd or os.path.normcase(os.path.dirname(os.path.abspath(exe))) in os.path.normcase(cmd):
+                    procs.append(p)
         except psutil.Error:
+            denied += 1
             continue
+    print("  (processes not readable from this token: %d)" % denied)
     out = []
     for p in procs:
         try:
