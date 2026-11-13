@@ -1,0 +1,157 @@
+# windows-flakes-noreader-hunt.yml - hunt scaffolding, never merged. Runs only on a push to a `hunt/windows-flakes-noreader**` branch.
+# Does the fix "no thread is started on the engine connection's reader" (wrapper fc9161f + core fix/no-thread-started-on-the-reader) cut the
+# misses of goto(networkidle) on pages that replace themselves, and the typing slips, that the Windows e2e shows? Three arms, same runner:
+#   old   = the wrapper of main + invisible-core==63.68.0 (the published one)
+#   new   = this checkout + the core of the branch fix/no-thread-started-on-the-reader (over the wheel, no deps)
+#   stock = the Playwright pin's own Firefox
+name: windows flakes noreader hunt
+
+on:
+  push:
+    branches: ['hunt/windows-flakes-noreader**']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-flakes-noreader-hunt-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GITHUB_TOKEN: ${{ github.token }}
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  hunt:
+    name: noreader hunt ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        os: [windows-2022, ubuntu-24.04]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: The wrapper of main, for the old arm (its tests come from it too)
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: main
+          path: old
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: { python-version: '3.11' }
+      - name: xvfb (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -e
+          timeout 300 sudo apt-get update
+          timeout 300 sudo apt-get install -y xvfb
+      - name: Two environments, old and new
+        run: |
+          set -e
+          if [ "$RUNNER_OS" = "Windows" ]; then BIN=Scripts; EXE=.exe; else BIN=bin; EXE=; fi
+          OLDPY="$RUNNER_TEMP/venv-old/$BIN/python$EXE"
+          NEWPY="$RUNNER_TEMP/venv-new/$BIN/python$EXE"
+          echo "OLDPY=$OLDPY" >> "$GITHUB_ENV"
+          echo "NEWPY=$NEWPY" >> "$GITHUB_ENV"
+          echo "old wrapper: $(git -C old rev-parse HEAD)  new wrapper: $(git rev-parse HEAD)"
+          CORE_SHA="$(timeout 300 git ls-remote https://github.com/oss-invisible/core.git refs/heads/fix/no-thread-started-on-the-reader)"
+          echo "core branch: $CORE_SHA"
+          test -n "$CORE_SHA" || { echo "the core branch is not on GitHub"; exit 1; }
+
+          timeout 300 python -m venv "$RUNNER_TEMP/venv-old"
+          timeout 300 "$OLDPY" -m pip install --quiet --upgrade pip
+          # OLD: the wrapper of main (the checkout in old/, whose pyproject pins invisible_core==63.68.0) and that exact core
+          timeout 300 "$OLDPY" -m pip install --quiet "./old[dev]" "invisible-core==63.68.0"
+          timeout 300 "$OLDPY" -m pip install --quiet "playwright==$(cat scripts/playwright_pin.txt)"
+
+          timeout 300 python -m venv "$RUNNER_TEMP/venv-new"
+          timeout 300 "$NEWPY" -m pip install --quiet --upgrade pip
+          timeout 300 "$NEWPY" -m pip install --quiet ".[dev]"
+          timeout 300 "$NEWPY" -m pip install --quiet "playwright==$(cat scripts/playwright_pin.txt)"
+          # NEW: the core of the branch over the wheel the wrapper pulled in
+          timeout 300 "$NEWPY" -m pip install --quiet --force-reinstall --no-deps "invisible-core @ git+https://github.com/oss-invisible/core.git@fix/no-thread-started-on-the-reader"
+
+          for py in "$OLDPY" "$NEWPY"; do
+            echo "== $py"
+            "$py" -m pip list 2>/dev/null | grep -iE "^(invisible|playwright|pytest-xdist)" || true
+            "$py" -c "import invisible_core, invisible_playwright as w; print('core', invisible_core.__version__, invisible_core.__file__); print('wrapper', w.__file__)"
+          done
+      - name: Browsers, the lab GeoIP database, the binaries of both cores
+        run: |
+          set -e
+          timeout 300 "$NEWPY" scripts/ci_lab_geoip.py build
+          if [ "$RUNNER_OS" = "Linux" ]; then timeout 300 sudo "$NEWPY" -m playwright install-deps firefox; fi
+          timeout 300 "$NEWPY" -m playwright install firefox
+          echo "FF_OLD=$(cd "$RUNNER_TEMP" && timeout 300 "$OLDPY" -m invisible_playwright fetch | tail -1)" >> "$GITHUB_ENV"
+          echo "FF_NEW=$(cd "$RUNNER_TEMP" && timeout 300 "$NEWPY" -m invisible_playwright fetch | tail -1)" >> "$GITHUB_ENV"
+      - name: The networkidle rows, four processes at once per arm, five rounds, the order of the arms alternating
+        run: |
+          set +e
+          mkdir -p evidence
+          if [ "$RUNNER_OS" = "Linux" ]; then PRE="xvfb-run -a"; else PRE=""; fi
+          echo "binaries: old=$FF_OLD new=$FF_NEW"
+          for n in 1 2 3 4 5; do
+            if [ $((n % 2)) -eq 1 ]; then ORDER="old new stock"; else ORDER="stock new old"; fi
+            for arm in $ORDER; do
+              case $arm in
+                old) PY="$OLDPY"; BINARY="$FF_OLD"; ENGINE=ours ;;
+                new) PY="$NEWPY"; BINARY="$FF_NEW"; ENGINE=ours ;;
+                stock) PY="$NEWPY"; BINARY="-"; ENGINE=stock ;;
+              esac
+              for c in 1 2 3 4; do
+                timeout 300 $PRE "$PY" -u scripts/hunt_netidle.py $ENGINE "$BINARY" > "evidence/netidle_${arm}_${n}_$c.log" 2>&1 &
+              done
+              wait
+              if [ "$RUNNER_OS" = "Windows" ]; then taskkill //F //IM firefox.exe > /dev/null 2>&1; else pkill -f firefox > /dev/null 2>&1; fi
+            done
+            echo "round $n done ($ORDER)"
+          done
+          exit 0
+      - name: The typing test ten times under -n 4 --dist loadfile with two load files, old and new
+        run: |
+          set +e
+          mkdir -p evidence
+          EV="$PWD/evidence"
+          if [ "$RUNNER_OS" = "Linux" ]; then PRE="xvfb-run -a"; else PRE=""; fi
+          T=tests/test_a_field_is_typed_after_a_pause.py::test_a_store_that_answers_the_focus_does_not_eat_the_text
+          LOAD="tests/test_a_page_that_moves_on_e2e.py tests/test_juggler_transport.py"
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if [ $((i % 2)) -eq 1 ]; then ORDER="old new"; else ORDER="new old"; fi
+            for arm in $ORDER; do
+              if [ "$arm" = old ]; then PY="$OLDPY"; BINARY="$FF_OLD"; DIR="$PWD/old"; else PY="$NEWPY"; BINARY="$FF_NEW"; DIR="$PWD"; fi
+              (cd "$DIR" && timeout 300 $PRE env -u PYTEST_ADDOPTS INVPW_BINARY_PATH="$BINARY" STEALTHFOX_E2E_BINARY="$BINARY" \
+                "$PY" -m pytest $T $LOAD -o addopts='' -o junit_family=xunit2 -q -p no:cacheprovider -p no:rerunfailures -rs \
+                -n 4 --dist loadfile --junitxml="$EV/typing_${arm}_$i.xml" > "$EV/typing_${arm}_$i.log" 2>&1)
+              echo "typing $arm run $i exit $?"
+              if [ "$RUNNER_OS" = "Windows" ]; then taskkill //F //IM firefox.exe > /dev/null 2>&1; else pkill -f firefox > /dev/null 2>&1; fi
+            done
+          done
+          exit 0
+      - name: Step summary
+        if: always()
+        run: |
+          {
+            timeout 300 "$NEWPY" scripts/hunt_noreader_summary.py "${{ matrix.os }}" evidence
+            echo
+            echo "### Tracebacks and errors in the netidle logs"
+            echo '```'
+            grep -ahE "Traceback|Error" evidence/netidle_*.log | cut -c1-160 | sort | uniq -c | sort -rn | head -12
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Close every Firefox left
+        if: always()
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then taskkill //F //IM firefox.exe > /dev/null 2>&1; else pkill -f firefox > /dev/null 2>&1; fi
+          exit 0
+      - name: Upload the evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-flakes-noreader-${{ matrix.os }}-${{ github.run_id }}
+          path: evidence
+          if-no-files-found: warn
+          retention-days: 14
