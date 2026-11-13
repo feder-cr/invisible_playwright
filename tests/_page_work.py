@@ -54,9 +54,19 @@ CASES: Dict[str, str] = {
     "push": '<script>window.__push = "pending"; window.__pushStage = "start"; (async () => { if (!navigator.serviceWorker) { window.__push = "no-service-worker"; return; }'
             'window.__pushStage = "registering"; const r = await navigator.serviceWorker.register("/sw.js"); window.__pushStage = "registered";'
             'await navigator.serviceWorker.ready; window.__pushStage = "ready";'
-            # The parent process listens for the content process's push messages only once its PushServiceParent exists (dom/push/PushComponents.sys.mjs,
-            # PushServiceBase -> _addListeners), and that is created by an IDLE task of the first window (BrowserGlue "PushService.ensureReady"): a request
-            # sent before it is dropped, never queued, so the call is repeated until it is answered (as a page that retries would).
+            # WHY THE PAGE ASKS AGAIN (run 43501478312: Linux, both schemes, stage `ready`, `pending` for 30 s; Windows passes). The launch has `-silent`
+            # (invisible_core/juggler/connection.py:1245), which means NO window at start-up (browser/components/BrowserContentHandler.sys.mjs:626,
+            # preventDefault) and Juggler declares the browser started at once (juggler/components/Juggler.js:86-88) instead of waiting for
+            # `browser-idle-startup-tasks-finished` (Juggler.js:93). The first window is made by the first new page; only then does
+            # `sessionstore-windows-restored` (browser/components/sessionstore/SessionStore.sys.mjs:1865) schedule BrowserGlue's idle tasks
+            # (browser/components/BrowserGlue.sys.mjs:828-885), among them `PushService.ensureReady` (BrowserGlue.sys.mjs:984-1000), which is the first
+            # thing that creates the parent's PushServiceParent. Its message listeners are registered in the constructor (dom/push/PushComponents.sys.mjs:49-52),
+            # so a `Push:Registration` sent by the content process before that (PushComponents.sys.mjs:425-430) is lost, not queued: `getSubscription()` never
+            # settles. This is Mozilla/Juggler behaviour, not ours: stock Playwright 1.61 also starts a non-persistent Firefox with `-silent` (driver
+            # coreBundle.js, defaultArgs: `if (isPersistent) firefoxArguments.push("about:blank"); else firefoxArguments.push("-silent");`). A page
+            # that asks early is a property of this lab, so the page asks again every 2 s as a page would, bounded: 15 asks, 30 s, then it stays
+            # `pending` and the test fails with the stage. How long the push service takes to exist is UNMEASURED (the only runs are the red ones, where
+            # it had not existed 30 s after the page was loaded; no run has a number for a green Linux leg).
             'let sub; for (let i = 1; i <= 15 && sub === undefined; i++) { window.__pushTries = i; sub = await Promise.race([r.pushManager.getSubscription(),'
             ' new Promise(res => setTimeout(() => res(undefined), 2000))]); }'
             'if (sub === undefined) return; window.__push = "sub:" + JSON.stringify(sub); window.__pushStage = "subscription-read";'
