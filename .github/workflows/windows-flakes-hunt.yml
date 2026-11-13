@@ -1,16 +1,18 @@
-# windows-flakes-hunt.yml - hunt scaffolding, never merged. Runs only on a push to a `hunt/windows-flakes**` branch.
-# The networkidle round on /x0 left on its own page once (main e2e 43425218633, part 3): ours against stock Playwright Firefox, four at once, x5, with the lifecycle, the pipe reader and the slow listeners inside our process stamped (ours only).
+# windows-flakes-hunt.yml - hunt scaffolding, never merged. Runs only on a push to a `hunt/reader-delay**` branch.
+# Why the pipe reader thread of our process is late: the two listeners that start a thread (Lifecycle._settle's Timer, the adoption of a
+# new target) are the slow ones in every earlier trace. Arms, same machine, four processes at once, alternated: plain Thread.start
+# against a Thread.start that does not wait for the new thread to be scheduled (scripts/hunt_threads.py).
 name: windows flakes hunt
 
 on:
   push:
-    branches: ['hunt/windows-flakes**']
+    branches: ['hunt/reader-delay**']
 
 permissions:
   contents: read
 
 concurrency:
-  group: windows-flakes-hunt-${{ github.ref }}
+  group: reader-delay-hunt-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -18,13 +20,9 @@ env:
 
 jobs:
   hunt:
-    name: windows flakes hunt
+    name: reader delay hunt
     runs-on: windows-2022
-    timeout-minutes: 120
-    strategy:
-      max-parallel: 1
-      matrix:
-        os: [windows-2022]
+    timeout-minutes: 90
     defaults:
       run:
         shell: bash
@@ -40,77 +38,82 @@ jobs:
           python -m pip install --quiet "playwright==$(cat scripts/playwright_pin.txt)"
           echo "FF=$(cd "$RUNNER_TEMP" && python -m invisible_playwright fetch | tail -1)" >> "$GITHUB_ENV"
           python scripts/ci_lab_geoip.py build
-          python -m playwright install firefox
-          python scripts/hunt_trace_lifecycle.py
-          python scripts/hunt_trace_pipes.py
           python scripts/hunt_trace_inside.py
-      - name: Ours and stock, four at once each, five times
+          python scripts/hunt_trace_gate.py
+          python -c "import sys, os; print(sys.version); print('cpus', os.cpu_count())"
+      - name: Plain and nowait, four at once each, alternated, five rounds
         env:
           PYTHONUNBUFFERED: "1"
         run: |
           set +e
           mkdir -p evidence
           for n in 1 2 3 4 5; do
-            for engine in ours; do
+            if [ $((n % 2)) -eq 1 ]; then arms="plain nowait"; else arms="nowait plain"; fi
+            for arm in $arms; do
               for c in 1 2 3 4; do
-                HUNT_LOCK_MAX="$PWD/evidence/lockmax_traced_${n}_$c.jsonl" HUNT_INSIDE_TRACE="$PWD/evidence/inside_${engine}_${n}_$c.jsonl" python -u scripts/hunt_netidle.py $engine "$FF" "$PWD/evidence/lc_${engine}_${n}_$c.jsonl" "$PWD/evidence/pipe_${engine}_${n}_$c.txt" > "evidence/${engine}_${n}_$c.log" 2>&1 &
+                HUNT_THREAD_ARM=$arm HUNT_THREAD_TRACE="$PWD/evidence/threads_${arm}_${n}_$c.jsonl" HUNT_INSIDE_TRACE="$PWD/evidence/inside_${arm}_${n}_$c.jsonl" \
+                  python -u scripts/hunt_netidle.py ours "$FF" > "evidence/${arm}_${n}_$c.log" 2>&1 &
               done
               wait
+              echo "round $n arm $arm done"
             done
-            echo "round $n done"
           done
-          # the typing per key under the same stamps: is the slip of the keys the same wait (ours only, four at once x5)
-          for n in 1 2 3 4 5; do
-            for c in 1 2 3 4; do
-              HUNT_LOCK_MAX="$PWD/evidence/lockmax_typing_${n}_$c.jsonl" HUNT_INSIDE_TRACE="$PWD/evidence/inside_typing_${n}_$c.jsonl" python -u scripts/hunt_typing.py ours "$FF" > "evidence/typing_${n}_$c.log" 2>&1 &
-            done
-            wait
-          done
-          # the control: no line per event, only the longest hold of the lifecycle's lock per holder, written at exit
-          for n in 1 2 3 4 5; do
-            for c in 1 2 3 4; do
-              HUNT_LOCK_MAX="$PWD/evidence/lockmax_control_${n}_$c.jsonl" python -u scripts/hunt_netidle.py ours "$FF" > "evidence/control_${n}_$c.log" 2>&1 &
-            done
-            wait
-          done
-          {
-            echo "## networkidle rows: engine, landed at return, count"
-            echo '```'
-            cat evidence/*.log | grep -a "^HUNT-ROW" | sed 's/^HUNT-ROW //' | python -c "import sys,json,collections; c=collections.Counter(); [c.update([(r['engine'], r['path'], r['landed_at_return'], r['error'] is not None)]) for r in map(json.loads, sys.stdin)]; [print(k, v) for k, v in sorted(c.items())]"
-            echo "## rows not on /landed at return, with the /landed request time"
-            cat evidence/*.log | grep -a "^HUNT-ROW" | grep -a '"landed_at_return": false' | cut -c1-260
-            for kind in traced typing control; do
-              echo "## longest hold of the lifecycle lock per holder ($kind)"
-              cat evidence/lockmax_${kind}_*.jsonl | python -c "
-          import json,sys,collections
-          m=collections.defaultdict(list); n=collections.Counter()
-          for l in sys.stdin:
-              r=json.loads(l); m[r['holder']].append(r['max_ms']); n[r['holder']]+=r['count']
-          for k,v in sorted(m.items(), key=lambda kv:-max(kv[1]))[:12]:
-              v.sort(); print('%-70s max %5d  p95-of-runs %5d  holds %d' % (k, v[-1], v[min(len(v)-1,int(len(v)*.95))], n[k]))
-          "
-            done
-            echo "## slow listeners and announces inside our process (traced passes): count, p95, max per name"
-            cat evidence/inside_*.jsonl | python -c "
-          import json,sys,collections
-          m=collections.defaultdict(list)
-          for l in sys.stdin:
-              r=json.loads(l); m[(r['kind'], r.get('fn'))].append(r['ms'])
-          for k,v in sorted(m.items(), key=lambda kv:-sum(kv[1]))[:15]:
-              v.sort(); print('%-34s %-60s n %4d p95 %5d max %5d sum %6d' % (k[0], str(k[1])[:60], len(v), v[min(len(v)-1,int(len(v)*.95))], v[-1], sum(v)))
-          "
-            echo "## typing slip (ours, four at once, traced)"
-            cat evidence/typing_*.log | grep -a "^HUNT-TYPING" | sed 's/^HUNT-TYPING //' | python -c "
-          import json,sys
-          r=[json.loads(l) for l in sys.stdin]
-          e=sorted(x['sent_ms'][-1]-x['planned_ms'][-1] for x in r if len(x['sent_ms'])==len(x['planned_ms']))
-          print('runs', len(r), 'sent slip at last key p50', e[len(e)//2] if e else None, 'max', e[-1] if e else None)
-          "
-            echo "## control rows not on /landed"
-            cat evidence/control_*.log | grep -a "^HUNT-ROW" | grep -ac '"landed_at_return": false'
-            grep -ahE "Traceback|Error" evidence/*.log | sort | uniq -c | head -20
-            echo '```'
-          } | tee -a "$GITHUB_STEP_SUMMARY"
+          cat > evidence/summary.py <<'PY'
+          import collections, glob, json, os
+          def rows(pattern):
+              out = []
+              for f in sorted(glob.glob(pattern)):
+                  for line in open(f, encoding="utf-8", errors="replace"):
+                      if line.strip():
+                          out.append(json.loads(line))
+              return out
+          def pct(v, q):
+              v = sorted(v)
+              return v[min(len(v) - 1, int(len(v) * q))] if v else 0
+          for arm in ("plain", "nowait"):
+              print("## arm", arm)
+              missed = total = 0
+              for f in glob.glob("evidence/%s_*.log" % arm):
+                  for line in open(f, encoding="utf-8", errors="replace"):
+                      if line.startswith("HUNT-ROW "):
+                          r = json.loads(line[9:]); total += 1; missed += (not r["landed_at_return"])
+              print("networkidle rows", total, "not on /landed at return", missed)
+              inside = [r for r in rows("evidence/inside_%s_*.jsonl" % arm) if r["kind"] == "listener"]
+              by = collections.defaultdict(list)
+              for r in inside:
+                  by[(r["fn"], r["ev"])].append(r["ms"])
+              for k, v in sorted(by.items(), key=lambda kv: -sum(kv[1]))[:8]:
+                  print("  listener %-52s n %4d p95 %5d max %5d sum %6d" % ("%s %s" % k, len(v), pct(v, .95), max(v), sum(v)))
+              print("  listener total ms >= 20:", sum(r["ms"] for r in inside), "calls", len(inside))
+              allrows = rows("evidence/threads_%s_*.jsonl" % arm)
+              starts = [r for r in allrows if r["kind"] == "Thread.start"]
+              reader = [r for r in starts if "_read_loop" in r["caller"]]
+              ms = [r["ms"] for r in reader]
+              print("  Thread.start by the reader: n %d p50 %.1f p95 %.1f max %.1f sum %.0f" % (len(ms), pct(ms, .5), pct(ms, .95), max(ms or [0]), sum(ms)))
+              others = [r["ms"] for r in starts if "_read_loop" not in r["caller"]]
+              print("  Thread.start by others (>= 1 ms): n %d p95 %.1f max %.1f" % (len(others), pct(others, .95), max(others or [0])))
+              for kind in ("canary", "gc", "gate wait"):
+                  v = [r["ms"] for r in allrows if r["kind"] == kind]
+                  print("  %-10s n %4d p95 %6.1f max %7.1f sum %7.0f" % (kind, len(v), pct(v, .95), max(v or [0]), sum(v)))
+              # per slow listener (same process: same file suffix), how much of its time lies inside what
+              inside_ms = 0.0
+              cover = collections.Counter()
+              slow = 0
+              for f in glob.glob("evidence/inside_%s_*.jsonl" % arm):
+                  tf = f.replace("inside_", "threads_")
+                  st = rows(tf) if os.path.exists(tf) else []
+                  for r in [x for x in rows(f) if x["kind"] == "listener"]:
+                      lo, hi = r["t"], r["t"] + r["ms"] / 1000
+                      inside_ms += r["ms"]
+                      for kind in ("Thread.start", "canary", "gc", "gate wait"):
+                          for x in st:
+                              if x["kind"] != kind or ("_read_loop" not in x.get("caller", "_read_loop") and kind == "Thread.start"):
+                                  continue
+                              xlo, xhi = x["t"], x["t"] + x["ms"] / 1000
+                              cover[kind] += max(0.0, min(hi, xhi) - max(lo, xlo)) * 1000
+              print("  of the slow listeners' %.0f ms:" % inside_ms, ", ".join("%s %.0f ms" % kv for kv in sorted(cover.items())))
+          PY
+          { python evidence/summary.py; } | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Close every Firefox left
         if: always()
         shell: pwsh
@@ -121,7 +124,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: windows-flakes-${{ github.run_id }}
+          name: reader-delay-${{ github.run_id }}
           path: evidence
           if-no-files-found: warn
           retention-days: 14

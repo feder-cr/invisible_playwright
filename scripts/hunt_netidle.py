@@ -4,6 +4,7 @@ Usage: python scripts/hunt_netidle.py ours|stock [binary]. Prints one JSON line 
 when the server saw the request of /landed relative to goto's return (negative = the replacement was already on the wire when goto said idle).
 """
 import http.server
+import hunt_threads  # noqa: F401  HUNT_THREAD_ARM=plain|nowait, before anything starts a thread
 import json
 import os
 import sys
