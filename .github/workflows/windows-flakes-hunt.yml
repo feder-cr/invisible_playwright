@@ -1,5 +1,5 @@
 # windows-flakes-hunt.yml - hunt scaffolding, never merged. Runs only on a push to a `hunt/windows-flakes**` branch.
-# The networkidle round on /x0 left on its own page once (main e2e 43425218633, part 3): four copies at once, x10, with the URL read again.
+# The networkidle round on /x0 left on its own page once (main e2e 43425218633, part 3): ours against stock Playwright Firefox, four at once, x5.
 name: windows flakes hunt
 
 on:
@@ -40,25 +40,29 @@ jobs:
           python -m pip install --quiet "playwright==$(cat scripts/playwright_pin.txt)"
           echo "FF=$(cd "$RUNNER_TEMP" && python -m invisible_playwright fetch | tail -1)" >> "$GITHUB_ENV"
           python scripts/ci_lab_geoip.py build
-      - name: Four copies at once, ten times
+          python -m playwright install firefox
+      - name: Ours and stock, four at once each, five times
         env:
           PYTHONUNBUFFERED: "1"
         run: |
           set +e
           mkdir -p evidence
-          export INVPW_BINARY_PATH="$FF" STEALTHFOX_E2E_BINARY="$FF"
-          for n in $(seq -w 1 10); do
-            for c in 1 2 3 4; do
-              python -u -m pytest -o addopts= -p no:cacheprovider -m e2e -s --tb=short --timeout 300 \
-                tests/test_a_page_that_moves_on_e2e.py -k networkidle > "evidence/run_${n}_$c.log" 2>&1 &
+          for n in 1 2 3 4 5; do
+            for engine in ours stock; do
+              for c in 1 2 3 4; do
+                python -u scripts/hunt_netidle.py $engine "$FF" > "evidence/${engine}_${n}_$c.log" 2>&1 &
+              done
+              wait
             done
-            wait
-            echo "run $n: $(grep -ahE '^=+ .*(passed|failed|error).* =+$' evidence/run_${n}_*.log | tr '\n' ' ')"
+            echo "round $n done"
           done
           {
-            echo "## networkidle x40 on Windows"
+            echo "## networkidle rows: engine, landed at return, count"
             echo '```'
-            grep -ahE "^(FAILED|ERROR) |HUNT-NETIDLE" evidence/run_*.log | cut -c1-250 | sort | uniq -c | sort -rn || true
+            cat evidence/*.log | grep -a "^HUNT-ROW" | sed 's/^HUNT-ROW //' | python -c "import sys,json,collections; c=collections.Counter(); [c.update([(r['engine'], r['path'], r['landed_at_return'], r['error'] is not None)]) for r in map(json.loads, sys.stdin)]; [print(k, v) for k, v in sorted(c.items())]"
+            echo "## rows not on /landed at return, with the /landed request time"
+            cat evidence/*.log | grep -a "^HUNT-ROW" | grep -a '"landed_at_return": false' | cut -c1-260
+            grep -ahE "Traceback|Error" evidence/*.log | sort | uniq -c | head -20
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Close every Firefox left
