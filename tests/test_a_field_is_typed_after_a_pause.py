@@ -362,4 +362,4 @@ def test_a_store_that_answers_the_focus_does_not_eat_the_text(firefox_binary, st
     # The pause is a pause, not a stall: one hesitation (restarted once, by
     # the store's write) on top of the typing itself.
     assert took < 2 * pause + ANSWER_MS / 1000 + 0.4 * len(TEXT), (
-        "%s took %.1f s" % (how, took))
+        "%s took %.1f s HUNT pause=%.3f focus=%r keys=%r" % (how, took, pause, _focus, _keys))

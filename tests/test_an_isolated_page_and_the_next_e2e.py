@@ -82,7 +82,7 @@ def test_reads_after_the_isolated_page_answer(page, site):
                            "load: performance.getEntriesByType('navigation')[0]?.loadEventEnd})")
         print("HUNT-ISOLATED round=%d %r" % (i, _h), flush=True)
         assert _h["coi"] is True, (
-            "the engine did not isolate the page: this round tests nothing")
+            "the engine did not isolate the page: this round tests nothing HUNT %r" % (_h,))
         # The read on the isolated page is what builds the script that went
         # stale; without it the bug never showed.
         assert page.locator("#p").inner_text(timeout=10_000) in ("isolated", "plain")
