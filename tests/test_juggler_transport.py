@@ -275,9 +275,18 @@ def test_the_public_API_WAITS_for_an_element_that_arrives_late(firefox_binary):
                                  headless=True) as browser:
             page = browser.new_page()
             page.goto(url)
-            assert page.query_selector("#slow") is None, (
+            # The late element is the test's own, scheduled HERE, 800 ms from now. The page's #slow comes from a timer started at its
+            # load, and on a Windows runner more than 800 ms can pass between the load and the first read (CI of 13/11, run
+            # 43383366904, and 5 runs of 20 in run 43386328818 even after emptying it: the page's timer fired after the emptying).
+            # Nothing of the page adds #later, so only this timer can.
+            page.evaluate("""() => {
+                const box = document.createElement('div');
+                document.body.appendChild(box);
+                setTimeout(() => { box.innerHTML = '<span id=later>arrived</span>'; }, 800);
+            }""")
+            assert page.query_selector("#later") is None, (
                 "the element was already there: the test proves nothing")
-            handle = page.wait_for_selector("#slow", timeout=8000)
+            handle = page.wait_for_selector("#later", timeout=8000)
             assert handle is not None
             assert handle.text_content() == "arrived"
     finally:
