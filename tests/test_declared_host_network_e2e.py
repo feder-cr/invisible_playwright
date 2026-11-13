@@ -32,6 +32,8 @@ import pytest
 from test_webrtc_realness import _e2e_binary, _launch, candidates, decode_priority, host_candidates, is_mdns  # noqa: F401
 
 pytestmark = [pytest.mark.e2e, pytest.mark.usefixtures("the_udp_line")]
+# The two tests that read a consecutive pair of ports (N, N+1) carry `wall_clock`: the e2e run gives them the machine alone, after the parallel tests,
+# so that another worker's browser or test server cannot take port N+1 between the engine's draw and the bind (tests/test_the_consecutive_port_tests_run_serially.py).
 
 NETWORK_ENV = "STEALTHFOX_WEBRTC_NETWORK"
 # retail 159 on Windows. The interface rank is the position in the prioritizer's sort, starting at 127
@@ -158,6 +160,7 @@ def test_ipv6_without_the_exit_prefix_is_no_ipv6(local_https_page, socks5_tcp_on
     assert _by_protocol(hosts) == {"UDP": [UDP_127], "TCP": [TCP_127]}, hosts
 
 
+@pytest.mark.wall_clock
 def test_the_host_ports_are_those_of_a_windows_machine(local_https_page, socks5_tcp_only, monkeypatch):
     """Retail on Windows (6 of 6 runs, ``captures/retail/firefox-159.0-win/direct-dualstack-srflx-ports``): the UDP host
     ports are in the dynamic range 49152-65535 and, on one connection, the IPv4 port and the IPv6 port are consecutive
@@ -188,6 +191,7 @@ def _ports_of_two_connections(declaration, socks, page_url, monkeypatch, seed):
             sorted(c["port"] for c in second if c["proto"] == "UDP"))
 
 
+@pytest.mark.wall_clock
 def test_two_connections_on_one_page_get_their_own_port_pair(local_https_page, socks5_tcp_only, monkeypatch):
     """Retail (``captures/retail/firefox-159.0-win/two-pc-port-sequence``, 6 of 6): each connection gets its own pair,
     consecutive (N, N+1) in the range, and the second pair is unrelated to the first (not increasing)."""

@@ -30,6 +30,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   first evaluate) when the destination committed while the events the page had missed were being replayed to it: the engine's reader went on
   delivering the live events to the lifecycle, and the replay then brought older ones after them. The page now subscribes its readers and is
   handed the missed events in one step, with the delivery of the sessions' events held, so a live event never overtakes the replay.
+  With the three corrections together, on Windows with the library's client in the same process, under load: 680/680 and 256/256 popup cases
+  green (run 43261858525).
+- `Control+A` selects all in an `<input>` and a `<textarea>` on Windows, on the published engine and the core this package pins: a new end-to-end
+  test (five ways to press the shortcut, in-process and served to the stock client), run by `e2e.yml` on Windows, 20/20 green (run 43262320744).
+- Tests only: the e2e tests of the test servers take their ports from one sequence (no two servers draw the same one); the two tests that read a
+  consecutive pair of host ports run alone, after the parallel tests; the sandbox e2e (the browser's seccomp filter) runs in a step of its own that
+  turns unprivileged user namespaces on, and is left out of the normal run; every leg launches with a GeoIP database the repository builds (same
+  bytes every run, no download); the CodeQL alerts of the test code are fixed; the install job waits for the package index through both installers;
+  the raw Juggler tests wait for `Page.ready` and the main frame instead of a fixed time.
 
 ## [0.51.0] - 2026-11-12
 
@@ -81,17 +90,6 @@ comparison run is saved). The result of a `window.open` (`null` or a window) is 
   the popup on both. To get stock's behaviour: open the popup from a click; or pass
   `extra_prefs={"dom.disable_open_during_load": False}` for the session, knowing that a page then sees a browser that differs from a
   retail Firefox.
-
-### Known issues
-- **A popup opened without a route can be announced while it is still on `about:blank`.** A popup opened with no route on the context
-  (a `target=_blank` link, or `window.open` from a click) can be announced to the client while it is still on `about:blank`; its `url`
-  then stays `about:blank`, or its `load` never arrives. Seen on a Windows runner with the library's client in the same process and four
-  workers running the popup tests in parallel (`test_popups_reach_the_client_e2e.py`, 20 runs): with the firefox-63 engine 17 cases of 640
-  in 12 of 20 runs; with the published firefox-62 engine (so also with 0.50.1) 15 cases of 640. Both causes found are in the wrapper: the hand-over of
-  a new page to the client, and the replay of a new page's events while live ones are being delivered. The correction of the first alone,
-  not in this release, lowers the red cases over 20 runs from 15 to 2 with engine 62 and from 17 to 13 with engine 63; the correction of the
-  second is under test. On Linux no run was red (0 of 20). Not measured: a served
-  launch with numbers of its own, other machines, a run without parallel workers, macOS.
 
 ## [0.50.1] - 2026-11-12
 

@@ -150,9 +150,11 @@ jobs:
           INVPW_TEST_WATCHDOG_FILE: ${{ runner.temp }}/e2e-watchdog.log
           ROOT_FILES: tests/test_a_proxy_that_cannot_carry_udp_leaks_nothing_direct_e2e.py
           ROOT_NODES: tests/test_the_whole_udp_chain_by_name_e2e.py::test_a_turn_srflx_by_name_arrives_through_the_relay_before_the_tick
-        # The root ones are left out by name and run in the step below, as root: here, as the runner user, they errored.
+          SANDBOX_FILES: tests/test_the_socket_process_is_sandboxed_e2e.py
+        # The root ones are left out by name and run in the step below, as root: here, as the runner user, they errored. The sandbox one is left out
+        # by name too and runs in its own step after them: it is red on a runner whose AppArmor refuses user namespaces to a normal user.
         run: |
-          IGNORE=(); for f in $ROOT_FILES; do IGNORE+=("--ignore=$f"); done
+          IGNORE=(); for f in $ROOT_FILES $SANDBOX_FILES; do IGNORE+=("--ignore=$f"); done
           DESELECT=(); for n in $ROOT_NODES; do DESELECT+=("--deselect=$n"); done
           xvfb-run -a python -u scripts/run_e2e.py "$FF" "${IGNORE[@]}" "${DESELECT[@]}"
 
@@ -190,6 +192,32 @@ jobs:
           print("root e2e:", counts)
           if counts["tests"] != int(os.environ["ROOT_TESTS"]) or counts["failures"] or counts["errors"] or counts["skipped"]:
               sys.exit("the root e2e must be exactly %s tests, all passed: %s" % (os.environ["ROOT_TESTS"], counts))
+          PY
+      # THE SANDBOX E2E (wrapper.e2e.udp.sandbox), as the gate runs its first file: the browser WITH its sandbox, run by the runner user. On this runner AppArmor
+      # refuses user namespaces to a normal user (kernel.apparmor_restrict_unprivileged_userns=1), so the browser of every other step starts WITHOUT the sandbox
+      # of its socket and content processes, and tests/test_the_socket_process_is_sandboxed_e2e.py (which fails unless both have a seccomp filter) can only
+      # be green after the restriction is turned off. It is left out of the run above by name (SANDBOX_FILES) so that it cannot fail on a runner without the
+      # sysctl, and it runs here, after the run and the root step (whatever the sysctl changes cannot reach a launch of the run), as the runner user. Nothing
+      # is skipped silently: the step reads its own junit and refuses anything but exactly that many tests, all passed.
+      # tests/test_the_sandbox_e2e_runs_where_user_namespaces_are_on.py holds this step, the exclusion above and the order.
+      - name: The sandbox e2e (wrapper.e2e.udp.sandbox), with unprivileged user namespaces on
+        if: success() || failure()
+        env:
+          PYTHONUNBUFFERED: "1"
+          SANDBOX_FILES: tests/test_the_socket_process_is_sandboxed_e2e.py
+          SANDBOX_TESTS: "1"
+        run: |
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          JUNIT="${RUNNER_TEMP}/sandbox-e2e.xml"
+          xvfb-run -a env -u PYTEST_ADDOPTS INVPW_BINARY_PATH="$FF" STEALTHFOX_E2E_BINARY="$FF" python -m pytest $SANDBOX_FILES -m e2e -o addopts='' -o junit_family=xunit2 -q -p no:cacheprovider -p no:rerunfailures -rs --junitxml="$JUNIT" || true
+          python - <<'PY'
+          import os, sys, xml.etree.ElementTree as ET
+          root = ET.parse(os.path.join(os.environ["RUNNER_TEMP"], "sandbox-e2e.xml")).getroot()
+          suite = root if root.tag == "testsuite" else root.find("testsuite")
+          counts = {k: int(suite.get(k, 0)) for k in ("tests", "failures", "errors", "skipped")}
+          print("sandbox e2e:", counts)
+          if counts["tests"] != int(os.environ["SANDBOX_TESTS"]) or counts["failures"] or counts["errors"] or counts["skipped"]:
+              sys.exit("the sandbox e2e must be exactly %s tests, all passed: %s" % (os.environ["SANDBOX_TESTS"], counts))
           PY
       - name: What the root step left behind (diagnostic, decides nothing)
         if: always()
