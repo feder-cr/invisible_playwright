@@ -19,7 +19,6 @@ import json
 import os
 import re
 import shutil
-import socket
 import subprocess
 import sys
 import tempfile
@@ -74,24 +73,31 @@ def _integrity(pid):
             return None
         return None
     k32, adv = ctypes.windll.kernel32, ctypes.windll.advapi32
+    vp = ctypes.c_void_p
+    k32.OpenProcess.restype, k32.OpenProcess.argtypes = vp, [ctypes.c_ulong, ctypes.c_int, ctypes.c_ulong]
+    k32.CloseHandle.argtypes = [vp]
+    adv.OpenProcessToken.argtypes = [vp, ctypes.c_ulong, ctypes.POINTER(vp)]
+    adv.GetTokenInformation.argtypes = [vp, ctypes.c_int, vp, ctypes.c_ulong, ctypes.POINTER(ctypes.c_ulong)]
+    adv.GetSidSubAuthorityCount.restype, adv.GetSidSubAuthorityCount.argtypes = ctypes.POINTER(ctypes.c_ubyte), [vp]
+    adv.GetSidSubAuthority.restype, adv.GetSidSubAuthority.argtypes = ctypes.POINTER(ctypes.c_ulong), [vp, ctypes.c_ulong]
     h = k32.OpenProcess(0x1000, False, pid)
     if not h:
         return None
-    tok = ctypes.c_void_p()
+    tok = vp()
     try:
         if not adv.OpenProcessToken(h, 0x0008, ctypes.byref(tok)):
             return None
         need = ctypes.c_ulong()
         adv.GetTokenInformation(tok, 25, None, 0, ctypes.byref(need))
         buf = ctypes.create_string_buffer(need.value)
-        if not adv.GetTokenInformation(tok, 25, buf, need, ctypes.byref(need)):
+        if not adv.GetTokenInformation(tok, 25, ctypes.cast(buf, vp), need, ctypes.byref(need)):
             return None
-        sid = ctypes.cast(buf, ctypes.POINTER(ctypes.c_void_p))[0]
-        count = ctypes.cast(adv.GetSidSubAuthorityCount(ctypes.c_void_p(sid)), ctypes.POINTER(ctypes.c_ubyte))[0]
-        rid = ctypes.cast(adv.GetSidSubAuthority(ctypes.c_void_p(sid), count - 1), ctypes.POINTER(ctypes.c_ulong))[0]
+        sid = ctypes.cast(buf, ctypes.POINTER(vp))[0]
+        count = adv.GetSidSubAuthorityCount(sid)[0]
+        rid = adv.GetSidSubAuthority(sid, count - 1)[0]
         level = {0: "untrusted", 0x1000: "low", 0x2000: "medium", 0x2100: "medium+", 0x3000: "high", 0x4000: "system"}.get(rid, hex(rid))
         app = ctypes.c_ulong()
-        adv.GetTokenInformation(tok, 29, ctypes.byref(app), 4, ctypes.byref(need))
+        adv.GetTokenInformation(tok, 29, ctypes.cast(ctypes.byref(app), vp), 4, ctypes.byref(need))
         return level + (" appcontainer" if app.value else "")
     finally:
         if tok:
@@ -99,12 +105,17 @@ def _integrity(pid):
         k32.CloseHandle(h)
 
 
-def _snapshot(root_pid):
-    try:
-        root = psutil.Process(root_pid)
-        procs = [root] + root.children(recursive=True)
-    except psutil.Error:
-        return []
+def _snapshot(exe):
+    """Every process whose executable sits in the folder of `exe` (the retail's launcher process on Windows starts the browser
+    again and exits, so its own pid has no tree)."""
+    folder = os.path.normcase(os.path.dirname(os.path.abspath(exe)))
+    procs = []
+    for p in psutil.process_iter(["exe"]):
+        try:
+            if p.info["exe"] and os.path.normcase(os.path.dirname(p.info["exe"])) == folder:
+                procs.append(p)
+        except psutil.Error:
+            continue
     out = []
     for p in procs:
         try:
@@ -138,12 +149,12 @@ def retail(exe, url, seconds, work):
     profile = tempfile.mkdtemp(prefix="retail_", dir=work)
     logdir = tempfile.mkdtemp(prefix="retail_log_", dir=work)
     env = dict(os.environ, MOZ_LOG="timestamp,nsHostResolver:5", MOZ_LOG_FILE=os.path.join(logdir, "moz"))
-    p = subprocess.Popen([exe, "-no-remote", "-profile", profile, url], env=env)
+    subprocess.Popen([exe, "-no-remote", "-profile", profile, url], env=env)
     time.sleep(seconds)
-    snap = _snapshot(p.pid)
-    for q in [p.pid] + [c.pid for c in psutil.Process(p.pid).children(recursive=True)] if psutil.pid_exists(p.pid) else []:
+    snap = _snapshot(exe)
+    for q in snap:
         try:
-            psutil.Process(q).kill()
+            psutil.Process(q["pid"]).kill()
         except psutil.Error:
             pass
     time.sleep(3)
@@ -154,15 +165,14 @@ def ours(exe, url, seconds, work):
     from invisible_playwright import InvisiblePlaywright
     logdir = tempfile.mkdtemp(prefix="ours_log_", dir=work)
     os.environ.update(MOZ_LOG="timestamp,nsHostResolver:5", MOZ_LOG_FILE=os.path.join(logdir, "moz"))
-    before = {p.pid for p in psutil.Process().children(recursive=True)}
     with InvisiblePlaywright(binary_path=exe, headless=True) as browser:
         page = browser.new_page()
         page.goto(url)
         time.sleep(seconds)
-        roots = [p for p in psutil.Process().children(recursive=True)
-                 if p.pid not in before and "firefox" in p.name().lower() and "-contentproc" not in " ".join(p.cmdline())]
-        snap = _snapshot(roots[0].pid) if roots else []
-        profile = next((c[c.index("-profile") + 1] for c in (r.cmdline() for r in roots) if "-profile" in c), None)
+        snap = _snapshot(exe)
+        parents = [psutil.Process(q["pid"]) for q in snap if q["kind"] == "parent"]
+        cmd = parents[0].cmdline() if parents else []
+        profile = cmd[cmd.index("-profile") + 1] if "-profile" in cmd else None
         reporting = _datareporting(profile) if profile else []
     return {"browser": "ours", "processes": snap, "resolved": _resolved(logdir), "datareporting": reporting}
 
@@ -173,16 +183,18 @@ def main():
     ap.add_argument("--ours", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--seconds", type=int, default=30)
+    ap.add_argument("--repeat", type=int, default=3)
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     work = tempfile.mkdtemp(prefix="study_")
     srv = _serve()
     url = "http://127.0.0.1:%d/" % srv.server_address[1]
-    for name, fn, exe in (("retail", retail, a.retail), ("ours", ours, a.ours)):
+    for n in range(1, a.repeat + 1):
+      for name, fn, exe in (("retail", retail, a.retail), ("ours", ours, a.ours)):
         r = fn(exe, url, a.seconds, work)
-        r.update(platform=sys.platform, seconds=a.seconds, executable=exe)
-        json.dump(r, open(os.path.join(a.out, name + ".json"), "w"), indent=1)
-        print("== %s: %d processes, %d names resolved, %d datareporting files" % (name, len(r["processes"]), len(r["resolved"]), len(r["datareporting"])))
+        r.update(platform=sys.platform, seconds=a.seconds, executable=exe, round=n)
+        json.dump(r, open(os.path.join(a.out, "%s_%d.json" % (name, n)), "w"), indent=1)
+        print("== %s round %d: %d processes, %d names resolved, %d datareporting files" % (name, n, len(r["processes"]), len(r["resolved"]), len(r["datareporting"])))
         for p in sorted(r["processes"], key=lambda x: x["kind"]):
             print("  %-10s rss %6.1f MB  private %6.1f MB  sandbox %-22s conns %d" % (p["kind"], p["rss_mb"], p["private_mb"], p["sandbox"], len(p["connections"])))
         print("  resolved:", ", ".join(r["resolved"]))
