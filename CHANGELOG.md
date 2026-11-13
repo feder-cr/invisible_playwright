@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [0.51.1] - 2026-11-13
 
 ### Changed
+- Pins invisible-core 63.68.0 (core fixes on the same firefox-63 engine: two sessions starting together on Windows no longer fail on the shared font-manifest cache; no MOZ_*, GL or toolkit variable of the host reaches the engine; GitHub is asked for the latest GeoIP database once a day, not on every launch; mouse moves carry the pressed buttons; a CORS preflight does not count for networkidle).
 - The project moved to the oss-invisible GitHub organization: every GitHub link, the issue templates and the package URLs point to github.com/oss-invisible/playwright. The PyPI name and the import name do not change; the old addresses redirect.
 
 ### Fixed
