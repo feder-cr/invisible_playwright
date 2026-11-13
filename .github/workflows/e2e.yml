@@ -6,8 +6,7 @@
 # launched Firefox in true HEADLESS mode, which is content-process unstable on
 # the hosted runners (eval-CSP / context-destroyed). The stealth wrapper instead
 # launches Firefox HEADED on a real display; under `xvfb-run` (a virtual X
-# server) that's exactly what we get on a headless CI box - stable, and the same
-# thing webrtc-e2e.yml already relies on.
+# server) that's exactly what we get on a headless CI box - stable.
 #
 # Secret-free, so it's safe in public CI: the binary is the PUBLIC firefox-9
 # release (no token), and the webrtc e2e fake a local TCP-only SOCKS. The proxy
