@@ -53,11 +53,18 @@ jobs:
           for n in 1 2 3 4 5; do
             for engine in ours; do
               for c in 1 2 3 4; do
-                HUNT_INSIDE_TRACE="$PWD/evidence/inside_${engine}_${n}_$c.jsonl" python -u scripts/hunt_netidle.py $engine "$FF" "$PWD/evidence/lc_${engine}_${n}_$c.jsonl" "$PWD/evidence/pipe_${engine}_${n}_$c.txt" > "evidence/${engine}_${n}_$c.log" 2>&1 &
+                HUNT_LOCK_MAX="$PWD/evidence/lockmax_traced_${n}_$c.jsonl" HUNT_INSIDE_TRACE="$PWD/evidence/inside_${engine}_${n}_$c.jsonl" python -u scripts/hunt_netidle.py $engine "$FF" "$PWD/evidence/lc_${engine}_${n}_$c.jsonl" "$PWD/evidence/pipe_${engine}_${n}_$c.txt" > "evidence/${engine}_${n}_$c.log" 2>&1 &
               done
               wait
             done
             echo "round $n done"
+          done
+          # the control: no line per event, only the longest hold of the lifecycle's lock per holder, written at exit
+          for n in 1 2 3 4 5; do
+            for c in 1 2 3 4; do
+              HUNT_LOCK_MAX="$PWD/evidence/lockmax_control_${n}_$c.jsonl" python -u scripts/hunt_netidle.py ours "$FF" > "evidence/control_${n}_$c.log" 2>&1 &
+            done
+            wait
           done
           {
             echo "## networkidle rows: engine, landed at return, count"
@@ -65,6 +72,19 @@ jobs:
             cat evidence/*.log | grep -a "^HUNT-ROW" | sed 's/^HUNT-ROW //' | python -c "import sys,json,collections; c=collections.Counter(); [c.update([(r['engine'], r['path'], r['landed_at_return'], r['error'] is not None)]) for r in map(json.loads, sys.stdin)]; [print(k, v) for k, v in sorted(c.items())]"
             echo "## rows not on /landed at return, with the /landed request time"
             cat evidence/*.log | grep -a "^HUNT-ROW" | grep -a '"landed_at_return": false' | cut -c1-260
+            for kind in traced control; do
+              echo "## longest hold of the lifecycle lock per holder ($kind)"
+              cat evidence/lockmax_${kind}_*.jsonl | python -c "
+          import json,sys,collections
+          m=collections.defaultdict(list); n=collections.Counter()
+          for l in sys.stdin:
+              r=json.loads(l); m[r['holder']].append(r['max_ms']); n[r['holder']]+=r['count']
+          for k,v in sorted(m.items(), key=lambda kv:-max(kv[1]))[:12]:
+              v.sort(); print('%-70s max %5d  p95-of-runs %5d  holds %d' % (k, v[-1], v[min(len(v)-1,int(len(v)*.95))], n[k]))
+          "
+            done
+            echo "## control rows not on /landed"
+            cat evidence/control_*.log | grep -a "^HUNT-ROW" | grep -ac '"landed_at_return": false'
             grep -ahE "Traceback|Error" evidence/*.log | sort | uniq -c | head -20
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"

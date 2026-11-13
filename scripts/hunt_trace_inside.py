@@ -73,5 +73,78 @@ new = """        if self.announce is not None:
 """
 assert s.count(old) == 1, "_tell"
 s = s.replace(old, new, 1)
+old = """        self._cv = threading.Condition()
+"""
+new = """        self._cv = _HuntCondition()
+"""
+assert s.count(old) == 1, "_cv"
+s = s.replace(old, new, 1)
+s = s.rstrip(chr(10)) + """
+
+
+import atexit as _hatexit
+import sys as _hsys
+import threading as _hthreading
+import time as _htime
+
+_HUNT_MAX = {}
+
+
+def _hunt_record(holder, held):
+    import os as _o
+    m = _HUNT_MAX.get(holder)
+    _HUNT_MAX[holder] = (max(held, m[0]) if m else held, (m[1] if m else 0) + 1, (m[2] if m else 0.0) + held)
+    if held >= 0.02 and _o.environ.get("HUNT_INSIDE_TRACE"):
+        from invisible_core.juggler.connection import _hunt_inside
+        _hunt_inside(kind="lifecycle lock held", fn=holder, ms=round(held * 1000), t=round(_htime.time(), 4))
+
+
+def _hunt_dump():
+    import json as _j, os as _o
+    path = _o.environ.get("HUNT_LOCK_MAX")
+    if path:
+        with open(path, "a", encoding="utf-8") as fh:
+            for k, (mx, n, tot) in sorted(_HUNT_MAX.items(), key=lambda kv: -kv[1][0]):
+                print(_j.dumps({"holder": k, "max_ms": round(mx * 1000), "count": n, "total_ms": round(tot * 1000)}), file=fh)
+
+
+_hatexit.register(_hunt_dump)
+
+
+class _HuntCondition(_hthreading.Condition):
+    # How long the lifecycle's lock is HELD, outermost holds only, per holder (the function that took it); the waits inside
+    # Condition.wait are not held time.
+    def __init__(self):
+        super().__init__()
+        self._hdepth = 0
+        self._hsince = 0.0
+        self._hholder = None
+
+    def __enter__(self):
+        r = super().__enter__()
+        self._hdepth += 1
+        if self._hdepth == 1:
+            f = _hsys._getframe(1)
+            self._hholder = "%s:%d" % (f.f_code.co_qualname, f.f_lineno)
+            self._hsince = _htime.time()
+        return r
+
+    def __exit__(self, *a):
+        self._hdepth -= 1
+        if self._hdepth == 0:
+            _hunt_record(self._hholder, _htime.time() - self._hsince)
+        return super().__exit__(*a)
+
+    def wait(self, timeout=None):
+        holder = self._hholder
+        _hunt_record(holder, _htime.time() - self._hsince)
+        depth = self._hdepth
+        try:
+            return super().wait(timeout)
+        finally:
+            self._hdepth = depth
+            self._hholder = holder
+            self._hsince = _htime.time()
+"""
 io.open(path, "w", encoding="utf-8", newline=chr(10)).write(s)
 print("patched", path)
