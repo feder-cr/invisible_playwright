@@ -1,0 +1,106 @@
+# windows-flakes-locks-hunt.yml - hunt scaffolding, never merged. Runs only on a push to a `hunt/windows-flakes-locks**` branch.
+# With no Thread.start left on the core's pipe reader (wrapper fc9161f + core fix/no-thread-started-on-the-reader), single events still wait
+# up to about 1 s between the pipe read (invisible_core/juggler/connection.py _read_loop) and Lifecycle._on_event. WHERE on the reader path?
+# Windows only, the NEW arm only (this checkout + the core of that branch), 15 rounds x 4 processes at once. On the READER thread only the
+# patcher (scripts/hunt_trace_locks.py) times: (a) every listener call of Connection.dispatch_event, (b) gated_dispatch's wait on the
+# events gate, (c) every lock the reader takes or waits on (rows from 5 ms), (d) per message, wall against the thread's CPU time (GIL
+# starvation). One JSON file per process; the summary cuts the interval pipe -> lifecycle of every /landed over 100 ms by item.
+name: windows flakes locks hunt
+
+on:
+  push:
+    branches: ['hunt/windows-flakes-locks**']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-flakes-locks-hunt-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GITHUB_TOKEN: ${{ github.token }}
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  hunt:
+    name: locks hunt windows
+    runs-on: windows-2022
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: { python-version: '3.11' }
+      - name: The environment of the new arm
+        run: |
+          set -e
+          NEWPY="$RUNNER_TEMP/venv-new/Scripts/python.exe"
+          echo "NEWPY=$NEWPY" >> "$GITHUB_ENV"
+          echo "wrapper: $(git rev-parse HEAD)"
+          CORE_SHA="$(timeout 300 git ls-remote https://github.com/oss-invisible/core.git refs/heads/fix/no-thread-started-on-the-reader)"
+          echo "core branch: $CORE_SHA"
+          test -n "$CORE_SHA" || { echo "the core branch is not on GitHub"; exit 1; }
+          timeout 300 python -m venv "$RUNNER_TEMP/venv-new"
+          timeout 300 "$NEWPY" -m pip install --quiet --upgrade pip
+          timeout 300 "$NEWPY" -m pip install --quiet ".[dev]"
+          timeout 300 "$NEWPY" -m pip install --quiet "playwright==$(cat scripts/playwright_pin.txt)"
+          # the core of the branch over the wheel the wrapper pulled in
+          timeout 300 "$NEWPY" -m pip install --quiet --force-reinstall --no-deps "invisible-core @ git+https://github.com/oss-invisible/core.git@fix/no-thread-started-on-the-reader"
+          "$NEWPY" -m pip list 2>/dev/null | grep -iE "^(invisible|playwright)" || true
+          "$NEWPY" -c "import invisible_core, invisible_playwright as w; print('core', invisible_core.__version__, invisible_core.__file__); print('wrapper', w.__file__)"
+      - name: Browser, the lab GeoIP database
+        run: |
+          set -e
+          timeout 300 "$NEWPY" scripts/ci_lab_geoip.py build
+          echo "FF_NEW=$(cd "$RUNNER_TEMP" && timeout 300 "$NEWPY" -m invisible_playwright fetch | tail -1)" >> "$GITHUB_ENV"
+      - name: The stamps (pipe chunk, lifecycle event) and the timing of the reader's path (listeners, gate, locks, wall against CPU)
+        run: |
+          set -e
+          timeout 300 "$NEWPY" scripts/hunt_trace_pipes.py
+          timeout 300 "$NEWPY" scripts/hunt_trace_lifecycle.py
+          timeout 300 "$NEWPY" scripts/hunt_trace_locks.py
+          # the patched modules import and the hooks are in place, before fifteen rounds are spent on them
+          "$NEWPY" -c "import invisible_core._hunt_locks as h, invisible_core.juggler.connection as c, invisible_core.juggler.lifecycle, invisible_core.juggler.injected, invisible_core.juggler.instance, invisible_playwright._juggler.server as s; assert c.Connection.dispatch_event is h._core_dispatch_event; assert getattr(s.PageDispatcher.__init__, '_hunt_wrapped', False) and getattr(s.BrowserDispatcher.__init__, '_hunt_wrapped', False); print('hooks ok')"
+      - name: The networkidle rows, four processes at once, fifteen rounds
+        run: |
+          set +e
+          mkdir -p evidence
+          echo "binary: new=$FF_NEW"
+          for n in $(seq 1 15); do
+            for c in 1 2 3 4; do
+              HUNT_LOCKS_TRACE="evidence/locks_new_${n}_$c.jsonl" timeout 300 "$NEWPY" -u scripts/hunt_netidle.py ours "$FF_NEW" "evidence/lc_new_${n}_$c.jsonl" "evidence/pipe_new_${n}_$c.txt"                 > "evidence/netidle_new_${n}_$c.log" 2>&1 &
+            done
+            wait
+            taskkill //F //T //IM firefox.exe > /dev/null 2>&1 || true
+            echo "round $n done"
+          done
+          exit 0
+      - name: Step summary
+        if: always()
+        run: |
+          set +e
+          {
+            timeout 300 "$NEWPY" scripts/hunt_locks_summary.py windows-2022 evidence 100
+            echo
+            echo "### Tracebacks and errors in the netidle logs"
+            echo '```'
+            grep -ahE "Traceback|Error" evidence/netidle_*.log | cut -c1-160 | sort | uniq -c | sort -rn | head -12
+            echo '```'
+          } 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
+          exit 0
+      - name: Close every Firefox left
+        if: always()
+        run: |
+          taskkill //F //T //IM firefox.exe > /dev/null 2>&1 || true
+          exit 0
+      - name: Upload the evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-flakes-locks-${{ github.run_id }}
+          path: evidence
+          if-no-files-found: warn
+          retention-days: 14
