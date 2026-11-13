@@ -1,0 +1,130 @@
+# windows-flakes-typing-hunt.yml - hunt scaffolding, never merged. Runs only on a push to a `hunt/windows-flakes-typing**` branch.
+# Typing on absolute deadlines: three arms (core 63.68.0 from PyPI, core from git branch fix/typing-on-absolute-deadlines, stock Playwright),
+# each x20 alone and x20 under four concurrent processes, per key planned / sent / seen by the page (keydown and keyup); and the e2e test
+# test_a_store_that_answers_the_focus_does_not_eat_the_text x20 under `-n 4 --dist loadfile` for both core arms. Every command is under `timeout 300`.
+name: windows flakes typing hunt
+
+on:
+  push:
+    branches: ['hunt/windows-flakes-typing**']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-flakes-typing-hunt-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GITHUB_TOKEN: ${{ github.token }}
+  CORE_GIT: "git+https://github.com/oss-invisible/core@fix/typing-on-absolute-deadlines"
+  CORE_PYPI: "invisible-core==63.68.0"
+  # Three e2e files that load the machine while the typing test runs (one per xdist worker with `--dist loadfile`).
+  LOAD_FILES: "tests/test_a_click_waits_for_the_navigation_it_plans_e2e.py tests/test_a_mouse_click_makes_one_mousemove_on_its_point_e2e.py tests/test_a_pointer_event_is_handled_before_the_call_returns_e2e.py"
+  TYPING_TEST: "tests/test_a_field_is_typed_after_a_pause.py::test_a_store_that_answers_the_focus_does_not_eat_the_text"
+
+jobs:
+  hunt:
+    name: typing hunt ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 180
+    strategy:
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        os: [windows-2022, ubuntu-24.04]
+    defaults:
+      run:
+        shell: bash
+    env:
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: { python-version: '3.11' }
+      - name: Install
+        run: |
+          set -e
+          timeout 300 python -m pip install --quiet --upgrade pip
+          timeout 300 python -m pip install --quiet ".[dev]"
+          timeout 300 python -m pip install --quiet "playwright==$(cat scripts/playwright_pin.txt)"
+          echo "FF=$(cd "$RUNNER_TEMP" && timeout 300 python -m invisible_playwright fetch | tail -1)" >> "$GITHUB_ENV"
+          timeout 300 python scripts/ci_lab_geoip.py build
+          if [ "$RUNNER_OS" = "Linux" ]; then timeout 300 python -m playwright install --with-deps firefox; else timeout 300 python -m playwright install firefox; fi
+          mkdir -p evidence
+      - name: Arm pypi, the core from the index
+        run: |
+          set -e
+          timeout 300 python -m pip install --quiet --force-reinstall --no-deps "$CORE_PYPI"
+          timeout 300 python scripts/hunt_typing_core.py | tee evidence/core_pypi.txt
+      - name: Arm pypi, typing per key, alone x20 and four at once x20
+        run: |
+          set +e
+          export HUNT_ARM=pypi
+          for n in 1 2 3 4; do timeout 300 python -u scripts/hunt_typing.py ours "$FF" >> "evidence/alone_pypi.log" 2>&1; done
+          for c in 1 2 3 4; do timeout 300 python -u scripts/hunt_typing.py ours "$FF" > "evidence/loaded_pypi_$c.log" 2>&1 & done
+          wait
+      - name: Arm stock, typing per key, alone x20 and four at once x20
+        run: |
+          set +e
+          export HUNT_ARM=stock
+          for n in 1 2 3 4; do timeout 300 python -u scripts/hunt_typing.py stock "$FF" >> "evidence/alone_stock.log" 2>&1; done
+          for c in 1 2 3 4; do timeout 300 python -u scripts/hunt_typing.py stock "$FF" > "evidence/loaded_stock_$c.log" 2>&1 & done
+          wait
+      - name: Test, core from the index, x20 under -n 4 --dist loadfile with three other e2e files
+        run: |
+          set +e
+          for n in $(seq 1 20); do
+            INVPW_BINARY_PATH="$FF" STEALTHFOX_E2E_BINARY="$FF" timeout 300 python -m pytest "$TYPING_TEST" $LOAD_FILES -n 4 --dist loadfile \
+              -m e2e -o addopts='' -o junit_family=xunit2 -q -p no:cacheprovider -p no:rerunfailures -rs \
+              --junitxml="evidence/test_pypi_$n.xml" > "evidence/test_pypi_$n.log" 2>&1
+            echo "pypi run $n exit $?"
+          done
+      - name: Arm git, the core from the branch installed over the wheel
+        run: |
+          set -e
+          timeout 300 python -m pip install --quiet --force-reinstall --no-deps "$CORE_GIT"
+          timeout 300 python scripts/hunt_typing_core.py | tee evidence/core_git.txt
+          grep -q "(_due): True" evidence/core_git.txt || { echo "the branch's keyboard is not the one installed"; exit 1; }
+      - name: Arm git, typing per key, alone x20 and four at once x20
+        run: |
+          set +e
+          export HUNT_ARM=git
+          for n in 1 2 3 4; do timeout 300 python -u scripts/hunt_typing.py ours "$FF" >> "evidence/alone_git.log" 2>&1; done
+          for c in 1 2 3 4; do timeout 300 python -u scripts/hunt_typing.py ours "$FF" > "evidence/loaded_git_$c.log" 2>&1 & done
+          wait
+      - name: Test, core from git, x20 under -n 4 --dist loadfile with three other e2e files
+        run: |
+          set +e
+          for n in $(seq 1 20); do
+            INVPW_BINARY_PATH="$FF" STEALTHFOX_E2E_BINARY="$FF" timeout 300 python -m pytest "$TYPING_TEST" $LOAD_FILES -n 4 --dist loadfile \
+              -m e2e -o addopts='' -o junit_family=xunit2 -q -p no:cacheprovider -p no:rerunfailures -rs \
+              --junitxml="evidence/test_git_$n.xml" > "evidence/test_git_$n.log" 2>&1
+            echo "git run $n exit $?"
+          done
+      - name: Summary
+        if: always()
+        run: |
+          set +e
+          {
+            sed 's/^/    /' evidence/core_pypi.txt evidence/core_git.txt 2>/dev/null
+            timeout 300 python scripts/hunt_typing_summary.py evidence "$RUNNER_OS"
+            echo
+            echo '```'
+            grep -ahE "Traceback|Error" evidence/alone_*.log evidence/loaded_*.log | sort | uniq -c | head
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Close every Firefox left
+        if: always()
+        shell: pwsh
+        run: |
+          Get-Process firefox -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          "left: " + @(Get-Process firefox -ErrorAction SilentlyContinue).Count
+      - name: Upload the evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-flakes-typing-${{ matrix.os }}-${{ github.run_id }}
+          path: evidence
+          if-no-files-found: warn
+          retention-days: 14
