@@ -9,7 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [0.52.0] - 2026-11-14
 
 ### Changed
-- Pins invisible-core 64.70.0 and with it the engine firefox-64. A request a page causes now leaves in the context of that
+- Pins invisible-core 64.71.0 and with it the engine firefox-64. A request a page causes now leaves in the context of that
   page, by that context's proxy and resolver: the name of a TURN server over TCP, the OCSP request of a certificate, the TLS
   over a tunnel, the Safe Browsing completion of a page load. Nothing of a context with a proxy goes out DIRECT when a proxy
   lookup fails or the context has just closed. On Linux the profile lock no longer looks up the machine's host name.
