@@ -2,6 +2,7 @@ name: goto stopped hunt
 on:
   push:
     branches: [hunt/goto-stopped-timing]
+    paths: [scripts/hunt_goto_stopped.py, .github/workflows/goto-stopped-hunt.yml]
 env:
   GITHUB_TOKEN: ${{ github.token }}
 concurrency:

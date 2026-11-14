@@ -1,0 +1,63 @@
+name: server cost hunt
+on:
+  push:
+    branches: [hunt/goto-stopped-timing]
+    paths: [scripts/hunt_server_cost.py, .github/workflows/server-cost-hunt.yml]
+env:
+  GITHUB_TOKEN: ${{ github.token }}
+concurrency:
+  group: server-cost-hunt
+  cancel-in-progress: true
+jobs:
+  cost:
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        runner: [ubuntu-24.04, windows-2022]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with: { fetch-depth: 1 }
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: { python-version: '3.11' }
+      - name: Install (our wrapper, stock Playwright with its Firefox, psutil)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ".[dev]" psutil
+          python -m pip install "playwright==$(cat scripts/playwright_pin.txt)"
+          if [ "$RUNNER_OS" = "Linux" ]; then python -m playwright install --with-deps firefox; else python -m playwright install firefox; fi
+      - name: Fetch our published firefox binary
+        run: echo "FF=$(cd "$RUNNER_TEMP" && python -m invisible_playwright fetch | tail -1)" >> "$GITHUB_ENV"
+      - name: Alone and four at once, five rounds each, three arms
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          for n in 1 4; do
+            for arm in ours oursremote stock; do
+              python scripts/hunt_server_cost.py $arm $n 5 "$FF" 2>&1 | grep -E "COSTROW|Error|error" | tee -a "$RUNNER_TEMP/cost.log" | tail -2
+            done
+          done
+      - name: Summary
+        run: |
+          python - "$RUNNER_TEMP/cost.log" <<'PY'
+          import json, sys, statistics
+          rows = [json.loads(l.split("COSTROW ", 1)[1]) for l in open(sys.argv[1], encoding="utf-8") if "COSTROW " in l]
+          for n in (1, 4):
+              for arm in ("ours", "oursremote", "stock"):
+                  r = [x for x in rows if x["arm"] == arm and x["n"] == n]
+                  if not r:
+                      print("%s n=%d: NO ROWS" % (arm, n)); continue
+                  st = sorted(v for x in r for v in x["start_ms"])
+                  med = lambda k: statistics.median(x[k] for x in r)
+                  print("%s n=%d: start to first new_page ms p50 %d max %d | per browser MB: client %.1f server %.1f firefox %.1f (medians of %d rounds)"
+                        % (arm, n, st[len(st)//2], st[-1], med("client_mb") / n, med("server_mb") / n, med("firefox_mb") / n, len(r)))
+          PY
+      - name: Close every browser left
+        if: always()
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then pkill -f firefox || true; else powershell -Command "Get-Process firefox -ErrorAction SilentlyContinue | Stop-Process -Force"; fi
