@@ -65,6 +65,23 @@ def _children_of(binary: str):
     return found
 
 
+#: How long a process that reads ``Seccomp: 0`` is read again, in seconds, before it is judged unsandboxed. A child turns its filter on only after its own
+#: start-up, and Firefox pre-launches content processes, so a process sampled while it starts legitimately reads 0 (run 43523960399: the newest tab
+#: process, pid 4090 of [3905, 4002, 4005, 4090], read 0 and the same suite was green on the candidates before). A process that is still 0 after this
+#: long has finished starting and runs without a filter: that is the failure the test is for.
+STARTUP_SECONDS = 10
+
+
+def _settled_seccomp(pids, seconds: float = STARTUP_SECONDS) -> dict:
+    """``{pid: Seccomp}`` of every pid, where a pid that does not read ``2`` is read again until it does or ``seconds`` have passed. No pid is dropped."""
+    say = {pid: _seccomp(pid) for pid in pids}
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline and any(s != "2" for s in say.values()):
+        time.sleep(0.25)
+        say = {pid: (s if s == "2" else _seccomp(pid)) for pid, s in say.items()}
+    return say
+
+
 def _kernel_says() -> str:
     out = []
     for name in ("kernel.apparmor_restrict_unprivileged_userns", "kernel.unprivileged_userns_clone", "user.max_user_namespaces"):
@@ -95,7 +112,7 @@ def test_the_socket_process_and_a_tab_process_have_a_seccomp_filter(firefox_bina
             if sockets and tabs:
                 break
             time.sleep(0.5)
-        say = {pid: _seccomp(pid) for pid in sockets + tabs}
+        say = _settled_seccomp(sockets + tabs)
         known = "socket %s, tab %s; %s" % (sockets, tabs, _kernel_says())
         assert sockets, "the browser has no socket process after a PeerConnection (%s)" % known
         assert tabs, "the browser has no tab process (%s)" % known
