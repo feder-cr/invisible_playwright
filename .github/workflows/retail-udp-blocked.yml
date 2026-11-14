@@ -1,0 +1,167 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# retail-udp-blocked.yml - MEASURE how a retail (Mozilla-built) Firefox on Windows
+# behaves when outbound UDP is blocked, next to the same browser with UDP free.
+#
+# This is a measurement, not a gate. It does not judge our browser, it does not
+# compare the numbers with anything, and it never fails because of a value it
+# measured. It fails only when a step breaks or when a PROOF OF CONDITION fails
+# (a measurement taken under the wrong network condition is worse than none):
+#   - control: a STUN Binding Request must be answered, TCP and name resolution work
+#   - blocked: the same datagram must get no answer, TCP and name resolution work
+# The proof runs before and after the measurements of each condition.
+#
+# Before them, one more measurement that does not depend on the network: storage
+# partitioning (scripts/retail_udp_blocked/storage_partition.py), two local sites,
+# five fresh profiles, answers in partition/result.json and the job summary.
+#
+# Four conditions, in this order: control (UDP free), DoH forced + UDP free,
+# then the firewall rule goes on: UDP blocked, DoH forced + UDP blocked. The DoH
+# ones use the DNS-over-HTTPS provider the product declares (network.trr.mode=3,
+# the provider URI and bootstrap address of invisible_core) and measure only the
+# HTTP/3 visits; each of their sessions must show DoH in use in the browser's own
+# DNS state, or the step fails instead of measuring native name resolution.
+#
+# It is the Windows side of the Linux reference (retail Firefox 159.0 in a
+# container, outbound UDP dropped with tc netem). The probes, the sites and the
+# output fields are the same ones, so a Linux capture and a Windows capture
+# compare one to one. Scripts: scripts/retail_udp_blocked/ (each names the Linux
+# script it was ported from).
+#
+# Why it triggers on pull_request: no suite is launched by hand here, and a
+# workflow that only has workflow_dispatch cannot run before it is on main. The
+# paths filter keeps it to changes of this file and of its scripts.
+#
+# Secret-free: the browser and the driver are public downloads.
+# ─────────────────────────────────────────────────────────────────────────────
+name: retail-udp-blocked
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/retail-udp-blocked.yml'
+      - 'scripts/retail_udp_blocked/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# The geckodriver step asks the release API for the digest GitHub recorded for
+# the asset; an authenticated call is not subject to the anonymous rate limit.
+env:
+  GITHUB_TOKEN: ${{ github.token }}
+  # The Firefox the Linux reference used: 159.0, build ID 20261022150525 on Linux.
+  FIREFOX_VERSION: '159.0'
+  # sha256 of "Firefox Setup 159.0.msi" (win64/en-US). The step ALSO checks it against
+  # the SHA256SUMS file Mozilla publishes for that version; either one differing fails.
+  FIREFOX_MSI_SHA256: f6996d56e47c65d781faeb65679a021899baa5876c0a548bc79d083ea41c1e46
+  # sha256 of firefox.exe and xul.dll of 159.0 (the files of the complete MAR of the same version).
+  FIREFOX_EXE_SHA256: d8b5ed82fcd9c0f159dc86dc1c4526ceae981c4d9651f21908b6de90d0a56d85
+  XUL_DLL_SHA256: fec21f3e7c281c836ff4fb9658bf321857e101750bc4a6280d1b419996ce7e29
+  GECKODRIVER_VERSION: '0.37.1'
+  # sha256 of geckodriver-v0.37.1-win64.zip, recorded by the first run and equal to the digest
+  # GitHub records for the asset (install_geckodriver.ps1 checks both).
+  GECKODRIVER_WIN64_ZIP_SHA256: dfed9315abe8d2fbc1b6161a2ee8002452e79cf05ee92fdc653a4e26bc35edd8
+  SELENIUM_VERSION: '4.52.0'
+  PSUTIL_VERSION: '7.0.0'
+
+jobs:
+  measure:
+    name: retail Firefox, UDP free then blocked (windows)
+    runs-on: windows-latest
+    # The first run, with the two conditions control and blocked, took 24 minutes. The two DoH
+    # conditions add only the HTTP/3 sessions (15 each) and the DNS evidence, about 6 minutes each, and
+    # the storage partitioning measurement adds about 2: about 38 minutes expected.
+    timeout-minutes: 76
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with: { fetch-depth: 1 }
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: { python-version: '3.12' }
+
+      - name: Prepare
+        run: |
+          $out = Join-Path $env:RUNNER_TEMP 'retail-udp-blocked'
+          $work = Join-Path $env:RUNNER_TEMP 'retail-udp-blocked-tools'
+          New-Item -ItemType Directory -Force -Path $out, $work | Out-Null
+          "OUT_DIR=$out" | Add-Content -Path $env:GITHUB_ENV -Encoding utf8
+          "WORK_DIR=$work" | Add-Content -Path $env:GITHUB_ENV -Encoding utf8
+          python -m pip install "selenium==$env:SELENIUM_VERSION" "psutil==$env:PSUTIL_VERSION"
+          if ($LASTEXITCODE -ne 0) { throw 'pip install failed' }
+          python -m pip freeze | Set-Content -LiteralPath (Join-Path $out 'pip_freeze.txt') -Encoding utf8
+
+      - name: Install the retail Firefox and check it against Mozilla's SHA256SUMS and the pinned values
+        run: >
+          ./scripts/retail_udp_blocked/install_firefox.ps1
+          -Version $env:FIREFOX_VERSION -MsiSha256 $env:FIREFOX_MSI_SHA256
+          -ExeSha256 $env:FIREFOX_EXE_SHA256 -XulSha256 $env:XUL_DLL_SHA256
+          -WorkDir $env:WORK_DIR -OutDir $env:OUT_DIR
+
+      - name: Install geckodriver
+        id: geckodriver
+        run: >
+          ./scripts/retail_udp_blocked/install_geckodriver.ps1
+          -Version $env:GECKODRIVER_VERSION -ZipSha256 $env:GECKODRIVER_WIN64_ZIP_SHA256
+          -WorkDir $env:WORK_DIR -OutDir $env:OUT_DIR
+
+      # The measurement steps run one after the other even when an earlier one failed (a failed proof or a failed
+      # DoH evidence turns the job red at the end, but does not throw away the other conditions), and never when
+      # the tools did not install.
+      # Independent of the network condition (a local server, no outbound traffic): the storage
+      # partitioning of the retail browser, five fresh profiles. Written to partition/result.json.
+      - name: Storage partitioning - two local sites, frame and top page (UDP free)
+        if: ${{ !cancelled() && steps.geckodriver.outcome == 'success' }}
+        run: |
+          $env:MOZ_CRASHREPORTER_DISABLE = '1'
+          Add-Content -LiteralPath (Join-Path $env:OUT_DIR 'commands.txt') -Value "[partition] python scripts/retail_udp_blocked/storage_partition.py --runs 5 --out $env:OUT_DIR" -Encoding utf8
+          python scripts/retail_udp_blocked/storage_partition.py --runs 5 --out $env:OUT_DIR
+          if ($LASTEXITCODE -ne 0) { throw "storage_partition.py exited with $LASTEXITCODE" }
+
+      - name: Condition 1 - control, outbound UDP free
+        if: ${{ !cancelled() && steps.geckodriver.outcome == 'success' }}
+        run: ./scripts/retail_udp_blocked/run_condition.ps1 -Name control -OutDir $env:OUT_DIR
+
+      - name: Condition 2 - DNS over HTTPS forced, outbound UDP free
+        if: ${{ !cancelled() && steps.geckodriver.outcome == 'success' }}
+        run: ./scripts/retail_udp_blocked/run_condition.ps1 -Name doh-free -OutDir $env:OUT_DIR
+
+      - name: Block outbound UDP with a Windows Firewall rule
+        if: ${{ !cancelled() && steps.geckodriver.outcome == 'success' }}
+        run: >
+          ./scripts/retail_udp_blocked/udp_block.ps1 -Action enable
+          -OutFile (Join-Path $env:OUT_DIR 'blocked/firewall_rule.txt')
+
+      - name: Condition 3 - outbound UDP blocked
+        if: ${{ !cancelled() && steps.geckodriver.outcome == 'success' }}
+        run: ./scripts/retail_udp_blocked/run_condition.ps1 -Name blocked -OutDir $env:OUT_DIR
+
+      - name: Condition 4 - DNS over HTTPS forced, outbound UDP blocked
+        if: ${{ !cancelled() && steps.geckodriver.outcome == 'success' }}
+        run: ./scripts/retail_udp_blocked/run_condition.ps1 -Name doh-blocked -OutDir $env:OUT_DIR
+
+      - name: Remove the firewall rule and stop what is left of the browser
+        if: always()
+        run: |
+          ./scripts/retail_udp_blocked/udp_block.ps1 -Action disable
+          Get-Process -Name firefox, geckodriver -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          exit 0
+
+      - name: Summary, meta.json and the job summary table
+        if: always()
+        run: python scripts/retail_udp_blocked/report.py --out $env:OUT_DIR
+
+      - name: Upload the raw per-session JSON, summary.json and meta.json
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: retail-udp-blocked-windows-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/retail-udp-blocked
+          if-no-files-found: warn
+          retention-days: 90
