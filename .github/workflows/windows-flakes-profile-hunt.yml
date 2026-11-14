@@ -1,26 +1,32 @@
-# windows-flakes-sendsplit-hunt.yml - hunt scaffolding, never merged. Runs only on a push to a `hunt/windows-flakes-sendsplit**` branch.
-# The engine60 hunt with the hop "sent -> P1" cut in pieces: S0 (the core decided) -> S1 (os.write returned in Connection._write) -> S2 (the parent's
-# JS got the pipe message, components/Juggler.js receiveMessage) -> S2b (Dispatcher._dispatch) -> S3 = P1 (PageHandler entry), plus a ring of what the
-# parent's Dispatcher ran on its main thread (every inbound message and every emitted event), listed around every hop over 30 ms.
-# The engine is the CANDIDATE of oss-invisible/firefox_antidetect_patch run 43534660961 (latitude/firefox-64, the "key born in the past"
-# fix: PageAgent._dispatchKeyEvent has no timer, the latency goes to tip.setNextKeyLatency), its asset-<leg> artifact, downloaded here
-# with this job's token. Core = oss-invisible/core main with fix/typing-on-absolute-deadlines merged in the job, over the wheel, under a LOCAL seal made from
-# the candidate's tree (as the candidate's own gate does). The Juggler of the candidate and of stock Playwright's Firefox is patched in its
-# omni.ja (scripts/hunt_patch_omni.py): stamps kept in memory in both processes, written once at the end. Arms: ours (stamped) and stock
-# (stamped); the unstamped twin of the engine60 hunt is dropped (it costs a third of the job). Windows: four processes at once, 60 runs per
-# arm. Linux: alone, 60 runs per arm. Every command under timeout 300; cleanup never fails the job.
-name: windows flakes sendsplit hunt
+# windows-flakes-profile-hunt.yml - hunt scaffolding, never merged. Runs only on a push to a `hunt/windows-flakes-profile**` branch. WINDOWS ONLY.
+# The send-split hunt (stamps S0 core decided, S1 os.write returned, S2 parent Juggler.js receiveMessage, S2b, P1, C2..C5 and the parent's Dispatcher ring)
+# with two instruments added, to see what the parent's main thread and our own process are doing while a typed key waits.
+#   Part A, the parent's main thread: the Gecko profiler from startup (MOZ_PROFILER_STARTUP=1, interval 1 ms, GeckoMain only, a buffer of 8M entries,
+#           features js+stackwalk, MOZ_PROFILER_SHUTDOWN=<file per browser>). For every keydown / keyup whose S1>S2 is over 30 ms, the samples of the
+#           parent main thread inside the window grouped by function (leaf and callers); which functions exist only in ours (our files and STEALTH-HOOK
+#           code from scripts/hunt_ours_list.json, made from the source tree (read only), and the members only ours' omni.ja has) against stock.
+#   Part B, our process (invisible_core Connection): the wait for _write_lock and its holder (a lock proxy), thread CPU against wall across the write
+#           (an estimate of the GIL wait), a Python stack sampler; the cases with S0>S1 over 30 ms are dumped with holder and stack.
+# Arms (scripts/hunt_profile_rounds.sh, round by round, order rotating): ours_prof (profiler on), ours_noprof (the twin: same stamps and Part B, no profiler),
+# stock_prof (stock Playwright Firefox, stamped, profiler on). 4 processes at once, 60 runs per arm. All stamps and samples stay in memory and are written
+# once at exit. The summary has a profiler on/off table (ours_prof against ours_noprof).
+# The engine is the CANDIDATE of oss-invisible/firefox_antidetect_patch run 43534660961 (latitude/firefox-64, the "key born in the past" fix), its asset-<leg>
+# artifact, downloaded here with this job's token. Core = oss-invisible/core main with fix/typing-on-absolute-deadlines merged in the job, over the wheel,
+# under a LOCAL seal made from the candidate's tree. The core does not let a MOZ_* variable of the host reach the engine, so the profiler's variables are
+# added after the core composed the environment (scripts/hunt_profiler_env.py); stock gets them through launch(env=). Every command under timeout 300
+# (the summary 1800); cleanup never fails the job.
+name: windows flakes profile hunt
 
 on:
   push:
-    branches: ['hunt/windows-flakes-sendsplit**']
+    branches: ['hunt/windows-flakes-profile**']
 
 permissions:
   contents: read
   actions: read
 
 concurrency:
-  group: windows-flakes-sendsplit-hunt-${{ github.ref }}
+  group: windows-flakes-profile-hunt-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -35,18 +41,9 @@ env:
 
 jobs:
   hunt:
-    name: sendsplit hunt ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+    name: profile hunt windows
+    runs-on: windows-2022
     timeout-minutes: 180
-    strategy:
-      max-parallel: 1
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-2022
-            leg: win-x86_64
-          - os: ubuntu-24.04
-            leg: linux-x86_64
     defaults:
       run:
         shell: bash
@@ -63,7 +60,7 @@ jobs:
         continue-on-error: true
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: asset-${{ matrix.leg }}
+          name: asset-win-x86_64
           path: art
           repository: ${{ env.ENGINE_REPO }}
           run-id: ${{ env.ENGINE_RUN_ID }}
@@ -77,9 +74,9 @@ jobs:
           timeout 300 gh run view "$ENGINE_RUN_ID" -R "$ENGINE_REPO" --json status,conclusion,headBranch,headSha 2>&1
           timeout 300 gh api "repos/$ENGINE_REPO/actions/runs/$ENGINE_RUN_ID/artifacts" --jq '.artifacts[] | [.name,.size_in_bytes,.expired]|@tsv' 2>&1
           mkdir -p art
-          timeout 300 gh run download "$ENGINE_RUN_ID" -R "$ENGINE_REPO" -n "asset-${{ matrix.leg }}" -D art 2>&1
+          timeout 300 gh run download "$ENGINE_RUN_ID" -R "$ENGINE_REPO" -n "asset-win-x86_64" -D art 2>&1
           ls -la art
-          set -- art/firefox-*-stealth-${{ matrix.leg }}.*
+          set -- art/firefox-*-stealth-win-x86_64.*
           if [ "$#" -ne 1 ] || [ ! -e "$1" ]; then
             echo "THE ENGINE OF RUN $ENGINE_RUN_ID COULD NOT BE DOWNLOADED with this job's token (artifact expired, build not finished, or the token cannot read another repo's artifacts). Add a secret ENGINE_RUN_TOKEN (read access to the actions of $ENGINE_REPO) and push again."
             exit 1
@@ -102,24 +99,21 @@ jobs:
           timeout 300 python -m pip install --quiet ".[dev]"
           timeout 300 python -m pip install --quiet "playwright==$(cat scripts/playwright_pin.txt)"
           timeout 300 python scripts/ci_lab_geoip.py build
-          if [ "$RUNNER_OS" = "Linux" ]; then timeout 300 python -m playwright install --with-deps firefox; else timeout 300 python -m playwright install firefox; fi
+          timeout 300 python -m playwright install firefox
           STOCK_FF="$(python -c "from playwright.sync_api import sync_playwright as s; p = s().start(); print(p.firefox.executable_path); p.stop()" | tail -1)"
           echo "STOCK_FF=$STOCK_FF" >> "$GITHUB_ENV"
-          if [ "$RUNNER_OS" = "Windows" ]; then echo "HUNT_MODE=loaded" >> "$GITHUB_ENV"; else echo "HUNT_MODE=alone" >> "$GITHUB_ENV"; fi
           echo "stock: $STOCK_FF"
           ls -la "$(dirname "$STOCK_FF")" | head -50
       - name: Unpack the candidate's engine
         run: |
           set -e
           mkdir -p ff
-          set -- art/firefox-*-stealth-${{ matrix.leg }}.*
-          [ "$#" -eq 1 ] && [ -e "$1" ] || { echo "ERROR: expected one firefox-*-stealth-${{ matrix.leg }} archive in art/, found: $*"; exit 1; }
+          set -- art/firefox-*-stealth-win-x86_64.*
+          [ "$#" -eq 1 ] && [ -e "$1" ] || { echo "ERROR: expected one firefox-*-stealth-win-x86_64 archive in art/, found: $*"; exit 1; }
           A="$1"
           echo "archive: $A"
-          case "$RUNNER_OS" in
-            Windows) timeout 300 python -c "import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall('ff')" "$A"; EXE="$PWD/ff/firefox.exe";;
-            *)       timeout 300 tar xzf "$A" -C ff; EXE="$PWD/ff/firefox";;
-          esac
+          timeout 300 python -c "import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall('ff')" "$A"
+          EXE="$PWD/ff/firefox.exe"
           [ -e "$EXE" ] || { echo "ERROR: firefox binary not found at $EXE"; exit 1; }
           chmod +x "$EXE" 2>/dev/null || true
           echo "FF=$EXE" >> "$GITHUB_ENV"
@@ -162,6 +156,18 @@ jobs:
               print("SMOKE ok", p.evaluate("navigator.userAgent"))
           PY
           grep -q "^SMOKE ok" evidence/smoke.txt
+      - name: Self-test of the post-processing (the profile reader and the summary on synthetic data) and the series list
+        run: |
+          set -e
+          timeout 300 python scripts/hunt_gecko_profile.py --selftest
+          timeout 300 python scripts/hunt_profile_summary.py --selftest
+          timeout 300 python scripts/hunt_ourside.py --selftest
+          python - <<'PY'
+          import json
+          d = json.load(open("scripts/hunt_ours_list.json"))
+          print("series list: base %s head %s: %d added, %d modified, %d hook files, %d symbols" % (
+              d["base"], d["head"][:10], len(d["added"]), len(d["modified"]), len(d["hook_files"]), len(d["symbols"])))
+          PY
       - name: Patch the Juggler of both engines (omni.ja next to the executable), stamps for Page.dispatchKeyEvent (S2, S2b, P1 and the ring)
         run: |
           set -e
@@ -171,14 +177,61 @@ jobs:
           grep -q "send-split points all patched" evidence/patch_ours.txt || { echo "the candidate's Juggler.js / Dispatcher.js did not take the send-split stamps"; exit 1; }
           grep -E "send-split points|SKIPPED" evidence/patch_stock.txt || true
           grep -q "setNextKeyLatency(born).: 3" evidence/patch_ours.txt || { echo "the candidate's PageAgent is not the no-timer shape (three setNextKeyLatency(born) calls)"; exit 1; }
-      - name: Arms ours and stock with the stamps
-        env:
-          HUNT_STAMPS: "1"
+      - name: The members of both omni.ja files (what only ours has)
         run: |
           set +e
-          bash scripts/hunt_engine_arm.sh ours ours "$FF"
-          # the stock driver copies the browser's output into its own log only with this
-          DEBUG=pw:browser bash scripts/hunt_engine_arm.sh stock stock "$STOCK_FF"
+          timeout 300 python scripts/hunt_jar_names.py "$FF" > evidence/jar_names_ours.json
+          timeout 300 python scripts/hunt_jar_names.py "$STOCK_FF" > evidence/jar_names_stock.json
+          python -c "import json; o=json.load(open('evidence/jar_names_ours.json')); s=json.load(open('evidence/jar_names_stock.json')); print('omni.ja members: ours', len(o), 'stock', len(s))"
+          exit 0
+      - name: Profiler smoke, are the variables honored (a profile file at exit) by the candidate and by stock
+        continue-on-error: true
+        run: |
+          set +e
+          mkdir -p prof-smoke
+          export HUNT_PROFILE_DIR="$PWD/prof-smoke"
+          {
+            echo "== ours (variables added after the core composed the environment)"
+            timeout 300 python - <<'PY'
+          import os, sys, time
+          sys.path.insert(0, "scripts")
+          import hunt_profiler_env as pe
+          f = pe.profile_path("smoke_ours", 0)
+          pe.install_core_patch(lambda: f)
+          from invisible_playwright import InvisiblePlaywright
+          t0 = time.time()
+          with InvisiblePlaywright(seed=2, binary_path=os.environ["FF"], headless=True) as b:
+              p = b.new_page()
+              p.goto("about:blank")
+              time.sleep(2)
+          print("ours closed after %.1f s; file %s exists %s size %s" % (time.time() - t0, f, os.path.exists(f), os.path.getsize(f) if os.path.exists(f) else None))
+          PY
+            echo "== stock (launch env)"
+            timeout 300 python - <<'PY'
+          import os, sys, time
+          sys.path.insert(0, "scripts")
+          import hunt_profiler_env as pe
+          from playwright.sync_api import sync_playwright
+          f = pe.profile_path("smoke_stock", 0)
+          with sync_playwright() as p:
+              b = p.firefox.launch(headless=True, env=dict(os.environ, **pe.profiler_env(f)))
+              page = b.new_page()
+              page.goto("about:blank")
+              time.sleep(2)
+              t0 = time.time()
+              b.close()
+          print("stock closed after %.1f s; file %s exists %s size %s" % (time.time() - t0, f, os.path.exists(f), os.path.getsize(f) if os.path.exists(f) else None))
+          PY
+            for f in prof-smoke/*.json; do
+              [ -e "$f" ] && timeout 300 python scripts/hunt_gecko_profile.py --probe "$f"
+            done
+          } 2>&1 | tee evidence/profiler_smoke.txt
+          ls -la prof-smoke
+          exit 0
+      - name: Arms ours_prof, ours_noprof and stock_prof, three rounds of four processes at once
+        run: |
+          set +e
+          bash scripts/hunt_profile_rounds.sh "$FF" "$STOCK_FF"
           exit 0
       - name: Summary
         if: always()
@@ -187,10 +240,14 @@ jobs:
           {
             sed 's/^/    /' evidence/engine_id.txt 2>/dev/null
             sed 's/^/    /' evidence/core_git.txt 2>/dev/null
-            timeout 300 python scripts/hunt_engine_summary.py evidence "$RUNNER_OS"
             echo
             echo '```'
-            grep -ahE "Traceback|Error" evidence/alone_*.log evidence/loaded_*.log | sort | uniq -c | head -20
+            cat evidence/profiler_smoke.txt 2>/dev/null | head -60
+            echo '```'
+            timeout 1800 python scripts/hunt_profile_summary.py evidence "$RUNNER_OS"
+            echo
+            echo '```'
+            grep -ahE "Traceback|Error" evidence/loaded_*.log | sort | uniq -c | head -20
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
           exit 0
@@ -199,19 +256,14 @@ jobs:
         continue-on-error: true
         run: |
           set +e
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            timeout 300 taskkill //F //IM firefox.exe //T >/dev/null 2>&1
-            echo "left: $(timeout 300 tasklist 2>/dev/null | grep -ic firefox)"
-          else
-            timeout 300 pkill -9 -x firefox >/dev/null 2>&1
-            echo "left: $(pgrep -xc firefox 2>/dev/null)"
-          fi
+          timeout 300 taskkill //F //IM firefox.exe //T >/dev/null 2>&1
+          echo "left: $(timeout 300 tasklist 2>/dev/null | grep -ic firefox)"
           exit 0
       - name: Upload the evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: windows-flakes-sendsplit-${{ matrix.os }}-${{ github.run_id }}
+          name: windows-flakes-profile-windows-${{ github.run_id }}
           path: evidence
           if-no-files-found: warn
           retention-days: 14

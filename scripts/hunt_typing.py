@@ -18,6 +18,12 @@ kept raw in memory, field "s1": [wall ms, the JSON of the message]); S0 is the e
 its write is made by Playwright's node driver. The JSON also carries what the summary needs to put the stamps next to the page's events: the wall clock
 (calibrated, sub-millisecond) of each send ("sent_wall_ms"), the page's ordered events ("ev": type, key, handler clock, event clock, all
 absolute ms) and the window of the typing ("win").
+
+PROFILE hunt additions: HUNT_PROFILE=1 starts the Gecko profiler in the browser from its first instruction and has it write its profile at exit
+(scripts/hunt_profiler_env.py): ours one file per run (a browser per run), stock one file per invocation (its browser is kept for the runs of an
+invocation); the record carries the file ("profile"). Ours (stamped) also times our side of the send (scripts/hunt_ourside.py: lock proxies,
+holders, thread CPU against wall, a Python stack sampler): "wr" = one record per Page.dispatchKeyEvent write, "wl" = the cases over 30 ms.
+HUNT_PROFILE unset = the same arm without the profiler (the twin).
 """
 import os
 import http.server
@@ -26,10 +32,17 @@ import sys
 import threading
 import time
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import hunt_ourside
+import hunt_profiler_env
 from invisible_core.juggler._behaviour import TypingPersona, plan_typing
 
 ENGINE = sys.argv[1]
 STAMPS = os.environ.get("HUNT_STAMPS") == "1"
+PROFILE = os.environ.get("HUNT_PROFILE") == "1"
+ARM = os.environ.get("HUNT_ARM", sys.argv[1])
+CUR_PROFILE = [None]
+OURSIDE = ([], [])
 DUMP_PREF = {"browser.dom.window.dump.enabled": True}
 TEXT = "someone@example.com"
 PLAN = plan_typing(TEXT, TypingPersona.from_seed(2), nonce=1)
@@ -135,6 +148,7 @@ def report(page, t_start, t_start_wall):
         "sent_wall_ms": list(SENT_W), "ev": [[t, k, round(h, 3), round(e, 3)] for t, k, h, e in ev], "hs": hs, "hk": list(HK),
         "s1": [[t, d.decode("utf-8", "replace").rstrip("\x00")] for t, d in S1],
         "win": [round(t_start_wall, 3), round(wall_ms(), 3)], "stamps": STAMPS,
+        "profile": CUR_PROFILE[0], "profiler": PROFILE, "pid": os.getpid(), "wr": OURSIDE[0], "wl": OURSIDE[1],
     }
 
 
@@ -148,6 +162,9 @@ if ENGINE == "stock":
         kw = {"headless": True, "args": ["-purgecaches"]}
         if STAMPS:
             kw["firefox_user_prefs"] = DUMP_PREF
+        if PROFILE:
+            CUR_PROFILE[0] = hunt_profiler_env.profile_path(ARM, 0)
+            kw["env"] = dict(os.environ, **hunt_profiler_env.profiler_env(CUR_PROFILE[0]))
         b = p.firefox.launch(**kw)
         page = b.new_page()
         for _ in range(RUNS):
@@ -176,6 +193,8 @@ else:
     def down(self, key, *a, **k):
         if key != "Shift":
             mark()
+            if STAMPS:
+                hunt_ourside.take_s0(SENT_W[-1])
         return real_down(self, key, *a, **k)
 
     kb.Keyboard.down = down
@@ -192,13 +211,18 @@ else:
 
             @staticmethod
             def write(fd, data):
-                n = _os.write(fd, data)
-                t = wall_ms()
+                if b"Page.dispatchKeyEvent" in data:
+                    n, t = hunt_ourside.os_timing(_os, fd, data)
+                else:
+                    n, t = _os.write(fd, data), wall_ms()
                 if b"Page.dispatchKeyEvent" in data:
                     S1.append((round(t, 3), bytes(data)))
                 return n
 
         _conn.os = _OsStamp()
+        hunt_ourside.install(wall_ms)
+        if PROFILE:
+            hunt_profiler_env.install_core_patch(lambda: CUR_PROFILE[0])
     if STAMPS:
         # the browser's output is read by the core's one reader (ProcessOutput); it keeps the last 200 lines only, so the HUNTKEY ones are
         # also copied out as they arrive
@@ -226,7 +250,9 @@ else:
 
         conn.ProcessOutput._pump = pump
     from invisible_playwright import InvisiblePlaywright
-    for _ in range(RUNS):
+    for run_n in range(RUNS):
+        if PROFILE:
+            CUR_PROFILE[0] = hunt_profiler_env.profile_path(ARM, run_n)
         # a fresh browser per run: the plan is the one of the session's first field (typing nonce 1)
         kw = {"seed": 2, "binary_path": sys.argv[2], "headless": True, "extra_args": ["-purgecaches"]}
         if STAMPS:
@@ -236,11 +262,14 @@ else:
             SENT_W.clear()
             S1.clear()
             HK.clear()
+            hunt_ourside.reset()
             page = browser.new_page()
             page.goto(url)
             t_start = time.time()
             t_start_wall = wall_ms()
             page.locator("#f").press_sequentially(TEXT)
+            if STAMPS:
+                OURSIDE[0][:], OURSIDE[1][:] = hunt_ourside.snapshot()
             rec = report(page, t_start, t_start_wall)
         if STAMPS:
             time.sleep(0.5)  # the browser has ended and written its stamps once; the last lines are still on the pipe
