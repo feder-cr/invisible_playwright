@@ -24,6 +24,7 @@ from invisible_playwright import _session
 from invisible_playwright._juggler import server as module
 from invisible_playwright._juggler.server import (SESSION_SEED_PREF, BrowserTypeDispatcher,
                                                   JugglerServer)
+from _browser_census import closes_with_the_test
 
 # Read with a default so that, on the code before the fix, the test fails on what the
 # profile holds and not on an import.
@@ -35,6 +36,7 @@ _LINE = re.compile(r'^user_pref\("([^"]+)",\s*(.*)\);\s*$')
 class _Engine(EventListeners):
     def __init__(self):
         EventListeners.__init__(self)
+        closes_with_the_test(self)
 
     def send(self, method, params=None, session=None, timeout=30.0):
         return {"browserContextId": "ctx-1", "targetId": "t-1"}

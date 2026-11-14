@@ -24,6 +24,7 @@ from invisible_playwright._juggler.server import (
     BrowserTypeDispatcher, JugglerServer)
 from invisible_playwright._juggler.transport import _translate_exception
 from invisible_playwright.sync_api import TimeoutError as PlaywrightTimeout
+from _browser_census import closes_with_the_test
 
 PROXY = {"server": "socks5://127.0.0.1:1080", "username": "u", "password": "p"}
 
@@ -34,6 +35,7 @@ class _Engine(EventListeners):
 
     def __init__(self, silent=()):
         EventListeners.__init__(self)
+        closes_with_the_test(self)
         self.silent = set(silent)
         self.bounds: dict = {}
         self.startup: list = []

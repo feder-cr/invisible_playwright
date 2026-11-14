@@ -34,6 +34,7 @@ from invisible_playwright._juggler.server import (
     ArtifactDispatcher, BrowserContextDispatcher, BrowserDispatcher,
     DebuggerDispatcher, JugglerServer, LocalUtilsDispatcher, PageDispatcher,
     StreamDispatcher, TracingDispatcher)
+from _browser_census import closes_with_the_test
 
 pytestmark = pytest.mark.unit
 
@@ -44,6 +45,7 @@ class ScriptedJuggler(EventListeners):
 
     def __init__(self):
         super().__init__()
+        closes_with_the_test(self)
         self._contexts = itertools.count(1)
         self._targets = itertools.count(1)
         self.sessions = {}

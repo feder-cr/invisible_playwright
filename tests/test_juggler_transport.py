@@ -20,6 +20,7 @@ from invisible_playwright._juggler import transport as factory
 from invisible_core.juggler.connection import EventListeners, ProtocolError
 
 from _servers import LocalServer
+from _browser_census import closes_with_the_test
 
 PAGE = b"""<!doctype html><html><head><title>seam</title></head><body>
 <button id=b onclick="this.dataset.n=(+(this.dataset.n||0)+1)">press</button>
@@ -902,6 +903,7 @@ def test_a_profile_WE_made_is_removed_and_the_caller_s_is_not():
 
         def __init__(self):
             EventListeners.__init__(self)
+            closes_with_the_test(self)
 
         def startup_send(self, method, params=None):
             return self.send(method, params, timeout=None)
@@ -967,6 +969,7 @@ def test_the_profile_is_removed_after_the_browser_has_closed(monkeypatch):
     class FakeConnection(EventListeners):
         def __init__(self, profile_dir, refuse_proxy=False):
             EventListeners.__init__(self)
+            closes_with_the_test(self)
             self._profile = pathlib.Path(profile_dir)
             self._refuse_proxy = refuse_proxy
 
@@ -1066,6 +1069,7 @@ def test_the_launch_handler_hands_the_named_environment_to_the_engine(monkeypatc
     class FakeConnection(EventListeners):
         def __init__(self):
             EventListeners.__init__(self)
+            closes_with_the_test(self)
 
         def startup_send(self, method, params=None):
             return self.send(method, params, timeout=None)
@@ -1124,6 +1128,7 @@ def test_the_browser_s_temporary_files_live_and_end_with_the_session(monkeypatch
     class FakeConnection(EventListeners):
         def __init__(self, tmp):
             EventListeners.__init__(self)
+            closes_with_the_test(self)
             self._tmp = tmp
 
         def startup_send(self, method, params=None):
