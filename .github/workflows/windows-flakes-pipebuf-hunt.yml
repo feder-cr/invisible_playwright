@@ -1,26 +1,28 @@
-# windows-flakes-sendsplit-hunt.yml - hunt scaffolding, never merged. Runs only on a push to a `hunt/windows-flakes-sendsplit**` branch.
-# The engine60 hunt with the hop "sent -> P1" cut in pieces: S0 (the core decided) -> S1 (os.write returned in Connection._write) -> S2 (the parent's
-# JS got the pipe message, components/Juggler.js receiveMessage) -> S2b (Dispatcher._dispatch) -> S3 = P1 (PageHandler entry), plus a ring of what the
-# parent's Dispatcher ran on its main thread (every inbound message and every emitted event), listed around every hop over 30 ms.
+# windows-flakes-pipebuf-hunt.yml - hunt scaffolding, never merged. Runs only on a push to a `hunt/windows-flakes-pipebuf**` branch.
+# The sendsplit hunt (stamps S0 core decided, S1 os.write returned, S2 the parent's JS got the pipe message, S2b, S3 = P1, plus the ring of what the
+# parent's Dispatcher ran) with ONE thing varied on our side: the size of the two protocol pipes the core makes in `_spawn_windows`. Arms:
+# ours_bigpipe (the first two `_winapi.CreatePipe` calls of the spawn made with `CreatePipe(None, 1 << 20)`, by a runtime patch in
+# scripts/hunt_typing.py; handle inheritance, handle list and CRT fds are the core's own), ours_normal (the core as it is) and stock. The pipe
+# sizes in effect (GetNamedPipeInfo on the handles, and an empirical probe) are printed at every launch. The summary adds, for every S0>S1 over 30 ms,
+# the bytes written and not yet read by the engine at that moment, estimated from the stamps (ours arms).
 # The engine is the CANDIDATE of oss-invisible/firefox_antidetect_patch run 43534660961 (latitude/firefox-64, the "key born in the past"
 # fix: PageAgent._dispatchKeyEvent has no timer, the latency goes to tip.setNextKeyLatency), its asset-<leg> artifact, downloaded here
 # with this job's token. Core = oss-invisible/core main with fix/typing-on-absolute-deadlines merged in the job, over the wheel, under a LOCAL seal made from
 # the candidate's tree (as the candidate's own gate does). The Juggler of the candidate and of stock Playwright's Firefox is patched in its
-# omni.ja (scripts/hunt_patch_omni.py): stamps kept in memory in both processes, written once at the end. Arms: ours (stamped) and stock
-# (stamped); the unstamped twin of the engine60 hunt is dropped (it costs a third of the job). Windows: four processes at once, 60 runs per
-# arm. Linux: alone, 60 runs per arm. Every command under timeout 300; cleanup never fails the job.
-name: windows flakes sendsplit hunt
+# omni.ja (scripts/hunt_patch_omni.py): stamps kept in memory in both processes, written once at the end. Windows only: four processes at once, the
+# three arms interleaved in 3 rounds, 60 runs per arm. Every command under timeout 300; cleanup never fails the job.
+name: windows flakes pipebuf hunt
 
 on:
   push:
-    branches: ['hunt/windows-flakes-sendsplit**']
+    branches: ['hunt/windows-flakes-pipebuf**']
 
 permissions:
   contents: read
   actions: read
 
 concurrency:
-  group: windows-flakes-sendsplit-hunt-${{ github.ref }}
+  group: windows-flakes-pipebuf-hunt-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -35,7 +37,7 @@ env:
 
 jobs:
   hunt:
-    name: sendsplit hunt ${{ matrix.os }}
+    name: pipebuf hunt ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 180
     strategy:
@@ -45,8 +47,6 @@ jobs:
         include:
           - os: windows-2022
             leg: win-x86_64
-          - os: ubuntu-24.04
-            leg: linux-x86_64
     defaults:
       run:
         shell: bash
@@ -105,7 +105,6 @@ jobs:
           if [ "$RUNNER_OS" = "Linux" ]; then timeout 300 python -m playwright install --with-deps firefox; else timeout 300 python -m playwright install firefox; fi
           STOCK_FF="$(python -c "from playwright.sync_api import sync_playwright as s; p = s().start(); print(p.firefox.executable_path); p.stop()" | tail -1)"
           echo "STOCK_FF=$STOCK_FF" >> "$GITHUB_ENV"
-          if [ "$RUNNER_OS" = "Windows" ]; then echo "HUNT_MODE=loaded" >> "$GITHUB_ENV"; else echo "HUNT_MODE=alone" >> "$GITHUB_ENV"; fi
           echo "stock: $STOCK_FF"
           ls -la "$(dirname "$STOCK_FF")" | head -50
       - name: Unpack the candidate's engine
@@ -171,14 +170,31 @@ jobs:
           grep -q "send-split points all patched" evidence/patch_ours.txt || { echo "the candidate's Juggler.js / Dispatcher.js did not take the send-split stamps"; exit 1; }
           grep -E "send-split points|SKIPPED" evidence/patch_stock.txt || true
           grep -q "setNextKeyLatency(born).: 3" evidence/patch_ours.txt || { echo "the candidate's PageAgent is not the no-timer shape (three setNextKeyLatency(born) calls)"; exit 1; }
-      - name: Arms ours and stock with the stamps
+      # a quick look before the long run: the runtime patch of the pipes applies (the core's spawn makes four CreatePipe calls, the first two are
+      # the protocol pipes) and the sizes in effect are printed; a FATAL line or no HUNT-PIPE line stops the job here, not after the hours.
+      - name: Pipe check, one launch per size
+        env:
+          HUNT_STAMPS: "1"
+          HUNT_RUNS: "1"
+        run: |
+          set +e
+          for big in 0 1; do
+            HUNT_ARM=check HUNT_BIGPIPE=$big timeout 300 python -u scripts/hunt_typing.py ours "$FF" > "evidence/pipecheck_$big.log" 2>&1
+            echo "pipecheck bigpipe=$big exit $?"
+            grep -a '^HUNT-PIPE' "evidence/pipecheck_$big.log"
+            if grep -aq '^HUNT-PIPE-FATAL' "evidence/pipecheck_$big.log" || ! grep -aq '^HUNT-PIPE {' "evidence/pipecheck_$big.log"; then
+              echo "::error::the pipe patch does not fit the core (bigpipe=$big)"
+              tail -30 "evidence/pipecheck_$big.log"
+              exit 1
+            fi
+          done
+          exit 0
+      - name: Arms ours_bigpipe, ours_normal and stock with the stamps, interleaved
         env:
           HUNT_STAMPS: "1"
         run: |
           set +e
-          bash scripts/hunt_engine_arm.sh ours ours "$FF"
-          # the stock driver copies the browser's output into its own log only with this
-          DEBUG=pw:browser bash scripts/hunt_engine_arm.sh stock stock "$STOCK_FF"
+          bash scripts/hunt_engine_arm.sh "$FF" "$STOCK_FF"
           exit 0
       - name: Summary
         if: always()
@@ -190,7 +206,7 @@ jobs:
             timeout 300 python scripts/hunt_engine_summary.py evidence "$RUNNER_OS"
             echo
             echo '```'
-            grep -ahE "Traceback|Error" evidence/alone_*.log evidence/loaded_*.log | sort | uniq -c | head -20
+            grep -ahE "Traceback|Error|HUNT-PIPE-FATAL" evidence/loaded_*.log | sort | uniq -c | head -20
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
           exit 0
@@ -211,7 +227,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: windows-flakes-sendsplit-${{ matrix.os }}-${{ github.run_id }}
+          name: windows-flakes-pipebuf-${{ matrix.os }}-${{ github.run_id }}
           path: evidence
           if-no-files-found: warn
           retention-days: 14

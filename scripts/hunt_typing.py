@@ -18,6 +18,15 @@ kept raw in memory, field "s1": [wall ms, the JSON of the message]); S0 is the e
 its write is made by Playwright's node driver. The JSON also carries what the summary needs to put the stamps next to the page's events: the wall clock
 (calibrated, sub-millisecond) of each send ("sent_wall_ms"), the page's ordered events ("ev": type, key, handler clock, event clock, all
 absolute ms) and the window of the typing ("win").
+
+PIPE-BUFFER hunt additions (Windows): ours runs in two arms that differ in one thing, the size of the two Juggler pipes the core makes in
+`_spawn_windows`. HUNT_BIGPIPE=1 (arm ours_bigpipe): the first two `_winapi.CreatePipe` calls inside `_spawn_windows` (the browser's two protocol
+pipes; the third is stdout, the fourth stdin) are made with `_winapi.CreatePipe(None, 1 << 20)` instead of `CreatePipe(0, 0)`. Nothing else of the spawn
+is touched: the core still duplicates the browser's ends with inheritance, names them in the handle list, and wraps ITS ends into CRT fds with
+msvcrt.open_osfhandle. HUNT_BIGPIPE=0 (arm ours_normal): the core as it is. At every launch the pipe sizes in effect are printed ("HUNT-PIPE" line and
+the run's "pipe" field): GetNamedPipeInfo on the two handles the core keeps, and, once per process, an empirical probe of how many bytes a pipe
+made with the same size takes before a writer blocks. Stock has no such pipes (its node driver makes them). S1 also keeps a "before os.write"
+clock (third item of each "s1" entry), so a slow hop can be told from a slow write.
 """
 import os
 import http.server
@@ -30,6 +39,8 @@ from invisible_core.juggler._behaviour import TypingPersona, plan_typing
 
 ENGINE = sys.argv[1]
 STAMPS = os.environ.get("HUNT_STAMPS") == "1"
+BIGPIPE = os.environ.get("HUNT_BIGPIPE") == "1"
+BIG = 1 << 20
 DUMP_PREF = {"browser.dom.window.dump.enabled": True}
 TEXT = "someone@example.com"
 PLAN = plan_typing(TEXT, TypingPersona.from_seed(2), nonce=1)
@@ -37,6 +48,7 @@ SENT = []
 SENT_W = []
 S1 = []
 HK = []
+PIPE = {}
 
 
 def _anchor():
@@ -133,7 +145,8 @@ def report(page, t_start, t_start_wall):
         "plan_min_keydown_gap_ms": min(plan_gaps) if plan_gaps else None,
         "all_keys_seen": len(downs) == len(PLAN) and len(releases) == len(PLAN),
         "sent_wall_ms": list(SENT_W), "ev": [[t, k, round(h, 3), round(e, 3)] for t, k, h, e in ev], "hs": hs, "hk": list(HK),
-        "s1": [[t, d.decode("utf-8", "replace").rstrip("\x00")] for t, d in S1],
+        "s1": [[t, d.decode("utf-8", "replace").rstrip("\x00"), pre] for t, d, pre in S1],
+        "pipe": dict(PIPE),
         "win": [round(t_start_wall, 3), round(wall_ms(), 3)], "stamps": STAMPS,
     }
 
@@ -192,10 +205,11 @@ else:
 
             @staticmethod
             def write(fd, data):
+                pre = wall_ms()
                 n = _os.write(fd, data)
                 t = wall_ms()
                 if b"Page.dispatchKeyEvent" in data:
-                    S1.append((round(t, 3), bytes(data)))
+                    S1.append((round(t, 3), bytes(data), round(pre, 3)))
                 return n
 
         _conn.os = _OsStamp()
@@ -225,6 +239,103 @@ else:
                     self._cv.notify_all()
 
         conn.ProcessOutput._pump = pump
+    # ---- the pipes of the browser's protocol: sizes in effect, and in the bigpipe arm the size asked for ---------------------------------
+    PIPE_DIAG = {"arm": os.environ.get("HUNT_ARM", ENGINE), "bigpipe": BIGPIPE}
+    if sys.platform != "win32":
+        if BIGPIPE:
+            print("HUNT-PIPE-FATAL the bigpipe arm is Windows only", flush=True)
+            sys.exit(3)
+        PIPE_DIAG["note"] = "not Windows: the pipes are os.pipe, not measured"
+    else:
+        import ctypes
+        import msvcrt
+        import _winapi
+        from ctypes import wintypes
+        from invisible_core.juggler import connection as _pc
+
+        _k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        _k32.GetNamedPipeInfo.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD), ctypes.POINTER(wintypes.DWORD),
+                                          ctypes.POINTER(wintypes.DWORD), ctypes.POINTER(wintypes.DWORD))
+        _k32.GetNamedPipeInfo.restype = wintypes.BOOL
+
+        def pipe_info(fd):
+            """GetNamedPipeInfo on the handle behind a CRT fd: {flags, out, in, max} (bytes), or {"error": ...}."""
+            try:
+                h = msvcrt.get_osfhandle(fd)
+                flags, out, inn, mx = wintypes.DWORD(), wintypes.DWORD(), wintypes.DWORD(), wintypes.DWORD()
+                if not _k32.GetNamedPipeInfo(h, ctypes.byref(flags), ctypes.byref(out), ctypes.byref(inn), ctypes.byref(mx)):
+                    return {"error": "GetNamedPipeInfo failed, winerror %d" % ctypes.get_last_error()}
+                return {"flags": flags.value, "out": out.value, "in": inn.value, "max": mx.value}
+            except Exception as exc:  # a measurement must never stop the hunt
+                return {"error": repr(exc)}
+
+        def probe_capacity(size):
+            """How many bytes a pipe made by CreatePipe(None, size) takes before a writer blocks: a thread writes 512-byte chunks into a
+            pipe nobody reads; what it completed when it has made no progress for 0.3 s is the capacity (to 512 bytes). Closed afterwards."""
+            r, w = _winapi.CreatePipe(None, size)
+            done = [0]
+
+            def writer():
+                chunk = b"x" * 512
+                try:
+                    while done[0] < (64 << 20):
+                        _winapi.WriteFile(w, chunk)
+                        done[0] += 512
+                except OSError:
+                    pass
+
+            t = threading.Thread(target=writer, daemon=True)
+            t.start()
+            last, still = -1, 0.0
+            t0 = time.perf_counter()
+            while still < 0.3 and time.perf_counter() - t0 < 20:
+                time.sleep(0.05)
+                if done[0] == last:
+                    still += 0.05
+                else:
+                    last, still = done[0], 0.0
+            got = done[0]
+            _winapi.CloseHandle(r)  # the blocked write fails and the thread ends
+            t.join(2)
+            _winapi.CloseHandle(w)
+            return got
+
+        PIPE_DIAG["asked"] = BIG if BIGPIPE else 0
+        PIPE_DIAG["probe_bytes"] = probe_capacity(BIG if BIGPIPE else 0)
+        _real_create_pipe = _winapi.CreatePipe
+        _tl = threading.local()
+
+        def _create_pipe(attrs, size):
+            n = getattr(_tl, "n", None)
+            if n is None:  # not inside the core's spawn: untouched
+                return _real_create_pipe(attrs, size)
+            _tl.n = n + 1
+            if BIGPIPE and n < 2:  # the core's first two pipes are the two protocol directions
+                return _real_create_pipe(None, BIG)
+            return _real_create_pipe(attrs, size)
+
+        _winapi.CreatePipe = _create_pipe
+        _real_spawn = _pc._spawn_windows
+
+        def _spawn(executable, argv, env):
+            _tl.n = 0
+            try:
+                res = _real_spawn(executable, argv, env)
+            finally:
+                calls, _tl.n = _tl.n, None
+            to_browser, from_browser, _proc = res
+            PIPE.clear()
+            PIPE.update({"arm": PIPE_DIAG["arm"], "bigpipe": BIGPIPE, "createpipe_calls": calls, "asked": PIPE_DIAG["asked"],
+                         "probe_bytes": PIPE_DIAG["probe_bytes"], "to_browser": pipe_info(to_browser), "from_browser": pipe_info(from_browser)})
+            print("HUNT-PIPE " + json.dumps(PIPE), flush=True)
+            if calls != 4:
+                print("HUNT-PIPE-FATAL the core's _spawn_windows made %d CreatePipe calls, expected 4: the patch no longer fits the core" % calls,
+                      flush=True)
+                os._exit(3)
+            return res
+
+        _pc._spawn_windows = _spawn
+        print("HUNT-PIPE-PATCH " + json.dumps(PIPE_DIAG), flush=True)
     from invisible_playwright import InvisiblePlaywright
     for _ in range(RUNS):
         # a fresh browser per run: the plan is the one of the session's first field (typing nonce 1)

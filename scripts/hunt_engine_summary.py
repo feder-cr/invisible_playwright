@@ -4,8 +4,17 @@ decision and the page's handler, with the hop "sent -> P1" cut in pieces).
 Usage: python scripts/hunt_engine_summary.py EVIDENCE_DIR OS_NAME
 Reads EVIDENCE_DIR/{alone,loaded}_<arm>*.log: the HUNT-TYPING lines of scripts/hunt_typing.py (one per run) and, for the stock arm, the
 HUNTKEY lines the Playwright driver copied into the same log (DEBUG=pw:browser), put into the run whose typing window holds them.
-Arms: ours (the engine candidate under test, patched by scripts/hunt_patch_omni.py, core of fix/typing-on-absolute-deadlines), stock (stock
-Playwright Firefox, its Juggler patched the same way) and, if a log of it exists, ours_plain (the same engine untouched).
+Arms (PIPE-BUFFER hunt): ours_bigpipe (the engine candidate under test, patched by scripts/hunt_patch_omni.py, core of fix/typing-on-absolute-deadlines,
+the core's two protocol pipes made 1 MiB big by a runtime patch in scripts/hunt_typing.py), ours_normal (the same with the core's pipes as they are)
+and stock (stock Playwright Firefox, its Juggler patched the same way). Windows, 4 processes at once.
+
+What this hunt adds to the send-split summary, first in the output: per arm the quantiles of S0>S1 and S1>S2 (p50 / p95 / p99 / max, count over
+LONG_MS), the page keydown gaps under GAP_MS, the dwell error, the pipe sizes in effect at launch (the "pipe" field of each run), and the BACKLOG
+table: for every S0>S1 over LONG_MS in the two ours arms, the bytes written to the pipe and not yet read by the engine at that moment, estimated
+from the stamps as the sum of the sizes of the Page.dispatchKeyEvent messages (S1's raw message, plus its terminating NUL) with S1 done and S2 not
+yet. Only the key messages are stamped, so any other message in the pipe is not in the number (a lower bound); a message whose S2 is missing is
+counted apart ("unknown") and left out of the sum. The moment is taken three ways: at S0 (the decision), at the start of the os.write call (S1pre,
+the third item of the run's "s1" entries), and the peak between S0 and S1.
 
 The points of one key event (a keydown or keyup command; tags in scripts/hunt_patch_omni.py and scripts/hunt_typing.py):
 
@@ -40,9 +49,10 @@ from urllib.parse import unquote
 
 GAP_MS = 150.0
 LONG_MS = 30.0
-ARMS = ["ours", "stock", "ours_plain"]
-STAMPED = ("ours", "stock")
-MODES = ["alone", "loaded"]
+ARMS = ["ours_bigpipe", "ours_normal", "stock"]
+STAMPED = ("ours_bigpipe", "ours_normal", "stock")
+OURS = ("ours_bigpipe", "ours_normal")
+MODES = ["loaded"]
 ORDER = ["sent", "S1", "S2", "S2b", "P1", "C2", "C3", "C4", "C4r", "C5", "h"]
 LINE = re.compile(r"(\S+) (\d+) (\d+) (\S+) ([\d.]+) (\S+) (\S+)(?: (.*))?$")
 
@@ -149,10 +159,13 @@ def build_events(run, loose, sources):
             continue
         by.setdefault((s["tag"], s["type"], s["key"]), []).append(s)
     # S1: ours, stamped by the client right after os.write, the message kept raw
-    for wall, raw in run.get("s1") or []:
+    for item in run.get("s1") or []:
+        wall, raw = item[0], item[1]
+        pre = item[2] if len(item) > 2 else None
         t, k = message_of(raw)
         if t is not None and w0 <= wall <= w1:
-            by.setdefault(("S1", t, k), []).append({"wall": wall, "extra": ""})
+            # the size on the pipe: the JSON as UTF-8 and the NUL the core adds
+            by.setdefault(("S1", t, k), []).append({"wall": wall, "extra": "", "pre": pre, "size": len(raw.encode("utf-8")) + 1})
     for v in by.values():
         v.sort(key=lambda s: s["wall"])
     ring.sort(key=lambda r: r["t0"])
@@ -161,11 +174,14 @@ def build_events(run, loose, sources):
     for typ, key, h, e in run.get("ev") or []:
         n = count.get((typ, key), 0)
         count[(typ, key)] = n + 1
-        ev = {"type": typ, "key": key, "n": n, "h": h, "e": e, "tags": {}, "delay": None, "latency": None, "sent": None}
+        ev = {"type": typ, "key": key, "n": n, "h": h, "e": e, "tags": {}, "delay": None, "latency": None, "sent": None,
+              "s1pre": None, "size": None}
         for tag in ORDER[1:-1]:
             lst = by.get((tag, typ, key)) or []
             if n < len(lst):
                 ev["tags"][tag] = lst[n]["wall"]
+                if tag == "S1":
+                    ev["s1pre"], ev["size"] = lst[n].get("pre"), lst[n].get("size")
                 if tag == "C3":
                     m = re.search(r"delay=([\d.]+)", lst[n]["extra"])
                     ev["delay"] = float(m.group(1)) if m else None
@@ -332,6 +348,147 @@ def describe_entry(r, a):
     return "event %s sync=%.1f at %+.1f ms" % (r["m"], r["sync"], r["t0"] - a)
 
 
+def qrow(v):
+    """'p50 / p95 / p99 / max / over LONG_MS (n)' of a list of ms, or '-'."""
+    if not v:
+        return "-"
+    return "%s / %s / %s / %s / %d (%d)" % (fmt(q(v, .5)), fmt(q(v, .95)), fmt(q(v, .99)), fmt(max(v)),
+                                           sum(1 for x in v if x > LONG_MS), len(v))
+
+
+def hop_values(runs):
+    """{name: [ms]} of the hops the pipe-buffer hunt asks for, over every run of an arm."""
+    out = {}
+    for r in runs:
+        for ev in r["events"]:
+            t = ev["tags"]
+            if ev["sent"] is not None and "S1" in t:
+                out.setdefault("S0>S1", []).append(t["S1"] - ev["sent"])
+            if ev["sent"] is not None and "S2" in t:
+                out.setdefault("S0>S2 (sum)", []).append(t["S2"] - ev["sent"])
+            if "S1" in t and "S2" in t:
+                out.setdefault("S1>S2 (every key command)", []).append(t["S2"] - t["S1"])
+                if ev["type"] == "keydown" and ev["key"] != "Shift":
+                    out.setdefault("S1>S2 (non-Shift keydown)", []).append(t["S2"] - t["S1"])
+            if ev["s1pre"] is not None and "S1" in t:
+                out.setdefault("os.write call (S1pre>S1)", []).append(t["S1"] - ev["s1pre"])
+            if ev["sent"] is not None and ev["s1pre"] is not None:
+                out.setdefault("S0>S1pre (core before the write)", []).append(ev["s1pre"] - ev["sent"])
+    return out
+
+
+def messages_of(events):
+    """The key messages of one run that have S1: {"s1", "s2" (None if unstamped), "size", "ev"}."""
+    return [{"s1": ev["tags"]["S1"], "s2": ev["tags"].get("S2"), "size": ev["size"], "ev": ev}
+            for ev in events if "S1" in ev["tags"] and ev.get("size")]
+
+
+def backlog_at(msgs, when, skip):
+    """(bytes, messages, unknown): the messages other than `skip` with S1 done and S2 not yet at `when`; one without S2 is counted as unknown."""
+    size = n = unknown = 0
+    for m in msgs:
+        if m is skip or m["s1"] > when:
+            continue
+        if m["s2"] is None:
+            unknown += 1
+        elif m["s2"] > when:
+            size += m["size"]
+            n += 1
+    return size, n, unknown
+
+
+def backlog_rows(runs):
+    """-> (rows, all_at_write): a row per ours event with S0>S1 over LONG_MS; and, for every event with S1pre, the backlog at the start of its write."""
+    rows, every = [], []
+    for ri, r in enumerate(runs):
+        msgs = messages_of(r["events"])
+        pipe = r["run"].get("pipe") or {}
+        for m in msgs:
+            ev = m["ev"]
+            if ev["s1pre"] is not None:
+                every.append(backlog_at(msgs, ev["s1pre"], m)[0])
+            if ev["sent"] is None or m["s1"] - ev["sent"] <= LONG_MS:
+                continue
+            at_s0 = backlog_at(msgs, ev["sent"], m)
+            at_w = backlog_at(msgs, ev["s1pre"], m) if ev["s1pre"] is not None else None
+            # the peak between the decision and the end of the write: sampled at the decision and at every S1 / S2 of another message inside it
+            times = [ev["sent"], m["s1"]] + [x for o in msgs if o is not m for x in (o["s1"], o["s2"]) if x is not None and ev["sent"] <= x <= m["s1"]]
+            peak = max(backlog_at(msgs, x, m)[0] for x in times)
+            rows.append((ri, ev, m["s1"] - ev["sent"], (ev["s1pre"] - ev["sent"]) if ev["s1pre"] is not None else None,
+                         (m["s1"] - ev["s1pre"]) if ev["s1pre"] is not None else None, at_s0, at_w, peak, pipe))
+    return rows, every
+
+
+def pipebuf_section(data):
+    print("### S0>S1 and S1>S2 per arm (ms): p50 / p95 / p99 / max / over %d ms (n)" % LONG_MS)
+    print()
+    print("stock has no S1 (its write is made by the node driver): its hop is S0>S2, shown as the sum for every arm.")
+    print()
+    cols = {arm: hop_values(runs) for arm, runs in data.items() if arm in STAMPED}
+    names = []
+    for c in cols.values():
+        for k in c:
+            if k not in names:
+                names.append(k)
+    order = ["S0>S1", "S0>S1pre (core before the write)", "os.write call (S1pre>S1)", "S1>S2 (every key command)", "S1>S2 (non-Shift keydown)",
+             "S0>S2 (sum)"]
+    names.sort(key=lambda k: order.index(k) if k in order else 99)
+    print("| hop | " + " | ".join(cols) + " |")
+    print("|---|" + "---|" * len(cols))
+    for k in names:
+        print("| %s | %s |" % (k, " | ".join(qrow(c.get(k)) for c in cols.values())))
+    print()
+    print("### pipe sizes in effect at launch (what the runs printed: GetNamedPipeInfo on the core's two handles, and the probe of a pipe made with the same size)")
+    print()
+    print("| arm | runs with a pipe record | CreatePipe calls in the spawn | size asked (0 = default) | probe: bytes taken before a writer blocks | to_browser (flags / out / in / max) | from_browser (flags / out / in / max) |")
+    print("|---|---|---|---|---|---|---|")
+    for arm, runs in data.items():
+        recs = [r["run"].get("pipe") for r in runs if r["run"].get("pipe")]
+        if not recs:
+            print("| %s | 0 | - | - | - | not measured: its pipes are made by the node driver | - |" % arm)
+            continue
+        seen = {}
+        for p in recs:
+            def one(d):
+                return "error %s" % d["error"] if d and "error" in d else ("%s / %s / %s / %s" % tuple(d.get(x, "-") for x in ("flags", "out", "in", "max")) if d else "-")
+            key = (p.get("createpipe_calls"), p.get("asked"), p.get("probe_bytes"), one(p.get("to_browser")), one(p.get("from_browser")))
+            seen[key] = seen.get(key, 0) + 1
+        for (calls, asked, probe, tb, fb), n in sorted(seen.items(), key=lambda kv_: -kv_[1]):
+            print("| %s | %d | %s | %s | %s | %s | %s |" % (arm, n, calls, asked, probe, tb, fb))
+    print()
+    print("### backlog: for every S0>S1 over %d ms, the bytes written (S1 done) and not yet read by the engine (S2 not yet), from the stamps" % LONG_MS)
+    print()
+    print("Only Page.dispatchKeyEvent messages are stamped, so this is a lower bound of what is in the pipe. 'unknown' = other messages whose S2 is missing "
+          "(left out of the sum). at S0 = the decision, at write = the start of the os.write call, peak = the largest between S0 and the end of the write.")
+    print()
+    for arm in OURS:
+        if arm not in data:
+            continue
+        rows, every = backlog_rows(data[arm])
+        print("#### %s" % arm)
+        print()
+        print("backlog at the start of every write (all key commands, bytes) p50 / p95 / max (n): %s / %s / %s (%d); S0>S1 over %d ms: %d" % (
+            fmt(q(every, .5)), fmt(q(every, .95)), fmt(max(every) if every else None), len(every), LONG_MS, len(rows)))
+        print()
+        if not rows:
+            print("no S0>S1 over %d ms" % LONG_MS)
+            print()
+            continue
+        big = sum(1 for x in rows if x[7] >= 4096)
+        print("of them with a peak of 4096 bytes or more (the default size of an anonymous pipe): %d" % big)
+        print()
+        print("| run | key | S0>S1 | S0>S1pre | in os.write | at S0 bytes (msgs, unknown) | at write bytes (msgs, unknown) | peak bytes | pipe: asked / probe / to_browser out,in |")
+        print("|---|---|---|---|---|---|---|---|---|")
+        for ri, ev, tot, before, inwrite, a0, aw, peak, pipe in rows[:60]:
+            tb = pipe.get("to_browser") or {}
+            print("| %d | %s %s | %.1f | %s | %s | %d (%d, %d) | %s | %d | %s / %s / %s,%s |" % (
+                ri, ev["type"], ev["key"], tot, fmt(before), fmt(inwrite), a0[0], a0[1], a0[2],
+                "-" if aw is None else "%d (%d, %d)" % aw, peak, pipe.get("asked", "-"), pipe.get("probe_bytes", "-"), tb.get("out", "-"), tb.get("in", "-")))
+        if len(rows) > 60:
+            print("(%d more not listed)" % (len(rows) - 60))
+        print()
+
+
 def main():
     evidence, os_name = sys.argv[1], sys.argv[2]
     for mode in MODES:
@@ -342,7 +499,7 @@ def main():
                 data[arm] = d
         if not data:
             continue
-        print("## send-split hunt, %s, %s" % (os_name, mode))
+        print("## pipe-buffer hunt (send-split stamps), %s, %s" % (os_name, mode))
         print()
         print("runs per arm: " + ", ".join("%s %d" % (a, len(r)) for a, r in data.items()))
         print()
@@ -361,6 +518,7 @@ def main():
                 print("- %s: %d key events; with S1 %d, S2 %d, S2b %d, P1 %d, S2+P1+C2+C5 %d; ring entries in the typing windows %d" % (
                     arm, len(evs), s1, s2, s2b, p1, full, ring))
         print()
+        pipebuf_section(data)
         print("### clocks of the parent's modules (A0 stamps: every patched module says the anchor it uses)")
         print()
         for arm in STAMPED:
