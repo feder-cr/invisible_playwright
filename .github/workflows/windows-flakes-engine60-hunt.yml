@@ -1,7 +1,7 @@
 # windows-flakes-engine60-hunt.yml - hunt scaffolding, never merged. Runs only on a push to a `hunt/windows-flakes-engine60**` branch.
 # The engine is the CANDIDATE of oss-invisible/firefox_antidetect_patch run 43534660961 (latitude/firefox-64, the "key born in the past"
 # fix: PageAgent._dispatchKeyEvent has no timer, the latency goes to tip.setNextKeyLatency), its asset-<leg> artifact, downloaded here
-# with this job's token. Core = branch fix/typing-on-absolute-deadlines of oss-invisible/core over the wheel, under a LOCAL seal made from
+# with this job's token. Core = oss-invisible/core main with fix/typing-on-absolute-deadlines merged in the job, over the wheel, under a LOCAL seal made from
 # the candidate's tree (as the candidate's own gate does). The Juggler of the candidate and of stock Playwright's Firefox is patched in its
 # omni.ja (scripts/hunt_patch_omni.py): stamps kept in memory in both processes, written once at the end. Arms: ours (stamped), ours_plain
 # (the same engine untouched, the twin that shows what the stamps cost) and stock (stamped). Windows: four processes at once, 60 runs per
@@ -22,7 +22,8 @@ concurrency:
 
 env:
   GITHUB_TOKEN: ${{ github.token }}
-  CORE_GIT: "git+https://github.com/oss-invisible/core@fix/typing-on-absolute-deadlines"
+  CORE_REPO: "https://github.com/oss-invisible/core"
+  CORE_TYPING_BRANCH: "fix/typing-on-absolute-deadlines"
   ENGINE_REPO: oss-invisible/firefox_antidetect_patch
   ENGINE_RUN_ID: "43534660961"
   # the candidate's engine needs the core under test as it is: no import-time pin repair, a pin mismatch only warns
@@ -123,7 +124,10 @@ jobs:
       - name: Core from the branch over the wheel, a local seal from the candidate's tree, what is installed
         run: |
           set -e
-          timeout 300 python -m pip install --quiet --force-reinstall --no-deps "$CORE_GIT"
+          # core main (the candidate's core_ref) with the typing branch merged in, built here; an explicit stop on a conflict
+          rm -rf "$RUNNER_TEMP/core-merged" && git clone --quiet "$CORE_REPO" "$RUNNER_TEMP/core-merged"
+          ( cd "$RUNNER_TEMP/core-merged" && git fetch --quiet origin "$CORE_TYPING_BRANCH"             && echo "core main head: $(git rev-parse HEAD)" && echo "typing head: $(git rev-parse FETCH_HEAD)"             && git -c user.name=hunt -c user.email=hunt@invalid merge --no-edit FETCH_HEAD             && echo "core merged head: $(git rev-parse HEAD)" ) || { echo "::error::core main and the typing branch do not merge cleanly"; exit 1; }
+          timeout 300 python -m pip install --quiet --force-reinstall --no-deps "$RUNNER_TEMP/core-merged"
           timeout 300 python -m invisible_core seal --binary "$FF" --tag engine60-candidate -o "$PWD/evidence/engine.seal.json" | tee evidence/seal.txt
           echo "INVISIBLE_SEAL_FILE=$PWD/evidence/engine.seal.json" >> "$GITHUB_ENV"
           export INVISIBLE_SEAL_FILE="$PWD/evidence/engine.seal.json"
