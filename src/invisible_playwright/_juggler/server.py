@@ -4583,11 +4583,6 @@ class BrowserContextDispatcher(Dispatcher):
         self._browser_send("Browser.setInitScripts",
                            {"scripts": [{"script": s}
                                         for s in self._init_scripts]})
-        for page in list(self.pages):
-            try:
-                page.injected.add_init_script(source)
-            except Exception:
-                pass
         handle = DisposableDispatcher(self.server, self,
                                       lambda: self._remove_init_script(source))
         return {"disposable": handle.channel}
@@ -4599,11 +4594,6 @@ class BrowserContextDispatcher(Dispatcher):
         self._browser_send("Browser.setInitScripts",
                            {"scripts": [{"script": s}
                                         for s in self._init_scripts]})
-        for page in list(self.pages):
-            try:
-                page.injected.remove_init_script(source)
-            except Exception:
-                pass
 
     def op_set_storage_state(self, params: Dict) -> Any:
         """⛔ COOKIES ONLY, and it refuses the rest rather than dropping it.
