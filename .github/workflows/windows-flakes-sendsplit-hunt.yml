@@ -1,0 +1,217 @@
+# windows-flakes-sendsplit-hunt.yml - hunt scaffolding, never merged. Runs only on a push to a `hunt/windows-flakes-sendsplit**` branch.
+# The engine60 hunt with the hop "sent -> P1" cut in pieces: S0 (the core decided) -> S1 (os.write returned in Connection._write) -> S2 (the parent's
+# JS got the pipe message, components/Juggler.js receiveMessage) -> S2b (Dispatcher._dispatch) -> S3 = P1 (PageHandler entry), plus a ring of what the
+# parent's Dispatcher ran on its main thread (every inbound message and every emitted event), listed around every hop over 30 ms.
+# The engine is the CANDIDATE of oss-invisible/firefox_antidetect_patch run 43534660961 (latitude/firefox-64, the "key born in the past"
+# fix: PageAgent._dispatchKeyEvent has no timer, the latency goes to tip.setNextKeyLatency), its asset-<leg> artifact, downloaded here
+# with this job's token. Core = oss-invisible/core main with fix/typing-on-absolute-deadlines merged in the job, over the wheel, under a LOCAL seal made from
+# the candidate's tree (as the candidate's own gate does). The Juggler of the candidate and of stock Playwright's Firefox is patched in its
+# omni.ja (scripts/hunt_patch_omni.py): stamps kept in memory in both processes, written once at the end. Arms: ours (stamped) and stock
+# (stamped); the unstamped twin of the engine60 hunt is dropped (it costs a third of the job). Windows: four processes at once, 60 runs per
+# arm. Linux: alone, 60 runs per arm. Every command under timeout 300; cleanup never fails the job.
+name: windows flakes sendsplit hunt
+
+on:
+  push:
+    branches: ['hunt/windows-flakes-sendsplit**']
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: windows-flakes-sendsplit-hunt-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GITHUB_TOKEN: ${{ github.token }}
+  CORE_REPO: "https://github.com/oss-invisible/core"
+  CORE_TYPING_BRANCH: "fix/typing-on-absolute-deadlines"
+  ENGINE_REPO: oss-invisible/firefox_antidetect_patch
+  ENGINE_RUN_ID: "43534660961"
+  # the candidate's engine needs the core under test as it is: no import-time pin repair, a pin mismatch only warns
+  INVISIBLE_CORE_AUTOFIX: "off"
+  INVISIBLE_CORE_PIN: "allow"
+
+jobs:
+  hunt:
+    name: sendsplit hunt ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 180
+    strategy:
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            leg: win-x86_64
+          - os: ubuntu-24.04
+            leg: linux-x86_64
+    defaults:
+      run:
+        shell: bash
+    env:
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: { python-version: '3.11' }
+      # another repo's run: its artifacts need a token (a public repo's too). The default token first; the secret ENGINE_RUN_TOKEN
+      # (a token that can read the actions of that repo) if there is one.
+      - name: Download the candidate's engine (asset of the leg)
+        id: dl
+        continue-on-error: true
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: asset-${{ matrix.leg }}
+          path: art
+          repository: ${{ env.ENGINE_REPO }}
+          run-id: ${{ env.ENGINE_RUN_ID }}
+          github-token: ${{ secrets.ENGINE_RUN_TOKEN || github.token }}
+      - name: Download the candidate's engine, second way (gh run download)
+        if: steps.dl.outcome != 'success'
+        env:
+          GH_TOKEN: ${{ secrets.ENGINE_RUN_TOKEN || github.token }}
+        run: |
+          set +e
+          timeout 300 gh run view "$ENGINE_RUN_ID" -R "$ENGINE_REPO" --json status,conclusion,headBranch,headSha 2>&1
+          timeout 300 gh api "repos/$ENGINE_REPO/actions/runs/$ENGINE_RUN_ID/artifacts" --jq '.artifacts[] | [.name,.size_in_bytes,.expired]|@tsv' 2>&1
+          mkdir -p art
+          timeout 300 gh run download "$ENGINE_RUN_ID" -R "$ENGINE_REPO" -n "asset-${{ matrix.leg }}" -D art 2>&1
+          ls -la art
+          set -- art/firefox-*-stealth-${{ matrix.leg }}.*
+          if [ "$#" -ne 1 ] || [ ! -e "$1" ]; then
+            echo "THE ENGINE OF RUN $ENGINE_RUN_ID COULD NOT BE DOWNLOADED with this job's token (artifact expired, build not finished, or the token cannot read another repo's artifacts). Add a secret ENGINE_RUN_TOKEN (read access to the actions of $ENGINE_REPO) and push again."
+            exit 1
+          fi
+      - name: Download the source-commit of the candidate (for the build id line)
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.ENGINE_RUN_TOKEN || github.token }}
+        run: |
+          set +e
+          mkdir -p src-meta
+          timeout 300 gh run download "$ENGINE_RUN_ID" -R "$ENGINE_REPO" -n source-commit -D src-meta 2>&1 || echo "no source-commit artifact"
+          ls -la src-meta
+          exit 0
+      - name: Install
+        run: |
+          set -e
+          mkdir -p evidence
+          timeout 300 python -m pip install --quiet --upgrade pip
+          timeout 300 python -m pip install --quiet ".[dev]"
+          timeout 300 python -m pip install --quiet "playwright==$(cat scripts/playwright_pin.txt)"
+          timeout 300 python scripts/ci_lab_geoip.py build
+          if [ "$RUNNER_OS" = "Linux" ]; then timeout 300 python -m playwright install --with-deps firefox; else timeout 300 python -m playwright install firefox; fi
+          STOCK_FF="$(python -c "from playwright.sync_api import sync_playwright as s; p = s().start(); print(p.firefox.executable_path); p.stop()" | tail -1)"
+          echo "STOCK_FF=$STOCK_FF" >> "$GITHUB_ENV"
+          if [ "$RUNNER_OS" = "Windows" ]; then echo "HUNT_MODE=loaded" >> "$GITHUB_ENV"; else echo "HUNT_MODE=alone" >> "$GITHUB_ENV"; fi
+          echo "stock: $STOCK_FF"
+          ls -la "$(dirname "$STOCK_FF")" | head -50
+      - name: Unpack the candidate's engine
+        run: |
+          set -e
+          mkdir -p ff
+          set -- art/firefox-*-stealth-${{ matrix.leg }}.*
+          [ "$#" -eq 1 ] && [ -e "$1" ] || { echo "ERROR: expected one firefox-*-stealth-${{ matrix.leg }} archive in art/, found: $*"; exit 1; }
+          A="$1"
+          echo "archive: $A"
+          case "$RUNNER_OS" in
+            Windows) timeout 300 python -c "import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall('ff')" "$A"; EXE="$PWD/ff/firefox.exe";;
+            *)       timeout 300 tar xzf "$A" -C ff; EXE="$PWD/ff/firefox";;
+          esac
+          [ -e "$EXE" ] || { echo "ERROR: firefox binary not found at $EXE"; exit 1; }
+          chmod +x "$EXE" 2>/dev/null || true
+          echo "FF=$EXE" >> "$GITHUB_ENV"
+          echo "ours: $EXE"
+      - name: Core from the branch over the wheel, a local seal from the candidate's tree, what is installed
+        run: |
+          set -e
+          # core main (the candidate's core_ref) with the typing branch merged in, built here; an explicit stop on a conflict
+          rm -rf "$RUNNER_TEMP/core-merged" && git clone --quiet "$CORE_REPO" "$RUNNER_TEMP/core-merged"
+          ( cd "$RUNNER_TEMP/core-merged" && git fetch --quiet origin "$CORE_TYPING_BRANCH"             && echo "core main head: $(git rev-parse HEAD)" && echo "typing head: $(git rev-parse FETCH_HEAD)"             && git -c user.name=hunt -c user.email=hunt@invalid merge --no-edit FETCH_HEAD             && echo "core merged head: $(git rev-parse HEAD)" ) || { echo "::error::core main and the typing branch do not merge cleanly"; exit 1; }
+          timeout 300 python -m pip install --quiet --force-reinstall --no-deps "$RUNNER_TEMP/core-merged"
+          timeout 300 python -m invisible_core seal --binary "$FF" --tag engine60-candidate -o "$PWD/evidence/engine.seal.json" | tee evidence/seal.txt
+          echo "INVISIBLE_SEAL_FILE=$PWD/evidence/engine.seal.json" >> "$GITHUB_ENV"
+          export INVISIBLE_SEAL_FILE="$PWD/evidence/engine.seal.json"
+          timeout 300 python scripts/hunt_typing_core.py | tee evidence/core_git.txt
+          grep -q "(_due): True" evidence/core_git.txt || { echo "the branch's keyboard is not the one installed"; exit 1; }
+          {
+            echo "engine run: $ENGINE_REPO $ENGINE_RUN_ID"
+            echo "engine archive: $(ls art | head -3 | tr '\n' ' ')"
+            for f in src-meta/*.txt; do
+              if [ -e "$f" ]; then echo "$(basename "$f"): $(cat "$f")"; fi
+            done
+            timeout 300 python - <<'PY'
+          from invisible_core.seal import read_engine_identity
+          import os
+          i = read_engine_identity(os.environ["FF"])
+          print("engine identity: Firefox %s, BuildID %s, platform BuildID %s, juggler layout %s, markers %s" % (
+              i.version, i.build_id, i.platform_build_id, i.juggler_layout, i.marked_entries))
+          PY
+          } 2>&1 | tee evidence/engine_id.txt
+      - name: Smoke, the candidate launches with the core under test and the page loads
+        run: |
+          set -e
+          timeout 300 python - <<'PY' 2>&1 | tee evidence/smoke.txt
+          from invisible_playwright import InvisiblePlaywright
+          import os
+          with InvisiblePlaywright(seed=2, binary_path=os.environ["FF"], headless=True) as b:
+              p = b.new_page()
+              p.goto("about:blank")
+              print("SMOKE ok", p.evaluate("navigator.userAgent"))
+          PY
+          grep -q "^SMOKE ok" evidence/smoke.txt
+      - name: Patch the Juggler of both engines (omni.ja next to the executable), stamps for Page.dispatchKeyEvent (S2, S2b, P1 and the ring)
+        run: |
+          set -e
+          timeout 300 python scripts/hunt_patch_omni.py ours "$FF" 2>&1 | tee evidence/patch_ours.txt
+          timeout 300 python scripts/hunt_patch_omni.py stock "$STOCK_FF" 2>&1 | tee evidence/patch_stock.txt
+          grep -q "^PATCHED" evidence/patch_ours.txt && grep -q "^PATCHED" evidence/patch_stock.txt
+          grep -q "send-split points all patched" evidence/patch_ours.txt || { echo "the candidate's Juggler.js / Dispatcher.js did not take the send-split stamps"; exit 1; }
+          grep -E "send-split points|SKIPPED" evidence/patch_stock.txt || true
+          grep -q "setNextKeyLatency(born).: 3" evidence/patch_ours.txt || { echo "the candidate's PageAgent is not the no-timer shape (three setNextKeyLatency(born) calls)"; exit 1; }
+      - name: Arms ours and stock with the stamps
+        env:
+          HUNT_STAMPS: "1"
+        run: |
+          set +e
+          bash scripts/hunt_engine_arm.sh ours ours "$FF"
+          # the stock driver copies the browser's output into its own log only with this
+          DEBUG=pw:browser bash scripts/hunt_engine_arm.sh stock stock "$STOCK_FF"
+          exit 0
+      - name: Summary
+        if: always()
+        run: |
+          set +e
+          {
+            sed 's/^/    /' evidence/engine_id.txt 2>/dev/null
+            sed 's/^/    /' evidence/core_git.txt 2>/dev/null
+            timeout 300 python scripts/hunt_engine_summary.py evidence "$RUNNER_OS"
+            echo
+            echo '```'
+            grep -ahE "Traceback|Error" evidence/alone_*.log evidence/loaded_*.log | sort | uniq -c | head -20
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          exit 0
+      - name: Close every Firefox left
+        if: always()
+        continue-on-error: true
+        run: |
+          set +e
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            timeout 300 taskkill //F //IM firefox.exe //T >/dev/null 2>&1
+            echo "left: $(timeout 300 tasklist 2>/dev/null | grep -ic firefox)"
+          else
+            timeout 300 pkill -9 -x firefox >/dev/null 2>&1
+            echo "left: $(pgrep -xc firefox 2>/dev/null)"
+          fi
+          exit 0
+      - name: Upload the evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-flakes-sendsplit-${{ matrix.os }}-${{ github.run_id }}
+          path: evidence
+          if-no-files-found: warn
+          retention-days: 14

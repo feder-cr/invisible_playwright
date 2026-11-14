@@ -34,6 +34,21 @@ first key). A Windows content process may have no stdout, so that is the way tha
 `wall_ms` is the wall clock with sub-millisecond digits: Date.now() read on the tick it changes, once per process, as an anchor for
 ChromeUtils.now() (monotonic, microseconds). dump() needs `browser.dom.window.dump.enabled` (off in a release build): the caller passes it.
 The stock engine has no latency, so it has P1, C2, C5, C6, P7 only.
+
+SEND-SPLIT hunt additions (the parent's side of the hop "sent -> P1"; S0 = the client decided, S1 = os.write returned in the core's
+Connection._write, both stamped by scripts/hunt_typing.py; S3 = P1):
+
+    S2   parent: the pipe's message reached JS (components/Juggler.js, the nsIRemoteDebuggingPipeClient's receiveMessage, the first JS on the
+         parent's main thread after the C++ reader thread handed the message over), only for Page.dispatchKeyEvent; extra msg=<urlencoded JSON>
+    S2b  parent: Dispatcher._dispatch entered (protocol/Dispatcher.js, before the JSON.parse), the same messages; extra msg=
+    D    parent, EVERY inbound message (a ring buffer, 8192 entries, written once at the end): `<wall of entry> - - m=<method> id=<id>
+         sync=<ms of the synchronous part, entry to the first await> total=<ms until the answer was sent> t1=<wall at the end of the
+         synchronous part> t2=<wall at the end> len=<characters>`; written when the message finished
+    E    parent, EVERY event Dispatcher._emitEvent sent to the client (the same ring): `m=<event> sync=<ms> t1=<wall at the end>`
+    A0   each patched module of a process says the anchor it calibrated (extra module=<file> anchor=<ms>); a module reuses the one an earlier
+         module of the same global left in globalThis.__HKANCHOR, so the stamps of Juggler.js, Dispatcher.js and PageHandler.js share one clock
+         when the modules share a global, and the summary shows the spread when they do not.
+The three extra files are optional for stock (a Juggler that does not match is reported and left alone) and required for ours.
 """
 import json
 import os
@@ -47,12 +62,19 @@ HELPER = r"""
 const __HK = (() => {
   const clk = () => { try { return ChromeUtils.now(); } catch (e) { return NaN; } };
   let anchor = NaN;
+  let shared = false;
   try {
-    const t0 = clk();
-    const a = Date.now();
-    let b = a;
-    while (b === a && clk() - t0 < 30) b = Date.now();
-    anchor = b - clk();
+    if (typeof globalThis.__HKANCHOR === 'number') {
+      anchor = globalThis.__HKANCHOR;
+      shared = true;
+    } else {
+      const t0 = clk();
+      const a = Date.now();
+      let b = a;
+      while (b === a && clk() - t0 < 30) b = Date.now();
+      anchor = b - clk();
+      globalThis.__HKANCHOR = anchor;
+    }
   } catch (e) {}
   const wall = () => (anchor === anchor) ? anchor + clk() : Date.now();
   let pid = 0;
@@ -72,8 +94,43 @@ const __HK = (() => {
     Services.obs.addObserver(obs, 'quit-application');
     Services.obs.addObserver(obs, 'xpcom-shutdown');
   } catch (e) {}
+  // the ring of the parent's main-thread activity: written once at the end with the other lines, the oldest entries overwritten
+  const RING = 8192;
+  const ring = new Array(RING);
+  let ringN = 0;
+  let ringDumped = 0;
+  const writeRing = () => {
+    const from = Math.max(ringDumped, ringN - RING);
+    if (from >= ringN) return;
+    const lines = [];
+    for (let i = from; i < ringN; i++) lines.push('HUNTKEY ' + ring[i % RING] + '\n');
+    ringDumped = ringN;
+    try { dump(lines.join('')); } catch (e) {}
+  };
+  try {
+    const obs2 = { observe() { writeRing(); } };
+    Services.obs.addObserver(obs2, 'quit-application');
+    Services.obs.addObserver(obs2, 'xpcom-shutdown');
+  } catch (e) {}
   const hooked = new WeakSet();
   return {
+    now: wall,
+    // a message that arrived: only a key event is kept (raw, urlencoded: nothing is parsed here), the rest of the stamp is the clock
+    raw(tag, message) {
+      try {
+        if (typeof message !== 'string' || message.indexOf('Page.dispatchKeyEvent') < 0) return;
+        buf.push(['parent', pid, seq, tag, wall().toFixed(3), '-', '-', 'msg=' + encodeURIComponent(message)].join(' '));
+      } catch (e) {}
+    },
+    // one entry of the ring (a finished message or an emitted event)
+    ringPush(tag, t0, extra) {
+      try {
+        ring[ringN++ % RING] = ['parent', pid, 0, tag, t0.toFixed(3), '-', '-', extra].join(' ');
+      } catch (e) {}
+    },
+    module(name) {
+      try { buf.push(['parent', pid, 0, 'A0', wall().toFixed(3), '-', '-', 'module=' + name + ' anchor=' + anchor.toFixed(3) + ' shared=' + shared].join(' ')); } catch (e) {}
+    },
     stamp(proc, tag, type, key, extra) {
       try {
         if (tag === 'P1' || tag === 'C2') seq++;
@@ -101,6 +158,7 @@ const __HK = (() => {
 """
 
 PARENT_WRAP = r"""
+__HK.module('PageHandler.js');
 (() => {
   const name = 'Page.dispatchKeyEvent';
   const proto = (typeof PageHandler === 'function') ? PageHandler.prototype : null;
@@ -138,6 +196,61 @@ CONTENT_WRAP = r"""
 // ---- HUNTKEY end ----
 """
 
+# Juggler.js: only the helper (S2 is stamped by the call put into receiveMessage), Dispatcher.js: S2b, the ring of every message and event
+JUGGLER_TAIL = r"""
+__HK.module('Juggler.js');
+// ---- HUNTKEY end ----
+"""
+
+DISPATCHER_WRAP = r"""
+__HK.module('Dispatcher.js');
+(() => {
+  const proto = (typeof Dispatcher === 'function') ? Dispatcher.prototype : null;
+  if (!proto) return;
+  const origDispatch = proto._dispatch;
+  const origEmit = proto._emitEvent;
+  const reMethod = /"method"\s*:\s*"([^"]*)"/;
+  const reId = /"id"\s*:\s*(\d+)/;
+  if (typeof origDispatch === 'function') {
+    proto._dispatch = function(event) {
+      const t0 = __HK.now();
+      const data = event && event.data;
+      let method = '?', id = '?', len = 0;
+      try {
+        if (typeof data === 'string') {
+          len = data.length;
+          const m = reMethod.exec(data), i = reId.exec(data);
+          if (m) method = m[1];
+          if (i) id = i[1];
+          __HK.raw('S2b', data);
+        }
+      } catch (e) {}
+      const p = origDispatch.call(this, event);   // the synchronous part (parse, check, the handler up to its first await) runs here
+      const t1 = __HK.now();
+      const done = () => {
+        const t2 = __HK.now();
+        __HK.ringPush('D', t0, 'm=' + method + ' id=' + id + ' sync=' + (t1 - t0).toFixed(3) + ' total=' + (t2 - t0).toFixed(3)
+          + ' t1=' + t1.toFixed(3) + ' t2=' + t2.toFixed(3) + ' len=' + len);
+      };
+      try { p.then(done, done); } catch (e) { done(); }
+      return p;
+    };
+  }
+  if (typeof origEmit === 'function') {
+    proto._emitEvent = function(sessionId, eventName, params) {
+      const t0 = __HK.now();
+      try {
+        return origEmit.call(this, sessionId, eventName, params);
+      } finally {
+        const t1 = __HK.now();
+        __HK.ringPush('E', t0, 'm=' + eventName + ' sync=' + (t1 - t0).toFixed(3) + ' t1=' + t1.toFixed(3));
+      }
+    };
+  }
+})();
+// ---- HUNTKEY end ----
+"""
+
 MARK = "HUNTKEY begin"
 
 # The latency TIMER of the engines before the "key born in the past" fix (a single statement under `if (latency > 0)`, so it is replaced by a block).
@@ -164,6 +277,37 @@ def patch_page_handler(text):
     if not all(anchors.values()):
         return None, anchors
     return text.rstrip("\n") + "\n" + HELPER + PARENT_WRAP, anchors
+
+
+# the pipe client's receiveMessage in components/Juggler.js (juggler/components/Juggler.js:123 in the source tree)
+RECV = re.compile(r"(receiveMessage\(message\)\s*\{)(\s*if \(this\.onmessage\))")
+
+
+def patch_juggler(text):
+    n = len(re.findall(r"receiveMessage\(message\)", text))
+    anchors = {"pipe client receiveMessage(message)": n,
+               "nsIRemoteDebuggingPipeClient": "nsIRemoteDebuggingPipeClient" in text}
+    if MARK in text:
+        return text, dict(anchors, already=True)
+    if n != 1 or not anchors["nsIRemoteDebuggingPipeClient"]:
+        return None, anchors
+    new, k = RECV.subn(lambda m: m.group(1) + " __HK.raw('S2', message);" + m.group(2), text)
+    anchors["receiveMessage call patched"] = k
+    if k != 1:
+        return None, anchors
+    return new.rstrip("\n") + "\n" + HELPER + JUGGLER_TAIL, anchors
+
+
+def patch_dispatcher(text):
+    anchors = {"class Dispatcher": bool(re.search(r"class Dispatcher", text)),
+               "async _dispatch(event)": bool(re.search(r"async _dispatch\(event\)", text)),
+               "JSON.parse(event.data)": "JSON.parse(event.data)" in text,
+               "_emitEvent": bool(re.search(r"_emitEvent\(", text))}
+    if MARK in text:
+        return text, dict(anchors, already=True)
+    if not all(anchors.values()):
+        return None, anchors
+    return text.rstrip("\n") + "\n" + HELPER + DISPATCHER_WRAP, anchors
 
 
 def patch_page_agent(text):
@@ -195,7 +339,9 @@ def patch_page_agent(text):
 
 
 KIND = "ours"  # set by main(): ours must have one of the two shapes of the latency, stock has neither
-JOBS = {"PageHandler.js": patch_page_handler, "PageAgent.js": patch_page_agent}
+JOBS = {"PageHandler.js": patch_page_handler, "PageAgent.js": patch_page_agent, "Juggler.js": patch_juggler, "Dispatcher.js": patch_dispatcher}
+# the files of the send-split hunt: required for ours, for stock only when its file matches
+OPTIONAL_FOR_STOCK = {"Juggler.js", "Dispatcher.js"}
 
 
 def rewrite_jar(path, replacements):
@@ -241,6 +387,10 @@ def patch_omni(path, dry_run):
     for name, base in found.items():
         new, anchors = JOBS[base](jar.read(name).decode("utf-8"))
         report["members"][name] = anchors
+        if new is None and KIND == "stock" and base in OPTIONAL_FOR_STOCK:
+            report["members"][name] = dict(anchors, skipped="no match in stock, left alone")
+            print("SKIPPED %s (stock): %s" % (name, json.dumps(anchors)))
+            continue
         if new is None:
             raise SystemExit("ANCHOR MISSING in %s %s: %s" % (path, name, json.dumps(anchors)))
         if not anchors.get("already"):
@@ -265,6 +415,10 @@ def patch_loose(root, dry_run):
                 with open(p, encoding="utf-8") as fh:
                     new, anchors = JOBS[f](fh.read())
                 report["members"][p] = anchors
+                if new is None and KIND == "stock" and f in OPTIONAL_FOR_STOCK:
+                    report["members"][p] = dict(anchors, skipped="no match in stock, left alone")
+                    print("SKIPPED %s (stock): %s" % (p, json.dumps(anchors)))
+                    continue
                 if new is None:
                     raise SystemExit("ANCHOR MISSING in %s: %s" % (p, json.dumps(anchors)))
                 if not anchors.get("already"):
@@ -302,8 +456,12 @@ def main():
     for r in reports:
         print(json.dumps(r, indent=1))
         members = r["members"]
-        if len(members) != 2:
-            raise SystemExit("expected PageHandler.js and PageAgent.js, found %s" % sorted(members))
+        got = {k.rsplit("/", 1)[-1].rsplit("\\", 1)[-1] for k in members}
+        need = {"PageHandler.js", "PageAgent.js"} | (set() if kind == "stock" else OPTIONAL_FOR_STOCK)
+        if not need <= got:
+            raise SystemExit("expected %s, found %s" % (sorted(need), sorted(members)))
+        skipped = sorted(k for k, a in members.items() if a.get("skipped"))
+        print("send-split points %s" % ("stock: skipped " + ", ".join(skipped) if skipped else "all patched"))
     if kind == "ours":
         # the engine must still be the one the seal describes (the juggler stays in it with its stealth markers)
         from invisible_core.seal import JUGGLER_MIN_MARKED, read_engine_identity

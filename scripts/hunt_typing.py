@@ -13,7 +13,9 @@ while keys are typed and writes them once, when it ends (`browser.dom.window.dum
 the core's ProcessOutput reader AFTER the browser is closed (the "hk" field, so a run's line is printed once its browser has ended), stock's
 stay in this process's log through DEBUG=pw:browser. The content process's lines are also asked of the page at the end of the run, with a
 'hunt-flush' event on the window and a read of window.__hs ("hs"). Every arm launches with -purgecaches. HUNT_RUNS (default 5) = runs
-per invocation. The JSON also carries what the summary needs to put the stamps next to the page's events: the wall clock
+per invocation. SEND-SPLIT hunt: ours also stamps S1 (os.write returned in the core's Connection._write for each Page.dispatchKeyEvent message,
+kept raw in memory, field "s1": [wall ms, the JSON of the message]); S0 is the existing "sent_wall_ms" (Keyboard.down before the send). Stock has no S1:
+its write is made by Playwright's node driver. The JSON also carries what the summary needs to put the stamps next to the page's events: the wall clock
 (calibrated, sub-millisecond) of each send ("sent_wall_ms"), the page's ordered events ("ev": type, key, handler clock, event clock, all
 absolute ms) and the window of the typing ("win").
 """
@@ -33,6 +35,7 @@ TEXT = "someone@example.com"
 PLAN = plan_typing(TEXT, TypingPersona.from_seed(2), nonce=1)
 SENT = []
 SENT_W = []
+S1 = []
 HK = []
 
 
@@ -130,6 +133,7 @@ def report(page, t_start, t_start_wall):
         "plan_min_keydown_gap_ms": min(plan_gaps) if plan_gaps else None,
         "all_keys_seen": len(downs) == len(PLAN) and len(releases) == len(PLAN),
         "sent_wall_ms": list(SENT_W), "ev": [[t, k, round(h, 3), round(e, 3)] for t, k, h, e in ev], "hs": hs, "hk": list(HK),
+        "s1": [[t, d.decode("utf-8", "replace").rstrip("\x00")] for t, d in S1],
         "win": [round(t_start_wall, 3), round(wall_ms(), 3)], "stamps": STAMPS,
     }
 
@@ -176,6 +180,26 @@ else:
 
     kb.Keyboard.down = down
     if STAMPS:
+        # S1: os.write returned in the core's Connection._write (after the write, nothing else done there: a clock read, then the message
+        # is kept raw in memory; the JSON is read only at the end). The module's `os` is replaced by a stand-in that forwards everything
+        # and stamps the one write of a Page.dispatchKeyEvent message.
+        import os as _os
+        from invisible_core.juggler import connection as _conn
+
+        class _OsStamp:
+            def __getattr__(self, name):
+                return getattr(_os, name)
+
+            @staticmethod
+            def write(fd, data):
+                n = _os.write(fd, data)
+                t = wall_ms()
+                if b"Page.dispatchKeyEvent" in data:
+                    S1.append((round(t, 3), bytes(data)))
+                return n
+
+        _conn.os = _OsStamp()
+    if STAMPS:
         # the browser's output is read by the core's one reader (ProcessOutput); it keeps the last 200 lines only, so the HUNTKEY ones are
         # also copied out as they arrive
         from invisible_core.juggler import connection as conn
@@ -210,6 +234,7 @@ else:
         with InvisiblePlaywright(**kw) as browser:
             SENT.clear()
             SENT_W.clear()
+            S1.clear()
             HK.clear()
             page = browser.new_page()
             page.goto(url)

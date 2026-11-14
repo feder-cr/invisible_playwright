@@ -1,40 +1,49 @@
-"""HUNT SCAFFOLDING, NEVER MERGED: the step summary of the engine hunt (where a typed key's delay is born inside the engine).
+"""HUNT SCAFFOLDING, NEVER MERGED: the step summary of the send-split hunt (where the delay of a typed key is born between the client's
+decision and the page's handler, with the hop "sent -> P1" cut in pieces).
 
 Usage: python scripts/hunt_engine_summary.py EVIDENCE_DIR OS_NAME
 Reads EVIDENCE_DIR/{alone,loaded}_<arm>*.log: the HUNT-TYPING lines of scripts/hunt_typing.py (one per run) and, for the stock arm, the
 HUNTKEY lines the Playwright driver copied into the same log (DEBUG=pw:browser), put into the run whose typing window holds them.
-Arms: ours (the engine candidate under test, patched by scripts/hunt_patch_omni.py, core of fix/typing-on-absolute-deadlines), ours_plain
-(the same engine untouched: what the page sees without the stamps, to show what they cost) and stock (stock Playwright Firefox, its Juggler
-patched the same way).
+Arms: ours (the engine candidate under test, patched by scripts/hunt_patch_omni.py, core of fix/typing-on-absolute-deadlines), stock (stock
+Playwright Firefox, its Juggler patched the same way) and, if a log of it exists, ours_plain (the same engine untouched).
 
-The stamps of one key event (a keydown or keyup command; tags in scripts/hunt_patch_omni.py) are joined to the page's event of the same
-(type, key, n-th time) and to the client's send (keydown, not Shift). Between two consecutive PRESENT tags of
+The points of one key event (a keydown or keyup command; tags in scripts/hunt_patch_omni.py and scripts/hunt_typing.py):
 
-    sent -> P1 -> C2 -> C3 -> C4 -> C4r -> C5 -> h        (h = performance.now() in the page's handler)
+    S0   the client decided (Keyboard.down, before the send; non-Shift keydowns only)            "sent"
+    S1   os.write returned in invisible_core Connection._write (ours only: stock's write is in the node driver)
+    S2   the parent's JS got the pipe message (components/Juggler.js, nsIRemoteDebuggingPipeClient.receiveMessage)
+    S2b  Dispatcher._dispatch entered (before its JSON.parse)
+    S3   = P1, PageHandler['Page.dispatchKeyEvent'] entered
+    C2 .. C5  the content process (latency declared, DOM event about to be made), h = the page's handler (performance.now())
 
-there is one step, named "A>B"; the steps add up exactly to sent -> h. In an engine WITHOUT a latency timer (the candidate under test) C3
-and C4 are just before and just after tip.setNextKeyLatency(born) and there is no C4r; an engine WITH the timer (older) has C3 = timer
-armed, C4 = its callback, and gets the "timer planned" / "timer excess" rows. "timestamp lag" = (h - event.timeStamp) - the latency sent:
-how much more or less than the declared latency the event, born in the past, is older than the page's handler. Dwell error = (keyup -
-keydown) seen by the page minus the planned dwell, on both page clocks (h handler, e event.timeStamp). The stock engine has no latency, so
-its chain is sent, P1, C2, C5, h.
+Hops asked for: S0>S1 (core: from the decision to the write), S1>S2 (pipe, C++ reader thread, hand-over to the main thread), S2>S3 (the
+parent's main thread up to the handler; S2>S2b and S2b>P1 are its two pieces), P1>C2 (parent to content process). Stock has no S1, so for it
+S0>S2 is one hop (shown for both arms as "S0 to S2 (sum)" so they compare).
 
-A page gap is the time between the handlers of two consecutive keydowns that are not Shift. For every page gap under GAP_MS (150) the
-step that absorbed the delay is the one where the earlier key took longer than the later one by the most: the page gap equals the send
-gap plus the later key's steps minus the earlier key's, so (earlier - later) per step is what shortened it. If the sends themselves were
-closer than GAP_MS the client is named instead.
+A page gap is the time between the handlers of two consecutive keydowns that are not Shift. For every page gap under GAP_MS (150) the hop
+that absorbed the delay is the one where the earlier key took longer than the later one by the most (the page gap equals the send gap plus
+the later key's hops minus the earlier key's). If the sends themselves were closer than GAP_MS the client is named instead.
+
+Long hops: every S1>S2 (stock: S0>S2) and S2>S3 over LONG_MS (30) is listed with what the parent's main thread ran in its window, from the
+ring the Dispatcher wrapper keeps for ALL inbound messages (D: method, id, the synchronous part's duration, the whole duration) and ALL
+emitted events (E). An entry "occupies" the window when its synchronous part [t0, t1] overlaps it; an entry whose whole duration overlaps but
+whose synchronous part does not is only in flight (awaiting, not on the thread) and is counted by method. Nothing listed means the thread
+was held by something the ring does not see (content-to-parent channel messages, GC, the shell, another process's work), or the time was
+spent outside the thread (the pipe, the OS scheduler).
 """
 import glob
 import json
 import os
 import re
 import sys
+from urllib.parse import unquote
 
 GAP_MS = 150.0
+LONG_MS = 30.0
 ARMS = ["ours", "stock", "ours_plain"]
 STAMPED = ("ours", "stock")
 MODES = ["alone", "loaded"]
-ORDER = ["sent", "P1", "C2", "C3", "C4", "C4r", "C5", "h"]
+ORDER = ["sent", "S1", "S2", "S2b", "P1", "C2", "C3", "C4", "C4r", "C5", "h"]
 LINE = re.compile(r"(\S+) (\d+) (\d+) (\S+) ([\d.]+) (\S+) (\S+)(?: (.*))?$")
 
 
@@ -47,6 +56,28 @@ def fmt(x):
     return "-" if x is None else ("%.1f" % x if isinstance(x, float) else str(x))
 
 
+def kv(extra):
+    """'a=1 b=x' -> {'a': '1', 'b': 'x'}"""
+    out = {}
+    for part in (extra or "").split():
+        if "=" in part:
+            k, v = part.split("=", 1)
+            out[k] = v
+    return out
+
+
+def message_of(raw):
+    """The (type, key) of a Page.dispatchKeyEvent message, from the JSON text; (None, None) if it is not one."""
+    try:
+        d = json.loads(raw)
+    except ValueError:
+        return None, None
+    if d.get("method") != "Page.dispatchKeyEvent":
+        return None, None
+    p = d.get("params") or {}
+    return p.get("type"), p.get("key")
+
+
 def parse_stamp(text):
     i = text.find("HUNTKEY ")
     if i >= 0:
@@ -55,9 +86,14 @@ def parse_stamp(text):
     if not m:
         return None
     proc, pid, call, tag, wall, typ, key, extra = m.groups()
-    from urllib.parse import unquote
-    return {"proc": proc, "pid": int(pid), "call": int(call), "tag": tag, "wall": float(wall), "type": typ,
-            "key": unquote(key), "extra": extra or ""}
+    s = {"proc": proc, "pid": int(pid), "call": int(call), "tag": tag, "wall": float(wall), "type": typ,
+         "key": unquote(key), "extra": extra or ""}
+    if tag in ("S2", "S2b") and s["extra"].startswith("msg="):
+        t, k = message_of(unquote(s["extra"][4:]))
+        if t is None:
+            return None
+        s["type"], s["key"] = t, k
+    return s
 
 
 def read_log(path):
@@ -77,7 +113,8 @@ def read_log(path):
 
 
 def build_events(run, loose, sources):
-    """The key events of one run: {(type, key, n): {"page": (h, e), "tags": {tag: wall}, ...}}, in page order."""
+    """-> (events, ring, anchors): the key events of one run in page order ({"page": (h, e), "tags": {tag: wall}, ...}), the parent's ring
+    entries (D and E) inside the run's typing window, and the A0 anchors of the parent's modules."""
     stamps = {}
     for text in list(run.get("hk") or []):
         s = parse_stamp(text)
@@ -87,25 +124,38 @@ def build_events(run, loose, sources):
         s = parse_stamp(text)
         if s:
             stamps.setdefault(text.strip(), (s, "page"))
+    for s in loose:
+        stamps.setdefault("%s %s %s %s" % (s["proc"], s["pid"], s["call"], s["tag"]) + repr(s["wall"]) + s["extra"], (s, "log"))
+    # one source per distinct stamp: the pipe or log copy wins over the page's
+    seen = {}
+    for text, (s, src) in stamps.items():
+        k = (s["proc"], s["pid"], s["tag"], s["wall"], s["type"], s["key"], s["extra"])
+        if k not in seen or src != "page":
+            seen[k] = (s, src)
+    anchors = [s for s, _src in seen.values() if s["tag"] == "A0"]
     # the stamps are written once, when a process ends (and the page's copy holds every key of the process so far): only the ones of
     # THIS run's typing window are its own
     w0, w1 = run["win"][0] - 100, run["win"][1] + 1000
-    stamps = {t: v for t, v in stamps.items() if w0 <= v[0]["wall"] <= w1}
-    for s in loose:
-        if w0 <= s["wall"] <= w1:
-            stamps.setdefault("%s %s %s %s" % (s["proc"], s["pid"], s["call"], s["tag"]) + repr(s["wall"]), (s, "log"))
-    # one source per distinct stamp (same proc, pid, call, tag, wall): the pipe or log copy wins over the page's
-    seen = {}
-    for text, (s, src) in stamps.items():
-        k = (s["proc"], s["pid"], s["tag"], s["wall"], s["type"], s["key"])
-        if k not in seen or src != "page":
-            seen[k] = (s, src)
-    by = {}
+    by, ring = {}, []
     for s, src in seen.values():
+        if s["tag"] == "A0" or not (w0 <= s["wall"] <= w1):
+            continue
         sources[(s["proc"], src)] = sources.get((s["proc"], src), 0) + 1
+        if s["tag"] in ("D", "E"):
+            f = kv(s["extra"])
+            ring.append({"tag": s["tag"], "t0": s["wall"], "m": f.get("m", "?"), "id": f.get("id"), "sync": float(f.get("sync", "nan")),
+                         "total": float(f["total"]) if "total" in f else None, "t1": float(f.get("t1", "nan")),
+                         "t2": float(f["t2"]) if "t2" in f else None, "len": f.get("len")})
+            continue
         by.setdefault((s["tag"], s["type"], s["key"]), []).append(s)
+    # S1: ours, stamped by the client right after os.write, the message kept raw
+    for wall, raw in run.get("s1") or []:
+        t, k = message_of(raw)
+        if t is not None and w0 <= wall <= w1:
+            by.setdefault(("S1", t, k), []).append({"wall": wall, "extra": ""})
     for v in by.values():
         v.sort(key=lambda s: s["wall"])
+    ring.sort(key=lambda r: r["t0"])
     events, count = {}, {}
     nonshift_down = 0
     for typ, key, h, e in run.get("ev") or []:
@@ -131,11 +181,11 @@ def build_events(run, loose, sources):
         for ev in events.values():
             if "nonshift_index" in ev:
                 ev["sent"] = sent[ev["nonshift_index"]]
-    return list(events.values())
+    return list(events.values()), ring, anchors
 
 
 def chain(ev):
-    """[(name, wall)] of the tags present, in order, ending at the page's handler."""
+    """[(name, wall)] of the points present, in order, ending at the page's handler."""
     pts = []
     if ev["sent"] is not None:
         pts.append(("sent", ev["sent"]))
@@ -151,18 +201,47 @@ def steps(ev):
     out = {}
     for (a, ta), (b, tb) in zip(pts, pts[1:]):
         out["%s>%s" % (a, b)] = tb - ta
-    if "C3" in ev["tags"] and "C4" in ev["tags"] and ev["delay"] is not None:
+    t = ev["tags"]
+    if "C3" in t and "C4" in t and ev["delay"] is not None:
         out["timer planned"] = ev["delay"]
-        out["timer excess"] = (ev["tags"]["C4"] - ev["tags"]["C3"]) - ev["delay"]
+        out["timer excess"] = (t["C4"] - t["C3"]) - ev["delay"]
     if ev["latency"] is not None:
         out["timestamp lag"] = (ev["h"] - ev["e"]) - ev["latency"]
-    if "P1" in ev["tags"]:
-        out["P1>h total"] = ev["h"] - ev["tags"]["P1"]
+    if "P1" in t:
+        out["P1>h total"] = ev["h"] - t["P1"]
+    # sums that compare the arms (stock has no S1)
+    if ev["sent"] is not None and "S2" in t:
+        out["S0 to S2 (sum)"] = t["S2"] - ev["sent"]
+    if ev["sent"] is not None and "P1" in t:
+        out["S0 to S3 (sum)"] = t["P1"] - ev["sent"]
+    if "S2" in t and "P1" in t:
+        out["S2 to S3 (S2>P1)"] = t["P1"] - t["S2"]
+    return out
+
+
+def hops(ev):
+    """The hops a page gap is attributed to: S0>S1, S1>S2 (stock: S0>S2), S2>S3, P1>C2, C2>C5, C5>h. Only the present ones."""
+    t, out = ev["tags"], {}
+    sent = ev["sent"]
+    if sent is not None and "S1" in t:
+        out["S0>S1"] = t["S1"] - sent
+    elif sent is not None and "S2" in t:
+        out["S0>S2"] = t["S2"] - sent
+    if "S1" in t and "S2" in t:
+        out["S1>S2"] = t["S2"] - t["S1"]
+    if "S2" in t and "P1" in t:
+        out["S2>S3"] = t["P1"] - t["S2"]
+    if "P1" in t and "C2" in t:
+        out["P1>C2"] = t["C2"] - t["P1"]
+    if "C2" in t and "C5" in t:
+        out["C2>C5"] = t["C5"] - t["C2"]
+    if "C5" in t:
+        out["C5>h"] = ev["h"] - t["C5"]
     return out
 
 
 def load(evidence, mode, arm, sources):
-    """-> list of runs, each {"run": json, "events": [...]}"""
+    """-> list of runs, each {"run": json, "events": [...], "ring": [...], "anchors": [...]}"""
     out = []
     paths = glob.glob(os.path.join(evidence, "%s_%s.log" % (mode, arm))) + glob.glob(os.path.join(evidence, "%s_%s_[0-9]*.log" % (mode, arm)))
     for path in sorted(paths):
@@ -170,13 +249,19 @@ def load(evidence, mode, arm, sources):
         for r in runs:
             if "win" not in r:
                 continue
-            out.append({"run": r, "events": build_events(r, loose, sources)})
+            events, ring, anchors = build_events(r, loose, sources)
+            out.append({"run": r, "events": events, "ring": ring, "anchors": anchors})
     return out
 
 
 def gaps_of(events):
     d = [e for e in events if e["type"] == "keydown" and e["key"] != "Shift"]
     return list(zip(d, d[1:]))
+
+
+PRI = {"sent>S1": 0, "S1>S2": 1, "sent>S2": 1, "S2>S2b": 2, "S2b>P1": 3, "sent>P1": 3, "S2 to S3 (S2>P1)": 4, "S0 to S2 (sum)": 5,
+       "S0 to S3 (sum)": 6, "P1>C2": 7, "C2>C3": 8, "timer planned": 9, "C3>C4": 10, "timer excess": 11, "C4>C4r": 12, "C4r>C5": 13,
+       "C4>C5": 13, "C2>C5": 14, "C5>h": 15, "timestamp lag": 16, "P1>h total": 17}
 
 
 def step_table(data_by_arm, kind):
@@ -194,9 +279,7 @@ def step_table(data_by_arm, kind):
         for k in vals:
             if k not in names:
                 names.append(k)
-    pri = {"sent>P1": 0, "P1>C2": 1, "C2>C3": 2, "timer planned": 3, "C3>C4": 4, "timer excess": 5, "C4>C4r": 6, "C4r>C5": 7,
-           "C4>C5": 7, "C2>C5": 8, "C5>h": 9, "timestamp lag": 10, "P1>h total": 11}
-    names.sort(key=lambda k: pri.get(k, 99))
+    names.sort(key=lambda k: PRI.get(k, 99))
     lines = ["| step (ms) | " + " | ".join("%s p50 / p95 / max (n)" % a for a in cols) + " |",
              "|---|" + "---|" * len(cols)]
     for k in names:
@@ -204,8 +287,49 @@ def step_table(data_by_arm, kind):
         for arm in cols:
             v = cols[arm].get(k)
             cells.append("-" if not v else "%s / %s / %s (%d)" % (fmt(q(v, .5)), fmt(q(v, .95)), fmt(max(v)), len(v)))
-        lines.append("| %s | %s |" % (k, " | ".join(cells)))
+        lines.append("| %s | %s |" % (k.replace("sent", "S0"), " | ".join(cells)))
     return lines
+
+
+def overlaps(ring, a, b, own_from, own_to):
+    """(occupying, inflight): ring entries whose synchronous part overlaps [a, b], and those only in flight over it; the key message that
+    is itself being delivered (a Page.dispatchKeyEvent entered between own_from and own_to) is left out."""
+    occ, fly = [], []
+    for r in ring:
+        if r["m"] == "Page.dispatchKeyEvent" and own_from - 0.5 <= r["t0"] <= own_to + 0.5:
+            continue
+        sync_end = r["t1"] if r["t1"] == r["t1"] else r["t0"]
+        if r["t0"] <= b and sync_end >= a:
+            occ.append(r)
+        elif r["tag"] == "D" and r["t2"] is not None and r["t0"] <= b and r["t2"] >= a:
+            fly.append(r)
+    return occ, fly
+
+
+def long_hops(runs):
+    """Rows for every S1>S2 (stock S0>S2) and S2>S3 over LONG_MS, with the parent's activity in the window."""
+    rows = []
+    for ri, r in enumerate(runs):
+        for ev in r["events"]:
+            t = ev["tags"]
+            wins = []
+            if "S1" in t and "S2" in t:
+                wins.append(("S1>S2", t["S1"], t["S2"]))
+            elif ev["sent"] is not None and "S2" in t and "S1" not in t:
+                wins.append(("S0>S2", ev["sent"], t["S2"]))
+            if "S2" in t and "P1" in t:
+                wins.append(("S2>S3", t["S2"], t["P1"]))
+            for name, a, b in wins:
+                if b - a > LONG_MS:
+                    occ, fly = overlaps(r["ring"], a, b, t.get("S2", a), t.get("S2b", b))
+                    rows.append((ri, ev, name, a, b, occ, fly))
+    return rows
+
+
+def describe_entry(r, a):
+    if r["tag"] == "D":
+        return "%s id=%s sync=%.1f total=%s at %+.1f ms" % (r["m"], r["id"], r["sync"], fmt(r["total"]), r["t0"] - a)
+    return "event %s sync=%.1f at %+.1f ms" % (r["m"], r["sync"], r["t0"] - a)
 
 
 def main():
@@ -218,21 +342,50 @@ def main():
                 data[arm] = d
         if not data:
             continue
-        print("## engine hunt, %s, %s" % (os_name, mode))
+        print("## send-split hunt, %s, %s" % (os_name, mode))
         print()
         print("runs per arm: " + ", ".join("%s %d" % (a, len(r)) for a, r in data.items()))
         print()
         print("stamps by where they came from (process, source): " + (", ".join(
             "%s/%s %d" % (p, s, n) for (p, s), n in sorted(sources.items())) or "none"))
         print()
-        # coverage
         for arm in STAMPED:
             if arm in data:
                 evs = [e for r in data[arm] for e in r["events"]]
-                full = sum(1 for e in evs if "P1" in e["tags"] and "C2" in e["tags"] and "C5" in e["tags"])
-                print("- %s: %d key events, %d with P1, C2 and C5" % (arm, len(evs), full))
+                full = sum(1 for e in evs if "S2" in e["tags"] and "P1" in e["tags"] and "C2" in e["tags"] and "C5" in e["tags"])
+                s1 = sum(1 for e in evs if "S1" in e["tags"])
+                s2 = sum(1 for e in evs if "S2" in e["tags"])
+                s2b = sum(1 for e in evs if "S2b" in e["tags"])
+                p1 = sum(1 for e in evs if "P1" in e["tags"])
+                ring = sum(len(r["ring"]) for r in data[arm])
+                print("- %s: %d key events; with S1 %d, S2 %d, S2b %d, P1 %d, S2+P1+C2+C5 %d; ring entries in the typing windows %d" % (
+                    arm, len(evs), s1, s2, s2b, p1, full, ring))
         print()
-        # page gaps, every arm
+        print("### clocks of the parent's modules (A0 stamps: every patched module says the anchor it uses)")
+        print()
+        for arm in STAMPED:
+            if arm not in data:
+                continue
+            spreads, shared, total = [], 0, 0
+            for r in data[arm]:
+                by_pid = {}
+                for a in r["anchors"]:
+                    by_pid.setdefault(a["pid"], []).append(a)
+                for pid, lst in by_pid.items():
+                    vals = []
+                    for a in lst:
+                        f = kv(a["extra"])
+                        total += 1
+                        shared += 1 if f.get("shared") == "true" else 0
+                        try:
+                            vals.append(float(f["anchor"]))
+                        except (KeyError, ValueError):
+                            pass
+                    if len(vals) > 1:
+                        spreads.append(max(vals) - min(vals))
+            print("- %s: %d module stamps, %d reused another module's anchor; anchor spread inside one process p50 / max %s / %s ms (%d processes)" % (
+                arm, total, shared, fmt(q(spreads, .5)), fmt(max(spreads) if spreads else None), len(spreads)))
+        print()
         print("### page keydown gaps under %d ms (handler clock)" % GAP_MS)
         print()
         print("| arm | runs | runs with a gap under %d | gaps under %d / gaps | smallest gap p50 / min | planned gap min |" % (GAP_MS, GAP_MS))
@@ -270,11 +423,11 @@ def main():
         print()
         for kind in ("keydown", "keyup"):
             if stamped:
-                print("### steps of a %s command (ms)" % kind)
+                print("### hops of a %s command (ms): S0>S1 core, S1>S2 pipe + reader thread + main-thread hand-over, S2>S3 (=P1) parent main thread, P1>C2" % kind)
                 print()
                 print("\n".join(step_table(stamped, kind)))
                 print()
-        # which step absorbed it
+        # which hop absorbed it
         for arm, runs in stamped.items():
             rows, counts = [], {}
             for ri, r in enumerate(runs):
@@ -282,9 +435,9 @@ def main():
                     gap = b["h"] - a["h"]
                     if gap >= GAP_MS:
                         continue
-                    sa, sb = steps(a), steps(b)
+                    sa, sb = hops(a), hops(b)
                     sendgap = (b["sent"] - a["sent"]) if a["sent"] is not None and b["sent"] is not None else None
-                    names = [k for k in sa if ">" in k and k != "P1>h total" and k in sb]
+                    names = [k for k in sa if k in sb]
                     if sendgap is not None and sendgap < GAP_MS:
                         who, amount = "client send", sendgap
                     elif names and sendgap is not None:
@@ -295,15 +448,15 @@ def main():
                     counts[who] = counts.get(who, 0) + 1
                     rows.append((ri, a["key"], b["key"], sendgap, gap, who, amount,
                                  {k: sa[k] for k in names}, {k: sb[k] for k in names}))
-            print("### %s: page gaps under %d ms and the step that absorbed them" % (arm, GAP_MS))
+            print("### %s: page gaps under %d ms and the hop that absorbed them" % (arm, GAP_MS))
             print()
             if not rows:
                 print("none")
                 print()
                 continue
-            print("culprit counts: " + ", ".join("%s %d" % (k, v) for k, v in sorted(counts.items(), key=lambda kv: -kv[1])))
+            print("culprit counts: " + ", ".join("%s %d" % (k, v) for k, v in sorted(counts.items(), key=lambda kv_: -kv_[1])))
             print()
-            print("| run | keys | send gap | page gap | absorbed by (earlier - later) | earlier key's steps | later key's steps |")
+            print("| run | keys | send gap | page gap | absorbed by (earlier - later) | earlier key's hops | later key's hops |")
             print("|---|---|---|---|---|---|---|")
             for ri, ka, kb, sg, gap, who, amount, sa, sb in rows[:60]:
                 print("| %d | %s>%s | %s | %s | %s %s | %s | %s |" % (
@@ -313,6 +466,57 @@ def main():
             if len(rows) > 60:
                 print("(%d more not listed)" % (len(rows) - 60))
             print()
+        # long hops and what the parent's main thread ran
+        for arm, runs in stamped.items():
+            rows = long_hops(runs)
+            print("### %s: hops over %d ms (S1>S2, S2>S3) and the parent's activity in their window" % (arm, LONG_MS))
+            print()
+            events_n = sum(1 for r in runs for e in r["events"] if "S2" in e["tags"])
+            print("key events with S2: %d; long hops: %d (S1>S2 %d, S0>S2 %d, S2>S3 %d)" % (
+                events_n, len(rows), sum(1 for x in rows if x[2] == "S1>S2"), sum(1 for x in rows if x[2] == "S0>S2"),
+                sum(1 for x in rows if x[2] == "S2>S3")))
+            print()
+            if not rows:
+                continue
+            print("| run | key | hop | ms | S2>S2b / S2b>S3 | occupying the thread (sync part overlaps) | in flight only |")
+            print("|---|---|---|---|---|---|---|")
+            for ri, ev, name, a, b, occ, fly in rows[:40]:
+                t = ev["tags"]
+                pieces = "%s / %s" % (fmt(t["S2b"] - t["S2"]) if "S2b" in t and "S2" in t else "-",
+                                      fmt(t["P1"] - t["S2b"]) if "S2b" in t and "P1" in t else "-")
+                occs = "; ".join(describe_entry(r, a) for r in occ[:8]) + (" (+%d)" % (len(occ) - 8) if len(occ) > 8 else "")
+                counts = {}
+                for r in fly:
+                    counts[r["m"]] = counts.get(r["m"], 0) + 1
+                flies = ", ".join("%s x%d" % (k, v) for k, v in sorted(counts.items(), key=lambda kv_: -kv_[1]))
+                print("| %d | %s %s | %s | %.1f | %s | %s | %s |" % (ri, ev["type"], ev["key"], name, b - a, pieces, occs or "nothing in the ring", flies or "-"))
+            if len(rows) > 40:
+                print("(%d more not listed)" % (len(rows) - 40))
+            print()
+        # the parent's main-thread work, per method, in the typing windows: ours against stock
+        print("### the parent's inbound messages and emitted events in the typing windows (synchronous part, ms)")
+        print()
+        cols = {}
+        for arm, runs in stamped.items():
+            vals = {}
+            for r in runs:
+                for e in r["ring"]:
+                    if e["sync"] == e["sync"]:
+                        vals.setdefault(("event " if e["tag"] == "E" else "") + e["m"], []).append(e["sync"])
+            cols[arm] = vals
+        names = sorted({k for v in cols.values() for k in v}, key=lambda k: -max(max(v.get(k, [0])) for v in cols.values()))
+        if names:
+            print("| message / event | " + " | ".join("%s n / p50 / p95 / max" % a for a in cols) + " |")
+            print("|---|" + "---|" * len(cols))
+            for k in names[:14]:
+                cells = []
+                for arm in cols:
+                    v = cols[arm].get(k)
+                    cells.append("-" if not v else "%d / %s / %s / %s" % (len(v), fmt(q(v, .5)), fmt(q(v, .95)), fmt(max(v))))
+                print("| %s | %s |" % (k, " | ".join(cells)))
+        else:
+            print("no ring entries")
+        print()
 
 
 if __name__ == "__main__":
