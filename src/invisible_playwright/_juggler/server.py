@@ -33,6 +33,7 @@ import contextlib
 import json
 import os
 import pathlib
+import queue
 import sys
 import tempfile
 import threading
@@ -3414,9 +3415,10 @@ class PageDispatcher(Dispatcher):
             # is a command whose answer only that same read loop can deliver.
             # Doing it here would block the reader waiting for a message the
             # reader is the one who has to receive.
-            threading.Thread(
-                target=self._announce_file_chooser, args=(params,),
-                daemon=True).start()
+            # ⛔ AND NOT STARTED HERE EITHER: `Thread.start` waits for the new thread to run, and this is the reader.
+            # The browser's thread starter does it (`_ThreadStarter`).
+            self.context.browser.thread_starter.start(
+                target=self._announce_file_chooser, args=(params,))
         elif method == "Page.crashed":
             self.emit("crash")
         # ⛔ `Page.frameAttached` / `Page.frameDetached` ARE NOT READ HERE: the
@@ -4777,6 +4779,51 @@ NO_OVERRIDE = "no-override"
 NO_OVERRIDE_OPTIONS = ("colorScheme", "reducedMotion", "forcedColors")
 
 
+class _ThreadStarter:
+    """The ONE long-lived thread that starts the other threads the engine's events ask for.
+
+    ⛔ NO `Thread.start` ON THE CONNECTION'S READER THREAD. `Thread.start` does not return until the new thread is running
+    (`self._started.wait()`), and on Windows under load that wait is milliseconds long: it was the larger part of the reader's delay, and
+    every millisecond the reader is late is a millisecond a `networkidle` quiet is measured late (7 misses in 400 with four browsers at
+    once, none in 400 when the start did not wait). A listener that runs on the reader and needs work done elsewhere hands it to `start`
+    here: a `Thread` that is only BUILT on the reader (building waits for nothing) goes into a queue, and this thread starts it.
+
+    It starts threads and does not run the work itself, on purpose: an adoption waits for the engine as long as the engine takes (a popup
+    whose destination never answers is waited for without a limit), and a worker that ran it would hold every later adoption behind it,
+    `new_page()` included. Each piece of work keeps the thread of its own and the name it always had.
+    """
+
+    def __init__(self, on_error: Callable[[str], None]) -> None:
+        self._queue: "queue.SimpleQueue" = queue.SimpleQueue()
+        self._on_error = on_error
+        self._stopped = False
+        self._thread = threading.Thread(target=self._run, daemon=True, name="invpw-thread-starter")
+        self._thread.start()
+
+    def start(self, **thread_arguments: Any) -> None:
+        """Called from any thread, the reader's included: builds the thread and queues it. Never waits."""
+        if self._stopped:
+            return
+        self._queue.put(threading.Thread(daemon=True, **thread_arguments))
+
+    def stop(self) -> None:
+        self._stopped = True
+        self._queue.put(None)
+
+    def _run(self) -> None:
+        while True:
+            thread = self._queue.get()
+            if thread is None:
+                return
+            try:
+                thread.start()
+            except Exception as failure:
+                try:
+                    self._on_error("%s could not be started: %s" % (thread.name, failure))
+                except Exception:
+                    pass
+
+
 class BrowserDispatcher(Dispatcher):
     TYPE = "Browser"
     METHODS = {"newContext": "op_new_context", "close": "op_close",
@@ -4965,6 +5012,9 @@ class BrowserDispatcher(Dispatcher):
         # subscriber seeing an event before this one records the session, and
         # recording earlier can only shorten the window in which `session_for`
         # is waiting for something that has already arrived.
+        self._starter = _ThreadStarter(
+            lambda why: conn.handler_errors.append(why) if len(conn.handler_errors) < 32 else None)
+        conn.add_close_listener(self._starter.stop)
         conn.add_listener(self._route_browser_event)
         # The last step of starting the browser, under what is left of the
         # caller's `launch(timeout=)` (`Connection.startup_send`), not a
@@ -4987,6 +5037,11 @@ class BrowserDispatcher(Dispatcher):
         # engine attached in between predates every context (see the note on
         # the target map): recorded for its session, never built into a page.
         self._adopt_enabled = True
+
+    @property
+    def thread_starter(self) -> "_ThreadStarter":
+        """The one thread that starts threads on behalf of the engine's reader (`_ThreadStarter`)."""
+        return self._starter
 
     def require_interception(self, what: str) -> None:
         """Refuse a route this browser cannot honour, instead of ignoring it.
@@ -5189,11 +5244,10 @@ class BrowserDispatcher(Dispatcher):
             else:
                 self._strays += 1
                 number = popup_number(None, self._strays)
-        thread = threading.Thread(
+        self._starter.start(
             target=self._adopt_target,
             args=(target_id, session_id, browser_context_id, opener, number),
-            daemon=True, name="invpw-adopt-%s" % target_id[:8])
-        thread.start()
+            name="invpw-adopt-%s" % target_id[:8])
 
     # ── the states of an adoption: the ONLY places a record changes state. Each is one method so that a test can stop the adoption thread
     #    between any two of them and deliver an event of the engine there.
