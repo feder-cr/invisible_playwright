@@ -27,6 +27,7 @@ import pytest
 
 from invisible_playwright import InvisiblePlaywright
 
+from _screencast_evidence import Stream, engine_screencast_lines
 from _servers import LocalServer
 
 # The page the session loads: served by this test from 127.0.0.1, so nothing
@@ -55,23 +56,6 @@ def served():
             yield "http://127.0.0.1:%d/" % srv.server_address[1]
         finally:
             srv.shutdown()
-
-
-def _engine_screencast_lines(page):
-    """The lines the engine printed that start with ``screencast:``, from the
-    browser's own stdout/stderr (the core keeps the last 200 lines of the
-    pipe for the whole life of the process, `ProcessOutput`). Where the
-    engine has no line for it the answer says so, so a failure message never
-    comes out empty."""
-    try:
-        impl = page._impl_obj
-        server = impl._connection._transport._server
-        output = server.object(impl._guid).conn.output
-        lines = output.tail(output.KEEP)
-    except Exception as failure:  # the message is the point, not the lookup
-        return "(the engine output could not be read: %r)" % (failure,)
-    mine = [l for l in lines if l.lstrip().startswith("screencast:")]
-    return "\n".join(mine) if mine else "(the engine printed no line starting with 'screencast:')"
 
 
 _WEBGL_RENDERER = """() => {
@@ -176,18 +160,16 @@ def test_hidden_desktop_takes_the_window_off_screen_but_keeps_rendering(firefox_
         #    for good: 0 frames in 15 s on firefox-33. firefox-34 keeps a
         #    window of another desktop on the window capturer. This is the
         #    line that makes the engine's release gate prove it per build.
-        frames = []
-
-        def on_frame(frame):
-            frames.append(frame)
-
-        page.screencast.start(on_frame=on_frame)
+        stream = Stream("hidden desktop")
+        stream.start(page)
         deadline = time.time() + 15
-        while not frames and time.time() < deadline:
+        while not stream.frames and time.time() < deadline:
             time.sleep(0.1)
         page.screencast.stop()
+        frames = stream.frames
         assert frames, ("no screencast frame arrived from the hidden desktop "
                         "in 15 s: the window capturer is not being used there\n"
+                        "%s\n"
                         "engine output (lines starting with 'screencast:'):\n%s"
-                        % _engine_screencast_lines(page))
+                        % (stream.describe(), engine_screencast_lines(page)))
         assert frames[0]["data"][:3] == b"\xff\xd8\xff", "not a JPEG"
