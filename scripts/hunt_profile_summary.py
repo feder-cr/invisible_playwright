@@ -12,8 +12,12 @@ GeckoMain between the two stamps: the leaf and a few callers, grouped by functio
 the patched Juggler.js printed for that process (wall = anchor + ChromeUtils.now(), the clock of the profiler's sample times: both count from
 TimeStamp::ProcessCreation); meta.startTime is compared with it as a sanity check. Then which functions are only in ours: a function of a window sample of
 ours that no sample of stock's parent main thread (whole profiles) ever had, and whether it belongs to the series (scripts/hunt_ours_list.json from
-C:\\ff\\source, plus the files only our omni.ja has: evidence/jar_names_ours.json against jar_names_stock.json). JS frames are named, C++ label frames are
-named, native frames without symbols are `<dll>+0x<offset>` and cannot be matched by name.
+the engine source tree, plus the files only our omni.ja has: evidence/jar_names_ours.json against jar_names_stock.json). JS frames are named, C++ label frames are
+named, native frames of ours are named from the candidate's Breakpad symbols (artifact symbols-win-x86_64, downloaded into symbols/; only the modules seen in the
+windows are parsed) by the debug id of the lib in the profile, and stay `<dll>+0x<offset>` where no symbol is found; stock's native frames stay unsymbolized, so
+they are never compared by name. Every function of ours' windows is put in one of three classes: (a) ours (the series: STEALTH-HOOK code, added files and
+functions outside juggler/, functions only ours has), (b) upstream Juggler (the Playwright patch both engines carry: juggler files that stock's omni.ja has, the pipe
+and screencast C++), (c) other Mozilla 159.
 
 Part B, our process (scripts/hunt_ourside.py): lock wait and holder, CPU against wall, the GIL probe, the long cases.
 Then the profiler on/off comparison (ours_prof against ours_noprof, with stock_prof next to them).
@@ -34,6 +38,7 @@ ARMS = ["ours_prof", "ours_noprof", "stock_prof"]
 PROF_ARMS = ["ours_prof", "stock_prof"]
 LONG_MS = 30.0
 H.ARMS, H.STAMPED, H.MODES = ARMS, tuple(ARMS), ["loaded"]
+SYMS = None  # a hunt_gecko_profile.Symbols over the candidate's Breakpad symbols, set by main()
 
 
 def q(v, f):
@@ -90,10 +95,77 @@ class Ours:
         for p, fns in (listing.get("hunks") or {}).items():
             self.hunk_fns[base(p)].update(f.rsplit(".", 1)[-1].rsplit("::", 1)[-1] for f in fns)
         self.symbols = set(listing.get("symbols", []))
+        self.juggler_symbols = dict(listing.get("juggler_symbols") or {})
+        self.other_symbols = set(listing.get("other_symbols") or [])
+        self.juggler_files = {base(n) for n in jar_ours if "juggler/" in n.replace("\\", "/")}
+        self.juggler_files |= {base(p) for p in listing.get("added", []) if p.startswith("juggler/")}
+        self.stock_files = {base(n) for n in jar_stock}
+        self._classes = {}
         names_o = {base(n) for n in jar_ours}
         names_s = {base(n) for n in jar_stock}
         self.jar_only = names_o - names_s
         self.named = re.compile(r"Stealth|TrrPrefs|GoneContexts|LaunchCounter|launch.?counter", re.I)
+
+    @staticmethod
+    def plain(name):
+        """a C++ name without template arguments: 'a::B<T>::c' -> 'a::B::c'"""
+        prev = None
+        while prev != name:
+            prev = name
+            name = re.sub(r"<[^<>]*>", "", name)
+        return name
+
+    def sym_hit(self, name):
+        """'juggler' / 'series' / None for a C++ name: its last two or three components against the symbols of the series"""
+        parts = self.plain(name).split("::")
+        for k in (3, 2):
+            if len(parts) >= k:
+                cand = "::".join(parts[-k:])
+                if cand in self.juggler_symbols and cand not in self.other_symbols:
+                    return "juggler", self.juggler_symbols[cand]
+                if cand in self.symbols:
+                    return "series", ""
+        last = parts[-1]
+        if len(parts) == 1 and len(last) > 12:
+            if last in self.juggler_symbols and last not in self.other_symbols:
+                return "juggler", self.juggler_symbols[last]
+            if last in self.symbols:
+                return "series", ""
+        return None, ""
+
+    def classify(self, key, kind, name, file, stock_all):
+        """-> (class letter 'a' ours / 'b' upstream Juggler / 'c' other Mozilla 159 / 'u' unsymbolized native, detail)"""
+        got = self._classes.get(key)
+        if got:
+            return got
+        if kind == "js":
+            bare = name.rsplit(".", 1)[-1]
+            if file in self.juggler_files:
+                if file not in self.stock_files:
+                    got = ("a", "juggler file only in ours")
+                elif bare in self.hook_fns.get(file, ()) or self.named.search(key):
+                    got = ("a", "STEALTH-HOOK / named function in a juggler file")
+                elif stock_all and key not in stock_all:
+                    got = ("a", "juggler function stock's profiles never ran")
+                else:
+                    got = ("b", "upstream Juggler")
+            else:
+                t = self.tag(key, kind, name, file)
+                got = ("a", t) if t.startswith("ours:") else ("c", "Mozilla 159" + (" (file touched by the series)" if t else ""))
+        elif kind == "native" and " (unsymbolicated" in key:
+            got = ("u", "native without a symbol")
+        else:
+            hit, f = self.sym_hit(name)
+            if self.named.search(name):
+                got = ("a", "named in the brief")
+            elif hit == "juggler":
+                got = ("a", "juggler C++ only ours has (%s)" % f) if f.startswith("Stealth") else ("b", "upstream Juggler C++ (%s)" % f)
+            elif hit == "series":
+                got = ("a", "symbol of the series")
+            else:
+                got = ("c", "Mozilla 159")
+        self._classes[key] = got
+        return got
 
     def tag(self, key, kind, name, file):
         """-> a short tag or ''"""
@@ -198,6 +270,7 @@ def part_a(evidence, data, ours, notes):
         runs = data.get(arm) or []
         paths = sorted({r["run"].get("profile") for r in runs if r["run"].get("profile")})
         exist = [p for p in paths if os.path.exists(p) and os.path.getsize(p) > 0]
+        G.Thread.symbolizer = SYMS if arm == "ours_prof" else None  # stock's native frames stay unsymbolized
         # parsed: every profile that has a window, every stock profile (their functions are the reference), and the first two of ours as a health check
         todo = {p for (a_, p) in by_profile if a_ == arm and p} | (set(paths) if arm == "stock_prof" else set(exist[:2]))
         parsed = found = 0
@@ -258,6 +331,7 @@ def part_a(evidence, data, ours, notes):
         print("| %s | %d | %d | %d | %d | %d | %s | %s | %s / %s | %d | %d |" % (
             arm, len(runs), len(paths), len(exist), parsed, found, fmt(q(nsamp, .5)), fmt(q(gaps, .5)),
             fmt(q(diffs, .5)), fmt(max([abs(x) for x in diffs]) if diffs else None), w1, w2))
+    G.Thread.symbolizer = None
     print()
     for n in notes:
         print("- note: " + n)
@@ -291,7 +365,7 @@ def print_windows(rows, arm):
     print()
 
 
-def print_functions(arm, ag, ours, thread_kinds):
+def print_functions(arm, ag, ours, thread_kinds, stock_all=None):
     print("### %s: parent main thread by function over every window (busy samples)" % arm)
     print()
     print("windows with a profile: %d (with samples %d); samples %d = idle %d + busy %d" % (ag["windows"], ag["with_samples"], ag["samples"], ag["idle"], ag["busy"]))
@@ -300,11 +374,11 @@ def print_functions(arm, ag, ours, thread_kinds):
         print("none")
         print()
         return
-    print("| leaf function | leaf samples | inclusive samples | windows | top callers (leaf < c1 < c2 < c3) | ours? |")
+    print("| leaf function | leaf samples | inclusive samples | windows | top callers (leaf < c1 < c2 < c3) | class |")
     print("|---|---|---|---|---|---|")
     for k, c in ag["leaf"].most_common(25):
         kind = thread_kinds.get(k, ("label", k, ""))
-        tag = ours.tag(k, kind[0], kind[1], kind[2]) if ours else ""
+        tag = ("(%s) %s" % ours.classify(k, kind[0], kind[1], kind[2], stock_all)) if ours and arm == "ours_prof" else "-"
         cal = "; ".join("%s (%d)" % (ck, cc) for ck, cc in ag["callers"][k].most_common(2))
         print("| %s | %d | %d | %d | %s | %s |" % (k, c, ag["incl"].get(k, 0), len(ag["win"][k]), cal, tag))
     print()
@@ -316,9 +390,67 @@ def kind_of_key(key):
     if " @ " in key:
         name, file = key.rsplit(" @ ", 1)
         return ("js", name, file)
-    if key.endswith("(unsymbolicated)") or "(unsymbolicated" in key:
+    if "(unsymbolicated" in key:
         return ("native", key, "")
+    if " [native:" in key:
+        name, lib = key.rsplit(" [native:", 1)
+        return ("native-sym", name, lib.rstrip("]"))
     return ("label", key, "")
+
+
+def three_way(ag, ours, stock_all, syms):
+    print("### ours' window samples in three classes: (a) ours, (b) upstream Juggler, (c) other Mozilla 159 (and native frames that no symbol named)")
+    print()
+    if syms is not None:
+        st = syms.stats
+        print("symbols: %d modules parsed, %d native frames named, %d without a record at their address; modules asked for that the symbols do not have: %s" % (
+            st["modules parsed"], st["resolved"], st["no record at the address"], "; ".join("%s x%d" % kv for kv in list(st["module not in the symbols"].items())[:4]) or "none"))
+    else:
+        print("no symbols were given (symbols/ missing): native frames stay unsymbolized")
+    print()
+    if not ag["leaf"]:
+        print("no ours window with samples")
+        print()
+        return
+    names = {"a": "(a) ours", "b": "(b) upstream Juggler", "c": "(c) other Mozilla 159", "u": "native, no symbol found"}
+    per = {k: collections.Counter() for k in names}
+    kinds = {k: collections.Counter() for k in names}
+    wins = {k: set() for k in names}
+    for key, cnt in ag["leaf"].items():
+        kd = kind_of_key(key)
+        cl, _d = ours.classify(key, kd[0] if kd[0] != "native-sym" else "native", kd[1], kd[2] if kd[0] == "js" else "", stock_all)
+        per[cl][key] = cnt
+        kinds[cl]["JS" if kd[0] == "js" else ("native, named" if kd[0] == "native-sym" else ("native, address" if kd[0] == "native" else "C++ label"))] += cnt
+        wins[cl] |= ag["win"][key]
+    total = sum(sum(c.values()) for c in per.values()) or 1
+    print("| class | leaf samples | share of busy leaf samples | distinct functions | windows with one | leaf samples by kind |")
+    print("|---|---|---|---|---|---|")
+    for cl in names:
+        n = sum(per[cl].values())
+        print("| %s | %d | %.0f%% | %d | %d | %s |" % (names[cl], n, 100.0 * n / total, len(per[cl]), len(wins[cl]), ", ".join("%s %d" % kv for kv in kinds[cl].most_common())))
+    print()
+    for cl in ("a", "b", "c"):
+        if not per[cl]:
+            continue
+        print("%s, top functions by leaf samples:" % names[cl])
+        print()
+        print("| function | leaf | inclusive | windows | why |")
+        print("|---|---|---|---|---|")
+        for key, cnt in per[cl].most_common(12):
+            kd = kind_of_key(key)
+            _c, d = ours.classify(key, kd[0] if kd[0] != "native-sym" else "native", kd[1], kd[2] if kd[0] == "js" else "", stock_all)
+            print("| %s | %d | %d | %d | %s |" % (key, cnt, ag["incl"].get(key, 0), len(ag["win"][key]), d))
+        print()
+    # the inclusive view of class (a): which of OUR functions were on the stack of the busy samples, whatever the leaf
+    inc_a = []
+    for key, cnt in ag["incl"].items():
+        kd = kind_of_key(key)
+        cl, d = ours.classify(key, kd[0] if kd[0] != "native-sym" else "native", kd[1], kd[2] if kd[0] == "js" else "", stock_all)
+        if cl == "a":
+            inc_a.append((key, cnt, d))
+    inc_a.sort(key=lambda x: -x[1])
+    print("(a) ours, on the stack at any depth (inclusive samples), top 12: " + ("; ".join("%s x%d [%s]" % x for x in inc_a[:12]) or "none"))
+    print()
 
 
 def ours_only(ag_ours, stock_all, ours, stock_present):
@@ -332,11 +464,11 @@ def ours_only(ag_ours, stock_all, ours, stock_present):
         print("no ours window with samples")
         print()
         return
-    only = [(k, c) for k, c in ag_ours["incl"].items() if k not in stock_all and kind_of_key(k)[0] != "native"]
-    natives = [(k, c) for k, c in ag_ours["incl"].items() if kind_of_key(k)[0] == "native"]
+    only = [(k, c) for k, c in ag_ours["incl"].items() if k not in stock_all and kind_of_key(k)[0] not in ("native", "native-sym")]
+    natives = [(k, c) for k, c in ag_ours["incl"].items() if kind_of_key(k)[0] in ("native", "native-sym")]
     only.sort(key=lambda kc: -kc[1])
-    print("JS functions and C++ label frames only in ours: %d (of %d in ours' windows); native frames (addresses, not comparable between two binaries): %d" % (
-        len(only), sum(1 for k in ag_ours["incl"] if kind_of_key(k)[0] != "native"), len(natives)))
+    print("JS functions and C++ label frames only in ours: %d (of %d in ours' windows); native frames, named or not, are never compared by name (stock's are unsymbolized, an address means a different thing in two binaries): %d, see the three-way table" % (
+        len(only), sum(1 for k in ag_ours["incl"] if kind_of_key(k)[0] not in ("native", "native-sym")), len(natives)))
     print()
     if only:
         print("| function (only in ours) | inclusive samples | leaf samples | windows | tag |")
@@ -354,8 +486,11 @@ def ours_only(ag_ours, stock_all, ours, stock_present):
         print()
     libs = collections.Counter()
     for k, c in ag_ours["leaf"].items():
-        if kind_of_key(k)[0] == "native":
+        kk = kind_of_key(k)
+        if kk[0] == "native":
             libs[k.split("+")[0]] += c
+        elif kk[0] == "native-sym":
+            libs[kk[2]] += c
     if libs:
         print("native leaf samples in ours' windows by library: " + ", ".join("%s %d" % (k, v) for k, v in libs.most_common(8)))
         print()
@@ -531,6 +666,12 @@ def main():
                                                                     len(listing.get("symbols", [])), str(listing.get("head", "?"))[:10], listing.get("base"), len(ours.jar_only),
                                                                     len(jar_ours), len(jar_stock)))
     print()
+    global SYMS
+    sym_dir = os.environ.get("HUNT_SYMBOLS", "symbols")
+    SYMS = G.Symbols(sym_dir) if os.path.isdir(sym_dir) else None
+    if SYMS is not None:
+        print("symbols: %d modules indexed in %s (zips and .sym files)" % (len(SYMS.index), sym_dir))
+        print()
     data = {arm: load_arm(evidence, arm) for arm in ARMS}
     print("runs: " + ", ".join("%s %d" % (a, len(d)) for a, d in data.items()))
     print()
@@ -541,7 +682,8 @@ def main():
     for arm in PROF_ARMS:
         print_windows(rows, arm)
     for arm in PROF_ARMS:
-        print_functions(arm, agg[arm], ours, {k: kind_of_key(k) for k in set(agg[arm]["leaf"]) | set(agg[arm]["incl"])})
+        print_functions(arm, agg[arm], ours, {k: kind_of_key(k) for k in set(agg[arm]["leaf"]) | set(agg[arm]["incl"])}, stock_all)
+    three_way(agg["ours_prof"], ours, stock_all, SYMS)
     ours_only(agg["ours_prof"], stock_all, ours, bool(stock_all))
     part_b(data, evidence)
     on_off(data)
@@ -559,6 +701,8 @@ def main():
         except OSError as exc:
             print("could not keep %s: %s" % (p, exc))
     print("profiles kept in the evidence (those with a window, at most 20): %d" % min(20, len(keep)))
+    if SYMS is not None:
+        SYMS.close()
 
 
 def selftest():
@@ -577,6 +721,23 @@ def selftest():
     assert kind_of_key("a @ B.js")[0] == "js" and kind_of_key("xul.dll+0x1 (unsymbolicated)")[0] == "native" and kind_of_key("Foo::Bar")[0] == "label"
     assert mwu_p(list(range(20)), list(range(20))) > 0.9
     assert mwu_p(list(range(20)), list(range(100, 120))) < 0.001
+    # the three classes
+    listing2 = {"added": ["juggler/StealthCursor.js", "juggler/protocol/Dispatcher.js", "juggler/pipe/StealthJugglerGate.cpp", "browser/components/StealthLaunchCounter.sys.mjs"],
+                "modified": [], "hook_files": [], "hooks": {}, "hunks": {}, "symbols": ["Adapter::RequestDevice", "nsRemoteDebuggingPipe::ReaderLoop", "StealthJugglerPipeConnected"],
+                "juggler_symbols": {"nsRemoteDebuggingPipe::ReaderLoop": "nsRemoteDebuggingPipe.cpp", "StealthJugglerPipeConnected": "StealthJugglerGate.cpp"},
+                "other_symbols": ["Adapter::RequestDevice"]}
+    o2 = Ours(listing2, ["omni.ja:modules/juggler/protocol/Dispatcher.js", "omni.ja:modules/juggler/StealthCursor.js", "omni.ja:modules/StealthLaunchCounter.sys.mjs"],
+              ["omni.ja:chrome/juggler/content/protocol/Dispatcher.js"])
+    assert o2.classify("_dispatch @ Dispatcher.js", "js", "_dispatch", "Dispatcher.js", {"_dispatch @ Dispatcher.js"})[0] == "b"
+    assert o2.classify("x @ Dispatcher.js", "js", "x", "Dispatcher.js", {"_dispatch @ Dispatcher.js"})[0] == "a"
+    assert o2.classify("m @ StealthCursor.js", "js", "m", "StealthCursor.js", set())[0] == "a"
+    assert o2.classify("f @ Other.js", "js", "f", "Other.js", set())[0] == "c"
+    assert o2.classify("mozilla::dom::Adapter::RequestDevice [native:xul.dll]", "native", "mozilla::dom::Adapter::RequestDevice", "", set())[0] == "a"
+    assert o2.classify("mozilla::nsRemoteDebuggingPipe::ReaderLoop [native:xul.dll]", "native", "mozilla::nsRemoteDebuggingPipe::ReaderLoop", "", set())[0] == "b"
+    assert o2.classify("StealthJugglerPipeConnected [native:xul.dll]", "native", "StealthJugglerPipeConnected", "", set())[0] == "a"
+    assert o2.classify("nsThread::ProcessNextEvent [native:xul.dll]", "native", "nsThread::ProcessNextEvent", "", set())[0] == "c"
+    assert o2.classify("xul.dll+0x1 (unsymbolicated)", "native", "xul.dll+0x1 (unsymbolicated)", "", set())[0] == "u"
+    assert kind_of_key("a::b [native:xul.dll]") == ("native-sym", "a::b", "xul.dll")
     d = tempfile.mkdtemp()
     p = os.path.join(d, "p.json")
     json.dump(old, open(p, "w"))

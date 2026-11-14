@@ -2,7 +2,7 @@
 
 Usage: python scripts/hunt_ours_list.py SOURCE_TREE [BASE_TAG] > scripts/hunt_ours_list.json
 
-SOURCE_TREE is a Firefox tree whose HEAD is our engine (C:\\ff\\source, branch port/159-phase4) and BASE_TAG the Mozilla tag it is a patch series on
+SOURCE_TREE is a Firefox tree whose HEAD is our engine (the engine source tree) and BASE_TAG the Mozilla tag it is a patch series on
 (default FIREFOX_159_0_RELEASE). The output is JSON:
 
   added      files our series adds (not tests)                 -> every function in them is ours
@@ -12,6 +12,8 @@ SOURCE_TREE is a Firefox tree whose HEAD is our engine (C:\\ff\\source, branch p
   symbols    "Class::Method" / "function name" qualified names found in added files, hooks and hunks (what a label frame of the profiler or a symbolicated
              native frame can be matched against)
   hook_files files carrying a STEALTH-HOOK marker
+  juggler_symbols  symbol -> base name of the file under juggler/ it is defined in (Juggler is a Playwright patch: upstream Juggler and ours live in the same files)
+  other_symbols    the symbols that come from files outside juggler/ (a symbol in both lists is not told apart: it counts as other)
 
 The profiler's frames of JS carry a file name (matched against added / modified / hook_files by base name); the label frames of C++ carry a qualified name
 (matched against symbols); an unsymbolicated native frame is only an address in a DLL, which can say neither.
@@ -82,10 +84,17 @@ def main():
         (added if s.startswith("A") else modified).append(p)
     hook_files = [p for p in git("grep", "-l", "STEALTH-HOOK").splitlines() if CODE.search(p) and not SKIP.search(p)]
     symbols = set()
+    juggler_symbols, other_symbols = {}, set()
     hooks, hunks = {}, {}
     for p in added:
         text = git("show", "HEAD:" + p, check=False)
-        symbols.update(names_in(text, p))
+        found = names_in(text, p)
+        symbols.update(found)
+        if p.startswith("juggler/"):
+            for n in found:
+                juggler_symbols[n] = p.rsplit("/", 1)[-1]
+        else:
+            other_symbols.update(found)
     for p in hook_files:
         lines = git("show", "HEAD:" + p, check=False).splitlines()
         found = []
@@ -99,6 +108,11 @@ def main():
         if found:
             hooks[p] = sorted(set(found))
             symbols.update(found)
+            if p.startswith("juggler/"):
+                for n in found:
+                    juggler_symbols.setdefault(n, p.rsplit("/", 1)[-1])
+            else:
+                other_symbols.update(found)
     for p in modified:
         heads = []
         for line in git("diff", "-U0", BASE, "HEAD", "--", p).splitlines():
@@ -110,9 +124,12 @@ def main():
         if heads:
             hunks[p] = sorted(set(heads))[:80]
             symbols.update(hunks[p])
+            other_symbols.update(hunks[p])
     sys.stdout.write(json.dumps({
         "base": BASE, "head": git("rev-parse", "HEAD").strip(), "added": sorted(added), "modified": sorted(modified),
         "hook_files": sorted(hook_files), "hooks": hooks, "hunks": hunks, "symbols": sorted(s for s in symbols if len(s) > 3),
+        "juggler_symbols": {k: v for k, v in sorted(juggler_symbols.items()) if len(k) > 3 and k not in other_symbols},
+        "other_symbols": sorted(s for s in other_symbols if len(s) > 3),
     }, indent=0))
 
 

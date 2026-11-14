@@ -1,6 +1,7 @@
 """HUNT SCAFFOLDING, NEVER MERGED: a reader for the profile the Gecko profiler writes at shutdown (MOZ_PROFILER_SHUTDOWN), only what the hunt needs.
 
-Usage: python scripts/hunt_gecko_profile.py --probe FILE        (what is in the file: format, threads, samples, interval, libs)
+Usage: python scripts/hunt_gecko_profile.py --probe FILE [--symbols DIR]   (what is in the file: format, threads, samples, interval, libs; with --symbols the
+                                                                          native leaf frames of the parent main thread are named from the Breakpad symbols)
        python scripts/hunt_gecko_profile.py --selftest           (the reader against two synthetic profiles in the two layouts it knows)
 
 The formats it reads (the profiler changed its JSON over the years, the candidate's version is one of them and is only known when a file exists):
@@ -10,7 +11,20 @@ The formats it reads (the profiler changed its JSON over the years, the candidat
   or frameTable.func -> funcTable.name / fileName / lineNumber (processed layout);
   samples.time in ms since meta.startTime (or samples.timeDeltas, summed), a file that may be gzip.
 A native frame without symbols is an address: it is named "<lib>+0x<offset> (unsymbolicated)" from profile["libs"] when the address falls in a library.
+
+Symbols (class Symbols): the candidate's Breakpad symbols (artifact symbols-win-x86_64: zips of `<debug name>/<debug id>/<name>.sym`, made by ./mach buildsymbols).
+`Thread.symbolizer = Symbols(...)` makes the native frames of every Thread created afterwards resolve to function names: the module is found by the lib's
+debugName and breakpadId (the debug id of the shipped binary), the offset is address - lib start (an RVA, as in the .sym), and the name comes from the FUNC record
+that holds it, else the nearest PUBLIC record below it. A resolved frame is keyed "<name without parameters> [native:<lib>]". Memory is bounded: a module is
+extracted and indexed only when a frame of it is asked for (addresses, sizes and file offsets of FUNC / PUBLIC records in arrays; the names are read back from
+the file on demand), never the whole zip.
 """
+import bisect
+import os
+import shutil
+import tempfile
+import zipfile
+from array import array
 import gzip
 import json
 import re
@@ -43,8 +57,177 @@ def basename(url):
     return url.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1].split("?")[0]
 
 
+def short_name(n):
+    """a demangled .sym name without its parameter list and cv-qualifiers: 'a::B::c(int, char) const' -> 'a::B::c'"""
+    n = n.strip()
+    for q in (" const", " volatile"):
+        if n.endswith(q):
+            n = n[:-len(q)]
+    if n.endswith(")"):
+        depth = 0
+        for i in range(len(n) - 1, -1, -1):
+            if n[i] == ")":
+                depth += 1
+            elif n[i] == "(":
+                depth -= 1
+                if depth == 0:
+                    return n[:i].strip() or n
+    return n
+
+
+class SymModule:
+    """One .sym file: FUNC and PUBLIC records indexed by address; names read back from the file when asked."""
+
+    def __init__(self, path):
+        self.path = path
+        self.f = open(path, "rb")
+        faddr, fsize, foff = array("Q"), array("I"), array("Q")
+        paddr, poff = array("Q"), array("Q")
+        off = 0
+        for line in self.f:
+            n = len(line)
+            c = line[:1]
+            try:
+                if c == b"F" and line.startswith(b"FUNC "):
+                    rest = line[5:]
+                    if rest[:2] == b"m ":
+                        rest = rest[2:]
+                    parts = rest.split(b" ", 3)
+                    faddr.append(int(parts[0], 16))
+                    fsize.append(min(int(parts[1], 16), 0xFFFFFFFF))
+                    foff.append(off)
+                elif c == b"P" and line.startswith(b"PUBLIC "):
+                    rest = line[7:]
+                    if rest[:2] == b"m ":
+                        rest = rest[2:]
+                    parts = rest.split(b" ", 2)
+                    paddr.append(int(parts[0], 16))
+                    poff.append(off)
+            except (ValueError, IndexError):
+                pass
+            off += n
+        order = sorted(range(len(faddr)), key=faddr.__getitem__)
+        self.faddr = array("Q", (faddr[i] for i in order))
+        self.fsize = array("I", (fsize[i] for i in order))
+        self.foff = array("Q", (foff[i] for i in order))
+        order = sorted(range(len(paddr)), key=paddr.__getitem__)
+        self.paddr = array("Q", (paddr[i] for i in order))
+        self.poff = array("Q", (poff[i] for i in order))
+        self.names = {}
+
+    def _name(self, off, public):
+        got = self.names.get(off)
+        if got is None:
+            self.f.seek(off)
+            line = self.f.readline().decode("utf-8", "replace").rstrip("\r\n")
+            rest = line.split(" ", 1)[1] if " " in line else line
+            if rest.startswith("m "):
+                rest = rest[2:]
+            parts = rest.split(" ", 2 if public else 3)
+            got = short_name(parts[-1] if len(parts) > 2 else "")
+            self.names[off] = got
+        return got
+
+    def lookup(self, rva):
+        i = bisect.bisect_right(self.faddr, rva) - 1
+        if i >= 0 and rva < self.faddr[i] + self.fsize[i]:
+            return self._name(self.foff[i], False)
+        j = bisect.bisect_right(self.paddr, rva) - 1
+        if j >= 0 and rva - self.paddr[j] < 0x10000:
+            return self._name(self.poff[j], True)
+        return None
+
+    def close(self):
+        try:
+            self.f.close()
+        except OSError:
+            pass
+
+
+class Symbols:
+    """Breakpad symbols from zips and / or directories: `Symbols(path, ...)`; resolve(lib, rva) -> function name or None."""
+
+    def __init__(self, *roots):
+        self.index = {}    # (debug name lower, debug id upper) -> (zipfile or None, member name or path)
+        self.by_name = {}  # debug name lower -> [ids]
+        self.mods = {}
+        self.tmp = None
+        self.zips = []
+        self.stats = {"resolved": 0, "no record at the address": 0, "module not in the symbols": {}, "modules parsed": 0}
+        for r in roots:
+            if not r:
+                continue
+            if os.path.isdir(r):
+                for dp, _dn, fns in os.walk(r):
+                    for fn in fns:
+                        full = os.path.join(dp, fn)
+                        if fn.endswith(".zip"):
+                            self._add_zip(full)
+                        elif fn.endswith(".sym"):
+                            self._add(full.replace("\\", "/").split("/"), (None, full))
+            elif r.endswith(".zip") and os.path.exists(r):
+                self._add_zip(r)
+
+    def _add_zip(self, path):
+        try:
+            zf = zipfile.ZipFile(path)
+        except (OSError, zipfile.BadZipFile):
+            return
+        self.zips.append(zf)
+        for n in zf.namelist():
+            if n.endswith(".sym"):
+                self._add(n.split("/"), (zf, n))
+
+    def _add(self, parts, where):
+        if len(parts) >= 3:
+            key = (parts[-3].lower(), parts[-2].upper())
+            self.index[key] = where
+            self.by_name.setdefault(key[0], []).append(key[1])
+
+    def module_for(self, lib):
+        dbg = (lib.get("debugName") or "").lower()
+        bid = (lib.get("breakpadId") or "").upper()
+        key = (dbg, bid)
+        if key not in self.index:
+            miss = self.stats["module not in the symbols"]
+            tag = "%s %s (the symbols have %s)" % (lib.get("name"), bid or "no id", ",".join(self.by_name.get(dbg, [])[:2]) or "no such module")
+            miss[tag] = miss.get(tag, 0) + 1
+            return None
+        if key not in self.mods:
+            zf, name = self.index[key]
+            path = name
+            if zf is not None:
+                if self.tmp is None:
+                    self.tmp = tempfile.mkdtemp(prefix="hunt-sym-")
+                path = zf.extract(name, self.tmp)
+            self.mods[key] = SymModule(path)
+            self.stats["modules parsed"] += 1
+        return self.mods[key]
+
+    def resolve(self, lib, rva):
+        m = self.module_for(lib)
+        if m is None:
+            return None
+        name = m.lookup(rva)
+        if name:
+            self.stats["resolved"] += 1
+        else:
+            self.stats["no record at the address"] += 1
+        return name
+
+    def close(self):
+        for m in self.mods.values():
+            m.close()
+        for z in self.zips:
+            z.close()
+        if self.tmp:
+            shutil.rmtree(self.tmp, ignore_errors=True)
+
+
 class Thread:
     """One thread of a profile with its stacks resolved to function names."""
+
+    symbolizer = None  # a Symbols: set before the Threads that should have their native frames named are made
 
     def __init__(self, profile, th):
         self.raw = th
@@ -107,8 +290,9 @@ class Thread:
             kind, name, base = "js", loc or "(anonymous)", basename(file)
             key = "%s @ %s" % (name, base)
         elif re.match(r"^0x[0-9a-fA-F]+$", loc):
-            kind, name, base = "native", self._native(int(loc, 16)), ""
-            key = name
+            name, libname = self._native(int(loc, 16))
+            kind, base = "native", ""
+            key = name if libname is None else "%s [native:%s]" % (name, libname)
         else:
             m = JS_LOC.match(loc)
             b = JS_BARE.match(loc)
@@ -126,14 +310,20 @@ class Thread:
         return got
 
     def _native(self, addr):
+        """-> (name, lib name): the lib name only when the symbols named the frame, else the 'lib+0xoff (unsymbolicated)' text and None"""
         for lib in self.libs:
             try:
                 start, end = int(lib.get("start", 0)), int(lib.get("end", 0))
             except (TypeError, ValueError):
                 continue
             if start <= addr < end:
-                return "%s+0x%x (unsymbolicated)" % (lib.get("name") or lib.get("debugName") or "?", addr - start + int(lib.get("offset", 0)))
-        return "0x%x (unsymbolicated, no library)" % addr
+                libname = lib.get("name") or lib.get("debugName") or "?"
+                if Thread.symbolizer is not None:
+                    got = Thread.symbolizer.resolve(lib, addr - start)
+                    if got:
+                        return got, libname
+                return "%s+0x%x (unsymbolicated)" % (libname, addr - start + int(lib.get("offset", 0))), None
+        return "0x%x (unsymbolicated, no library)" % addr, None
 
     def chain(self, stack, depth=60):
         """frame indices leaf -> root of a stack"""
@@ -187,7 +377,9 @@ def parent_main_thread(profile):
     return best
 
 
-def probe(path):
+def probe(path, symbols=None):
+    if symbols:
+        Thread.symbolizer = Symbols(symbols)
     p = load(path)
     meta = p.get("meta") or {}
     print("file %s" % path)
@@ -222,6 +414,14 @@ def probe(path):
                 k = t.frame_info(ch[0])[0]
                 top[k] = top.get(k, 0) + 1
     print("leaf functions, top 8: %s" % sorted(top.items(), key=lambda kv: -kv[1])[:8])
+    raw = []
+    for st in list(set(x for x in t.s_stack if x is not None))[:300]:
+        ch = t.chain(st)
+        if ch and t.fr_loc is not None and re.match(r"^0x", t.string(t.fr_loc[ch[0]])):
+            raw.append(t.string(t.fr_loc[ch[0]]))
+    print("native leaf locations as the file has them (first 5): %s; libs: %s" % (raw[:5], [(l.get("name"), hex(int(l.get("start", 0))), l.get("breakpadId")) for l in t.libs[:3]]))
+    if Thread.symbolizer is not None:
+        print("symbols: %s" % dict(Thread.symbolizer.stats))
     js = sorted({t.frame_info(fi)[0] for st in set(x for x in t.s_stack if x is not None) for fi in t.chain(st) if t.frame_info(fi)[1] == "js"})
     print("JS functions seen: %d, examples: %s" % (len(js), js[:6]))
     return 0
@@ -268,6 +468,32 @@ def selftest():
         assert lab[1] == "label" and lab[0] == "WaitForMultipleObjectsEx", (label, lab)
         assert t.is_idle(t.chain(4)) and not t.is_idle(t.chain(2)), label
         assert "receiveMessage @ Juggler.js" in t.functions_of_all_samples(), label
+    # Breakpad symbols: a zip with xul.pdb/<id>/xul.sym, FUNC and PUBLIC records, a line record, a module that is not in it
+    d = tempfile.mkdtemp()
+    zp = os.path.join(d, "syms.zip")
+    sym = ("MODULE windows x86_64 ABCDEF0123456789ABCDEF012345678901 xul.pdb\nFILE 0 a.cpp\n"
+           "FUNC 1000 40 0 mozilla::dom::Foo::Bar(int, char) const\n1000 10 5 0\nFUNC m 1100 20 0 nsThread::ProcessNextEvent(bool, bool*)\n"
+           "PUBLIC 2000 0 WaitForMultipleObjectsEx\nPUBLIC m 3000 0 StealthJugglerPipeConnected\n")
+    with zipfile.ZipFile(zp, "w") as z:
+        z.writestr("xul.pdb/ABCDEF0123456789ABCDEF012345678901/xul.sym", sym)
+    ss = Symbols(zp)
+    lib = {"name": "xul.dll", "debugName": "xul.pdb", "breakpadId": "abcdef0123456789abcdef012345678901", "start": 0x7ff600000000, "end": 0x7ff700000000, "offset": 0}
+    assert ss.resolve(lib, 0x1010) == "mozilla::dom::Foo::Bar", ss.resolve(lib, 0x1010)
+    assert ss.resolve(lib, 0x1105) == "nsThread::ProcessNextEvent"
+    assert ss.resolve(lib, 0x2000) == "WaitForMultipleObjectsEx" and ss.resolve(lib, 0x3010) == "StealthJugglerPipeConnected"
+    assert ss.resolve(lib, 0x10) is None and ss.stats["modules parsed"] == 1
+    assert ss.resolve(dict(lib, breakpadId="00" * 17), 0x1010) is None and ss.stats["module not in the symbols"]
+    Thread.symbolizer = ss
+    try:
+        t = parent_main_thread(old)  # the lib has no debugName / breakpadId yet: stays unsymbolicated, no error
+        assert t.frame_info(t.chain(3)[0])[0].startswith("xul.dll+0x1010 (unsymbolicated)")
+        old["libs"][0].update({"debugName": "xul.pdb", "breakpadId": "ABCDEF0123456789ABCDEF012345678901"})
+        t = parent_main_thread(old)
+        assert t.frame_info(t.chain(3)[0])[0] == "mozilla::dom::Foo::Bar [native:xul.dll]", t.frame_info(t.chain(3)[0])
+        assert short_name("operator()(int)") == "operator()" and short_name("a::b<T>::c(x) const") == "a::b<T>::c"
+    finally:
+        Thread.symbolizer = None
+        ss.close()
     print("selftest ok")
     return 0
 
@@ -276,6 +502,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--selftest":
         sys.exit(selftest())
     if len(sys.argv) > 2 and sys.argv[1] == "--probe":
-        sys.exit(probe(sys.argv[2]))
+        sym = sys.argv[sys.argv.index("--symbols") + 1] if "--symbols" in sys.argv else None
+        sys.exit(probe(sys.argv[2], sym))
     print(__doc__)
     sys.exit(2)

@@ -15,6 +15,8 @@
 # under a LOCAL seal made from the candidate's tree. The core does not let a MOZ_* variable of the host reach the engine, so the profiler's variables are
 # added after the core composed the environment (scripts/hunt_profiler_env.py); stock gets them through launch(env=). Every command under timeout 300
 # (the summary 1800); cleanup never fails the job.
+# The candidate's Breakpad symbols (artifact symbols-win-x86_64, kept 2 days) are downloaded too: the summary names ours' native frames from them (only the modules seen in
+# the windows are parsed) and sorts every function of ours' windows into (a) ours, (b) upstream Juggler, (c) other Mozilla 159; stock's native frames stay unsymbolized.
 name: windows flakes profile hunt
 
 on:
@@ -81,6 +83,45 @@ jobs:
             echo "THE ENGINE OF RUN $ENGINE_RUN_ID COULD NOT BE DOWNLOADED with this job's token (artifact expired, build not finished, or the token cannot read another repo's artifacts). Add a secret ENGINE_RUN_TOKEN (read access to the actions of $ENGINE_REPO) and push again."
             exit 1
           fi
+      # the candidate's crash symbols (Breakpad zips made by ./mach buildsymbols, kept 2 days): they name the native frames of ours' profiles. Optional:
+      # without them the native frames stay `xul.dll+0x...`.
+      - name: Download the candidate's Breakpad symbols (symbols-win-x86_64)
+        id: dlsym
+        continue-on-error: true
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: symbols-win-x86_64
+          path: symbols
+          repository: ${{ env.ENGINE_REPO }}
+          run-id: ${{ env.ENGINE_RUN_ID }}
+          github-token: ${{ secrets.ENGINE_RUN_TOKEN || github.token }}
+      - name: Download the candidate's Breakpad symbols, second way (gh run download)
+        if: steps.dlsym.outcome != 'success'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.ENGINE_RUN_TOKEN || github.token }}
+        run: |
+          set +e
+          mkdir -p symbols
+          timeout 600 gh run download "$ENGINE_RUN_ID" -R "$ENGINE_REPO" -n symbols-win-x86_64 -D symbols 2>&1
+          exit 0
+      - name: What the symbols are
+        continue-on-error: true
+        run: |
+          set +e
+          mkdir -p evidence
+          { echo "symbols dir:"; ls -la symbols 2>&1 | head -20; echo "zip members that are .sym (first 10):"; python - <<'PY'
+          import glob, zipfile
+          n = 0
+          for z in glob.glob("symbols/**/*.zip", recursive=True):
+              zf = zipfile.ZipFile(z)
+              syms = [i for i in zf.infolist() if i.filename.endswith(".sym")]
+              print(z, len(zf.namelist()), "members,", len(syms), ".sym, biggest", max([i.file_size for i in syms] or [0]) // 1000000, "MB")
+              for i in syms[:10]:
+                  print("  ", i.filename, i.file_size)
+          PY
+          } 2>&1 | tee evidence/symbols_listing.txt
+          exit 0
       - name: Download the source-commit of the candidate (for the build id line)
         continue-on-error: true
         env:
@@ -225,6 +266,9 @@ jobs:
             for f in prof-smoke/*.json; do
               [ -e "$f" ] && timeout 300 python scripts/hunt_gecko_profile.py --probe "$f"
             done
+            for f in prof-smoke/smoke_ours*.json; do
+              [ -e "$f" ] && [ -d symbols ] && { echo "== ours, native frames named from the symbols"; timeout 900 python scripts/hunt_gecko_profile.py --probe "$f" --symbols symbols; }
+            done
           } 2>&1 | tee evidence/profiler_smoke.txt
           ls -la prof-smoke
           exit 0
@@ -242,9 +286,10 @@ jobs:
             sed 's/^/    /' evidence/core_git.txt 2>/dev/null
             echo
             echo '```'
-            cat evidence/profiler_smoke.txt 2>/dev/null | head -60
+            cat evidence/symbols_listing.txt 2>/dev/null | head -20
+            cat evidence/profiler_smoke.txt 2>/dev/null | head -80
             echo '```'
-            timeout 1800 python scripts/hunt_profile_summary.py evidence "$RUNNER_OS"
+            HUNT_SYMBOLS=symbols timeout 1800 python scripts/hunt_profile_summary.py evidence "$RUNNER_OS"
             echo
             echo '```'
             grep -ahE "Traceback|Error" evidence/loaded_*.log | sort | uniq -c | head -20
