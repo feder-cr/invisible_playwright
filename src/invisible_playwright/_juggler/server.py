@@ -297,23 +297,6 @@ def session_udp_stun_servers(prefs: Dict) -> Optional[list]:
     return ["%s:%d" % server for server in stun_servers(str(value).split(","))]
 
 
-def refuse_the_launch_counter(prefs: Dict) -> None:
-    """The launch counter is part of the package and a client of this server cannot turn it off or point it elsewhere.
-
-    ⛔ The core refuses `invisible_firefox.usage_ping.enabled` and `.url` in `extra_prefs` (invisible_core.prefs), but a client of
-    this server sends `firefoxUserPrefs` straight into `session_for_launch`: a stock Playwright `launch(firefox_user_prefs=...)`
-    is put on TOP of the session the server composes, and a launch marked as composed is taken as it comes. Either road would
-    have carried the two prefs past the core. The only thing allowed is the address the core itself wrote, in a composed launch."""
-    from invisible_core.prefs import USAGE_PING_PREFS, USAGE_PING_REFUSAL, USAGE_PING_URL
-    composed = COMPOSED_PREF in prefs
-    for key in USAGE_PING_PREFS:
-        if key not in prefs:
-            continue
-        if composed and key.endswith(".url") and prefs[key] == USAGE_PING_URL:
-            continue
-        raise ValueError("%s: %s" % (key, USAGE_PING_REFUSAL))
-
-
 def session_for_launch(prefs: Dict, executable: str, proxy: Optional[Dict] = None) -> tuple:
     """What a launch writes into its profile and adds to its environment: always a
     composed session. Returns (prefs, session_env).
@@ -343,7 +326,6 @@ def session_for_launch(prefs: Dict, executable: str, proxy: Optional[Dict] = Non
     measures there (timezone, locale) and the network it declares are the proxy's,
     not this machine's. The engine is told the proxy by `op_launch`, as before.
     """
-    refuse_the_launch_counter(prefs)
     if COMPOSED_PREF in prefs:
         return dict(prefs), {}
     from invisible_playwright._session import default_session
