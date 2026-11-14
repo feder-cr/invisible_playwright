@@ -1,0 +1,119 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# close-lifetime-hunt.yml - after close() returns, is the real browser still alive?
+#
+# MEASUREMENT ONLY. Nothing here fixes anything and nothing here is a gate: it starts on a push to a
+# `hunt/close-lifetime**` branch and is not a required context.
+#
+# The question. Playwright's `browser.close()` returns after the browser has exited. In this package
+# the path is `BrowserDispatcher.op_close` -> `Connection.close` (invisible_core), which closes the pipe
+# and waits on the pid the spawn returned. On Windows that pid is Firefox's launcher process: it exits
+# about a second after the start unless the command line has `-wait-for-browser`, which the core adds
+# only for a session that is not true headless. So the three invisible arms are:
+#
+#   inv-headed   InvisiblePlaywright(headless=False): `-wait-for-browser -foreground` (the default)
+#   inv-truehl   InvisiblePlaywright(headless=True) + INVPW_TRUE_HEADLESS=1: `-headless`, no wait flag
+#   stock        Playwright's own Firefox (pinned in scripts/playwright_pin.txt), for reference
+#
+# and each has two ways out: `browser.close()` called (the `close` variant; the context manager is
+# left only after the measurement, for cleanup) and the end of the `with` block (the `with` variant).
+# Each cell is run 30 times in a row and 10 rounds of 4 browsers at once.
+#
+# What is recorded per run, from the moment close() returns, every 10 ms, until nothing is left
+# (cap 60 s): is the parent alive, how many processes of THIS launch are alive (found by a token in
+# their environment and the engine's folder), is the profile lock there, is the pid the core's spawn
+# returned alive. `scripts/close_lifetime_hunt.py` says how in its docstring. The summary prints
+# p50 / p95 / max per OS and arm, and how many runs still had processes at 60 s.
+#
+# Windows and Linux run one after the other (max-parallel 1) so the two never share a GitHub queue slot
+# with the load of the other. A new push cancels the old hunt.
+# ─────────────────────────────────────────────────────────────────────────────
+name: close lifetime hunt
+
+on:
+  push:
+    branches: ['hunt/close-lifetime**']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: close-lifetime-hunt-${{ github.ref }}
+  cancel-in-progress: true
+
+# Engine and GeoIP downloads go through the release API with this token (see e2e-hunt.yml).
+env:
+  GITHUB_TOKEN: ${{ github.token }}
+
+jobs:
+  hunt:
+    name: close lifetime (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        os: [windows-2022, ubuntu-24.04]
+    # Generous on purpose: the ceiling must never be what stops the hunt.
+    timeout-minutes: 300
+    # `run:` blocks are bash on both systems (GitHub's default on Windows is PowerShell).
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with: { fetch-depth: 1 }
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: { python-version: '3.11' }
+      - name: Install wrapper + deps (+ pinned Playwright for the stock arm)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ".[dev]"
+          python -m pip install "playwright==$(cat scripts/playwright_pin.txt)"
+      - name: System deps (xvfb + Firefox runtime libs)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+          sudo "$(which python)" -m playwright install-deps firefox
+      - name: Fetch the published engine and stock Playwright Firefox
+        run: |
+          echo "FF=$(python -m invisible_playwright fetch | tail -1)" >> "$GITHUB_ENV"
+          python -m playwright install firefox
+      - name: Self-test of the measuring code (a fake process tree, no browser)
+        run: python -I scripts/close_lifetime_hunt.py selftest
+      - name: Record the versions
+        run: python scripts/close_lifetime_hunt.py meta --binary "$FF" --out evidence
+      - name: Cells (3 arms x 2 ways out x [30 in a row, 10 rounds of 4 at once])
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          set -u
+          mkdir -p evidence
+          # xvfb only where it exists; on Windows the browser goes to the runner's desktop.
+          if [ "$RUNNER_OS" = "Linux" ]; then PRE="xvfb-run -a"; else PRE=""; fi
+          run_cell() {
+            echo "::group::$1 $2 rounds=$3 at-once=$4"
+            # 90 minutes per cell: 30 runs that all hit the 60 s cap would take about 65.
+            timeout 5400 $PRE python -u scripts/close_lifetime_hunt.py cell \
+              --arm "$1" --variant "$2" --rounds "$3" --parallel "$4" --binary "$FF" --out evidence \
+              || echo "::warning::cell $1 $2 x$4 ended with an error or the timeout"
+            echo "::endgroup::"
+          }
+          for arm in stock inv-headed inv-truehl; do
+            for variant in close with; do
+              run_cell "$arm" "$variant" 30 1
+              run_cell "$arm" "$variant" 10 4
+            done
+          done
+      - name: Summary
+        if: always()
+        run: |
+          python scripts/close_lifetime_hunt.py summary evidence | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Upload all the evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: close-lifetime-${{ matrix.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: evidence
+          if-no-files-found: warn
+          retention-days: 30
