@@ -210,7 +210,7 @@ class _AnnexbHandler(BaseHTTPRequestHandler):
 def test_webcodecs_h264_software_decode_matches_retail_even_with_hardware_request(
     firefox_binary, engine_at_least
 ):
-    engine_at_least("firefox-64")
+    engine_at_least("firefox-65")
 
     from invisible_playwright import InvisiblePlaywright
 

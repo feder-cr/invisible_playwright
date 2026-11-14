@@ -200,7 +200,7 @@ def test_the_model_keeps_the_sign_of_a_zero_sum():
 @pytest.mark.parametrize("alu_class", (1, 2))
 @pytest.mark.parametrize("k", (2, 3, 4))
 def test_dot_is_the_nvidia_fma_chain_when_declared(firefox_binary, engine_at_least, k, alu_class):
-    engine_at_least("firefox-64")
+    engine_at_least("firefox-65")
     bad = _mismatches(firefox_binary, alu_class, k)
     assert not bad, "dot%d, class %d: %d of %d differ from the chain, first %s" % (
         k, alu_class, len(bad), N, json.dumps(bad[:3]))
@@ -212,7 +212,7 @@ def test_dot_is_the_nvidia_fma_chain_when_declared(firefox_binary, engine_at_lea
 @pytest.mark.parametrize("k", (2, 3, 4))
 def test_dot_without_the_declaration_is_the_hosts_own(firefox_binary, engine_at_least, k):
     """The control: with class 0 the same vectors tell the host's dot() from the chain."""
-    engine_at_least("firefox-64")
+    engine_at_least("firefox-65")
     bad = _mismatches(firefox_binary, 0, k)
     if not bad:
         pytest.skip("this adapter's dot%d() already is the NVIDIA chain: the difference is not visible here" % k)
