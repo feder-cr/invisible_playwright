@@ -25,13 +25,29 @@ class _Conn:
         return {}
 
 
+class _Clock:
+    """The keyboard's clock without real time: a sleep advances it by what was asked. The keyboard sends each key at its
+    planned time measured from the start of the action (invisible-core 64.69.0), so a clock that does not move would make
+    every later wait carry the earlier ones."""
+
+    def __init__(self):
+        self.t = 1000.0
+        self.taken: list = []
+
+    def monotonic(self):
+        return self.t
+
+    def sleep(self, seconds):
+        self.taken.append(seconds)
+        self.t += seconds
+
+
 @pytest.fixture()
 def slept(monkeypatch):
-    """Every sleep the keyboard asks for, in SECONDS, without taking any."""
-    taken: list = []
-    monkeypatch.setattr("invisible_core.juggler.keyboard.time.sleep",
-                        taken.append)
-    return taken
+    """Every sleep the keyboard asks for, in SECONDS, without taking any (the clock moves by each one)."""
+    clock = _Clock()
+    monkeypatch.setattr("invisible_core.juggler.keyboard.time", clock)
+    return clock.taken
 
 
 def _keyboard(persona=None):
