@@ -18,12 +18,61 @@ that surface now; what hides the window is WHERE it is created.
 """
 from __future__ import annotations
 
+import http.server
 import sys
+import threading
 import time
 
 import pytest
 
 from invisible_playwright import InvisiblePlaywright
+
+from _servers import LocalServer
+
+# The page the session loads: served by this test from 127.0.0.1, so nothing
+# here depends on a site of the real web.
+_PAGE = (b"<!doctype html><html><head><meta charset=utf-8><title>hidden desktop</title>"
+         b"</head><body style=\"background:#fff;color:#000;font:24px sans-serif\">"
+         b"<h1>hidden desktop</h1><p>a page the test serves itself</p></body></html>")
+
+
+@pytest.fixture
+def served():
+    class H(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(_PAGE)))
+            self.end_headers()
+            self.wfile.write(_PAGE)
+
+        def log_message(self, *a):
+            pass
+
+    with LocalServer(("127.0.0.1", 0), H) as srv:
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        try:
+            yield "http://127.0.0.1:%d/" % srv.server_address[1]
+        finally:
+            srv.shutdown()
+
+
+def _engine_screencast_lines(page):
+    """The lines the engine printed that start with ``screencast:``, from the
+    browser's own stdout/stderr (the core keeps the last 200 lines of the
+    pipe for the whole life of the process, `ProcessOutput`). Where the
+    engine has no line for it the answer says so, so a failure message never
+    comes out empty."""
+    try:
+        impl = page._impl_obj
+        server = impl._connection._transport._server
+        output = server.object(impl._guid).conn.output
+        lines = output.tail(output.KEEP)
+    except Exception as failure:  # the message is the point, not the lookup
+        return "(the engine output could not be read: %r)" % (failure,)
+    mine = [l for l in lines if l.lstrip().startswith("screencast:")]
+    return "\n".join(mine) if mine else "(the engine printed no line starting with 'screencast:')"
+
 
 _WEBGL_RENDERER = """() => {
   const g = document.createElement('canvas').getContext('webgl');
@@ -82,12 +131,12 @@ def _moz_windows_on(desktop_name, session):
 @pytest.mark.e2e
 @pytest.mark.skipif(sys.platform != "win32",
                     reason="the hidden desktop is the Windows path; Linux hides via Xvfb")
-def test_hidden_desktop_takes_the_window_off_screen_but_keeps_rendering(firefox_binary):
+def test_hidden_desktop_takes_the_window_off_screen_but_keeps_rendering(firefox_binary, served):
     # Control arm: the enumeration sees a headed window where it should be.
     headed = InvisiblePlaywright(seed=42, binary_path=firefox_binary, headless=False)
     with headed as browser:
         page = browser.new_page()
-        page.goto("https://example.com", timeout=30_000)
+        page.goto(served, timeout=30_000)
         time.sleep(1.0)
         assert _moz_windows_on(None, headed) >= 1, (
             "a headed session left no window on the interactive desktop, so "
@@ -96,7 +145,7 @@ def test_hidden_desktop_takes_the_window_off_screen_but_keeps_rendering(firefox_
     ip = InvisiblePlaywright(seed=42, binary_path=firefox_binary, headless=True)
     with ip as browser:
         page = browser.new_page()
-        page.goto("https://example.com", timeout=30_000)
+        page.goto(served, timeout=30_000)
         time.sleep(2)
 
         desktop = ip._virtual_display.name
@@ -138,5 +187,7 @@ def test_hidden_desktop_takes_the_window_off_screen_but_keeps_rendering(firefox_
             time.sleep(0.1)
         page.screencast.stop()
         assert frames, ("no screencast frame arrived from the hidden desktop "
-                        "in 15 s: the window capturer is not being used there")
+                        "in 15 s: the window capturer is not being used there\n"
+                        "engine output (lines starting with 'screencast:'):\n%s"
+                        % _engine_screencast_lines(page))
         assert frames[0]["data"][:3] == b"\xff\xd8\xff", "not a JPEG"
