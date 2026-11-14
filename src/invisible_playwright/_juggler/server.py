@@ -4342,9 +4342,10 @@ class PageDispatcher(Dispatcher):
         # too, because `_connection.py` only drops an object when it is told
         # to. The driver disposes Page, BrowserContext, Browser, ElementHandle
         # and APIRequestContext; the only one we were missing was Page, which
-        # is why `diff_protocol.py` grew a fifth dimension to see it: the other
-        # four compare `__create__`, initializers, events and parentage, and
-        # the event comparison skips every method starting with `__`.
+        # is why the protocol comparison that used to exist needed a fifth
+        # dimension to see it: the other four compared `__create__`, initializers,
+        # events and parentage, and the event comparison skips every method
+        # starting with `__`.
 
 
 

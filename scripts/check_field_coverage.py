@@ -100,8 +100,8 @@ def _classes(tree: ast.AST) -> dict:
 #: next step. The failure it would cause is silent and backwards: an `async
 #: def` operation is absent from `_methods`, so `reachable` returns an EMPTY
 #: known-set for it, and every field that operation legitimately reads gets
-#: reported as ignored. Same tuple as `check_unresolved_names.py`'s
-#: `_FUNCTIONS`, for the same reason.
+#: reported as ignored. Both function kinds are listed for the same reason as in any
+#: AST walk over operations.
 _FUNCTIONS = (ast.FunctionDef, ast.AsyncFunctionDef)
 
 

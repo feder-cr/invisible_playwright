@@ -282,8 +282,8 @@ def make_transport(loop: asyncio.AbstractEventLoop) -> "InProcessTransport":
             "only transport - unset %s and it runs. To get the old arm back "
             "for a COMPARISON (the only thing it was still for): check out "
             "the last commit that carried it into a git worktree and point "
-            "INVPW_DRIVER_TREE at it. Both `judge_both_transports.py` and "
-            "`diff_protocol.py` read that variable." % CHOICE_ENV)
+            "INVPW_DRIVER_TREE at it, which `scripts/capture_protocol.py` "
+            "reads." % CHOICE_ENV)
     from .server import JugglerServer
     if (os.environ.get(WIRE_ENV) or "").strip().lower() == "json":
         return JsonWireTransport(loop, JugglerServer())
