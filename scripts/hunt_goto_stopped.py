@@ -7,7 +7,7 @@ One batch of reps of one arm, four browsers at once, one fresh browser per rep. 
   error, url  what the goto raised and where the page ended
 The page and the server share the machine's wall clock, so "fired" and "resp" compare directly.
 
-    python scripts/hunt_goto_stopped.py ours|stock REPS FIRST_REP [binary]
+    python scripts/hunt_goto_stopped.py ours|stock|stockfission REPS FIRST_REP [binary]
 """
 from __future__ import annotations
 
@@ -95,7 +95,10 @@ async def one(arm, rep, port, binary, gate):
                 return await scenario(page, port, rep)
         from playwright.async_api import async_playwright
         async with async_playwright() as p:
-            browser = await p.firefox.launch(headless=True, firefox_user_prefs=PREFS)
+            # stock: Playwright's Firefox as shipped (its playwright.cfg sets webContentIsolationStrategy 0 by autoconfig, which
+            # wins over the prefs given at launch); stockfission: a copy of the same Firefox whose playwright.cfg says 1
+            exe = {"executable_path": binary} if arm == "stockfission" else {}
+            browser = await p.firefox.launch(headless=True, firefox_user_prefs=PREFS, **exe)
             try:
                 page = await browser.new_page()
                 return await scenario(page, port, rep)
