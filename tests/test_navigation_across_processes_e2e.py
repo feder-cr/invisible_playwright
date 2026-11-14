@@ -118,7 +118,7 @@ def _run(firefox_binary, scenario):
     return asyncio.run(go())
 
 
-@pytest.mark.parametrize("rep", range(40))
+@pytest.mark.parametrize("rep", range(80))
 def test_a_goto_to_another_site_stopped_by_the_page_it_leaves_raises_aborted(firefox_binary, sites, rep):
     events = []
 
@@ -127,11 +127,9 @@ def test_a_goto_to_another_site_stopped_by_the_page_it_leaves_raises_aborted(fir
         impl = page._impl_obj
         conn = impl._connection._transport._server.object(impl._guid).conn
 
-        def listen(*args):
-            msg = args[-1] if args else None
-            method = msg.get("method") if isinstance(msg, dict) else getattr(msg, "method", repr(msg)[:60])
+        def listen(method, params, session):
             if method and method.startswith("Page."):
-                params = msg.get("params", {}) if isinstance(msg, dict) else {}
+                params = params or {}
                 events.append((time.monotonic(), method, str(params.get("url", ""))[-30:],
                                str(params.get("errorText", params.get("error", "")))[:40]))
 
@@ -147,6 +145,7 @@ def test_a_goto_to_another_site_stopped_by_the_page_it_leaves_raises_aborted(fir
         except Exception as e:
             error = str(e)
         ended = time.monotonic()
+        await asyncio.sleep(4)   # the held /slow-frame and the beacon of the stop reach the server after the goto has ended
         conn.remove_listener(listen)
         rel = lambda t: "%.3f" % (t - t_eval0)
         _hunt("HUNT rep=%d eval_returned=%s goto_began=%s goto_ended=%s error=%s" % (

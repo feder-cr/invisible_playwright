@@ -25,7 +25,11 @@ jobs:
           python -m pip install ".[dev]"
       - name: Fetch the published firefox binary
         run: echo "FF=$(cd "$RUNNER_TEMP" && python -m invisible_playwright fetch | tail -1)" >> "$GITHUB_ENV"
-      - name: 40 runs, four at once (the load of an e2e leg)
+      - name: Two CPU burners for the whole hunt (the contention of a full e2e leg)
+        run: |
+          for i in 1 2; do nohup python -c "while True: pass" > /dev/null 2>&1 & done
+          echo started
+      - name: 80 runs, four at once, under the burners
         env:
           PYTHONUNBUFFERED: "1"
           INVPW_BINARY_PATH: ${{ env.FF }}
