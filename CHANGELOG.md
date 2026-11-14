@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.52.0] - 2026-11-14
+
+### Changed
+- Pins invisible-core 64.69.0 and with it the engine firefox-64. A request a page causes now leaves in the context of that
+  page, by that context's proxy and resolver: the name of a TURN server over TCP, the OCSP request of a certificate, the TLS
+  over a tunnel, the Safe Browsing completion of a page load. Nothing of a context with a proxy goes out DIRECT when a proxy
+  lookup fails or the context has just closed. On Linux the profile lock no longer looks up the machine's host name.
+- Typing: each key is sent at its planned time measured from the start of the action, so a late reply no longer shifts the
+  keys after it, and the engine delivers each key at once with its event born the declared latency in the past. Measured
+  against stock Playwright Firefox, 20 runs per cell, slip of the last key against the plan (median): Windows 635 ms before,
+  6 ms now (stock 122); Linux 554 ms before, -5 ms now (stock 91).
+
+### Fixed
+- No thread is started on the engine connection's reader any more (the adoption of a new page and the file chooser hand
+  their work to one long-lived starter). On Windows under load a Thread.start there held every event behind it; without
+  instrumentation, goto(..., wait_until="networkidle") on pages that replace themselves missed 1 in 1200 instead of 4.
+
+### Tests
+- The suites "nothing of a context leaves but through its proxy" (a witness of every direct arrival, the engine's resolver
+  log as the sink of native lookups), on Linux and Windows, including two contexts with their own proxies at once and a
+  PeerConnection of a torn-down window.
+- Windows: the isolated-page test moves the page when the test says so instead of on a 500 ms timer; the sandbox test
+  reads again a process that is still starting.
+
+
 ## [0.51.1] - 2026-11-13
 
 ### Changed
