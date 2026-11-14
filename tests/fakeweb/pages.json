@@ -1,0 +1,22 @@
+{
+ "comment": "The outcome of Playwright's own Firefox (stock.lock) on each page: 'idle' means page.wait_for_load_state('networkidle') arrives. A page enters this list after 20 green runs of stock in a row; if stock deviates, the suite is red as a broken control. newsfront is not listed: stock Firefox stalls on it 1 or 2 times in 10 (a pending list that is empty), so it cannot be a gate until a minimal pattern replaces it.",
+ "stock_firefox": {
+  "quiet": "idle",
+  "beacon_pair": "idle",
+  "keepalive_fetch": "idle",
+  "tracking_pixel": "idle",
+  "dup_font": "idle",
+  "removed_iframe": "idle",
+  "cancelled_requests": "idle",
+  "cancel_burst": "idle",
+  "redirect_chain": "idle",
+  "late_requests": "idle",
+  "long_poll": "idle",
+  "ad_iframes": "idle",
+  "late_dom_resources": "idle",
+  "unload_beacon": "idle",
+  "leaving_beacons": "idle",
+  "leaving_beacons_subframe": "idle",
+  "cancel_among_beacons": "idle"
+ }
+}
