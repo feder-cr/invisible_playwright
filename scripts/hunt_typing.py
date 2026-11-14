@@ -40,6 +40,10 @@ from invisible_core.juggler._behaviour import TypingPersona, plan_typing
 ENGINE = sys.argv[1]
 STAMPS = os.environ.get("HUNT_STAMPS") == "1"
 BIGPIPE = os.environ.get("HUNT_BIGPIPE") == "1"
+if os.environ.get("HUNT_SWITCH"):
+    # ours_switch: the GIL handed between threads every HUNT_SWITCH seconds (default 0.005); a diagnosis, not a fix
+    sys.setswitchinterval(float(os.environ["HUNT_SWITCH"]))
+    print("HUNT-SWITCH %s" % sys.getswitchinterval(), flush=True)
 BIG = 1 << 20
 DUMP_PREF = {"browser.dom.window.dump.enabled": True}
 TEXT = "someone@example.com"

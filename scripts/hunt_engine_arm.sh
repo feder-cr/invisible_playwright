@@ -13,19 +13,20 @@ mkdir -p evidence
 export HUNT_RUNS=5
 for round in 1 2 3; do
   case $round in
-    1) order="ours_bigpipe ours_normal stock";;
-    2) order="ours_normal stock ours_bigpipe";;
-    3) order="stock ours_bigpipe ours_normal";;
+    1) order="ours_switch ours_normal stock";;
+    2) order="ours_normal stock ours_switch";;
+    3) order="stock ours_switch ours_normal";;
   esac
   for arm in $order; do
     case $arm in
-      ours_bigpipe) engine=ours;  bin=$ours;  big=1;;
-      ours_normal)  engine=ours;  bin=$ours;  big=0;;
-      stock)        engine=stock; bin=$stock; big=0;;
+      ours_switch)  engine=ours;  bin=$ours;  big=0; sw=0.0005;;
+      ours_normal)  engine=ours;  bin=$ours;  big=0; sw=;;
+      stock)        engine=stock; bin=$stock; big=0; sw=;;
     esac
     for c in 1 2 3 4; do
       (
         export HUNT_ARM="$arm" HUNT_BIGPIPE="$big"
+        if [ -n "$sw" ]; then export HUNT_SWITCH="$sw"; else unset HUNT_SWITCH; fi
         if [ "$arm" = "stock" ]; then export DEBUG=pw:browser; fi
         timeout 300 python -u scripts/hunt_typing.py "$engine" "$bin" >> "evidence/loaded_${arm}_$c.log" 2>&1
         echo "arm $arm round $round process $c exit $?"
@@ -35,7 +36,7 @@ for round in 1 2 3; do
     echo "arm $arm round $round done"
   done
 done
-for arm in ours_bigpipe ours_normal stock; do
+for arm in ours_switch ours_normal stock; do
   echo "arm $arm: HUNT-TYPING lines $(cat evidence/loaded_${arm}_[0-9]*.log 2>/dev/null | grep -ac '^HUNT-TYPING '), HUNTKEY lines in logs $(cat evidence/loaded_${arm}_[0-9]*.log 2>/dev/null | grep -ac 'HUNTKEY '), HUNT-PIPE lines $(cat evidence/loaded_${arm}_[0-9]*.log 2>/dev/null | grep -ac '^HUNT-PIPE ')"
 done
 exit 0

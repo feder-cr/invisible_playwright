@@ -1,4 +1,4 @@
-# windows-flakes-pipebuf-hunt.yml - hunt scaffolding, never merged. Runs only on a push to a `hunt/windows-flakes-pipebuf**` branch.
+# windows-flakes-pipebuf-hunt.yml - hunt scaffolding, never merged. Runs only on a push to a `hunt/windows-flakes-switch**` branch.
 # The sendsplit hunt (stamps S0 core decided, S1 os.write returned, S2 the parent's JS got the pipe message, S2b, S3 = P1, plus the ring of what the
 # parent's Dispatcher ran) with ONE thing varied on our side: the size of the two protocol pipes the core makes in `_spawn_windows`. Arms:
 # ours_bigpipe (the first two `_winapi.CreatePipe` calls of the spawn made with `CreatePipe(None, 1 << 20)`, by a runtime patch in
@@ -15,14 +15,14 @@ name: windows flakes pipebuf hunt
 
 on:
   push:
-    branches: ['hunt/windows-flakes-pipebuf**']
+    branches: ['hunt/windows-flakes-switch**']
 
 permissions:
   contents: read
   actions: read
 
 concurrency:
-  group: windows-flakes-pipebuf-hunt-${{ github.ref }}
+  group: windows-flakes-switch-hunt-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -189,7 +189,7 @@ jobs:
             fi
           done
           exit 0
-      - name: Arms ours_bigpipe, ours_normal and stock with the stamps, interleaved
+      - name: Arms ours_switch (GIL switch interval 0.5 ms), ours_normal and stock with the stamps, interleaved
         env:
           HUNT_STAMPS: "1"
         run: |

@@ -49,9 +49,9 @@ from urllib.parse import unquote
 
 GAP_MS = 150.0
 LONG_MS = 30.0
-ARMS = ["ours_bigpipe", "ours_normal", "stock"]
-STAMPED = ("ours_bigpipe", "ours_normal", "stock")
-OURS = ("ours_bigpipe", "ours_normal")
+ARMS = ["ours_switch", "ours_normal", "stock"]
+STAMPED = ("ours_switch", "ours_normal", "stock")
+OURS = ("ours_switch", "ours_normal")
 MODES = ["loaded"]
 ORDER = ["sent", "S1", "S2", "S2b", "P1", "C2", "C3", "C4", "C4r", "C5", "h"]
 LINE = re.compile(r"(\S+) (\d+) (\d+) (\S+) ([\d.]+) (\S+) (\S+)(?: (.*))?$")
