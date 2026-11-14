@@ -173,7 +173,7 @@ jobs:
           # core main (the candidate's core_ref) with the typing branch merged in, built here; an explicit stop on a conflict
           rm -rf "$RUNNER_TEMP/core-merged" && git clone --quiet "$CORE_REPO" "$RUNNER_TEMP/core-merged"
           # core main already carries the typing fix (#262) and the reader fix (#263)
-          ( cd "$RUNNER_TEMP/core-merged" && echo "core main head: $(git rev-parse HEAD)"             && git merge-base --is-ancestor 780adc0 HEAD && git merge-base --is-ancestor 2ef06c7 HEAD ) || { echo "::error::core main lacks #262 or #263"; exit 1; }
+          ( cd "$RUNNER_TEMP/core-merged" && git checkout --quiet 2ef06c7 && echo "core head: $(git rev-parse HEAD)"             && git merge-base --is-ancestor 780adc0 HEAD && git merge-base --is-ancestor 2ef06c7 HEAD ) || { echo "::error::core main lacks #262 or #263"; exit 1; }
           timeout 300 python -m pip install --quiet --force-reinstall --no-deps "$RUNNER_TEMP/core-merged"
           timeout 300 python -m invisible_core seal --binary "$FF" --tag engine60-candidate -o "$PWD/evidence/engine.seal.json" | tee evidence/seal.txt
           echo "INVISIBLE_SEAL_FILE=$PWD/evidence/engine.seal.json" >> "$GITHUB_ENV"
