@@ -160,3 +160,24 @@ def test_the_script_asks_the_database_whether_the_root_is_trusted():
 
 def test_the_ocsp_prefs_ask_and_soft_fail():
     assert pki.OCSP_PREFS == {"security.OCSP.enabled": 1, "security.OCSP.require": False, "security.pki.crlite_mode": 0}
+
+
+def test_the_doh_serves_a_certificate_of_the_lab_ca_that_a_profile_trusting_it_verifies(tmp_path):
+    """An OCSP case cannot use ``ignore_https_errors`` to accept the DoH's own certificate (it would also switch off the check under test), so the
+    DoH serves a leaf of the lab CA for its host: refused before, verified after, by a client that trusts only that CA."""
+    import _doh_servers as ds
+
+    ca = pki.LabCa(tmp_path)
+    doh = ds.FakeDoh({})
+    try:
+        def handshake():
+            with socket.create_connection(("127.0.0.1", doh.port), timeout=10) as raw:
+                with _client_context(ca).wrap_socket(raw, server_hostname=ds.DOH_HOST) as tls:
+                    return tls.version()
+
+        with pytest.raises(ssl.SSLCertVerificationError):          # its own self-signed certificate: what the engine refused in the run
+            handshake()
+        doh.use_certificate(*ca.leaf("doh", [ds.DOH_HOST], ["127.0.0.1"], None))
+        assert handshake().startswith("TLS")
+    finally:
+        doh.close()

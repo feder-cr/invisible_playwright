@@ -644,6 +644,10 @@ def test_the_ocsp_request_of_a_trusted_page_leaves_only_through_the_proxy(
     leaf, key = ca.leaf(by, [tls_name], ["127.0.0.1"], ocsp_url)
     server = TlsPage(leaf, key, "egress-ocsp-ok")
     try:
+        # The other cases accept the DoH's self-signed certificate with ``ignore_https_errors`` on the context; here that would switch off the very
+        # check under test (no chain, no OCSP), so the DoH of the context serves a certificate of the lab CA, which the profile trusts: without it
+        # the DoH handshake is refused (SSLV3_ALERT_BAD_CERTIFICATE, run 43584815874) and the page name never resolves (NS_ERROR_UNKNOWN_HOST).
+        doh.use_certificate(*ca.leaf("doh", [ds.DOH_HOST], ["127.0.0.1"], None))
         doh.names[tls_name] = "127.0.0.1"
         doh.names[ocsp_name] = address
         proxy = gateway("gw-context")
