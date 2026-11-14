@@ -22,6 +22,7 @@ import pytest
 from invisible_core import SessionGeo, SessionLocale, decide_session_locale
 from invisible_core.juggler.connection import EventListeners
 from invisible_playwright._juggler.server import BrowserDispatcher, Server
+from _browser_census import closes_with_the_test
 
 _PKG_DIR = pathlib.Path(__file__).resolve().parent.parent / "src" / "invisible_playwright"
 
@@ -29,6 +30,7 @@ _PKG_DIR = pathlib.Path(__file__).resolve().parent.parent / "src" / "invisible_p
 class _Connection(EventListeners):
     def __init__(self):
         super().__init__()
+        closes_with_the_test(self)
         self.sent = []
 
     def startup_send(self, method, params=None):

@@ -22,6 +22,7 @@ from invisible_playwright import InvisiblePlaywright, _session
 from invisible_playwright._juggler import remote
 from invisible_playwright._juggler.server import BrowserDispatcher, Server
 from invisible_playwright.async_api import InvisiblePlaywright as AsyncInvisiblePlaywright
+from _browser_census import closes_with_the_test
 
 _PKG = pathlib.Path(__file__).resolve().parent.parent / "src" / "invisible_playwright"
 EXIT = (45.0, 9.0)
@@ -45,6 +46,7 @@ def _past_geo(cls, seed=42, geo=None):
 class _Connection(EventListeners):
     def __init__(self):
         super().__init__()
+        closes_with_the_test(self)
         self.sent = []
 
     def startup_send(self, method, params=None):

@@ -16,6 +16,7 @@ from invisible_core.juggler.connection import EventListeners
 from invisible_playwright._juggler.server import (
     BrowserContextDispatcher, BrowserDispatcher, Server,
 )
+from _browser_census import closes_with_the_test
 
 
 class _Engine(EventListeners):
@@ -23,6 +24,7 @@ class _Engine(EventListeners):
 
     def __init__(self):
         super().__init__()
+        closes_with_the_test(self)
         self.sent = []
 
     def startup_send(self, method, params=None):

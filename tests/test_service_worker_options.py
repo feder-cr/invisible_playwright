@@ -10,6 +10,7 @@ from invisible_playwright._juggler.server import (
     BrowserTypeDispatcher,
     JugglerServer,
 )
+from _browser_census import closes_with_the_test
 
 pytestmark = pytest.mark.unit
 _COMMAND = "Browser.setServiceWorkersBlocked"
@@ -18,6 +19,7 @@ _COMMAND = "Browser.setServiceWorkersBlocked"
 class _Connection(EventListeners):
     def __init__(self, failure=None):
         super().__init__()
+        closes_with_the_test(self)
         self.sent = []
         #: Download options are sent for every context; kept apart so the
         #: ordering assertions below stay about the worker policy.

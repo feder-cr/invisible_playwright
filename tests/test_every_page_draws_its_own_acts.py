@@ -36,11 +36,16 @@ from invisible_core.juggler.connection import EventListeners
 from invisible_playwright._juggler.server import BrowserDispatcher, Server
 
 from _servers import LocalServer
+from _browser_census import closes_with_the_test
 
 SEED = 106
 
 
 class _Connection(EventListeners):
+    def __init__(self):
+        super().__init__()
+        closes_with_the_test(self)
+
     def startup_send(self, method, params=None):
         return self.send(method, params, timeout=None)
 

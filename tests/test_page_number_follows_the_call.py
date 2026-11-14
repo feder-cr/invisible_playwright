@@ -43,6 +43,7 @@ from invisible_playwright._pw._impl._browser import Browser
 from invisible_playwright._pw._impl._browser_context import (
     BrowserContext, page_number_for_call,
 )
+from _browser_census import closes_with_the_test
 
 
 # -- the client: the number is reserved at the call --------------------------
@@ -196,6 +197,7 @@ class _Engine(EventListeners):
 
     def __init__(self):
         super().__init__()
+        closes_with_the_test(self)
         self.browser = None
         self.arrived = threading.Semaphore(0)
         self.release = [threading.Event() for _ in range(8)]

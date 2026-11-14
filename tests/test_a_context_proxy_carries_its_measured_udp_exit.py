@@ -29,6 +29,7 @@ from invisible_core.juggler.connection import EventListeners
 from invisible_playwright import _session
 from invisible_playwright._juggler.server import (BrowserDispatcher, Server, UDP_STUN_PREF,
                                                   session_udp_stun_servers, take_session_motion)
+from _browser_census import closes_with_the_test
 
 pytestmark = pytest.mark.unit
 
@@ -39,6 +40,7 @@ STUN = ["%s:%d" % (STUN_NUMBER, STUN_PORT)]
 class _Connection(EventListeners):
     def __init__(self, gateways=()):
         super().__init__()
+        closes_with_the_test(self)
         self.sent = []
         self.datagrams_before = {}
         self._gateways = gateways

@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from _servers import LocalServer
+from _browser_census import _a_module_leaves_no_browser_open, _the_connections_a_test_made_are_closed_with_it  # noqa: F401  (autouse)
 
 # ── The watchdog that says WHERE it is stuck, while it is still stuck ─────────
 #

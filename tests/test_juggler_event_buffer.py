@@ -22,6 +22,7 @@ import pytest
 
 from invisible_playwright._juggler.server import BrowserDispatcher, Server
 from invisible_core.juggler.connection import EventListeners
+from _browser_census import closes_with_the_test
 
 
 class FakeConnection(EventListeners):
@@ -29,6 +30,7 @@ class FakeConnection(EventListeners):
 
     def __init__(self):
         super().__init__()
+        closes_with_the_test(self)
         self.sent = []
 
     def startup_send(self, method, params=None):

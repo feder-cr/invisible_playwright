@@ -19,6 +19,7 @@ from invisible_playwright._juggler import server as srv
 from invisible_playwright._juggler.server import (
     BrowserContextDispatcher, BrowserDispatcher, Server,
 )
+from _browser_census import closes_with_the_test
 
 #: How long this engine takes to answer `Browser.newPage`, in its own clock.
 ANSWER_AFTER_S = 35.0
@@ -30,6 +31,7 @@ class _SlowEngine(EventListeners):
 
     def __init__(self):
         super().__init__()
+        closes_with_the_test(self)
         self.browser = None
         self.bounds = []
 
