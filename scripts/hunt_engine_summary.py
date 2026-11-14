@@ -3,18 +3,21 @@
 Usage: python scripts/hunt_engine_summary.py EVIDENCE_DIR OS_NAME
 Reads EVIDENCE_DIR/{alone,loaded}_<arm>*.log: the HUNT-TYPING lines of scripts/hunt_typing.py (one per run) and, for the stock arm, the
 HUNTKEY lines the Playwright driver copied into the same log (DEBUG=pw:browser), put into the run whose typing window holds them.
-Arms: git (core of fix/typing-on-absolute-deadlines, engine patched by scripts/hunt_patch_omni.py), stock (stock Playwright Firefox, its
-Juggler patched the same way), git_plain and stock_plain (the same, engine untouched: what the page sees without the stamps, to show what
-the stamps cost).
+Arms: ours (the engine candidate under test, patched by scripts/hunt_patch_omni.py, core of fix/typing-on-absolute-deadlines), ours_plain
+(the same engine untouched: what the page sees without the stamps, to show what they cost) and stock (stock Playwright Firefox, its Juggler
+patched the same way).
 
 The stamps of one key event (a keydown or keyup command; tags in scripts/hunt_patch_omni.py) are joined to the page's event of the same
 (type, key, n-th time) and to the client's send (keydown, not Shift). Between two consecutive PRESENT tags of
 
     sent -> P1 -> C2 -> C3 -> C4 -> C4r -> C5 -> h        (h = performance.now() in the page's handler)
 
-there is one step, named "A>B"; the steps add up exactly to sent -> h. "timer excess" = (C3>C4) - the delay planned (C3's delay=).
-"timestamp lag" = (h - event.timeStamp) - planned latency: how much longer than planned the event, born at the top of the function,
-waited for the page's handler. The stock engine has no latency timer, so its chain is sent, P1, C2, C5, h.
+there is one step, named "A>B"; the steps add up exactly to sent -> h. In an engine WITHOUT a latency timer (the candidate under test) C3
+and C4 are just before and just after tip.setNextKeyLatency(born) and there is no C4r; an engine WITH the timer (older) has C3 = timer
+armed, C4 = its callback, and gets the "timer planned" / "timer excess" rows. "timestamp lag" = (h - event.timeStamp) - the latency sent:
+how much more or less than the declared latency the event, born in the past, is older than the page's handler. Dwell error = (keyup -
+keydown) seen by the page minus the planned dwell, on both page clocks (h handler, e event.timeStamp). The stock engine has no latency, so
+its chain is sent, P1, C2, C5, h.
 
 A page gap is the time between the handlers of two consecutive keydowns that are not Shift. For every page gap under GAP_MS (150) the
 step that absorbed the delay is the one where the earlier key took longer than the later one by the most: the page gap equals the send
@@ -28,7 +31,8 @@ import re
 import sys
 
 GAP_MS = 150.0
-ARMS = ["git", "stock", "git_plain", "stock_plain"]
+ARMS = ["ours", "stock", "ours_plain"]
+STAMPED = ("ours", "stock")
 MODES = ["alone", "loaded"]
 ORDER = ["sent", "P1", "C2", "C3", "C4", "C4r", "C5", "h"]
 LINE = re.compile(r"(\S+) (\d+) (\d+) (\S+) ([\d.]+) (\S+) (\S+)(?: (.*))?$")
@@ -83,7 +87,10 @@ def build_events(run, loose, sources):
         s = parse_stamp(text)
         if s:
             stamps.setdefault(text.strip(), (s, "page"))
+    # the stamps are written once, when a process ends (and the page's copy holds every key of the process so far): only the ones of
+    # THIS run's typing window are its own
     w0, w1 = run["win"][0] - 100, run["win"][1] + 1000
+    stamps = {t: v for t, v in stamps.items() if w0 <= v[0]["wall"] <= w1}
     for s in loose:
         if w0 <= s["wall"] <= w1:
             stamps.setdefault("%s %s %s %s" % (s["proc"], s["pid"], s["call"], s["tag"]) + repr(s["wall"]), (s, "log"))
@@ -188,7 +195,7 @@ def step_table(data_by_arm, kind):
             if k not in names:
                 names.append(k)
     pri = {"sent>P1": 0, "P1>C2": 1, "C2>C3": 2, "timer planned": 3, "C3>C4": 4, "timer excess": 5, "C4>C4r": 6, "C4r>C5": 7,
-           "C2>C5": 8, "C5>h": 9, "timestamp lag": 10, "P1>h total": 11}
+           "C4>C5": 7, "C2>C5": 8, "C5>h": 9, "timestamp lag": 10, "P1>h total": 11}
     names.sort(key=lambda k: pri.get(k, 99))
     lines = ["| step (ms) | " + " | ".join("%s p50 / p95 / max (n)" % a for a in cols) + " |",
              "|---|" + "---|" * len(cols)]
@@ -206,7 +213,7 @@ def main():
     for mode in MODES:
         sources, data = {}, {}
         for arm in ARMS:
-            d = load(evidence, mode, arm, sources if arm in ("git", "stock") else {})
+            d = load(evidence, mode, arm, sources if arm in STAMPED else {})
             if d:
                 data[arm] = d
         if not data:
@@ -219,7 +226,7 @@ def main():
             "%s/%s %d" % (p, s, n) for (p, s), n in sorted(sources.items())) or "none"))
         print()
         # coverage
-        for arm in ("git", "stock"):
+        for arm in STAMPED:
             if arm in data:
                 evs = [e for r in data[arm] for e in r["events"]]
                 full = sum(1 for e in evs if "P1" in e["tags"] and "C2" in e["tags"] and "C5" in e["tags"])
@@ -247,7 +254,20 @@ def main():
             print("| %s | %d | %d | %d / %d | %s / %s | %s |" % (arm, len(runs), with_short, short, total, fmt(q(mins, .5)),
                                                               fmt(min(mins) if mins else None), fmt(min(plan) if plan else None)))
         print()
-        stamped = {a: r for a, r in data.items() if a in ("git", "stock")}
+        stamped = {a: r for a, r in data.items() if a in STAMPED}
+        print("### dwell error: (keyup - keydown) seen by the page minus the planned dwell (ms)")
+        print()
+        print("| arm | clock | keys | abs p50 | abs p95 | abs max | signed p50 | signed min | signed max | runs with all keys seen |")
+        print("|---|---|---|---|---|---|---|---|---|---|")
+        for arm, runs in data.items():
+            seen = sum(1 for r in runs if r["run"].get("all_keys_seen"))
+            for clock, key in (("h (handler)", "dwell_err_h_ms"), ("e (event.timeStamp)", "dwell_err_e_ms")):
+                err = [x for r in runs for x in (r["run"].get(key) or [])]
+                ab = [abs(x) for x in err]
+                print("| %s | %s | %d | %s | %s | %s | %s | %s | %s | %d/%d |" % (
+                    arm, clock, len(err), fmt(q(ab, .5)), fmt(q(ab, .95)), fmt(max(ab) if ab else None), fmt(q(err, .5)),
+                    fmt(min(err) if err else None), fmt(max(err) if err else None), seen, len(runs)))
+        print()
         for kind in ("keydown", "keyup"):
             if stamped:
                 print("### steps of a %s command (ms)" % kind)

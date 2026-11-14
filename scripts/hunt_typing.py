@@ -8,10 +8,12 @@ sleep(gap) through stock Playwright's keyboard. One JSON line per run with the t
 keyup times and, per run: slip at the last key (page against plan), the smallest gap between two keydowns the page saw, and each key's
 dwell (keyup - keydown, seen by the page) against the planned dwell.
 
-ENGINE HUNT additions: HUNT_STAMPS=1 means the engine was patched by scripts/hunt_patch_omni.py, so the browser prints HUNTKEY lines
-(`browser.dom.window.dump.enabled` is passed for it); ours collects them from the core's ProcessOutput reader (the "hk" field), stock's
-stay in this process's log through DEBUG=pw:browser. Both also return the lines the content process left in window.__hs ("hs"). Every
-arm launches with -purgecaches. The JSON also carries what the summary needs to put the stamps next to the page's events: the wall clock
+ENGINE HUNT additions: HUNT_STAMPS=1 means the engine was patched by scripts/hunt_patch_omni.py. The browser keeps its stamps in memory
+while keys are typed and writes them once, when it ends (`browser.dom.window.dump.enabled` is passed for it): ours collects the lines from
+the core's ProcessOutput reader AFTER the browser is closed (the "hk" field, so a run's line is printed once its browser has ended), stock's
+stay in this process's log through DEBUG=pw:browser. The content process's lines are also asked of the page at the end of the run, with a
+'hunt-flush' event on the window and a read of window.__hs ("hs"). Every arm launches with -purgecaches. HUNT_RUNS (default 5) = runs
+per invocation. The JSON also carries what the summary needs to put the stamps next to the page's events: the wall clock
 (calibrated, sub-millisecond) of each send ("sent_wall_ms"), the page's ordered events ("ev": type, key, handler clock, event clock, all
 absolute ms) and the window of the typing ("win").
 """
@@ -82,12 +84,15 @@ threading.Thread(target=srv.serve_forever, daemon=True).start()
 url = "http://127.0.0.1:%d/" % srv.server_address[1]
 
 
+RUNS = int(os.environ.get("HUNT_RUNS", "5"))
+
+
 def report(page, t_start, t_start_wall):
-    if STAMPS:
-        time.sleep(0.5)  # the browser's last HUNTKEY lines travel on a pipe of their own
+    """Read what the page saw and return the run's record (printed by emit(), for ours after its browser has ended)."""
     keys = page.evaluate("__k")
     ev = page.evaluate("__ev")
-    hs = page.evaluate("window.__hs ? Array.from(window.__hs) : []")
+    # the content process hands over its in-memory stamps when asked (the listener the patched PageAgent installs after the first key)
+    hs = page.evaluate("(() => { window.dispatchEvent(new Event('hunt-flush')); return window.__hs ? Array.from(window.__hs) : []; })()")         if STAMPS else []
     ups = page.evaluate("__u")
     planned, t = [], 0.0
     for dwell, gap in PLAN:
@@ -109,7 +114,7 @@ def report(page, t_start, t_start_wall):
     plan_gaps = [planned[i + 1] - planned[i] for i in range(len(planned) - 1)]
     gaps_h = [page_ms[i + 1] - page_ms[i] for i in range(len(page_ms) - 1)]
     gaps_e = [page_ms_e[i + 1] - page_ms_e[i] for i in range(len(page_ms_e) - 1)]
-    print("HUNT-TYPING " + json.dumps({
+    return {
         "engine": ENGINE, "arm": os.environ.get("HUNT_ARM", ENGINE), "planned_ms": planned,
         "sent_ms": [round(x * 1000 - SENT[0] * 1000) for x in SENT if True],
         "page_ms": page_ms, "page_ms_e": page_ms_e,
@@ -126,7 +131,11 @@ def report(page, t_start, t_start_wall):
         "all_keys_seen": len(downs) == len(PLAN) and len(releases) == len(PLAN),
         "sent_wall_ms": list(SENT_W), "ev": [[t, k, round(h, 3), round(e, 3)] for t, k, h, e in ev], "hs": hs, "hk": list(HK),
         "win": [round(t_start_wall, 3), round(wall_ms(), 3)], "stamps": STAMPS,
-    }), flush=True)
+    }
+
+
+def emit(rec):
+    print("HUNT-TYPING " + json.dumps(rec), flush=True)
 
 
 if ENGINE == "stock":
@@ -137,7 +146,7 @@ if ENGINE == "stock":
             kw["firefox_user_prefs"] = DUMP_PREF
         b = p.firefox.launch(**kw)
         page = b.new_page()
-        for _ in range(5):
+        for _ in range(RUNS):
             SENT.clear()
             SENT_W.clear()
             page.goto(url)
@@ -154,7 +163,7 @@ if ENGINE == "stock":
                 if ch == "@":
                     page.keyboard.up("Shift")
                 time.sleep(gap / 1000)
-            report(page, t_start, t_start_wall)
+            emit(report(page, t_start, t_start_wall))
         b.close()
 else:
     from invisible_core.juggler import keyboard as kb
@@ -193,7 +202,7 @@ else:
 
         conn.ProcessOutput._pump = pump
     from invisible_playwright import InvisiblePlaywright
-    for _ in range(5):
+    for _ in range(RUNS):
         # a fresh browser per run: the plan is the one of the session's first field (typing nonce 1)
         kw = {"seed": 2, "binary_path": sys.argv[2], "headless": True, "extra_args": ["-purgecaches"]}
         if STAMPS:
@@ -207,5 +216,9 @@ else:
             t_start = time.time()
             t_start_wall = wall_ms()
             page.locator("#f").press_sequentially(TEXT)
-            report(page, t_start, t_start_wall)
+            rec = report(page, t_start, t_start_wall)
+        if STAMPS:
+            time.sleep(0.5)  # the browser has ended and written its stamps once; the last lines are still on the pipe
+            rec["hk"] = list(HK)
+        emit(rec)
 srv.shutdown()

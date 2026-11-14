@@ -2,25 +2,32 @@
 
 Usage: python scripts/hunt_patch_omni.py ours|stock ENGINE_EXE [--dry-run]
 
-ENGINE_EXE is the browser executable (what `python -m invisible_playwright fetch` prints last, or stock Playwright's
-`firefox.executable_path`). The Juggler lives in the omni.ja that sits NEXT TO the executable (the GRE one), not in browser/omni.ja:
-ours as `modules/juggler/{protocol/PageHandler.js,content/PageAgent.js}`, stock Playwright's as
+ENGINE_EXE is the browser executable. The Juggler lives in the omni.ja that sits NEXT TO the executable (the GRE one), not in
+browser/omni.ja: ours as `modules/juggler/{protocol/PageHandler.js,content/PageAgent.js}`, stock Playwright's as
 `chrome/juggler/content/{protocol/PageHandler.js,content/PageAgent.js}`. A tree that ships it loose (modules/juggler/ on disk) is patched
 in place. The first run keeps `omni.ja.orig` (or `<file>.orig`) next to what it changed.
 
-What goes in (one block appended to each of the two files, plus two edits inside PageAgent._dispatchKeyEvent). Every stamp is a line
+Two shapes of PageAgent._dispatchKeyEvent are known: the one with a latency TIMER (`await new Promise(f => setTimeout(f, latency))`, the
+engines before the "key born in the past" fix; stock has no latency at all) and the one WITHOUT a timer (the latency goes to the text
+input processor with `tip.setNextKeyLatency(born)` just before the key). The patcher finds whichever is there.
+
+Every stamp is a line
 
     HUNTKEY <proc> <pid> <call> <tag> <wall_ms> <type> <urlencoded key> [extra]
 
-written with dump() when the call has ended (buffered until then, so the dump's own cost is not inside the interval being measured) and,
-for the content process, also pushed into `window.__hs` of the page's main window (a Windows content process may have no stdout):
+and it is only KEPT IN MEMORY while keys are typed (an array push, nothing else: no dump(), no page access). It is written once, at the
+end: dump() when the process shuts down ('quit-application' / 'xpcom-shutdown' observers) or, in the content process, when the page is
+hidden (pagehide); and the content process also hands its lines to the page when the page's script asks for them, with
+`window.dispatchEvent(new Event('hunt-flush'))` and then reads `window.__hs` (the listener is installed once per window, after the
+first key). A Windows content process may have no stdout, so that is the way that always works.
 
     P1   parent: Page.dispatchKeyEvent received          (PageHandler.prototype['Page.dispatchKeyEvent'], wrapped)
     C2   content: dispatchKeyEvent received              (PageAgent.prototype._dispatchKeyEvent, wrapped)
-    C3   content: latency timer armed, extra delay=<ms>  (the `await new Promise(f => setTimeout(f, latency))` of _dispatchKeyEvent)
-    C4   content: the timer's callback runs
-    C4r  content: the await resumed
-    C5   content: just before the DOM event is dispatched (tip.keydown / tip.keyup / tip.commitCompositionWith)
+    C3   content: just before tip.setNextKeyLatency(born) (no-timer shape; extra latency=<ms>), or the latency timer armed (timer shape;
+         extra delay=<ms>)
+    C4   content: just after tip.setNextKeyLatency(born) (no-timer shape), or the timer's callback runs (timer shape)
+    C4r  content: the await resumed                      (timer shape only)
+    C5   content: just before the DOM event is made      (tip.keydown / tip.keyup / tip.commitCompositionWith)
     C6   content: _dispatchKeyEvent returned
     P7   parent: the handler is about to answer
 
@@ -52,6 +59,20 @@ const __HK = (() => {
   try { pid = Services.appinfo.processID; } catch (e) {}
   const buf = [];
   let seq = 0;
+  let dumped = 0;
+  // written once: what has not been written yet goes out in ONE dump(); called at process end and when a page is hidden
+  const writeOut = () => {
+    if (dumped >= buf.length) return;
+    const lines = buf.slice(dumped);
+    dumped = buf.length;
+    try { dump(lines.map(l => 'HUNTKEY ' + l + '\n').join('')); } catch (e) {}
+  };
+  try {
+    const obs = { observe() { writeOut(); } };
+    Services.obs.addObserver(obs, 'quit-application');
+    Services.obs.addObserver(obs, 'xpcom-shutdown');
+  } catch (e) {}
+  const hooked = new WeakSet();
   return {
     stamp(proc, tag, type, key, extra) {
       try {
@@ -59,17 +80,22 @@ const __HK = (() => {
         buf.push([proc, pid, seq, tag, wall().toFixed(3), type, encodeURIComponent(String(key)), extra || ''].join(' '));
       } catch (e) {}
     },
-    flush(win) {
-      if (!buf.length) return;
-      const lines = buf.splice(0);
-      try { dump(lines.map(l => 'HUNTKEY ' + l + '\n').join('')); } catch (e) {}
-      if (!win) return;
+    // content process, once per window and after its first key: the page asks for the lines with a 'hunt-flush' event; pagehide writes
+    hook(win) {
       try {
-        const w = win.wrappedJSObject;
-        if (!w.__hs) w.__hs = new w.Array();
-        for (const l of lines) w.__hs.push(l);
+        if (!win || hooked.has(win)) return;
+        hooked.add(win);
+        win.addEventListener('hunt-flush', () => {
+          try {
+            const w = win.wrappedJSObject;
+            w.__hs = new w.Array();
+            for (const l of buf) w.__hs.push(l);
+          } catch (e) {}
+        }, true);
+        win.addEventListener('pagehide', writeOut, true);
       } catch (e) {}
     },
+    writeOut,
   };
 })();
 """
@@ -87,7 +113,6 @@ PARENT_WRAP = r"""
       return await orig.call(this, params);
     } finally {
       __HK.stamp('parent', 'P7', t, k);
-      __HK.flush(null);
     }
   };
 })();
@@ -106,9 +131,7 @@ CONTENT_WRAP = r"""
       return await orig.call(this, params);
     } finally {
       __HK.stamp('content', 'C6', t, k);
-      let win = null;
-      try { win = this._frameTree.mainFrame().domWindow(); } catch (e) {}
-      __HK.flush(win);
+      try { __HK.hook(this._frameTree.mainFrame().domWindow()); } catch (e) {}
     }
   };
 })();
@@ -117,12 +140,16 @@ CONTENT_WRAP = r"""
 
 MARK = "HUNTKEY begin"
 
-# The latency timer of PageAgent._dispatchKeyEvent (juggler/content/PageAgent.js:940-941 in the source tree): a single statement under
-# `if (latency > 0)`, so it is replaced by a block.
+# The latency TIMER of the engines before the "key born in the past" fix (a single statement under `if (latency > 0)`, so it is replaced by a block).
 TIMER = re.compile(r"await new Promise\(\s*f\s*=>\s*setTimeout\(\s*f\s*,\s*latency\s*\)\s*\);")
 TIMER_NEW = ("{ __HK.stamp('content', 'C3', type, key, 'delay=' + latency); "
              "await new Promise(f => setTimeout(() => { __HK.stamp('content', 'C4', type, key); f(); }, latency)); "
              "__HK.stamp('content', 'C4r', type, key); }")
+# The no-timer shape: the latency is declared to the text input processor for the next key, once in each of the three ways in (the
+# `tip.setNextKeyLatency(0)` of the finally is left alone). Stamped before and after, as statements of the same block.
+BORN = re.compile(r"\btip\.setNextKeyLatency\(born\);")
+BORN_NEW = ("__HK.stamp('content', 'C3', type, key, 'latency=' + born); tip.setNextKeyLatency(born); "
+            "__HK.stamp('content', 'C4', type, key);")
 # The ways the function hands the event to the TextInputProcessor (PageAgent.js:944, 947, 951 in the source tree).
 TIP = re.compile(r"\btip\.(keydown|keyup|commitCompositionWith)\(")
 FUNC = re.compile(r"async _dispatchKeyEvent\(\{[^}]*\}\)\s*\{")
@@ -151,16 +178,23 @@ def patch_page_agent(text):
     start, end = m.start(), (n.start() if n else len(text))
     body = text[start:end]
     body, n_timer = TIMER.subn(lambda _m: TIMER_NEW, body)
+    body, n_born = BORN.subn(lambda _m: BORN_NEW, body)
     body, n_tip = TIP.subn(
         lambda t: "(__HK.stamp('content', 'C5', type, key, '%s'), tip).%s(" % (t.group(1), t.group(1)), body)
-    # stock has no `latency`: its absence is not an error, only reported
+    # the timer (old engines) and setNextKeyLatency (new ones) are alternatives and stock has neither: not an error, only reported
     anchors["latency timer"] = n_timer == 1
+    anchors["setNextKeyLatency(born)"] = n_born
     anchors["tip calls"] = n_tip
+    if n_timer and n_born:
+        return None, dict(anchors, error="both a timer and setNextKeyLatency(born) in one function")
     if n_tip < 1:
         return None, anchors
+    if KIND == "ours" and not (n_born == 3 or n_timer == 1):
+        return None, dict(anchors, error="our engine has neither the latency timer nor three setNextKeyLatency(born) calls")
     return text[:start] + body + text[end:] + "\n" + HELPER + CONTENT_WRAP, anchors
 
 
+KIND = "ours"  # set by main(): ours must have one of the two shapes of the latency, stock has neither
 JOBS = {"PageHandler.js": patch_page_handler, "PageAgent.js": patch_page_agent}
 
 
@@ -244,7 +278,9 @@ def patch_loose(root, dry_run):
 
 
 def main():
+    global KIND
     kind, exe = sys.argv[1], sys.argv[2]
+    KIND = kind
     dry = "--dry-run" in sys.argv
     root = os.path.dirname(os.path.abspath(exe))
     reports = []
