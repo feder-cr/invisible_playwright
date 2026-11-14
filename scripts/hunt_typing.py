@@ -20,8 +20,13 @@ its write is made by Playwright's node driver. The JSON also carries what the su
 absolute ms) and the window of the typing ("win").
 
 PROFILE hunt additions: HUNT_PROFILE=1 starts the Gecko profiler in the browser from its first instruction and has it write its profile at exit
-(scripts/hunt_profiler_env.py): ours one file per run (a browser per run), stock one file per invocation (its browser is kept for the runs of an
-invocation); the record carries the file ("profile"). Ours (stamped) also times our side of the send (scripts/hunt_ourside.py: lock proxies,
+(scripts/hunt_profiler_env.py): ours one launch per run (a browser per run), stock one per invocation (its browser is kept for the runs of an
+invocation). The profile path is a TEMPLATE with "%p" (the browser puts the writer's pid there): every process that writes a profile writes its own file,
+so the pingsender background task the parent starts at shutdown cannot overwrite the parent's profile (run 43551469616). The record carries the template
+("profile"). Ours: after the core's close() (which only waits for the Windows launcher stub) the run waits for the PARENT pid, found in the stamps, to be
+gone, then checks that file (scripts/hunt_profile_check.py: complete JSON, the parent's pid, covers the typing, the anchor agrees with meta.startTime, the
+buffer did not wrap) and prints a "PROFILE-CHECK {json}" line, kept in the record as "profile_check". Stock: the same check on the invocation's profile
+(the largest file of the template) once Playwright's close() returned. Ours (stamped) also times our side of the send (scripts/hunt_ourside.py: lock proxies,
 holders, thread CPU against wall, a Python stack sampler): "wr" = one record per Page.dispatchKeyEvent write, "wl" = the cases over 30 ms.
 HUNT_PROFILE unset = the same arm without the profiler (the twin).
 """
@@ -34,6 +39,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import hunt_ourside
+import hunt_profile_check
 import hunt_profiler_env
 from invisible_core.juggler._behaviour import TypingPersona, plan_typing
 
@@ -156,6 +162,52 @@ def emit(rec):
     print("HUNT-TYPING " + json.dumps(rec), flush=True)
 
 
+def emit_check(what, result, extra=None):
+    out = dict(result, what=what)
+    if extra:
+        out["facts"] = dict(out.get("facts") or {}, **extra)
+    print("PROFILE-CHECK " + json.dumps(out), flush=True)
+    return out
+
+
+def check_stock_profile(template, launch_wall, typing):
+    """stock's browser ended inside b.close(); its profile (one process writes it: no pingsender, telemetry is off in Playwright's build) is the
+    largest file of the template. Every file is listed in the facts so a second writer would show."""
+    prev, calm = None, 0
+    for _ in range(120):  # files complete: the set and the sizes unchanged for 3 reads
+        now = [(pid, os.path.getsize(f)) for pid, f in hunt_profiler_env.files_of(template)]
+        calm = calm + 1 if now == prev and now else 0
+        prev = now
+        if calm >= 3:
+            break
+        time.sleep(1.0)
+    files = hunt_profiler_env.files_of(template)
+    if not files:
+        emit_check("stock " + os.path.basename(template), {"ok": False, "problems": ["no profile file for the template"], "facts": {}})
+        return
+    pid, path = max(files, key=lambda x: os.path.getsize(x[1]))
+    res = hunt_profile_check.check_profile(path, launch_ms=launch_wall, typing=typing)
+    emit_check("stock " + os.path.basename(path), res, {"files": [[p_, os.path.getsize(f_)] for p_, f_ in files], "chosen_pid": pid})
+
+
+def finish_ours_profile(template, launch_wall, win):
+    """after the with-block: wait for the parent pid to end, then check its profile; returns the fields to put in the record"""
+    pid, path, problems, waited = hunt_profiler_env.wait_for_parent(HK, template)
+    time.sleep(0.5)  # the browser has ended and written its stamps once; the last lines are still on the pipe
+    anchor = hunt_profiler_env.anchor_of(HK, pid) if pid else None
+    if path:
+        res = hunt_profile_check.check_profile(path, parent_pid=pid, anchor_ms=anchor, launch_ms=launch_wall, typing=win)
+        res["problems"] = problems + res["problems"]
+        res["ok"] = res["ok"] and not problems
+    else:
+        res = {"ok": False, "problems": problems, "facts": {}}
+    others = [(p_, os.path.getsize(f_)) for p_, f_ in hunt_profiler_env.files_of(template) if p_ != pid]
+    name = hunt_profiler_env.concrete(template, pid) if pid else template
+    res = emit_check("ours " + os.path.basename(name), res,
+                     {"waited_s": round(waited, 1), "parent_pid": pid, "anchor_ms": anchor, "other_writers": others})
+    return {"parent_pid": pid, "profile_file": path, "profile_check": res}
+
+
 if ENGINE == "stock":
     from playwright.sync_api import sync_playwright
     with sync_playwright() as p:
@@ -165,8 +217,10 @@ if ENGINE == "stock":
         if PROFILE:
             CUR_PROFILE[0] = hunt_profiler_env.profile_path(ARM, 0)
             kw["env"] = dict(os.environ, **hunt_profiler_env.profiler_env(CUR_PROFILE[0]))
+        launch_wall = wall_ms()
         b = p.firefox.launch(**kw)
         page = b.new_page()
+        first_start_wall = last_end_wall = None
         for _ in range(RUNS):
             SENT.clear()
             SENT_W.clear()
@@ -184,8 +238,14 @@ if ENGINE == "stock":
                 if ch == "@":
                     page.keyboard.up("Shift")
                 time.sleep(gap / 1000)
-            emit(report(page, t_start, t_start_wall))
+            if first_start_wall is None:
+                first_start_wall = t_start_wall
+            rec = report(page, t_start, t_start_wall)
+            last_end_wall = rec["win"][1]
+            emit(rec)
         b.close()
+        if PROFILE:
+            check_stock_profile(CUR_PROFILE[0], launch_wall, (first_start_wall, last_end_wall))
 else:
     from invisible_core.juggler import keyboard as kb
     real_down = kb.Keyboard.down
@@ -257,6 +317,7 @@ else:
         kw = {"seed": 2, "binary_path": sys.argv[2], "headless": True, "extra_args": ["-purgecaches"]}
         if STAMPS:
             kw["extra_prefs"] = DUMP_PREF
+        launch_wall = wall_ms()
         with InvisiblePlaywright(**kw) as browser:
             SENT.clear()
             SENT_W.clear()
@@ -271,7 +332,10 @@ else:
             if STAMPS:
                 OURSIDE[0][:], OURSIDE[1][:] = hunt_ourside.snapshot()
             rec = report(page, t_start, t_start_wall)
-        if STAMPS:
+        if STAMPS and PROFILE:
+            rec.update(finish_ours_profile(CUR_PROFILE[0], launch_wall, tuple(rec["win"])))
+            rec["hk"] = list(HK)
+        elif STAMPS:
             time.sleep(0.5)  # the browser has ended and written its stamps once; the last lines are still on the pipe
             rec["hk"] = list(HK)
         emit(rec)

@@ -1,4 +1,12 @@
-# windows-flakes-profile-hunt.yml - hunt scaffolding, never merged. Runs only on a push to a `hunt/windows-flakes-profile**` branch. WINDOWS ONLY.
+# windows-flakes-profile2-hunt.yml - hunt scaffolding, never merged. Runs only on a push to a `hunt/windows-flakes-profile2**` branch. WINDOWS ONLY.
+# PROFILE2 = the profile hunt of run 43551469616 with its profiler plumbing fixed (that run's ours profiles were another process's, see below).
+#   Cause: ours' parent starts `firefox.exe --backgroundtask pingsender` while it shuts down (telemetry is on, as in retail; Playwright's stock build has it off). The
+#   child inherits MOZ_PROFILER_STARTUP and the same MOZ_PROFILER_SHUTDOWN, lives 1.4-2.5 s and writes its OWN profile (513-990 samples of TelemetrySend) to the one
+#   path, over (or interleaved with, 'Extra data') the parent's. So ours' 'profile' had ~660 samples, its meta.startTime was 23.6 s after the parent's anchor, and
+#   the typing windows fell outside it. Fixes: MOZ_PROFILER_SHUTDOWN carries '%p' (a file per writer pid, the parent's picked by its pid); after the core's close()
+#   (which only waits for the Windows launcher stub) the run waits for the parent pid to end before the next launch; every profile is checked (complete JSON, the
+#   parent's pid, covers the typing, anchor within 100 ms of meta.startTime, buffer not wrapped) by scripts/hunt_profile_check.py; a smoke step with that check
+#   fails the job before the arms, and the first profiled arm with a bad profile stops the hunt.
 # The send-split hunt (stamps S0 core decided, S1 os.write returned, S2 parent Juggler.js receiveMessage, S2b, P1, C2..C5 and the parent's Dispatcher ring)
 # with two instruments added, to see what the parent's main thread and our own process are doing while a typed key waits.
 #   Part A, the parent's main thread: the Gecko profiler from startup (MOZ_PROFILER_STARTUP=1, interval 1 ms, GeckoMain only, a buffer of 8M entries,
@@ -17,18 +25,18 @@
 # (the summary 1800); cleanup never fails the job.
 # The candidate's Breakpad symbols (artifact symbols-win-x86_64, kept 2 days) are downloaded too: the summary names ours' native frames from them (only the modules seen in
 # the windows are parsed) and sorts every function of ours' windows into (a) ours, (b) upstream Juggler, (c) other Mozilla 159; stock's native frames stay unsymbolized.
-name: windows flakes profile hunt
+name: windows flakes profile2 hunt
 
 on:
   push:
-    branches: ['hunt/windows-flakes-profile**']
+    branches: ['hunt/windows-flakes-profile2**']
 
 permissions:
   contents: read
   actions: read
 
 concurrency:
-  group: windows-flakes-profile-hunt-${{ github.ref }}
+  group: windows-flakes-profile2-hunt-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -43,7 +51,7 @@ env:
 
 jobs:
   hunt:
-    name: profile hunt windows
+    name: profile2 hunt windows
     runs-on: windows-2022
     timeout-minutes: 180
     defaults:
@@ -201,6 +209,7 @@ jobs:
         run: |
           set -e
           timeout 300 python scripts/hunt_gecko_profile.py --selftest
+          timeout 300 python scripts/hunt_profile_check.py --selftest
           timeout 300 python scripts/hunt_profile_summary.py --selftest
           timeout 300 python scripts/hunt_ourside.py --selftest
           python - <<'PY'
@@ -225,58 +234,51 @@ jobs:
           timeout 300 python scripts/hunt_jar_names.py "$STOCK_FF" > evidence/jar_names_stock.json
           python -c "import json; o=json.load(open('evidence/jar_names_ours.json')); s=json.load(open('evidence/jar_names_stock.json')); print('omni.ja members: ours', len(o), 'stock', len(s))"
           exit 0
-      - name: Profiler smoke, are the variables honored (a profile file at exit) by the candidate and by stock
-        continue-on-error: true
+      # STRICT (no continue-on-error): one browser of each engine through the real hunt_typing.py path (stamps, profiler, the wait for the parent pid, the
+      # check). It fails the job BEFORE the arms if a profile is truncated, is another process's, does not cover the typing, or is not aligned with the anchor.
+      - name: Profiler smoke, strict - one browser per engine, its profile checked (complete, the parent's, aligned) before the arms
         run: |
-          set +e
-          mkdir -p prof-smoke
-          export HUNT_PROFILE_DIR="$PWD/prof-smoke"
+          set -o pipefail
+          mkdir -p prof-smoke evidence
           {
+            export HUNT_PROFILE_DIR="$PWD/prof-smoke" HUNT_RUNS=1 HUNT_STAMPS=1 HUNT_PROFILE=1
             echo "== ours (variables added after the core composed the environment)"
-            timeout 300 python - <<'PY'
-          import os, sys, time
-          sys.path.insert(0, "scripts")
-          import hunt_profiler_env as pe
-          f = pe.profile_path("smoke_ours", 0)
-          pe.install_core_patch(lambda: f)
-          from invisible_playwright import InvisiblePlaywright
-          t0 = time.time()
-          with InvisiblePlaywright(seed=2, binary_path=os.environ["FF"], headless=True) as b:
-              p = b.new_page()
-              p.goto("about:blank")
-              time.sleep(2)
-          print("ours closed after %.1f s; file %s exists %s size %s" % (time.time() - t0, f, os.path.exists(f), os.path.getsize(f) if os.path.exists(f) else None))
-          PY
+            HUNT_ARM=smoke_ours timeout 300 python -u scripts/hunt_typing.py ours "$FF" > evidence/profile_smoke_ours.log 2>&1
+            echo "ours exit $?; PROFILE-CHECK lines:"
+            grep -a "^PROFILE-CHECK " evidence/profile_smoke_ours.log | cut -c1-1500
             echo "== stock (launch env)"
-            timeout 300 python - <<'PY'
-          import os, sys, time
-          sys.path.insert(0, "scripts")
-          import hunt_profiler_env as pe
-          from playwright.sync_api import sync_playwright
-          f = pe.profile_path("smoke_stock", 0)
-          with sync_playwright() as p:
-              b = p.firefox.launch(headless=True, env=dict(os.environ, **pe.profiler_env(f)))
-              page = b.new_page()
-              page.goto("about:blank")
-              time.sleep(2)
-              t0 = time.time()
-              b.close()
-          print("stock closed after %.1f s; file %s exists %s size %s" % (time.time() - t0, f, os.path.exists(f), os.path.getsize(f) if os.path.exists(f) else None))
+            DEBUG=pw:browser HUNT_ARM=smoke_stock timeout 300 python -u scripts/hunt_typing.py stock "$STOCK_FF" > evidence/profile_smoke_stock.log 2>&1
+            echo "stock exit $?; PROFILE-CHECK lines:"
+            grep -a "^PROFILE-CHECK " evidence/profile_smoke_stock.log | cut -c1-1500
+            echo "== files written (one per writer pid; ours also has the pingsender task's):"
+            ls -la prof-smoke
+            echo "== the verdict"
+            timeout 300 python scripts/hunt_profile_check.py --log evidence/profile_smoke_ours.log --log evidence/profile_smoke_stock.log
+            rc=$?
+            # the probe (and the symbols) on the files the checks chose
+            for f in $(python - <<'PY'
+          import glob, json, os
+          for lg in ("evidence/profile_smoke_ours.log", "evidence/profile_smoke_stock.log"):
+              for line in open(lg, encoding="utf-8", errors="replace"):
+                  if line.startswith("PROFILE-CHECK "):
+                      c = json.loads(line[14:])
+                      fn = (c.get("facts") or {}).get("file")
+                      if fn and os.path.exists(os.path.join("prof-smoke", fn)):
+                          print(os.path.join("prof-smoke", fn))
           PY
-            for f in prof-smoke/*.json; do
-              [ -e "$f" ] && timeout 300 python scripts/hunt_gecko_profile.py --probe "$f"
+            ); do
+              timeout 300 python scripts/hunt_gecko_profile.py --probe "$f"
+              case "$f" in *smoke_ours*) [ -d symbols ] && { echo "== ours, native frames named from the symbols"; timeout 900 python scripts/hunt_gecko_profile.py --probe "$f" --symbols symbols; } ;; esac
             done
-            for f in prof-smoke/smoke_ours*.json; do
-              [ -e "$f" ] && [ -d symbols ] && { echo "== ours, native frames named from the symbols"; timeout 900 python scripts/hunt_gecko_profile.py --probe "$f" --symbols symbols; }
-            done
+            exit $rc
           } 2>&1 | tee evidence/profiler_smoke.txt
-          ls -la prof-smoke
-          exit 0
       - name: Arms ours_prof, ours_noprof and stock_prof, three rounds of four processes at once
         run: |
           set +e
           bash scripts/hunt_profile_rounds.sh "$FF" "$STOCK_FF"
-          exit 0
+          rc=$?
+          echo "rounds exit $rc (1 = a profiled arm had no checked profile or a bad one; the summary below says which)"
+          exit $rc
       - name: Summary
         if: always()
         run: |
@@ -308,7 +310,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: windows-flakes-profile-windows-${{ github.run_id }}
+          name: windows-flakes-profile2-windows-${{ github.run_id }}
           path: evidence
           if-no-files-found: warn
           retention-days: 14

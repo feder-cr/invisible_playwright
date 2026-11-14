@@ -10,7 +10,9 @@ Part A, the parent's main thread. For every keydown / keyup command whose S1>S2 
 only a keydown has an S0) and, as a second list, every S2>S3 over 30 ms (the parent's main thread again), the samples the profiler took on the parent's
 GeckoMain between the two stamps: the leaf and a few callers, grouped by function. The profile's time is put on the stamps' clock with the anchor
 the patched Juggler.js printed for that process (wall = anchor + ChromeUtils.now(), the clock of the profiler's sample times: both count from
-TimeStamp::ProcessCreation); meta.startTime is compared with it as a sanity check. Then which functions are only in ours: a function of a window sample of
+TimeStamp::ProcessCreation). A profile is read only after scripts/hunt_profile_check.py accepted it: one complete JSON document, the PARENT's pid
+(the profile path carries "%p", the writer's pid, so a background task Firefox starts at shutdown writes its own file), covering the typing, meta.startTime
+within 100 ms of the anchor, the sample buffer not wrapped; a rejected file is listed with its reasons and none of its windows is analysed. Then which functions are only in ours: a function of a window sample of
 ours that no sample of stock's parent main thread (whole profiles) ever had, and whether it belongs to the series (scripts/hunt_ours_list.json from
 the engine source tree, plus the files only our omni.ja has: evidence/jar_names_ours.json against jar_names_stock.json). JS frames are named, C++ label frames are
 named, native frames of ours are named from the candidate's Breakpad symbols (artifact symbols-win-x86_64, downloaded into symbols/; only the modules seen in the
@@ -33,6 +35,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import hunt_engine_summary as H
 import hunt_gecko_profile as G
+import hunt_profile_check as HC
+import hunt_profiler_env as PE
 
 ARMS = ["ours_prof", "ours_noprof", "stock_prof"]
 PROF_ARMS = ["ours_prof", "stock_prof"]
@@ -205,6 +209,24 @@ def load_arm(evidence, arm):
     return out
 
 
+def resolve_profile(entry):
+    """(file, parent pid, anchor ms) of the PARENT's profile of this run; file None if there is none on disk.
+    The log names a template with "%p"; the parent's pid is the one the run's stamps say (ours' record also carries it); a template without "%p"
+    (the older layout) is the file itself."""
+    r = entry["run"]
+    tpl = r.get("profile")
+    pid, anchor = run_anchor(entry)
+    pid = r.get("parent_pid") or pid
+    if not tpl:
+        return None, pid, anchor
+    if "%p" not in tpl:
+        return (tpl if os.path.exists(tpl) and os.path.getsize(tpl) > 0 else None), pid, anchor
+    if pid is None:
+        return None, pid, anchor
+    f = PE.concrete(tpl, pid)
+    return (f if os.path.exists(f) and os.path.getsize(f) > 0 else None), pid, anchor
+
+
 def run_anchor(entry):
     """(parent pid, anchor ms) of the parent process of this run, from the A0 stamps of the patched Juggler.js; (None, None) if none"""
     r = entry["run"]
@@ -261,25 +283,32 @@ def part_a(evidence, data, ours, notes):
         agg[arm] = {"leaf": collections.Counter(), "incl": collections.Counter(), "win": collections.defaultdict(set),
                     "callers": collections.defaultdict(collections.Counter), "windows": 0, "with_samples": 0, "samples": 0, "idle": 0, "busy": 0}
         for ri, ev, name, a, b, _occ, _fly in H.long_hops(runs):
-            path = runs[ri]["run"].get("profile")
+            path = resolve_profile(runs[ri])[0]
             hop = "S2>S3" if name == "S2>S3" else ("S1>S2" if arm.startswith("ours") else "S0>S2")
             by_profile.setdefault((arm, path), []).append((ri, ev, hop, a, b))
-    print("| arm | runs | profiles named | files exist | parsed | parent main thread found | thread samples p50 | sample gap p50 ms | anchor - meta.startTime ms p50 / max abs | windows S1>S2 (stock S0>S2) | windows S2>S3 |")
-    print("|---|---|---|---|---|---|---|---|---|---|---|")
+    print("| arm | runs | profiles named | parent's file found | complete, the parent's, aligned | rejected | parent main thread found | thread samples p50 | sample gap p50 ms | anchor - meta.startTime ms p50 / max abs | windows S1>S2 (stock S0>S2) | windows S2>S3 |")
+    print("|---|---|---|---|---|---|---|---|---|---|---|---|")
     for arm in PROF_ARMS:
         runs = data.get(arm) or []
-        paths = sorted({r["run"].get("profile") for r in runs if r["run"].get("profile")})
-        exist = [p for p in paths if os.path.exists(p) and os.path.getsize(p) > 0]
+        named = {r["run"].get("profile") for r in runs if r["run"].get("profile")}
+        resolved = {}  # parent's file -> [run indexes that read it]
+        for ri, r in enumerate(runs):
+            p = resolve_profile(r)[0]
+            if p:
+                resolved.setdefault(p, []).append(ri)
         G.Thread.symbolizer = SYMS if arm == "ours_prof" else None  # stock's native frames stay unsymbolized
-        # parsed: every profile that has a window, every stock profile (their functions are the reference), and the first two of ours as a health check
-        todo = {p for (a_, p) in by_profile if a_ == arm and p} | (set(paths) if arm == "stock_prof" else set(exist[:2]))
-        parsed = found = 0
+        # EVERY profile is checked (complete, the parent's, covering its runs, aligned) before one sample is read; a rejected one is named and not used
+        parsed = found = rejected = 0
         nsamp, gaps, diffs = [], [], []
-        for p in sorted(x for x in todo if x in exist):
-            try:
-                prof = G.load(p)
-            except Exception as exc:  # a file that is cut off or not JSON
-                notes.append("%s: %s did not parse: %s" % (arm, os.path.basename(p), exc))
+        for p in sorted(resolved):
+            ris = resolved[p]
+            pid, anchor = resolve_profile(runs[ris[0]])[1:]
+            wins = [runs[i]["run"]["win"] for i in ris]
+            res = HC.check_profile(p, parent_pid=pid, anchor_ms=anchor, typing=(min(w[0] for w in wins), max(w[1] for w in wins)), return_doc=True)
+            prof = res.pop("_doc", None)
+            if not res["ok"] or prof is None:
+                rejected += 1
+                notes.append("%s: %s REJECTED: %s" % (arm, os.path.basename(p), "; ".join(res["problems"])))
                 continue
             parsed += 1
             th = G.parent_main_thread(prof)
@@ -328,8 +357,8 @@ def part_a(evidence, data, ours, notes):
                     keep.append(p)
         w1 = sum(1 for r in rows if r["arm"] == arm and r["hop"] in ("S1>S2", "S0>S2"))
         w2 = sum(1 for r in rows if r["arm"] == arm and r["hop"] == "S2>S3")
-        print("| %s | %d | %d | %d | %d | %d | %s | %s | %s / %s | %d | %d |" % (
-            arm, len(runs), len(paths), len(exist), parsed, found, fmt(q(nsamp, .5)), fmt(q(gaps, .5)),
+        print("| %s | %d | %d | %d | %d | %d | %d | %s | %s | %s / %s | %d | %d |" % (
+            arm, len(runs), len(named), len(resolved), parsed, rejected, found, fmt(q(nsamp, .5)), fmt(q(gaps, .5)),
             fmt(q(diffs, .5)), fmt(max([abs(x) for x in diffs]) if diffs else None), w1, w2))
     G.Thread.symbolizer = None
     print()
@@ -652,6 +681,23 @@ def load_json(path, default):
         return default
 
 
+def profile_checks(evidence):
+    """what hunt_typing.py's own check said, run by run: PROFILE-CHECK lines of every loaded_<arm>_<n>.log"""
+    print("## profile checks made while the arms ran (scripts/hunt_profile_check.py, one line per browser; ours: the parent's file after the parent pid ended)")
+    print()
+    print("| arm | checks | ok | bad | files of other writers (e.g. the pingsender task) | wait for the parent's end s p50 / max | reasons of the bad ones |")
+    print("|---|---|---|---|---|---|---|")
+    for arm in PROF_ARMS:
+        checks = HC.read_log_checks(sorted(glob.glob(os.path.join(evidence, "loaded_%s_[0-9]*.log" % arm))))
+        bad = [c for c in checks if not c.get("ok")]
+        others = sum(len((c.get("facts") or {}).get("other_writers") or []) + max(0, len((c.get("facts") or {}).get("files") or []) - 1) for c in checks)
+        waits = [(c.get("facts") or {}).get("waited_s") for c in checks if (c.get("facts") or {}).get("waited_s") is not None]
+        reasons = collections.Counter(pr.split(":")[0][:70] for c in bad for pr in c.get("problems", []))
+        print("| %s | %d | %d | %d | %d | %s / %s | %s |" % (arm, len(checks), len(checks) - len(bad), len(bad), others, fmt(q(waits, .5)), fmt(max(waits) if waits else None),
+                                                          "; ".join("%s x%d" % kv for kv in reasons.most_common(4)) or "-"))
+    print()
+
+
 def main():
     evidence, os_name = sys.argv[1], sys.argv[2]
     here = os.path.dirname(os.path.abspath(__file__))
@@ -678,6 +724,7 @@ def main():
     # the existing send-split tables (hops, page gaps, the parent's ring) for the three arms
     H.main()
     notes = []
+    profile_checks(evidence)
     rows, agg, stock_all, keep = part_a(evidence, data, ours, notes)
     for arm in PROF_ARMS:
         print_windows(rows, arm)
