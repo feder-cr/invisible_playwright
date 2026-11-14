@@ -172,6 +172,42 @@ def test_the_probe_writes_a_line_with_the_expected_keys_and_one_per_context_clos
     assert len(closed) == 1
 
 
+def test_rows_are_in_time_order_when_a_slow_sample_is_overtaken_by_another_writer(
+        clean_env, monkeypatch, tmp_path):
+    """The tick thread and the context-closing thread both write. A row that is stamped and
+    then held up (a slow USS read, a big gc) must not be written after a row stamped later.
+    Known-bad: stamp outside the write lock -> the tick (stamped first) lands after the close."""
+    endpoint = make_endpoint()
+    log = tmp_path / "order.jsonl"
+    probe = memprobe.MemProbe(endpoint, str(log))
+    calls = []
+    first_in = threading.Event()
+    second_done = threading.Event()
+    real = memprobe._mallinfo
+
+    def slow_first(*args):
+        calls.append(threading.current_thread().name)
+        if len(calls) == 1:  # the tick's sample: stamped already, held before the write
+            first_in.set()
+            second_done.wait(0.5)
+        return real(*args)
+
+    monkeypatch.setattr(memprobe, "_mallinfo", slow_first)
+    tick = threading.Thread(target=probe.write, args=("tick",), name="tick")
+    tick.start()
+    assert first_in.wait(5)
+    time.sleep(0.05)  # the second row is stamped strictly later
+    closer = threading.Thread(target=probe.write, args=("context_closed",), name="closer")
+    closer.start()
+    closer.join(0.2)
+    second_done.set()
+    tick.join(5)
+    closer.join(5)
+    rows = [json.loads(line) for line in log.read_text().splitlines()]
+    assert [r["event"] for r in rows] == ["tick", "context_closed"]
+    assert rows[1]["t"] >= rows[0]["t"]
+
+
 class SlowSocket:
     """A socket whose send waits until it is released: a client that does not read."""
 

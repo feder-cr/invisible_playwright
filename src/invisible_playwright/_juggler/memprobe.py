@@ -155,10 +155,15 @@ class MemProbe:
         }
 
     def write(self, event: str) -> None:
+        # The row is stamped (`t` in `sample`) and written under ONE lock: the tick thread and
+        # the thread that closes a context both come here, and a row stamped before the lock
+        # can be written after a later one (slow sample, e.g. USS on Windows), which puts the
+        # file out of time order.
         try:
-            line = json.dumps(self.sample(event))
-            with self._lock, open(self.path, "a", encoding="utf-8") as out:
-                out.write(line + "\n")
+            with self._lock:
+                line = json.dumps(self.sample(event))
+                with open(self.path, "a", encoding="utf-8") as out:
+                    out.write(line + "\n")
         except Exception:
             pass  # a probe never takes the server down
 
