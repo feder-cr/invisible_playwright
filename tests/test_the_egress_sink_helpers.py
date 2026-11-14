@@ -178,3 +178,17 @@ def test_the_push_page_says_the_step_it_reached():
         assert '__pushStage = "%s"' % stage in page, stage
     # the request of a content process before the parent's PushServiceParent exists is dropped: the page asks again
     assert "__pushTries" in page and "Promise.race" in page
+
+
+def test_a_process_that_reads_no_filter_while_it_starts_is_read_again_and_one_that_stays_unfiltered_is_not_dropped(monkeypatch):
+    import test_the_socket_process_is_sandboxed_e2e as sandbox
+    reads = {4090: iter(["0", "0", "2"])}
+    monkeypatch.setattr(sandbox, "_seccomp", lambda pid: "2" if pid != 4090 else next(reads[4090]))
+    assert sandbox._settled_seccomp([3905, 4090], seconds=5) == {3905: "2", 4090: "2"}
+    monkeypatch.setattr(sandbox, "_seccomp", lambda pid: "0" if pid == 4090 else "2")
+    assert sandbox._settled_seccomp([3905, 4090], seconds=0.6) == {3905: "2", 4090: "0"}
+
+
+def test_the_filter_wait_of_the_sandbox_test_is_bounded():
+    import test_the_socket_process_is_sandboxed_e2e as sandbox
+    assert 0 < sandbox.STARTUP_SECONDS <= 15
