@@ -265,6 +265,12 @@ class FakeDoh:
         self._closed = False
         threading.Thread(target=self._accept, daemon=True).start()
 
+    def use_certificate(self, certificate: Path, key: Path) -> None:
+        """Serve this certificate from now on (new connections): a test whose session must TRUST the DoH by its profile, not through
+        ``ignore_https_errors`` (which would also switch off the check the test is about), has a CA of its own sign it."""
+        self._context.load_cert_chain(str(certificate), str(key))
+        self.certificate_path, self._key_path = Path(certificate), Path(key)
+
     # --- what a test reads ------------------------------------------------------------------------------------
     def queries_for(self, name: str, qtype: Optional[int] = None) -> List[DohQuery]:
         name = name.lower().rstrip(".")

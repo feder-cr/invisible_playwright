@@ -43,7 +43,19 @@ only the DoH of its own context through its own proxy, no name the machine's res
 witnesses direct. Behind SOCKS5 it is RED on firefox-63 (the TURN names are resolved by the machine, as ``turn_tcp-name-socks5``) and green on
 firefox-64; behind an HTTP proxy the name goes to the proxy in the CONNECT and the case is green on both (as ``turn_tcp-name-http``). ``EXPECTED_TWO``.
 
-The Windows sink is ``_egress_sink.native_lookup_names``; it needs no change here.
+The Windows sink is ``_egress_sink.native_lookup_names``, the same function as on Linux: the engine's own log (the getaddrinfo lines are in the
+parent process's file under the sandbox of both systems, run 43574494194), with ``test_the_native_sink_hears_a_native_lookup`` as its positive
+control on both. The suite runs on Linux and on Windows.
+
+The OCSP request of a trusted page. A page whose TLS certificate names an OCSP responder (Authority Information Access) makes the PARENT fetch that
+URL, with the system principal. The lab holds a CA the engine trusts (``_lab_pki``: put in the profile by the engine's own xpcshell, then the session
+is launched with that ``profile_dir``, no ``ignore_https_errors``, which would switch the check off) and two leaves: the responder named by a NAME
+(``ocsp-<nonce>.lab.test``, answered by the FakeDoh of the context) and by an IP (an address of this host). A context behind the gateway loads the
+page; the request must leave through the gateway (its CONNECT lists the responder, the name was asked of the DoH by that gateway) and never be
+looked up natively, in user context 0, or arrive at the responder (which stands at an address no proxy forwards to). ``OCSP_CASES``; red on
+firefox-63 (``EXPECTED_OCSP``: the request drops the attributes of its context and leaves in context 0), green on firefox-64. Controls: the same
+page in a context with NO proxy IS asked of the responder (``POST application/ocsp-request``); and a page signed by an issuer the engine does NOT
+trust makes no OCSP request at all (the chain fails first), so a silent responder in the cases above cannot mean "OCSP is off".
 """
 from __future__ import annotations
 
@@ -62,9 +74,10 @@ from test_doh_through_the_proxy_e2e import (  # noqa: F401  (the hermetic sessio
 
 import _doh_servers as ds
 from _doh_servers import QTYPE_A, FakeDoh
-from _egress_sink import (LOG_FILE_NAME, MOZ_LOG, EgressSink, named_connects, native_lookup_names, new_nonce)
+from _egress_sink import (LOG_FILE_NAME, MOZ_LOG, BlindSink, EgressSink, named_connects, native_lookup_names, new_nonce)
 from _host_address import this_host_address
 from _http_proxy import HttpProxy
+from _lab_pki import OCSP_PREFS, LabCa, OcspResponder, TlsPage, add_ca_to_profile
 from _witness import Witness
 
 pytestmark = [pytest.mark.e2e, pytest.mark.usefixtures("the_udp_line")]
@@ -163,6 +176,23 @@ EXPECTED_TWO: Dict[str, Dict[str, str]] = {
                              "of either context hears it, and no CONNECT of the TURN reaches either gateway"},
     "firefox-64": {},
 }
+
+#: The OCSP responder of the leaf, by a NAME (``ocsp-<nonce>.lab.test``) or by an IP (an address of this host).
+OCSP_CASES = ("name", "ip")
+#: What each OCSP case does on firefox-63 (red: the request is made with the system principal and drops the attributes of its context, so it takes
+#: the default context's road: the name is looked up in user context 0 and the connection is direct) and on firefox-64 (green). Like the other
+#: tables, the gate does not skip or xfail: a case that is red on firefox-63 is red there and says which road it is.
+EXPECTED_OCSP: Dict[str, Dict[str, str]] = {
+    "firefox-63": {
+        "name": "RED: the OCSP request of a trusted page is made with the system principal and loses the attributes of its context: the name of "
+                "the responder is looked up natively, in user context 0, outside the proxy of the page's context",
+        "ip": "RED: the OCSP request of a trusted page is made with the system principal and loses the attributes of its context: the address "
+              "of the responder is connected to directly, outside the proxy of the page's context",
+    },
+    "firefox-64": {},
+}
+#: How long the negative control waits for an OCSP request that must not come, in seconds (the soft-fail timeout of the engine is 2 s).
+OCSP_SETTLE_SECONDS = 4
 
 _FETCH_JS = """async ([host, port, waitMs]) => {
   fetch('http://' + host + ':' + port + '/f', {mode: 'no-cors'}).catch(() => {});
@@ -266,6 +296,15 @@ class Lab:
         if case.by == "ip":
             return self.witness.address
         return "%s-%s-%s.%s" % (case.kind, case.by, self.nonce, "local" if case.by == "local" else "test")
+
+    @property
+    def ocsp_name(self) -> str:
+        """The name the leaf of the OCSP case by NAME gives its responder (answered with the address of this host by the FakeDoh of the case)."""
+        return "ocsp-%s.lab.test" % self.nonce
+
+    def tls_name(self, by: str) -> str:
+        """The name of the TLS page of an OCSP case (answered with the loopback, where the page's server stands)."""
+        return "tls-%s-%s.lab.test" % (by, self.nonce)
 
     def ice_host(self, case: WindowCase, kind: str) -> str:
         """The name of the STUN (``kind="stun"``) or TURN server of a window case."""
@@ -390,6 +429,14 @@ def test_the_same_probe_with_no_proxy_is_heard_by_the_witness(kind, firefox_bina
     assert reached, "no proxy, and the %s probe by IP did not reach the witness at %s: %s" % (kind, lab.witness.target, lab.witness.heard())
 
 
+def _native_or_nothing(directory, nonce, trap):
+    """The native lookups so far, or nothing while the log has not started yet (a poll must not die of it; the assertion after it still raises)."""
+    try:
+        return native_lookup_names(directory, nonce, trap)
+    except BlindSink:
+        return []
+
+
 def test_the_native_sink_hears_a_native_lookup(firefox_binary, lab, trap, watcher, engine_log):
     """The control of the native sink: a context with NO proxy looks a name up with the machine's resolver (nothing answers, the page fails), and
     ``native_lookup_names`` says so. Without this an empty answer proves nothing, on Linux (the log, and the trap as root) and on Windows."""
@@ -400,11 +447,11 @@ def test_the_native_sink_hears_a_native_lookup(firefox_binary, lab, trap, watche
             page.goto("http://%s:%d/" % (name, lab.witness.port), timeout=15000)
         except Exception:  # noqa: BLE001 - the name has no address: the lookup is what the test is about
             pass
-        heard = ds.wait_until(lambda: native_lookup_names(engine_log, lab.nonce, trap), EVIDENCE_SECONDS)
+        heard = ds.wait_until(lambda: _native_or_nothing(engine_log, lab.nonce, trap), EVIDENCE_SECONDS)
     watcher.stop()
     assert heard and name in native_lookup_names(engine_log, lab.nonce, trap), (
         "a context with no proxy looked %s up natively and the sink did not hear it: %s; log files: %s"
-        % (name, native_lookup_names(engine_log, lab.nonce, trap), sorted(os.listdir(str(engine_log)))))
+        % (name, _native_or_nothing(engine_log, lab.nonce, trap), sorted(os.listdir(str(engine_log)))))
 
 
 # ------------------------------------------------------------------------------------- the window of a torn-down document (B3)
@@ -560,3 +607,134 @@ def test_two_contexts_each_resolve_their_turn_name_through_their_own_proxy(
             doh_b.close()
     finally:
         witness_b.close()
+
+
+# ------------------------------------------------------------------------------------- the OCSP request of a trusted page
+@pytest.fixture
+def ocsp_responder(lab):
+    """What the OCSP URL of a leaf points at, at the address of this host: a request that arrives is a direct one (no proxy of the tests forwards)."""
+    responder = OcspResponder(lab.witness.address)
+    yield responder
+    responder.close()
+
+
+def _launch_trusting(binary, profile):
+    """A persistent session on ``profile`` (the lab CA is in its NSS database), with NO proxy: its default context is the machine's own network
+    and ``context.browser.new_context(proxy=...)`` makes the contexts that have one. No ``ignore_https_errors`` anywhere."""
+    return InvisiblePlaywright(seed=42, binary_path=binary, headless=True, profile_dir=profile,
+                               extra_prefs={**PREFS, **LAB_PREFS, **OCSP_PREFS})
+
+
+def _trusting_profile(binary, tmp_path, ca: LabCa):
+    profile = tmp_path / "profile"
+    for line in add_ca_to_profile(binary, profile, ca.ca_b64, tmp_path / "xpcshell"):
+        print("LAB-CA %s" % line)
+    return profile
+
+
+@pytest.mark.parametrize("by", OCSP_CASES, ids=list(OCSP_CASES))
+def test_the_ocsp_request_of_a_trusted_page_leaves_only_through_the_proxy(
+        by, firefox_binary, lab, doh, gateway, trap, watcher, engine_log, ocsp_responder, tmp_path):
+    """The page is served over TLS with a leaf the engine trusts and whose AIA names the OCSP responder ``by`` a name or an IP; a context behind the
+    gateway loads it. RED on firefox-63 (``EXPECTED_OCSP``), green on firefox-64."""
+    address = lab.witness.address
+    tls_name, ocsp_name = lab.tls_name(by), lab.ocsp_name
+    ocsp_url = "http://%s:%d/" % (ocsp_name if by == "name" else address, ocsp_responder.port)
+    ca = LabCa(tmp_path)
+    leaf, key = ca.leaf(by, [tls_name], ["127.0.0.1"], ocsp_url)
+    server = TlsPage(leaf, key, "egress-ocsp-ok")
+    try:
+        # The other cases accept the DoH's self-signed certificate with ``ignore_https_errors`` on the context; here that would switch off the very
+        # check under test (no chain, no OCSP), so the DoH of the context serves a certificate of the lab CA, which the profile trusts: without it
+        # the DoH handshake is refused (SSLV3_ALERT_BAD_CERTIFICATE, run 43584815874) and the page name never resolves (NS_ERROR_UNKNOWN_HOST).
+        doh.use_certificate(*ca.leaf("doh", [ds.DOH_HOST], ["127.0.0.1"], None))
+        doh.names[tls_name] = "127.0.0.1"
+        doh.names[ocsp_name] = address
+        proxy = gateway("gw-context")
+        profile = _trusting_profile(firefox_binary, tmp_path, ca)
+        url = "https://%s:%d/" % (tls_name, server.port)
+        detail = "not loaded"
+        with _launch_trusting(firefox_binary, profile) as session:
+            browser = session.browser
+            assert browser is not None, "the persistent session has no Browser to make a context with a proxy of its own (context.browser is None)"
+            context = browser.new_context(proxy=proxy.proxy)
+            page = context.new_page()
+            try:
+                response = page.goto(url, wait_until="load", timeout=30000)
+                detail = "status=%s text=%r" % (response.status if response else None, page.evaluate("() => document.body.innerText")[:40])
+            except Exception as exc:  # noqa: BLE001 - the message of the failed assertion below carries it
+                detail = "goto error: %s" % str(exc).splitlines()[0][:200]
+            reached = ds.wait_until(lambda: (address, ocsp_responder.port) in proxy.connects, EVIDENCE_SECONDS)
+            context.close()
+        watcher.stop()
+
+        sink = EgressSink(lab.witness, watcher, engine_log, lab.nonce, trap)
+        why = (_why(doh, proxy) + "\n  case ocsp-%s: page %s (%s), OCSP URL %s, responder at %s, handshakes %s"
+               % (by, url, detail, ocsp_url, address, server.handshakes[:4]))
+        assert "egress-ocsp-ok" in detail, "the page did not load trusted (the lab CA is not trusted by the engine, or the page is unreachable)" + why
+        assert sink.blind_problems() == [], "the sink cannot be trusted: %s" % sink.blind_problems() + why
+        assert ocsp_responder.requests == [], "the OCSP responder was reached direct, outside the gateway: %s" % ocsp_responder.requests + why
+        assert sink.leak_problems() == [], "; ".join(sink.leak_problems()) + why
+        # The work was done, by the road of the context: the revocation check WAS asked, and the gateway was handed the responder.
+        assert reached, ("the gateway was never handed the OCSP responder %s:%d (no revocation check was asked, or it took another road)"
+                         % (address, ocsp_responder.port)) + why
+        named = named_connects(proxy.connects, _is_address, allowed_names=[ds.DOH_HOST])
+        assert named == [], "the gateway was sent a NAME in a CONNECT: %s (the browser must resolve with the DoH and connect by address)" % named + why
+        if by == "name":
+            assert doh.vias_of(ocsp_name, QTYPE_A) == {proxy.name}, (
+                "%s was not asked of the DoH by the gateway of the context only: %s" % (ocsp_name, sorted(doh.vias_of(ocsp_name, QTYPE_A)))) + why
+        assert "direct" not in {q.via for q in doh.queries}, "something reached the DoH without the proxy" + why
+    finally:
+        server.close()
+
+
+def _control_page(ca: LabCa, ocsp_responder, tag: str):
+    """A page over TLS at 127.0.0.1 signed by ``ca``, whose leaf names ``ocsp_responder`` by its address."""
+    leaf, key = ca.leaf(tag, [], ["127.0.0.1"], ocsp_responder.url_by_address())
+    return TlsPage(leaf, key, "egress-ocsp-ok")
+
+
+def test_the_same_trusted_page_with_no_proxy_is_asked_of_the_ocsp_responder(firefox_binary, lab, ocsp_responder, watcher, engine_log, tmp_path):
+    """The control of the cases above: the default context has NO proxy, and the same kind of page (a leaf of the trusted CA naming the responder by
+    its address) makes the browser POST an OCSP request to it. Without this a silent responder proves nothing: OCSP could be off."""
+    ca = LabCa(tmp_path)
+    server = _control_page(ca, ocsp_responder, "control")
+    try:
+        profile = _trusting_profile(firefox_binary, tmp_path, ca)
+        url = "https://127.0.0.1:%d/" % server.port
+        with _launch_trusting(firefox_binary, profile) as session:
+            page = session.pages[0] if session.pages else session.new_page()
+            response = page.goto(url, wait_until="load", timeout=30000)
+            text = page.evaluate("() => document.body.innerText")
+            asked = ds.wait_until(lambda: ocsp_responder.asked, EVIDENCE_SECONDS)
+        watcher.stop()
+        assert response is not None and response.status == 200 and "egress-ocsp-ok" in text, (
+            "the page did not load trusted: status=%s text=%r handshakes=%s" % (response.status if response else None, text[:40], server.handshakes[:4]))
+        assert asked, "no proxy, a trusted page, and the responder at %s was never asked: %s" % (ocsp_responder.url_by_address(), ocsp_responder.requests)
+        assert ocsp_responder.asked[0].content_type == "application/ocsp-request", ocsp_responder.requests
+    finally:
+        server.close()
+
+
+def test_a_page_of_an_issuer_the_engine_does_not_trust_makes_no_ocsp_request(firefox_binary, lab, ocsp_responder, watcher, engine_log, tmp_path):
+    """The negative control: the profile trusts one CA and the page is signed by another, so the chain fails before the revocation check and the
+    responder is never asked, with NO proxy and the responder in plain reach. The OCSP cases hold only because the lab CA is trusted."""
+    trusted, stranger = LabCa(tmp_path, "lab trusted CA"), LabCa(tmp_path, "lab stranger CA")
+    server = _control_page(stranger, ocsp_responder, "stranger")
+    try:
+        profile = _trusting_profile(firefox_binary, tmp_path, trusted)
+        url = "https://127.0.0.1:%d/" % server.port
+        refused = None
+        with _launch_trusting(firefox_binary, profile) as session:
+            page = session.pages[0] if session.pages else session.new_page()
+            try:
+                page.goto(url, wait_until="load", timeout=30000)
+            except Exception as exc:  # noqa: BLE001 - the certificate error is the expected outcome
+                refused = str(exc).splitlines()[0][:200]
+            ds.wait_until(lambda: False, OCSP_SETTLE_SECONDS)
+        watcher.stop()
+        assert refused, "a page signed by an issuer the engine does not trust loaded: the lab cannot tell trusted from untrusted"
+        assert server.handshakes, "the browser never reached the page's server: the negative control proved nothing (refused: %s)" % refused
+        assert ocsp_responder.requests == [], "an untrusted issuer made an OCSP request: %s" % ocsp_responder.requests
+    finally:
+        server.close()
