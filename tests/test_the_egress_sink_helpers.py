@@ -4,8 +4,8 @@
 machine's resolver, did it ask in user context 0, and can the answer be trusted. Here each one is shown on a known input that makes it say yes, and
 on a known-bad input that must NOT pass: a sink that answers "nothing" because it cannot see is the failure this file exists for.
 
-Known-bad inputs: a log with no resolver start (blind), a Windows host whose second sink is not written (raises, never answers empty), a witness that
-heard a datagram (a leak), a probe name asked with no user context.
+Known-bad inputs: a log with no resolver start or no file at all (blind: ``native_lookup_names`` raises, it never answers empty), a witness that heard a
+datagram (a leak), a probe name asked with no user context. Windows reads the same log as Linux: there is no second sink to be missing.
 """
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ def _log(tmp_path, text=LOG, name="moz-100.log"):
 
 
 def _on_linux(directory, nonce, trap):
-    """The native sink as a Linux host answers it, whatever host the unit test runs on (a Windows one raises, by design: see below)."""
+    """The native sink as a Linux host answers it (the log, and the trap), whatever host the unit test runs on."""
     return sink_mod.native_lookup_names(directory, nonce, trap, platform="linux")
 
 
@@ -89,12 +89,34 @@ def test_native_lookup_names_adds_the_trap_on_linux_and_ignores_it_elsewhere(tmp
     assert sink_mod.native_lookup_names(directory, NONCE, trap, platform="darwin") == ["fetch-local-3fa91c.local"]
 
 
-def test_native_lookup_names_on_windows_asks_the_second_sink_and_its_absence_is_loud(tmp_path):
+def test_native_lookup_names_on_windows_is_the_engine_log_like_on_linux(tmp_path):
+    """No second sink and no ``raise``: Windows answers from the same log, and a resolver trap (which does not run there) is never added."""
     directory = _log(tmp_path)
-    got = sink_mod.native_lookup_names(directory, NONCE, None, platform="win32", windows_sink=lambda nonce: ["from-the-event-log-3fa91c.test"])
-    assert got == ["fetch-local-3fa91c.local", "from-the-event-log-3fa91c.test"]
-    with pytest.raises(NotImplementedError):          # the known-bad input: a Windows host whose second sink is not written never answers "nothing"
-        sink_mod.native_lookup_names(directory, NONCE, None, platform="win32")
+    trap = _Trap(["fetch-local-3fa91c.local", "only-the-trap-3fa91c.test"])
+    assert sink_mod.native_lookup_names(directory, NONCE, None, platform="win32") == ["fetch-local-3fa91c.local"]
+    assert sink_mod.native_lookup_names(directory, NONCE, trap, platform="win32") == ["fetch-local-3fa91c.local"]
+    assert not hasattr(sink_mod, "_windows_dns_client_lookups")
+
+
+def test_a_blind_log_raises_instead_of_answering_nothing(tmp_path):
+    """The known-bad inputs: no log file, and a log of a process that never logged the start of its resolver. On every system."""
+    empty = tmp_path / "none"
+    empty.mkdir()
+    for platform in ("linux", "win32"):
+        with pytest.raises(sink_mod.BlindSink, match="wrote no log"):
+            sink_mod.native_lookup_names(empty, NONCE, None, platform=platform)
+        with pytest.raises(sink_mod.BlindSink, match="start of its resolver"):
+            no_start = _log(tmp_path, "Resolving host [a-3fa91c.test]<> type 0." + chr(10), "moz-7.log")
+            sink_mod.native_lookup_names(no_start, NONCE, None, platform=platform)
+
+
+def test_the_parent_file_of_the_log_is_read_whatever_its_name(tmp_path):
+    """On both systems the engine names the files ``moz--main.<pid>.log.moz_log`` (parent) and ``moz--child.<pid>.log.child-<n>.moz_log``: the
+    lines of the parent are found, the empty child files are not a problem."""
+    (tmp_path / "moz--child.9.log.child-1.moz_log").write_text("", encoding="utf-8")
+    _log(tmp_path, LOG, "moz--main.100.log.moz_log")
+    assert sink_mod.native_lookup_names(tmp_path, NONCE, None, platform="win32") == ["fetch-local-3fa91c.local"]
+    assert sink_mod.engine_log_is_alive(tmp_path)
 
 
 def test_a_clean_probe_has_no_leak_and_a_trusted_sink(tmp_path):
@@ -121,6 +143,13 @@ def test_a_connection_to_another_address_is_not_a_leak_of_the_probe(tmp_path):
     assert sink.leak_problems() == []
 
 
+def test_a_leak_check_over_a_blind_log_says_so_instead_of_passing(tmp_path):
+    empty = tmp_path / "none"
+    empty.mkdir()
+    sink = sink_mod.EgressSink(_Witness(), _Watcher(), empty, NONCE, native=_on_linux)
+    assert any("native-lookup sink is blind" in p for p in sink.leak_problems())
+
+
 def test_a_sink_that_sees_nothing_says_it_is_blind(tmp_path):
     empty = tmp_path / "none"
     empty.mkdir()
@@ -138,6 +167,11 @@ def test_the_cases_are_unique_and_every_expectation_names_a_case_and_a_road():
         for case_id, what in rows.items():
             assert case_id in e2e.BY_ID, (engine, case_id)
             assert what.startswith("RED") and len(what) > 20, (engine, case_id, what)
+    # the OCSP cases: a name and an IP, each with a reason on firefox-63 and none on firefox-64 (the fix of the engine)
+    assert e2e.OCSP_CASES == ("name", "ip")
+    assert set(e2e.EXPECTED_OCSP) == {"firefox-63", "firefox-64"} and e2e.EXPECTED_OCSP["firefox-64"] == {}
+    assert set(e2e.EXPECTED_OCSP["firefox-63"]) == set(e2e.OCSP_CASES)
+    assert all(what.startswith("RED") and len(what) > 20 for what in e2e.EXPECTED_OCSP["firefox-63"].values())
 
 
 def test_the_names_of_the_cases_are_all_in_the_zone_with_the_address_of_the_witness():
@@ -151,6 +185,14 @@ def test_the_names_of_the_cases_are_all_in_the_zone_with_the_address_of_the_witn
             assert host == _Witness.address
         else:
             assert host.endswith(".local" if case.by == "local" else ".test") and NONCE in host
+
+
+def test_the_names_of_the_ocsp_cases_carry_the_nonce_and_stay_out_of_the_zone_of_the_cases():
+    lab = e2e.Lab(_Witness(), NONCE)
+    assert lab.ocsp_name == "ocsp-3fa91c.lab.test"
+    assert {lab.tls_name(by) for by in e2e.OCSP_CASES} == {"tls-name-3fa91c.lab.test", "tls-ip-3fa91c.lab.test"}
+    # the TLS page stands at the loopback and the responder name at the witness: the test adds them to the DoH itself, so the zone of the probes stays one address
+    assert lab.ocsp_name not in lab.zone and all(lab.tls_name(by) not in lab.zone for by in e2e.OCSP_CASES)
 
 
 def test_the_lab_lets_the_doh_answer_with_the_private_address_of_this_host():

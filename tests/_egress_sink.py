@@ -8,10 +8,12 @@ has four parts, each of which a test proves is not blind:
 
 * the WITNESS (``_witness.Witness``) at an address of this host: a TCP connection or a datagram that reaches it came from the browser, direct;
 * the WATCHER (``_leaks.Watcher``): a connection of a browser process to that address, seen in ``/proc`` or the connection table;
-* the NATIVE LOOKUPS of the probe's names: ``native_lookup_names`` is the ONE function a test calls. On Linux it is the engine's own log
-  (``nsHostResolver.cpp`` writes ``DNS resolve task - Calling getaddrinfo for host [<name>]`` before every native lookup) and, where the
-  resolver trap runs (root), the trap's questions. On Windows it is the engine's log too, and ``_windows_dns_client_lookups`` is the place
-  of a second sink that needs no privilege of the test (the DNS-Client event log): until it is written it raises, it never answers "nothing";
+* the NATIVE LOOKUPS of the probe's names: ``native_lookup_names`` is the ONE function a test calls. On Linux and on Windows alike it is the
+  engine's own log (``nsHostResolver.cpp`` writes ``DNS resolve task - Calling getaddrinfo for host [<name>]`` before every native lookup; on
+  Windows that is the call into the system resolver too) and, where the resolver trap runs (Linux, root), the trap's questions. The lines are
+  in the PARENT process's file (``moz--main.<pid>.log.moz_log``); the child files are empty, under the sandbox of both systems (measured on a
+  runner of each, run 43574494194). A log that holds no resolver start is blind and ``native_lookup_names`` raises ``BlindSink``: it never
+  answers "nothing" for a sink that cannot see;
 * the LOOKUPS IN USER CONTEXT 0: the same log says in which context each name was asked (``Resolving host [<name>]<^userContextId=N>``): a
   probe name asked with no ``userContextId`` is a lookup that lost the context of its page, whichever road it then took.
 
@@ -76,24 +78,23 @@ def engine_log_is_alive(directory) -> bool:
     return any(_STARTED in line for line in _lines(directory))
 
 
-def _windows_dns_client_lookups(nonce: str) -> List[str]:
-    """The names the Windows DNS client was asked for, from ``Microsoft-Windows-DNS-Client/Operational`` (events 3006 and 3008, enabled with
-    ``wevtutil sl <log> /e:true``, which the hosted runner may do), by this browser's processes, with ``nonce``. NOT WRITTEN YET (step 3 of the
-    class gate): the engine's own log is the sink of Windows until then, and a second sink that raises is better than one that answers nothing."""
-    raise NotImplementedError("the Windows DNS-Client sink of the egress gate is step 3: read the event log of the browser's processes here")
+class BlindSink(RuntimeError):
+    """The engine's log cannot say anything: no file, or no process logged the start of its resolver."""
 
 
-def native_lookup_names(directory, nonce: str, trap=None, platform: Optional[str] = None,
-                        windows_sink: Callable[[str], List[str]] = _windows_dns_client_lookups) -> List[str]:
-    """Every name with ``nonce`` that the machine's resolver was asked for by the browser: the ONE function every test calls.
+def native_lookup_names(directory, nonce: str, trap=None, platform: Optional[str] = None) -> List[str]:
+    """Every name with ``nonce`` that the machine's resolver was asked for by the browser: the ONE function every test calls, on every system.
 
-    ``trap`` is a ``_leaks.ResolverTrap`` (Linux, root) or None. ``platform`` and ``windows_sink`` are for the unit test of this function."""
+    The engine's log on Linux and on Windows; plus ``trap`` (a ``_leaks.ResolverTrap``, Linux and root) when given. Raises ``BlindSink`` when
+    the log is empty or holds no resolver start. ``platform`` is for the unit test of this function."""
     platform = platform or sys.platform
+    if not log_files(directory):
+        raise BlindSink("the engine wrote no log in %s: the native-lookup sink is blind" % directory)
+    if not engine_log_is_alive(directory):
+        raise BlindSink("no process of the browser logged the start of its resolver (%r) in %s: the native-lookup sink is blind" % (_STARTED, directory))
     names = set(engine_log_native_lookups(directory, nonce))
     if trap is not None and platform.startswith("linux"):
         names |= {n for n in trap.names() if nonce in n}
-    if platform == "win32":
-        names |= set(windows_sink(nonce))
     return sorted(names)
 
 
@@ -143,7 +144,11 @@ class EgressSink:
         if seen:
             out.append("the watcher saw the browser connect to %s without the proxy: %s"
                        % (self.witness.address, "; ".join("%s %s -> %s %s" % (c.process, c.protocol, c.remote, c.status) for c in seen)))
-        native = self.native_lookups()
+        try:
+            native = self.native_lookups()
+        except BlindSink as exc:
+            out.append(str(exc))
+            native = []
         if native:
             out.append("the machine's resolver was asked for %s (a lookup of a proxied context took the native road)" % native)
         zero = self.context_zero_lookups()
