@@ -35,17 +35,27 @@ def _wait_script() -> str:
     return textwrap.dedent(m.group(1)) + "\n"
 
 
+# How a fake installer counts its calls. ATOMIC: the wait kills a call that does not answer and reads the count while calls run, and
+# `write_text` truncates the file before it writes, so a call killed or read in between left an empty counter (`int('')`, a ValueError
+# in the release gate of 14/11). The new count goes to a file of its own and replaces the old one in one step.
+_COUNT_CALL = """
+import os, pathlib
+p = pathlib.Path(%r)
+n = int(p.read_text()) if p.exists() else 0
+tmp = p.with_name(p.name + ".%%d.tmp" %% os.getpid())
+tmp.write_text(str(n + 1))
+os.replace(tmp, p)
+"""
+
+
 def _tool(tmp_path, name, plan):
     """A regular package `name` on the shim path whose `__main__` answers call number i as plan[i] says (the last letter repeats):
     y = resolves it, n = no such version, h = does not answer (sleeps 30 s). It counts its calls in `<name>-calls`."""
     shim = tmp_path / "shim" / name
     shim.mkdir(parents=True)
     (shim / "__init__.py").write_text("", encoding="utf-8")   # a REGULAR package: a namespace one loses to the real one of the environment
-    (shim / "__main__.py").write_text(textwrap.dedent("""
-        import pathlib, sys, time
-        p = pathlib.Path(%r)
-        n = int(p.read_text()) if p.exists() else 0
-        p.write_text(str(n + 1))
+    (shim / "__main__.py").write_text(_COUNT_CALL % str(tmp_path / (name + "-calls")) + textwrap.dedent("""
+        import sys, time
         sys.stdin.read() if %r == "uv" else None
         plan = %r
         what = plan[min(n, len(plan) - 1)]
@@ -55,7 +65,7 @@ def _tool(tmp_path, name, plan):
             sys.exit(0)
         sys.stderr.write("ERROR: No matching distribution found for invisible-playwright==9.9.9" + chr(10))
         sys.exit(1)
-    """) % (str(tmp_path / (name + "-calls")), name, plan), encoding="utf-8")
+    """) % (name, plan), encoding="utf-8")
 
 
 def _run_the_wait(tmp_path, pip="y", uv="y", *, seconds=3.0, poll=0.05, call_seconds=None):
@@ -119,6 +129,38 @@ def test_a_call_that_does_not_answer_is_a_no_and_does_not_stop_the_wait(tmp_path
 def test_a_call_that_never_answers_ends_in_the_error_with_what_happened(tmp_path):
     r, _, _ = _run_the_wait(tmp_path, pip="h", seconds=1.5, call_seconds=0.3)
     assert r.returncode == 1 and "pip did not answer within" in r.stdout, r.stdout + r.stderr
+
+
+def test_a_call_killed_while_it_counts_leaves_the_count_it_found(tmp_path):
+    """The kill lands at the worst moment: a file opened for writing (so a truncating open has already emptied it) and nothing written
+    yet. The counter must still read as the number it was, never as an empty file."""
+    counter = tmp_path / "pip-calls"
+    counter.write_text("2")
+    kill_at_the_first_write = textwrap.dedent("""
+        import io, os
+        _open = io.open
+
+        class _KilledAtTheWrite:
+            def __init__(self, f):
+                self.f = f
+            def write(self, data):
+                os._exit(9)
+            def __enter__(self):
+                return self
+            def __exit__(self, *exc):
+                self.f.close()
+
+        def _opening(file, mode="r", *args, **kwargs):
+            f = _open(file, mode, *args, **kwargs)
+            if any(c in mode for c in "wax+") and str(file).startswith(%r):
+                return _KilledAtTheWrite(f)
+            return f
+        io.open = _opening
+    """) % str(tmp_path)
+    r = subprocess.run([sys.executable, "-c", kill_at_the_first_write + _COUNT_CALL % str(counter)],
+                       capture_output=True, text=True, timeout=60)
+    assert r.returncode == 9, "the kill did not land: " + r.stdout + r.stderr
+    assert counter.read_text() == "2", "a call killed while counting left %r" % counter.read_text()
 
 
 def test_the_harness_has_uv_for_the_wait_to_ask():
