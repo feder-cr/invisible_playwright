@@ -547,6 +547,12 @@ def _run_callers_code(injected: InjectedScript, frame_id: str, params: Dict,
     return remote
 
 
+def _round_px(value: float) -> int:
+    """To the nearest whole pixel, halves up (Python's `round` goes to even: 0.5 -> 0, 1.5 -> 2)."""
+    import math
+    return int(math.floor(value + 0.5))
+
+
 class ElementHandleDispatcher(Dispatcher):
     TYPE = "ElementHandle"
     METHODS = {
@@ -560,6 +566,7 @@ class ElementHandleDispatcher(Dispatcher):
         "inputValue": "op_input_value",
         "getAttribute": "op_get_attribute",
         "scrollIntoViewIfNeeded": "op_scroll_into_view",
+        "screenshot": "op_screenshot",
         "ownerFrame": "op_owner_frame",
         "contentFrame": "op_content_frame",
         "getProperty": "op_get_property",
@@ -798,6 +805,44 @@ class ElementHandleDispatcher(Dispatcher):
         self.injected.scroll_into_view(self.frame.frame_id, self.object_id,
                                        params.get("rect"))
         return None
+
+    def op_screenshot(self, params: Dict) -> Any:
+        """A picture of this element: scroll it into view, take its box, and
+        ask the page's own screenshot for exactly that rectangle.
+
+        ⛔ THE BOX IS IN THE MAIN FRAME'S VIEWPORT, AND THE ENGINE'S CLIP IS IN
+        DOCUMENT COORDINATES. `Page.getContentQuads` answers in the main frame's
+        space whatever frame the element is in (it carries a node up every
+        `<iframe>`, across processes), so the same box is right for an element
+        of the page, of a frame of another site and of a frame nested in it.
+        What is missing to reach the document is the main frame's scroll, read
+        after the element has been scrolled in. The screenshot itself is the
+        page's (`PageDispatcher.op_screenshot`): a second path would be a second
+        place for the type, the quality and the scale to disagree.
+
+        The rectangle is rounded to whole pixels outward-stable, the way
+        Playwright's screenshotter does: the left and top edges to the nearest
+        pixel, the size from the rounded right and bottom edges.
+        """
+        # An element with no layout object (display: none, detached) cannot be scrolled to: the engine says so
+        # with an exception of its own. For the caller that is the same answer as an empty box.
+        try:
+            self.injected.scroll_into_view(self.frame.frame_id, self.object_id, None)
+            box = self.injected.bounding_box(self.frame.frame_id, self.object_id)
+        except Exception:
+            box = None
+        if not box or box["width"] <= 0 or box["height"] <= 0:
+            raise ValueError("Element is not visible")
+        page = self.page
+        scroll = page.injected.evaluate(
+            page.frame.frame_id, "({x: window.scrollX, y: window.scrollY})") or {"x": 0, "y": 0}
+        left = _round_px(box["x"] + scroll["x"])
+        top = _round_px(box["y"] + scroll["y"])
+        right = _round_px(box["x"] + scroll["x"] + box["width"])
+        bottom = _round_px(box["y"] + scroll["y"] + box["height"])
+        clip = {"x": left, "y": top,
+                "width": max(right - left, 1), "height": max(bottom - top, 1)}
+        return page.op_screenshot(dict(params, clip=clip))
 
     def op_owner_frame(self, params: Dict) -> Any:
         return {"frame": self.frame.channel}
