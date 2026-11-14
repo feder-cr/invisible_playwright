@@ -113,7 +113,7 @@ def _serve(imgs, listing):
 @pytest.mark.e2e
 @pytest.mark.timeout(300, method="thread")
 def test_tagged_images_read_back_as_retail_windows_reads_them(firefox_binary, engine_at_least):
-    engine_at_least("firefox-64")
+    engine_at_least("firefox-65")
     refs_path = DATA / "refs.json"
     if not refs_path.is_file():
         pytest.fail("tests/data/canvas_icc_ref/refs.json is missing: it is the reference "

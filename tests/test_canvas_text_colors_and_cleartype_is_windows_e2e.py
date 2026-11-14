@@ -104,7 +104,7 @@ def _want(cases):
 @pytest.mark.e2e
 @pytest.mark.timeout(600, method="thread")
 def test_coloured_text_is_what_retail_windows_draws(firefox_binary, engine_at_least):
-    engine_at_least("firefox-64")
+    engine_at_least("firefox-65")
     refs = _refs()
     assert refs["colors"]["count"] == len(refs["colors"]["cases"]) == 14
     got = _launch(firefox_binary, refs, None, {})
@@ -128,7 +128,7 @@ def _keys():
 @pytest.mark.parametrize("tag", _keys())
 def test_text_under_a_cleartype_key_is_what_retail_windows_draws(
         tag, firefox_binary, engine_at_least):
-    engine_at_least("firefox-64")
+    engine_at_least("firefox-65")
     refs = _refs()
     k = refs["keys"][tag]
     want_black, want_colors = _want(k["black"]), _want(k["colors"])

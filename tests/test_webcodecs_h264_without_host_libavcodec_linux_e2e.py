@@ -121,7 +121,7 @@ class _AnnexbHandler(BaseHTTPRequestHandler):
 
 
 def test_webcodecs_h264_decodes_on_a_host_without_libavcodec(firefox_binary, engine_at_least):
-    engine_at_least("firefox-64")
+    engine_at_least("firefox-65")
     if not sys.platform.startswith("linux"):
         pytest.skip("the host libavcodec/libavutil that could mask a missing ffvpx are Linux libraries")
     present = _host_libavcodec_files()

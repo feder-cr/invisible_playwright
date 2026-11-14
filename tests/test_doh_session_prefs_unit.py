@@ -86,7 +86,8 @@ def test_the_bootstrap_address_is_a_public_address_and_not_the_proxy(compose):
 
 def test_a_session_without_a_proxy_declares_the_provider_and_no_state(compose):
     prefs = compose(None)
-    assert sorted(k for k in prefs if k.startswith("network.trr.")) == ["network.trr.bootstrapAddr", "network.trr.uri"]
+    assert sorted(k for k in prefs if k.startswith("network.trr.")) == ["network.trr.bootstrapAddr", "network.trr.builtin-excluded-domains", "network.trr.uri"]
+    assert prefs["network.trr.builtin-excluded-domains"] == "localhost", "only localhost stays off DoH: a *.local name behind a proxy is not read from the host"
     assert prefs.get("network.proxy.allow_bypass") is not False, "no proxy, no closed fallback"
     assert prefs["network.parental_controls_cached_state"] is False, "declared off with or without a proxy"
 

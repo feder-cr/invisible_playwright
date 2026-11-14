@@ -18,6 +18,13 @@ Runtime.js) and the core drops every world on `executionContextsCleared`
 Each round checks `crossOriginIsolated` on the first page: a round where the
 engine did not isolate it would not have changed process, and would pass for
 the wrong reason.
+
+The page moves to the second one when the test says so, right after the read
+on the first: it used to go on its own 500 ms after `load`, and on a loaded
+Windows runner more than 500 ms can pass between `domcontentloaded` and the
+first read, so that read met the second page or the move itself (2 rounds in 20
+under four workers, runs 43435932449 and 43439508625: `crossOriginIsolated`
+false, and "Execution context was destroyed").
 """
 from __future__ import annotations
 
@@ -32,8 +39,8 @@ ROUNDS = 3
 
 PAGES = {
     "/isolated": (b"<!doctype html><html><body><p id=p>isolated</p><script>"
-                  b"addEventListener('load', () => setTimeout(() => "
-                  b"location.replace('/plain' + location.search), 500))"
+                  b"window.moveOn = () => setTimeout(() => "
+                  b"location.replace('/plain' + location.search), 0)"
                   b"</script></body></html>"),
     "/plain": b"<!doctype html><html><body><p id=p>plain</p></body></html>",
 }
@@ -82,7 +89,9 @@ def test_reads_after_the_isolated_page_answer(page, site):
             "the engine did not isolate the page: this round tests nothing")
         # The read on the isolated page is what builds the script that went
         # stale; without it the bug never showed.
-        assert page.locator("#p").inner_text(timeout=10_000) in ("isolated", "plain")
+        assert page.locator("#p").inner_text(timeout=10_000) == "isolated"
+        # The page sends itself on, as a challenge page does: the move is its own location.replace, not a goto of ours.
+        page.evaluate("moveOn()")
         page.wait_for_url("**/plain?i=%d" % i, timeout=10_000)
         assert page.evaluate("self.crossOriginIsolated") is False
         assert page.locator("#p").inner_text(timeout=10_000) == "plain"

@@ -87,7 +87,7 @@ def test_the_data_holds_the_inputs_that_tell_the_libraries_apart():
 
 @pytest.mark.e2e
 def test_math_sin_cos_tan_bytes_are_ucrtbase_over_a_long_hot_loop(firefox_binary, engine_at_least):
-    engine_at_least("firefox-64")
+    engine_at_least("firefox-65")
     from invisible_playwright import InvisiblePlaywright
 
     cases = _cases()
