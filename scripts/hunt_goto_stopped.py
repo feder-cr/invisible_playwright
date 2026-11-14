@@ -76,12 +76,14 @@ async def scenario(page, port, rep):
         navigator.sendBeacon('/stopped?rep=' + rep + '&late=' + (performance.now() - t0 - 1000) + '&at=' + Date.now());
         window.stop(); }, 1000); }""", str(rep))
     error = None
+    began = time.time() * 1000
     try:
         await page.goto("http://b.test:%d/slow-frame?rep=%d" % (port, rep), wait_until="domcontentloaded", timeout=15000)
     except Exception as e:
         error = str(e).splitlines()[0][:80]
+    ended = time.time() * 1000
     await asyncio.sleep(4)   # the beacon may reach the server after the goto has ended
-    return error, page.url
+    return error, page.url, began, ended
 
 
 async def one(arm, rep, port, binary, gate):
@@ -114,7 +116,7 @@ async def main(arm, reps, first, binary):
         if isinstance(res, Exception):
             row["crash"] = repr(res)[:120]
         else:
-            row["error"], row["url"] = res
+            row["error"], row["url"], row["goto_began"], row["goto_ended"] = res
         print("HUNTROW " + json.dumps(row), flush=True)
     server.shutdown()
 

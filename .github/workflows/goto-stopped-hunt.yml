@@ -36,9 +36,10 @@ jobs:
           PYTHONUNBUFFERED: "1"
         run: |
           for b in 0 1 2 3 4 5 6 7 8 9; do
-            python scripts/hunt_goto_stopped.py ours 8 $((b*8)) "$FF" 2>&1 | grep HUNTROW | tee -a "$RUNNER_TEMP/rows.log" | tail -1
-            python scripts/hunt_goto_stopped.py stock 8 $((b*8)) 2>&1 | grep HUNTROW | tee -a "$RUNNER_TEMP/rows.log" | tail -1
+            python scripts/hunt_goto_stopped.py ours 8 $((b*8)) "$FF" 2>&1 | grep HUNTROW >> "$RUNNER_TEMP/rows.log"
+            python scripts/hunt_goto_stopped.py stock 8 $((b*8)) 2>&1 | grep HUNTROW >> "$RUNNER_TEMP/rows.log"
           done
+          cat "$RUNNER_TEMP/rows.log"
       - name: The two distributions
         run: |
           python - "$RUNNER_TEMP/rows.log" <<'PY'
@@ -53,6 +54,12 @@ jobs:
               print("%s: %d reps, %d with a timer; late ms p50 %s p90 %s p99 %s max %s; over 500 ms: %d; of which fired within 300 ms of the response: %s; red (no error or not on a.test): %s; crashes: %d"
                     % (arm, len(r), len(late), q(.5), q(.9), q(.99), late[-1] if late else None,
                        sum(1 for v in late if v > 500), at_resp, wrong, sum(1 for x in r if "crash" in x)))
+              d = sorted(round(x["req"] - x["goto_began"]) for x in r if "req" in x and "goto_began" in x)
+              if d:
+                  print("   %s: request of /slow-frame at the server, ms after the goto began: p10 %s p50 %s p90 %s max %s" % (arm, d[len(d)//10], d[len(d)//2], d[9*len(d)//10], d[-1]))
+              for x in r:
+                  if x["rep"] in wrong:
+                      print("   red", json.dumps(x))
           PY
       - name: Close every Firefox left
         if: always()
