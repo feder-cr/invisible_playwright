@@ -150,24 +150,47 @@ def test_the_browser_does_not_keep_the_contexts_it_closed(browser):
     assert browser._buffered == {} and browser._live == set()
 
 
+def _census(browser):
+    """What this browser's server built and is still alive, after a collection.
+    Only ITS objects: another browser of the same process (an earlier test of the
+    same worker that left its contexts open) is not this server's census."""
+    kinds = (BrowserContextDispatcher, PageDispatcher, DebuggerDispatcher,
+             TracingDispatcher)
+    gc.collect()
+    return collections.Counter(type(o).__name__ for o in gc.get_objects()
+                               if type(o) in kinds and o.server is browser.server)
+
+
+def _assert_the_census_is_stable(browser):
+    for n in range(20):
+        _cycle(browser, n, close_page_first=n % 2 == 0)
+    first = _census(browser)
+    for n in range(20, 60):
+        _cycle(browser, n, close_page_first=n % 2 == 0)
+    assert _census(browser) == first
+    assert first.get("BrowserContextDispatcher", 0) == 0, first
+
+
 def test_the_count_of_objects_is_stable_across_cycles(browser):
     """The census of what the server builds, after a collection, does not move
     between 20 cycles and 60."""
-    kinds = (BrowserContextDispatcher, PageDispatcher, DebuggerDispatcher,
-             TracingDispatcher)
+    _assert_the_census_is_stable(browser)
 
-    def census():
-        gc.collect()
-        return collections.Counter(type(o).__name__ for o in gc.get_objects()
-                                   if type(o) in kinds)
 
-    for n in range(20):
-        _cycle(browser, n, close_page_first=n % 2 == 0)
-    first = census()
-    for n in range(20, 60):
-        _cycle(browser, n, close_page_first=n % 2 == 0)
-    assert census() == first
-    assert first.get("BrowserContextDispatcher", 0) == 0, first
+def test_the_census_does_not_count_another_browsers_open_context(browser):
+    # The census counted every dispatcher of the process: run after a file that
+    # leaves its contexts open in the same worker, it saw 7 BrowserContextDispatcher
+    # that were not this server's (core #272, wrapper-on-this-core linux part 2).
+    server = remote._SharedServer()
+    other = remote.SharedBrowserDispatcher(server, remote.SharedBrowserType(server),
+                                           ScriptedJuggler(), "firefox/1")
+    left_open = server.object(server.handle(
+        {"guid": other.guid, "method": "newContext", "params": {}})["context"]["guid"])
+    try:
+        _assert_the_census_is_stable(browser)
+        assert left_open.guid in server._objects
+    finally:
+        server.shutdown()
 
 
 def test_a_download_and_its_stream_are_let_go_with_their_context(browser):
