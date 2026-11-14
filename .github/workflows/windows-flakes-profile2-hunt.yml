@@ -257,7 +257,7 @@ jobs:
             timeout 300 python scripts/hunt_profile_check.py --log evidence/profile_smoke_ours.log --log evidence/profile_smoke_stock.log
             rc=$?
             # the probe (and the symbols) on the files the checks chose
-            for f in $(python - <<'PY'
+            for f in $(python - <<'PY' | tr -d '\r'
           import glob, json, os
           for lg in ("evidence/profile_smoke_ours.log", "evidence/profile_smoke_stock.log"):
               for line in open(lg, encoding="utf-8", errors="replace"):
@@ -267,7 +267,7 @@ jobs:
                       if fn and os.path.exists(os.path.join("prof-smoke", fn)):
                           print(os.path.join("prof-smoke", fn))
           PY
-            | tr -d '\r'); do
+            ); do
               timeout 300 python scripts/hunt_gecko_profile.py --probe "$f"
               case "$f" in *smoke_ours*) [ -d symbols ] && { echo "== ours, native frames named from the symbols"; timeout 900 python scripts/hunt_gecko_profile.py --probe "$f" --symbols symbols; } ;; esac
             done
