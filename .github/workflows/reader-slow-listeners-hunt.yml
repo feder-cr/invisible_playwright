@@ -1,0 +1,151 @@
+# reader-slow-listeners-hunt.yml - hunt scaffolding, never merged. Runs only on a push to a `hunt/reader-slow-listeners**` branch.
+# With the reader fix in place (no Thread.start on the core's pipe reader: core #263, wrapper fc9161f) a few listener calls on the reader
+# thread are still slow (measured before: BrowserDispatcher._route_browser_event up to 318 ms, PageDispatcher._route_juggler_event 217 ms,
+# Lifecycle._route 106 / 79 ms, a message decode 154 ms). WHICH LINE OF CODE is the call on while it is slow?
+# Windows only, 15 rounds x 4 processes at once, ONE arm (the new code), in memory only (nothing is opened or written on the reader during a
+# run; one write per process at exit), see scripts/hunt_slow_runtime.py:
+#   (1) every listener call on the reader: wall, CPU (cycle counter), event, listener (totals for all, a row from 2 ms);
+#   (2) a sampler thread: while a listener call (or a decode) has lasted over 20 ms, sys._current_frames()[reader] every 2 ms, the
+#       innermost 12 frames;
+#   (3) the json.loads of a message over 20 ms, with its size;
+#   (4) off-CPU per call = wall - CPU.
+# The core is pinned to oss-invisible/core commit 2ef06c7 (#263, the reader fix); the wrapper is this checkout (the 0.51.1 line) with
+# server.py overlaid from the wrapper's reader-fix branch when it still exists, else from origin/main if that has the fix.
+name: reader slow listeners hunt
+
+on:
+  push:
+    branches: ['hunt/reader-slow-listeners**']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reader-slow-listeners-hunt-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GITHUB_TOKEN: ${{ github.token }}
+  PYTHONUNBUFFERED: "1"
+  CORE_SHA: 2ef06c776bef5cf1d90b887df7251b72e792200b
+  WRAPPER_FIX_BRANCH: fix/no-thread-started-on-the-reader
+
+jobs:
+  hunt:
+    name: slow listeners hunt windows
+    runs-on: windows-2022
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: { python-version: '3.11' }
+      - name: The wrapper side of the reader fix (server.py), and the pins
+        run: |
+          set -e
+          mkdir -p evidence
+          SERVER=src/invisible_playwright/_juggler/server.py
+          {
+            echo "wrapper checkout: $(git rev-parse HEAD)"
+            echo "core pin: $CORE_SHA"
+          } | tee evidence/pins.txt
+          if timeout 300 git fetch --depth 50 origin "+refs/heads/$WRAPPER_FIX_BRANCH:refs/remotes/origin/$WRAPPER_FIX_BRANCH"; then
+            SRC="origin/$WRAPPER_FIX_BRANCH"
+            SRC_WHY="the branch $WRAPPER_FIX_BRANCH still exists"
+          else
+            # the branch is gone: main must carry the fix
+            timeout 300 git fetch --depth 200 origin main
+            if git log --oneline origin/main | grep -i "no thread is started on the engine connection"; then
+              SRC="origin/main"
+              SRC_WHY="the branch $WRAPPER_FIX_BRANCH is gone and origin/main has the fix"
+            else
+              echo "neither the branch $WRAPPER_FIX_BRANCH nor origin/main has the wrapper side of the reader fix"
+              exit 1
+            fi
+          fi
+          # blob ids, not bytes: the runner's checkout may carry CRLF
+          if [ "$(git rev-parse "$SRC:$SERVER")" = "$(git rev-parse "HEAD:$SERVER")" ]; then
+            CHANGED="identical to this checkout's, nothing overlaid"
+          else
+            git show "$SRC:$SERVER" > "$SERVER"
+            CHANGED="DIFFERENT from this checkout's, overlaid"
+          fi
+          echo "server.py from $SRC ($(git rev-parse "$SRC")): $SRC_WHY; $CHANGED" | tee -a evidence/pins.txt
+      - name: One environment, and the core of commit 2ef06c7
+        run: |
+          set -e
+          NEWPY="$RUNNER_TEMP/venv-new/Scripts/python.exe"
+          echo "NEWPY=$NEWPY" >> "$GITHUB_ENV"
+          timeout 300 python -m venv "$RUNNER_TEMP/venv-new"
+          timeout 300 "$NEWPY" -m pip install --quiet --upgrade pip
+          timeout 300 "$NEWPY" -m pip install --quiet ".[dev]"
+          timeout 300 "$NEWPY" -m pip install --quiet "playwright==$(cat scripts/playwright_pin.txt)"
+          # the core: clone, check out the pin, install over the wheel the wrapper pulled in
+          timeout 300 git clone --quiet https://github.com/oss-invisible/core.git "$RUNNER_TEMP/core"
+          git -C "$RUNNER_TEMP/core" checkout --quiet "$CORE_SHA"
+          GOT="$(git -C "$RUNNER_TEMP/core" rev-parse HEAD)"
+          test "$GOT" = "$CORE_SHA" || { echo "the core is at $GOT, not $CORE_SHA"; exit 1; }
+          echo "core commit: $(git -C "$RUNNER_TEMP/core" log -1 --format='%H %s')" | tee -a evidence/pins.txt
+          timeout 300 "$NEWPY" -m pip install --quiet --force-reinstall --no-deps "$RUNNER_TEMP/core"
+          CONN="$("$NEWPY" -c "import importlib.util as u; print(u.find_spec('invisible_core.juggler.connection').origin)")"
+          cmp "$CONN" "$RUNNER_TEMP/core/src/invisible_core/juggler/connection.py"
+          echo "installed connection.py is the one of the pin" | tee -a evidence/pins.txt
+          "$NEWPY" -m pip list 2>/dev/null | grep -iE "^(invisible|playwright)" | tee -a evidence/pins.txt || true
+          "$NEWPY" -c "import invisible_core, invisible_playwright as w; print('core', invisible_core.__version__, invisible_core.__file__); print('wrapper', w.__file__)" | tee -a evidence/pins.txt
+      - name: The browser, the lab GeoIP database
+        run: |
+          set -e
+          timeout 300 "$NEWPY" scripts/ci_lab_geoip.py build
+          echo "FF_NEW=$(cd "$RUNNER_TEMP" && timeout 300 "$NEWPY" -m invisible_playwright fetch | tail -1)" >> "$GITHUB_ENV"
+      - name: The instrumentation (in memory, one write per process at exit)
+        run: |
+          set -e
+          timeout 300 "$NEWPY" scripts/hunt_trace_slow.py
+          # the patched module imports and the hooks are in place, before fifteen rounds are spent on them
+          HUNT_SLOW_TRACE="$RUNNER_TEMP/selftest.jsonl" "$NEWPY" -c "import invisible_core._hunt_slow as h, invisible_core.juggler.connection as c, invisible_playwright._juggler.server; assert c.Connection.dispatch_event is h.dispatch_event; assert h.ENABLED and h.STATE['cyc_per_s'], h.STATE; print('hooks ok, cycles per second', h.STATE['cyc_per_s'])"
+      - name: HUNT - the new code, four processes at once, fifteen rounds
+        run: |
+          set +e
+          echo "binary: $FF_NEW"
+          for n in $(seq 1 15); do
+            for c in 1 2 3 4; do
+              HUNT_SLOW_TRACE="evidence/slow_${n}_$c.jsonl" timeout 300 "$NEWPY" -u scripts/hunt_netidle.py ours "$FF_NEW" \
+                > "evidence/netidle_${n}_$c.log" 2>&1 &
+            done
+            wait
+            taskkill //F //T //IM firefox.exe > /dev/null 2>&1 || true
+            echo "round $n done"
+          done
+          exit 0
+      - name: Step summary
+        if: always()
+        run: |
+          set +e
+          {
+            echo '```'
+            cat evidence/pins.txt
+            echo '```'
+            echo
+            timeout 300 "$NEWPY" scripts/hunt_slow_summary.py windows-2022 evidence 50 20
+            echo
+            echo "### Tracebacks and errors in the netidle logs"
+            echo '```'
+            grep -ahE "Traceback|Error" evidence/netidle_*.log | cut -c1-160 | sort | uniq -c | sort -rn | head -12
+            echo '```'
+          } 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
+          exit 0
+      - name: Close every Firefox left
+        if: always()
+        run: |
+          taskkill //F //T //IM firefox.exe > /dev/null 2>&1 || true
+          exit 0
+      - name: Upload the evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: reader-slow-listeners-${{ github.run_id }}
+          path: evidence
+          if-no-files-found: warn
+          retention-days: 14
