@@ -41,6 +41,21 @@ FISSION_ON = {
 }
 
 
+ARRIVALS = []
+
+
+def _hunt(line):
+    import os
+    with open(os.environ.get("HUNT_LOG", "hunt.log"), "a", encoding="utf-8") as f:
+        f.write(line + chr(10))
+
+
+def do_POST_stopped(self):
+    ARRIVALS.append((time.monotonic(), "POST " + self.path))
+    self.send_response(204)
+    self.end_headers()
+
+
 @pytest.fixture
 def sites():
     arrived = set()
@@ -51,9 +66,12 @@ def sites():
         def log_message(self, *args):
             pass
 
+        do_POST = do_POST_stopped
+
         def do_GET(self):
             path = self.path.split("?")[0]
             arrived.add(path)
+            ARRIVALS.append((time.monotonic(), path))
             try:
                 if path == "/partial":
                     # the headers and the start of the body arrive, the rest is held: the response is there, the
@@ -100,16 +118,44 @@ def _run(firefox_binary, scenario):
     return asyncio.run(go())
 
 
-def test_a_goto_to_another_site_stopped_by_the_page_it_leaves_raises_aborted(firefox_binary, sites):
+@pytest.mark.parametrize("rep", range(40))
+def test_a_goto_to_another_site_stopped_by_the_page_it_leaves_raises_aborted(firefox_binary, sites, rep):
+    events = []
+
     async def scenario(page):
         await page.goto(sites["at"]("a.test", "/plain"))
-        await page.evaluate("setTimeout(() => window.stop(), 1000)")
+        impl = page._impl_obj
+        conn = impl._connection._transport._server.object(impl._guid).conn
+
+        def listen(*args):
+            msg = args[-1] if args else None
+            method = msg.get("method") if isinstance(msg, dict) else getattr(msg, "method", repr(msg)[:60])
+            if method and method.startswith("Page."):
+                params = msg.get("params", {}) if isinstance(msg, dict) else {}
+                events.append((time.monotonic(), method, str(params.get("url", ""))[-30:],
+                               str(params.get("errorText", params.get("error", "")))[:40]))
+
+        conn.add_listener(listen)
+        del ARRIVALS[:]
+        t_eval0 = time.monotonic()
+        await page.evaluate("setTimeout(() => { navigator.sendBeacon('/stopped'); window.stop(); }, 1000)")
+        t_eval = time.monotonic()
         began = time.monotonic()
+        error = None
         try:
             await page.goto(sites["at"]("b.test", "/slow-frame"), wait_until="domcontentloaded", timeout=15000)
         except Exception as e:
-            return str(e), time.monotonic() - began, page.url
-        return None, time.monotonic() - began, page.url
+            error = str(e)
+        ended = time.monotonic()
+        conn.remove_listener(listen)
+        rel = lambda t: "%.3f" % (t - t_eval0)
+        _hunt("HUNT rep=%d eval_returned=%s goto_began=%s goto_ended=%s error=%s" % (
+            rep, rel(t_eval), rel(began), rel(ended), (error or "None")[:80].replace(chr(10), " ")))
+        for t, path in list(ARRIVALS):
+            _hunt("HUNT   rep=%d server %s %s" % (rep, rel(t), path))
+        for t, m, url, err in events:
+            _hunt("HUNT   rep=%d engine %s %s %s %s" % (rep, rel(t), m, url, err))
+        return error, ended - began, page.url
 
     error, took, url = _run(firefox_binary, scenario)
     assert error is not None and "NS_BINDING_ABORTED" in error, error
