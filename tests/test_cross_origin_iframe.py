@@ -27,18 +27,22 @@ needs an ``invisible-core`` that declares them.
 
 Layers:
   * ``unit`` - ``_BASELINE`` contains the prefs with the right values. No browser.
-  * ``e2e``  - launch the real binary against a LOCAL HTTP harness on
-              ``127.0.0.1`` and verify the four protocol operations that
-              regressed: frame URL tracking, ``handle.content_frame()``,
-              ``frame.evaluate()``, and ``frame_locator(...).locator(...)``
-              element resolution. The harness uses two ports of one host,
-              which is one SITE: those iframes stay in the process of the
-              page even at strategy 1. The iframes that leave the process
-              (different hosts) are held by ``test_fission_strategy1_bench.py``.
+  * ``e2e``  - launch the real binary against a LOCAL HTTP harness and
+              verify the four protocol operations that regressed: frame URL
+              tracking, ``handle.content_frame()``, ``frame.evaluate()``, and
+              ``frame_locator(...).locator(...)`` element resolution. The page
+              is served from ``127.0.0.1`` and its iframes from ``localhost``:
+              two hosts are two SITES, so at strategy 1 each iframe runs in a
+              content process of its own. (Two ports of one host would be one
+              site, and those iframes would stay in the process of the page.)
+              ``test_the_iframe_runs_in_another_process`` proves it from
+              inside the pages, so this file cannot fall back to the process
+              of the page unnoticed. The bench with its own hosts and
+              process counts is ``test_fission_strategy1_bench.py``.
 
 The e2e tests run entirely offline. They never call out to a real site;
-the cross-origin shape is reproduced with two local HTTP servers on
-random free ports.
+the cross-site shape is reproduced with two local HTTP servers on random
+free ports, reached by two names of the loopback interface.
 """
 from __future__ import annotations
 
@@ -168,12 +172,13 @@ def _serve(payload: bytes) -> tuple[ThreadingHTTPServer, int]:
 
 @pytest.fixture
 def cross_origin_harness():
-    """Spin up TWO local HTTP servers on different localhost ports.
+    """Spin up TWO local HTTP servers: the page on ``127.0.0.1``, the iframes on ``localhost``.
 
-    Two ports = two distinct origins under SOP (same host, different port
-    → different origin). The parent page on port A embeds an iframe with
-    src pointing at port B. Same cross-origin browsing-context shape as
-    a parent-page-plus-third-party-iframe layout, fully offline.
+    Two hosts = two SITES (and two origins under SOP). The parent page
+    embeds iframes with src pointing at the other host, which at strategy 1
+    puts them in another content process. Same cross-site browsing-context
+    shape as a parent-page-plus-third-party-iframe layout, fully offline.
+    The servers listen on 127.0.0.1 and the child is named ``localhost``.
     """
     # The CHILD goes up first, because the parent's markup has to name the
     # child's port and there is no longer a way to learn that number without
@@ -186,18 +191,47 @@ def cross_origin_harness():
     sb, pb = _serve(child_html)
     parent_html = f"""<!doctype html><html><head><title>parent</title></head><body>
 <h1>parent</h1>
-<iframe id="ifr_plain"   src="http://127.0.0.1:{pb}/child"            width="300" height="120"></iframe>
-<iframe id="ifr_sandbox" src="http://127.0.0.1:{pb}/child"            width="300" height="120"
+<iframe id="ifr_plain"   src="http://localhost:{pb}/child"            width="300" height="120"></iframe>
+<iframe id="ifr_sandbox" src="http://localhost:{pb}/child"            width="300" height="120"
         sandbox="allow-scripts allow-same-origin"></iframe>
-<iframe id="ifr_titled"  src="http://127.0.0.1:{pb}/child"            width="300" height="120"
+<iframe id="ifr_titled"  src="http://localhost:{pb}/child"            width="300" height="120"
         title="cross-origin titled iframe"></iframe>
 </body></html>""".encode("utf-8")
     sa, pa = _serve(parent_html)
     try:
-        yield {"parent_url": f"http://127.0.0.1:{pa}/", "child_origin": f"http://127.0.0.1:{pb}"}
+        yield {"parent_url": f"http://127.0.0.1:{pa}/", "child_origin": f"http://localhost:{pb}"}
     finally:
         sa.shutdown()
         sb.shutdown()
+
+
+@pytest.mark.e2e
+def test_the_iframe_runs_in_another_process(firefox_binary, cross_origin_harness):
+    """The harness of this file really crosses a process: a spin in the iframe does not stall the page.
+
+    The iframe spins for 600 ms and the page times a 10 ms timer; the timer
+    stalls only when both share a content process. Without this, a harness
+    that went back to two ports of one host would keep every test below green
+    while testing a same-process iframe.
+    """
+    from _fission_frames import assert_other_process
+    from invisible_playwright import InvisiblePlaywright
+
+    with InvisiblePlaywright(seed=42, binary_path=firefox_binary, humanize=False) as browser:
+        page = browser.new_context().new_page()
+        # ⛔ `load`, NOT `domcontentloaded`. The `domcontentloaded` of a page says nothing about its frames: the
+        # frame of another site is listed as soon as it is attached, and its url is the one of its navigation,
+        # which commits in the frame's own process, usually AFTER the page's domcontentloaded. Read straight after
+        # a `domcontentloaded` goto the url was empty in 26 reads of 30 on firefox-62 (stock Playwright Firefox,
+        # whose frames commit in the process of the page, had it 30 of 30). After the `load` of the page the url
+        # was there 30 of 30 on both, with no wait: that is what is asserted here, so a `goto` that returns
+        # with a cross-site frame still without its url fails this test.
+        page.goto(cross_origin_harness["parent_url"], wait_until="load", timeout=30_000)
+        page.wait_for_selector("iframe#ifr_plain", timeout=10_000)
+        frame = page.query_selector("iframe#ifr_plain").content_frame()
+        assert frame is not None and cross_origin_harness["child_origin"] in frame.url, (
+            f"after the load of the page the iframe of the other site has url {getattr(frame, 'url', None)!r}")
+        assert_other_process(page.main_frame, frame)
 
 
 @pytest.mark.e2e
