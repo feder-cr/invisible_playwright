@@ -7,7 +7,12 @@ One batch of reps of one arm, four browsers at once, one fresh browser per rep. 
   error, url  what the goto raised and where the page ended
 The page and the server share the machine's wall clock, so "fired" and "resp" compare directly.
 
-    python scripts/hunt_goto_stopped.py ours|stock|stockfission REPS FIRST_REP [binary]
+    python scripts/hunt_goto_stopped.py ours|oursone|oursremote|stock|stockfission REPS FIRST_REP [binary]
+
+  ours        our wrapper in-process, four browsers in one Python process
+  oursone     our wrapper in-process, one browser per Python process (the workflow runs four processes at once)
+  oursremote  our server out of process (launch_server, one Python process per browser), the stock client connects
+  stock       Playwright's own Firefox and client
 """
 from __future__ import annotations
 
@@ -86,9 +91,46 @@ async def scenario(page, port, rep):
     return error, page.url, began, ended
 
 
+def serve_one_browser(binary):
+    """oursremote's server: ONE browser served by launch_server in this process (the 0.48.0 remote transport); prints its
+    endpoint and serves until stdin closes."""
+    from invisible_playwright._juggler.remote import launch_server
+    server = launch_server(headless=True, binary_path=binary, seed=42, humanize=False, extra_prefs=PREFS)
+    print("ENDPOINT " + server.ws_endpoint, flush=True)
+    try:
+        sys.stdin.read()
+    finally:
+        server.close()
+
+
 async def one(arm, rep, port, binary, gate):
     async with gate:
-        if arm == "ours":
+        if arm == "oursremote":
+            proc = await asyncio.create_subprocess_exec(sys.executable, __file__, "serve", binary,
+                                                        stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE)
+            try:
+                while True:
+                    line = (await asyncio.wait_for(proc.stdout.readline(), 120)).decode().strip()
+                    if not line:
+                        raise RuntimeError("the server process ended before it served")
+                    if line.startswith("ENDPOINT "):
+                        endpoint = line.split(" ", 1)[1]
+                        break
+                from playwright.async_api import async_playwright
+                async with async_playwright() as p:
+                    browser = await p.firefox.connect(endpoint)
+                    try:
+                        page = await browser.new_page()
+                        return await scenario(page, port, rep)
+                    finally:
+                        await browser.close()
+            finally:
+                proc.stdin.close()
+                try:
+                    await asyncio.wait_for(proc.wait(), 30)
+                except asyncio.TimeoutError:
+                    proc.kill()
+        if arm in ("ours", "oursone"):
             from invisible_playwright.async_api import InvisiblePlaywright
             async with InvisiblePlaywright(seed=42, binary_path=binary, humanize=False, headless=True, extra_prefs=PREFS) as browser:
                 page = await browser.new_page()
@@ -109,7 +151,7 @@ async def one(arm, rep, port, binary, gate):
 async def main(arm, reps, first, binary):
     server, log = serve()
     port = server.server_address[1]
-    gate = asyncio.Semaphore(4)
+    gate = asyncio.Semaphore(1 if arm == "oursone" else 4)   # oursone: one browser per Python process, four processes at once
     numbers = list(range(first, first + reps))
     results = await asyncio.gather(*(one(arm, r, port, binary, gate) for r in numbers), return_exceptions=True)
     await asyncio.sleep(1)
@@ -125,4 +167,7 @@ async def main(arm, reps, first, binary):
 
 
 if __name__ == "__main__":
+    if sys.argv[1] == "serve":
+        serve_one_browser(sys.argv[2])
+        sys.exit(0)
     asyncio.run(main(sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), sys.argv[4] if len(sys.argv) > 4 else None))
