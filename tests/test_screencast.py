@@ -66,6 +66,9 @@ def _bare_page(conn):
     page.session = "session-1"
     page.disposed = False
     page._screencast_id = None
+    page._screencast_lock = threading.Lock()
+    page._screencast_starting = False
+    page._screencast_early = None
     page.context = SimpleNamespace(browser=SimpleNamespace(conn=conn))
     return page, up
 
