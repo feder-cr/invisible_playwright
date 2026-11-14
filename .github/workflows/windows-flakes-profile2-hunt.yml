@@ -267,7 +267,7 @@ jobs:
                       if fn and os.path.exists(os.path.join("prof-smoke", fn)):
                           print(os.path.join("prof-smoke", fn))
           PY
-            ); do
+            | tr -d '\r'); do
               timeout 300 python scripts/hunt_gecko_profile.py --probe "$f"
               case "$f" in *smoke_ours*) [ -d symbols ] && { echo "== ours, native frames named from the symbols"; timeout 900 python scripts/hunt_gecko_profile.py --probe "$f" --symbols symbols; } ;; esac
             done
