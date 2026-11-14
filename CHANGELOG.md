@@ -19,6 +19,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   6 ms now (stock 122); Linux 554 ms before, -5 ms now (stock 91).
 
 ### Fixed
+- Screencast: a frame that arrives while the start of the screencast is being answered is held and acknowledged,
+  not dropped, so the stream no longer dies from its first frame (the engine keeps one frame in flight and waits for its
+  acknowledgement).
 - No thread is started on the engine connection's reader any more (the adoption of a new page and the file chooser hand
   their work to one long-lived starter). On Windows under load a Thread.start there held every event behind it; without
   instrumentation, goto(..., wait_until="networkidle") on pages that replace themselves missed 1 in 1200 instead of 4.

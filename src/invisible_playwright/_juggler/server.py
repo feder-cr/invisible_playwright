@@ -2772,6 +2772,16 @@ class PageDispatcher(Dispatcher):
         # The id Juggler gave the running screencast, or None. One per page,
         # because the engine holds one capture sink per window.
         self._screencast_id: Optional[str] = None
+        # ⛔ THE THREE FIELDS BELOW ARE ONE STATE AND MOVE TOGETHER, under
+        # `_screencast_lock`: the id, whether a start is still waiting for its
+        # reply, and the frame that came in during that wait. The frames
+        # arrive on the reader thread and the start/stop on a worker, and the
+        # engine lets ONE frame be in flight until it is acknowledged, so a
+        # frame the handler cannot acknowledge ends the stream for good (see
+        # `_on_screencast_frame`).
+        self._screencast_lock = threading.Lock()
+        self._screencast_starting = False
+        self._screencast_early: Optional[Dict] = None
         conn = context.browser.conn
         # ⛔ THIS PAGE'S OWN EVENTS ARE HELD FROM HERE, not dropped. A page the
         # SITE opened has usually sent its document request, and often had the
@@ -3314,29 +3324,62 @@ class PageDispatcher(Dispatcher):
         # that is about to go. The engine stops it when the page is disposed
         # too; asking first means a page closed from here never leaves a
         # frame in flight with nobody to acknowledge it.
-        if self._screencast_id:
-            conn.post("Page.stopScreencast", {}, session=self.session)
+        with self._screencast_lock:
+            running = self._screencast_id
             self._screencast_id = None
+            self._screencast_early = None
+        if running:
+            conn.post("Page.stopScreencast", {}, session=self.session)
+
+    def _on_screencast_frame(self, params: Dict) -> None:
+        """One `Page.screencastFrame`: up to the client, and acknowledged.
+
+        ⛔ ON THE READER THREAD, and both halves have to respect that.
+        The frame goes up to the client as the event `Screencast`
+        listens for - base64 stays base64, the client decodes - under
+        the names the vendored client reads (`viewportWidth`, not the
+        engine's `deviceWidth`). The ack goes back with `post`: a `send`
+        here would wait for a reply only this thread can deliver.
+
+        ⛔ A FRAME THAT ARRIVES BEFORE `op_screencast_start` KNOWS THE ID IS
+        HELD, NOT DROPPED. The engine keeps one frame in flight until it is
+        acknowledged (`kMaxFramesInFlight` is 1, and its heartbeat only
+        repeats a frame when none is in flight), so a frame this thread drops
+        without an ack is the last frame of the stream: no error, no more
+        frames, `start()` having returned. And it was not a theory: the reader
+        wakes the caller on the start's reply and goes straight on to the next
+        message, so a frame behind the reply is handled before the caller has
+        stored the id - 84 of 200 start cycles stalled that way in
+        `tests/test_screencast_ack_race.py` with the frame right behind the
+        reply. The newest such frame is kept (a second cannot exist: the
+        first is unacknowledged) and `op_screencast_start` hands it on once
+        the id is in.
+        """
+        with self._screencast_lock:
+            screencast_id = self._screencast_id
+            if not screencast_id:
+                if self._screencast_starting:
+                    self._screencast_early = params
+                return
+        self._hand_up_screencast_frame(screencast_id, params)
+
+    def _hand_up_screencast_frame(self, screencast_id: str, params: Dict) -> None:
+        # The id is the one the frame was accepted under, read once: a stop
+        # between the check and the ack must not turn the ack into one for
+        # "None".
+        self.emit("screencastFrame", {
+            "data": params.get("data") or "",
+            "timestamp": params.get("timestamp") or 0,
+            "viewportWidth": params.get("deviceWidth") or 0,
+            "viewportHeight": params.get("deviceHeight") or 0,
+        })
+        self.conn.post("Page.screencastFrameAck",
+                       {"screencastId": screencast_id},
+                       session=self.session)
 
     def _on_juggler_event(self, method: str, params: Dict) -> None:
         if method == "Page.screencastFrame":
-            # ⛔ ON THE READER THREAD, and both halves have to respect that.
-            # The frame goes up to the client as the event `Screencast`
-            # listens for - base64 stays base64, the client decodes - under
-            # the names the vendored client reads (`viewportWidth`, not the
-            # engine's `deviceWidth`). The ack goes back with `post`: a `send`
-            # here would wait for a reply only this thread can deliver.
-            if not self._screencast_id:
-                return
-            self.emit("screencastFrame", {
-                "data": params.get("data") or "",
-                "timestamp": params.get("timestamp") or 0,
-                "viewportWidth": params.get("deviceWidth") or 0,
-                "viewportHeight": params.get("deviceHeight") or 0,
-            })
-            self.conn.post("Page.screencastFrameAck",
-                           {"screencastId": self._screencast_id},
-                           session=self.session)
+            self._on_screencast_frame(params)
         elif method == "Runtime.console":
             # ⛔ THE LOG FILLS HERE, not inside `console_messages()`. A log
             # filled on request can only ever hold what arrived AFTER the
@@ -4155,9 +4198,10 @@ class PageDispatcher(Dispatcher):
         rebuilt - and the refusal at context creation for `record_video_dir`
         is the same decision one level up.
         """
-        if self._screencast_id:
-            raise ProtocolException(
-                "a screencast is already running on this page; stop it first")
+        with self._screencast_lock:
+            if self._screencast_id or self._screencast_starting:
+                raise ProtocolException(
+                    "a screencast is already running on this page; stop it first")
         if params.get("record"):
             raise ProtocolException(
                 "screencast to a video FILE is not available: the engine "
@@ -4181,22 +4225,47 @@ class PageDispatcher(Dispatcher):
         fps = params.get("fps")
         if fps is None:
             fps = self.SCREENCAST_FPS
-        result = self.send("Page.startScreencast", {
-            "width": int(size["width"]),
-            "height": int(size["height"]),
-            "quality": int(quality),
-            "fullWindow": True,
-            "fps": int(fps),
-        })
-        self._screencast_id = result["screencastId"]
+        # ⛔ FROM HERE UNTIL THE ID IS STORED A FRAME CAN ARRIVE, and the
+        # handler needs to know it is a start in progress and not a stopped
+        # screencast (`_on_screencast_frame`). Claimed under the lock, so two
+        # starts cannot both pass the check above either.
+        with self._screencast_lock:
+            if self._screencast_id or self._screencast_starting:
+                raise ProtocolException(
+                    "a screencast is already running on this page; stop it first")
+            self._screencast_starting = True
+            self._screencast_early = None
+        try:
+            result = self.send("Page.startScreencast", {
+                "width": int(size["width"]),
+                "height": int(size["height"]),
+                "quality": int(quality),
+                "fullWindow": True,
+                "fps": int(fps),
+            })
+            screencast_id = result["screencastId"]
+        except BaseException:
+            with self._screencast_lock:
+                self._screencast_starting = False
+                self._screencast_early = None
+            raise
+        with self._screencast_lock:
+            self._screencast_id = screencast_id
+            self._screencast_starting = False
+            early, self._screencast_early = self._screencast_early, None
+        if early is not None:
+            self._hand_up_screencast_frame(screencast_id, early)
         # The client's `start()` reads an optional `artifact` from the reply
         # for the video-file case, which does not exist here.
         return {}
 
     def op_screencast_stop(self, params: Dict) -> Any:
-        if not self._screencast_id:
+        with self._screencast_lock:
+            running = self._screencast_id
+            self._screencast_id = None
+            self._screencast_early = None
+        if not running:
             return None
-        self._screencast_id = None
         self.send("Page.stopScreencast", {})
         return None
 
